@@ -139,11 +139,12 @@ const CLIENT_ID = "22658520266-72537b3ef6bi63gmfaavt4r5snnjv0ln.apps.googleuserc
 const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
   "https://www.googleapis.com/auth/drive.file"
 ].join(" ");
 const SHEET_NAME = "ToDo App Data";
 const DEFAULT_SYNC = true;          // Kalender-Sync standardmäßig AN
-const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived"];
+const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived","calendarId"];
 const LOG_COLS  = ["itemId","date","doneAt"];
 const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 
@@ -152,6 +153,8 @@ let accessToken = null, tokenClient = null, tokenResolve = null, tokenReject = n
 let spreadsheetId = localStorage.getItem("ssid") || null;
 let tasks = [], logs = [];
 let view = "today";
+let calendars = [];                                       // schreibbare Kalender des Nutzers
+let defaultCalId = localStorage.getItem("defcal") || "primary";
 
 /* ============ HILFEN ============ */
 const $ = (id) => document.getElementById(id);
@@ -233,7 +236,8 @@ async function api(url, opts={}, retried=false){
   return r.json();
 }
 const SHEETS="https://sheets.googleapis.com/v4/spreadsheets";
-const CAL="https://www.googleapis.com/calendar/v3/calendars/primary/events";
+function effectiveCalId(t){ return t.calendarId || defaultCalId || "primary"; }
+function calUrl(calId){ return "https://www.googleapis.com/calendar/v3/calendars/"+encodeURIComponent(calId)+"/events"; }
 
 /* ---- Tabelle finden / anlegen ---- */
 async function findSheet(){
@@ -265,12 +269,28 @@ function rowsToObjs(rows, cols){
   return (rows||[]).map(r=>{ const o={}; cols.forEach((c,i)=>o[c]=r[i]!==undefined?r[i]:""); return o; });
 }
 async function loadAll(){
+  // Kopfzeile auf aktuelles Schema bringen (idempotent; ergänzt neue Spalten browserseitig)
+  await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A1?valueInputOption=RAW`,
+    {method:"PUT",body:JSON.stringify({values:[TASK_COLS]})});
   const t=await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2:${colLetter(TASK_COLS.length)}`);
   const l=await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C`);
   tasks=rowsToObjs(t.values, TASK_COLS).filter(x=>x.id).map(x=>({
     ...x, syncCalendar:x.syncCalendar!=="false", archived:x.archived==="true"
   }));
   logs=rowsToObjs(l.values, LOG_COLS).filter(x=>x.itemId&&x.date);
+}
+async function loadCalendars(){
+  try{
+    const res=await api("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=writer&fields=items(id,summary,primary)");
+    calendars=(res.items||[]).map(c=>({id:c.id, summary:c.primary?(c.summary+" (Haupt)"):c.summary, primary:!!c.primary}));
+    // primären Kalender nach oben
+    calendars.sort((a,b)=>(b.primary?1:0)-(a.primary?1:0));
+    if(!calendars.length) calendars=[{id:"primary",summary:"Hauptkalender",primary:true}];
+  }catch(e){
+    console.warn("Kalenderliste nicht ladbar:",e);
+    calendars=[{id:"primary",summary:"Hauptkalender",primary:true}];
+    toast("Für die Kalenderauswahl bitte ab- und neu anmelden");
+  }
 }
 function colLetter(n){ let s=""; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
 
@@ -310,22 +330,30 @@ function eventBody(t){
   return body;
 }
 async function syncCalendar(t){
+  const url=calUrl(effectiveCalId(t));
   try{
     if(t.syncCalendar){
       if(t.calendarEventId){
-        await api(`${CAL}/${t.calendarEventId}`,{method:"PUT",body:JSON.stringify(eventBody(t))});
+        await api(`${url}/${t.calendarEventId}`,{method:"PUT",body:JSON.stringify(eventBody(t))});
       }else{
-        const ev=await api(CAL,{method:"POST",body:JSON.stringify(eventBody(t))});
+        const ev=await api(url,{method:"POST",body:JSON.stringify(eventBody(t))});
         t.calendarEventId=ev.id;
       }
     }else if(t.calendarEventId){
-      await api(`${CAL}/${t.calendarEventId}`,{method:"DELETE"});
+      await api(`${url}/${t.calendarEventId}`,{method:"DELETE"});
       t.calendarEventId="";
     }
   }catch(e){ console.warn("Kalender-Sync fehlgeschlagen:",e); toast("Kalender-Sync fehlgeschlagen"); }
 }
 async function deleteCalendar(t){
-  if(t.calendarEventId){ try{ await api(`${CAL}/${t.calendarEventId}`,{method:"DELETE"}); }catch(e){} }
+  if(t.calendarEventId){ try{ await api(`${calUrl(effectiveCalId(t))}/${t.calendarEventId}`,{method:"DELETE"}); }catch(e){} }
+}
+// Kalenderwechsel: alten Termin auf dem alten Kalender entfernen
+async function moveCalendarIfNeeded(t, oldCalId, oldEventId){
+  if(oldEventId && effectiveCalId(t)!==oldCalId){
+    try{ await api(`${calUrl(oldCalId)}/${oldEventId}`,{method:"DELETE"}); }catch(e){}
+    t.calendarEventId="";
+  }
 }
 
 /* ============ MUTATIONEN ============ */
@@ -340,7 +368,9 @@ async function addTask(data){
 async function updateTask(id, data){
   setSync("busy");
   const t=tasks.find(x=>x.id===id); if(!t) return;
+  const oldCalId=effectiveCalId(t), oldEventId=t.calendarEventId;
   Object.assign(t,data);
+  await moveCalendarIfNeeded(t, oldCalId, oldEventId);
   await syncCalendar(t);
   await saveTasks();
   setSync("on"); render();
@@ -474,6 +504,12 @@ function render(){
   }
   else if(view==="settings"){
     main.innerHTML=`
+      <div class="section-title">Kalender</div>
+      <div class="card"><div class="body" style="width:100%">
+        <div class="title">Standard-Kalender</div>
+        <div class="sub" style="margin-bottom:8px">Für neue Einträge vorausgewählt</div>
+        <select id="defCalSel">${calendars.map(c=>`<option value="${esc(c.id)}" ${c.id===defaultCalId?"selected":""}>${esc(c.summary)}</option>`).join("")}</select>
+      </div></div>
       <div class="section-title">Daten</div>
       <div class="card"><div class="body">
         <div class="title">Google-Tabelle</div>
@@ -486,7 +522,8 @@ function render(){
       <div class="card"><div class="body"><div class="title">Abmelden</div>
         <div class="sub">Trennt dieses Gerät vom Google-Konto</div></div>
         <button class="icon-btn" id="signoutBtn">Abmelden</button></div>
-      <p class="muted" style="font-size:12px;margin-top:18px">Aufgaben & Termine liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an).</p>`;
+      <p class="muted" style="font-size:12px;margin-top:18px">Aufgaben & Termine liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an), der Zielkalender pro Eintrag wählbar.</p>`;
+    const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
     $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); setSync("on"); render(); toast("Aktualisiert"); };
     $("signoutBtn").onclick=signOut;
   }
@@ -527,12 +564,15 @@ function openForm(type, existing){
   const syncToggle = (type==="goal") ? "" : `<div class="toggle-row"><div><div style="font-size:14px">In Google Calendar</div>
     <div class="muted" style="font-size:12px">Termin synchronisieren</div></div>
     <button class="switch ${sync?"on":""}" id="f_sync"></button></div>`;
+  const curCal = (isEdit && t.calendarId) ? t.calendarId : defaultCalId;
+  const calSelect = (type==="goal") ? "" : `<label>Kalender</label>
+    <select id="f_cal">${calendars.map(c=>`<option value="${esc(c.id)}" ${c.id===curCal?"selected":""}>${esc(c.summary)}</option>`).join("")}</select>`;
   const titleTxt={habit:"Gewohnheit",duty:"Pflichtaufgabe",todo:"ToDo",goal:"Tages-Ziel"}[type];
 
   main.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${isEdit?"Bearbeiten":"Neu: "+titleTxt}</h2>
-      ${typeFields}${syncToggle}
+      ${typeFields}${syncToggle}${calSelect}
       <div class="modal-actions">
         <button class="btn-ghost" id="f_cancel">Abbrechen</button>
         <button class="btn-primary" id="f_save">Speichern</button>
@@ -564,6 +604,7 @@ function openForm(type, existing){
     if(type==="todo"){ data.startDate=$("f_start").value;
       data.scheduleType=weeklyBtn.classList.contains("on")?"weekly":"once";
       const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):""; }
+    const cs=$("f_cal"); if(cs) data.calendarId=cs.value;
     $("modalBg").remove();
     if(isEdit) await updateTask(existing.id, data); else await addTask(data);
   };
@@ -589,6 +630,7 @@ async function bootData(){
   setSync("busy");
   await ensureSheet();
   await loadAll();
+  await loadCalendars();
   setSync("on");
   $("acctBtn").textContent="Verbunden";
   $("nav").style.display="flex";

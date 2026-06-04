@@ -1134,22 +1134,22 @@ function openNoteForm(existing){
   const isEdit=!!existing;
   const curProj=(isEdit && existing.projectId) ? existing.projectId : "";
   const curUrl=(isEdit && existing.url) ? existing.url : "";
-  const projSelect=`<label>Projekt (optional)</label>
-    <select id="f_proj">
+  const projOptions=projects.filter(p=>!p.archived).map(p=>`<option value="${esc(p.id)}" ${p.id===curProj?"selected":""}>${esc(p.name)}</option>`).join("");
+  const html=`<div class="modal-bg" id="modalBg"><div class="modal">
+    <h2>${isEdit?"Notiz bearbeiten":"Neue Notiz"}</h2>
+    <label>Text</label><textarea id="f_text" placeholder="Notiz schreiben..." style="width:100%;min-height:120px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.text||"")}</textarea>
+    <label>Link (optional)</label><input type="text" id="f_url" placeholder="https://example.com" value="${esc(curUrl)}" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:8px;font-size:15px;box-sizing:border-box">
+    <label>Projekt (optional)</label>
+    <select id="f_proj" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:8px;font-size:15px">
       <option value="">— kein Projekt —</option>
-      ${projects.filter(p=>!p.archived).map(p=>`<option value="${esc(p.id)}" ${p.id===curProj?"selected":""}>${esc(p.name)}</option>`).join("")}
-    </select>`;
-  document.body.insertAdjacentHTML("beforeend",
-    `<div class="modal-bg" id="modalBg"><div class="modal">
-      <h2>${isEdit?"Notiz bearbeiten":"Neue Notiz"}</h2>
-      <label>Text</label><textarea id="f_text" placeholder="Notiz schreiben..." style="width:100%;min-height:120px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.text||"")}</textarea>
-      <label>Link (optional)</label><input type="text" id="f_url" placeholder="https://example.com" value="${esc(curUrl)}" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:8px;font-size:15px;box-sizing:border-box">
-      ${projSelect}
-      <div class="modal-actions">
-        <button class="btn-ghost" id="f_cancel">Abbrechen</button>
-        <button class="btn-primary" id="f_save">Speichern</button>
-      </div>
-    </div></div>`);
+      ${projOptions}
+    </select>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="f_cancel">Abbrechen</button>
+      <button class="btn-primary" id="f_save">Speichern</button>
+    </div>
+  </div></div>`;
+  document.body.insertAdjacentHTML("beforeend", html);
   
   $("f_cancel").onclick=()=>$("modalBg").remove();
   $("f_save").onclick=async()=>{

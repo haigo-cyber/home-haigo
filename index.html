@@ -126,6 +126,7 @@
   <nav id="nav" style="display:none">
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
     <button data-view="projects"><span class="nico">🎯</span>Projekte</button>
+    <button data-view="notes"><span class="nico">📝</span>Notizen</button>
     <button data-view="goals"><span class="nico">⭐</span>Ziele</button>
     <button data-view="habits"><span class="nico">🔥</span>Gewohn.</button>
     <button data-view="duties"><span class="nico">🔁</span>Pflicht</button>
@@ -156,7 +157,7 @@ const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freita
 /* ============ ZUSTAND ============ */
 let accessToken = null, tokenClient = null, tokenResolve = null, tokenReject = null;
 let spreadsheetId = localStorage.getItem("ssid") || null;
-let tasks = [], logs = [], projects = [];
+let tasks = [], logs = [], projects = [], notes = [];
 let view = "today";
 let calendars = [];                                       // schreibbare Kalender des Nutzers
 let defaultCalId = localStorage.getItem("defcal") || "primary";
@@ -293,6 +294,8 @@ async function loadAll(){
     console.warn("Projekte laden fehlgeschlagen:",e);
     projects=[];
   }
+  // Notizen: JSON von Notes!A1 laden
+  await loadNotes();
 }
 async function loadCalendars(){
   try{
@@ -517,10 +520,12 @@ function taskCard(t,{showCheck=true, key=todayKey()}={}){
   const done=isDone(t.id,key);
   const cal=t.syncCalendar?'<span class="badge cal">📆 Kalender</span>':'';
   const notes=t.notes?`<details class="note-detail"><summary>📝 ${t.notes.length} Zeichen</summary><div class="note-text">${esc(t.notes)}</div></details>`:'';
+  const urgency=t.startDate?urgencyBar(urgencyDays(t.startDate)):'';
   return `<div class="card${done?' done':''}">
     ${showCheck?`<div class="check${done?' on':''}" data-toggle="${t.id}" data-key="${key}">${checkSvg()}</div>`:''}
     <div class="body">
       <div class="title">${esc(t.title)}</div>
+      ${urgency}
       <div class="sub"><span>${esc(scheduleLabel(t))}</span>${cal}</div>
       ${notes}
     </div>
@@ -583,7 +588,7 @@ function pieBlock(done,total){
 function empty(msg){ return `<div class="empty">${msg}</div>`; }
 
 function projectCard(p){
-  const colors=['#fdd835','#ffcdd2','#ffe0b2','#c8e6c9','#81c784'];
+  const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
   const bgColor=colors[5-p.priority]||colors[2];
   return `<div class="card" style="background-color:${bgColor};color:#000">
     <div class="body">
@@ -601,7 +606,7 @@ function priorityBoard(){
   const active=projects.filter(p=>!p.archived);
   const by=[[],[],[],[],[]];
   active.forEach(p=>{ if(p.priority>=1 && p.priority<=5) by[5-p.priority].push(p); });
-  const colors=['#fdd835','#ffcdd2','#ffe0b2','#c8e6c9','#81c784'];
+  const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
   const labels=['Prio 5','Prio 4','Prio 3','Prio 2','Prio 1'];
   let html=`<div style="display:flex;gap:12px;overflow-x:auto;padding:16px">`;
   for(let i=0; i<5; i++){
@@ -616,6 +621,25 @@ function priorityBoard(){
   return html;
 }
 
+function urgencyDays(startDate){
+  if(!startDate) return 999;
+  const due=parseDate(startDate), today=new Date();
+  const d=Math.floor((due-today)/86400000);
+  return Math.max(0,d);
+}
+function urgencyBar(d){
+  if(d>3) return "";
+  const pct=Math.max(0,(3-d)/3)*100;
+  return `<div style="height:4px;background:#4caf50;width:${pct}%;margin-top:4px;border-radius:2px"></div>`;
+}
+function sortTasksForToday(tasks,key){
+  const open=[],done=[];
+  tasks.forEach(t=>{(isDone(t.id,key)?done:open).push(t);});
+  const withDate=open.filter(t=>t.startDate).sort((a,b)=>urgencyDays(a.startDate)-urgencyDays(b.startDate));
+  const noDate=open.filter(t=>!t.startDate);
+  return [...withDate,...noDate,...done];
+}
+
 function render(){
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",settings:"Konto"};
@@ -627,21 +651,23 @@ function render(){
     const key=todayKey();
     const topProjects=projects.filter(p=>!p.archived&&p.priority>=4).sort((a,b)=>b.priority-a.priority);
     const goals=active.filter(t=>t.type==="goal" && t.startDate===todayKey());
-    const due=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
-    const open=due.filter(t=>!isDone(t.id,key)), done=due.filter(t=>isDone(t.id,key));
+    const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
+    const sorted=sortTasksForToday(tasks, key);
     let h=`<div class="section-title">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div>`;
     if(topProjects.length){
       h+=`<div class="section-title">Wichtige Projekte</div>`;
-      const colors=['#fdd835','#ffcdd2','#ffe0b2','#c8e6c9','#81c784'];
+      const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
       topProjects.forEach(p=>{ h+=`<div style="background-color:${colors[5-p.priority]||colors[2]};color:#000;padding:8px;border-radius:6px;margin-bottom:6px;font-weight:bold;font-size:14px">${esc(p.name)} (Prio ${p.priority})</div>`; });
     }
     if(goals.length){
       const gd=goals.filter(t=>isDone(t.id,key)).length;
       h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goals.length)+goals.map(goalCard).join("");
     }
-    if(!due.length) h+=empty("Heute nichts fällig. 🎉");
+    if(!sorted.length) h+=empty("Heute nichts fällig. 🎉");
     else{
       if(goals.length) h+=`<div class="section-title">Aufgaben</div>`;
+      const open=sorted.filter(t=>!isDone(t.id,key));
+      const done=sorted.filter(t=>isDone(t.id,key));
       h+=open.length?open.map(t=>taskCard(t,{key})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
       if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{key})).join("");
     }
@@ -674,6 +700,21 @@ function render(){
     h+=list.length?list.map(projectCard).join(""):empty("Noch keine Projekte. Mit + anlegen.");
     main.innerHTML=h;
   }
+  else if(view==="notes"){
+    let h=`<div class="section-title">Notizen</div>`;
+    h+=notes.length?notes.map(n=>`<div class="card">
+      <div class="body">
+        <div class="title">${esc(n.text.split('\n')[0].substring(0,50))}</div>
+        <div class="sub">${new Date(n.createdAt).toLocaleDateString("de-DE")}</div>
+        <div class="note-text" style="margin-top:8px;font-size:13px;color:var(--text)">${esc(n.text.substring(0,100))}</div>
+      </div>
+      <div class="row-actions">
+        <button class="mini" data-edit-note="${n.id}">Bearb.</button>
+        <button class="mini" data-del-note="${n.id}">🗑</button>
+      </div>
+    </div>`).join(""):empty("Keine Notizen. Mit + anlegen.");
+    main.innerHTML=h;
+  }
   else if(view==="settings"){
     main.innerHTML=`
       <div class="section-title">Kalender</div>
@@ -702,6 +743,59 @@ function render(){
 }
 
 /* ============ FORMULARE ============ */
+async function saveNotes(){
+  const json=JSON.stringify(notes);
+  await api(`${SHEETS}/${spreadsheetId}/values/Notes!A1?valueInputOption=RAW`,
+    {method:"PUT",body:JSON.stringify({values:[[json]]})});
+}
+async function loadNotes(){
+  try{
+    const res=await api(`${SHEETS}/${spreadsheetId}/values/Notes!A1`);
+    const cell=res.values?.[0]?.[0]||"[]";
+    notes=JSON.parse(cell);
+  }catch(e){
+    console.error("loadNotes Fehler:",e);
+    notes=[];
+  }
+}
+async function addNote(data){
+  setSync("busy");
+  try{
+    const n=Object.assign({id:uid(), createdAt:new Date().toISOString()}, data);
+    notes.push(n);
+    await saveNotes();
+    setSync("on"); render(); toast("Notiz gespeichert");
+  }catch(e){
+    console.error("addNote Fehler:",e);
+    toast("Speichern fehlgeschlagen");
+    setSync("on");
+  }
+}
+async function updateNote(id, data){
+  setSync("busy");
+  try{
+    const n=notes.find(x=>x.id===id);
+    if(n) Object.assign(n, data, {updatedAt:new Date().toISOString()});
+    await saveNotes();
+    setSync("on"); render(); toast("Notiz aktualisiert");
+  }catch(e){
+    console.error("updateNote Fehler:",e);
+    setSync("on");
+  }
+}
+async function deleteNote(id){
+  if(!confirm("Notiz löschen?")) return;
+  setSync("busy");
+  try{
+    notes=notes.filter(n=>n.id!==id);
+    await saveNotes();
+    setSync("on"); render(); toast("Notiz gelöscht");
+  }catch(e){
+    console.error("deleteNote Fehler:",e);
+    setSync("on");
+  }
+}
+
 function openForm(type, existing){
   const t=existing||{};
   const isEdit=!!existing;
@@ -728,13 +822,13 @@ function openForm(type, existing){
   if(type==="todo"){
     const weekly=t.scheduleType==="weekly";
     typeFields=`<label>Titel</label><input type="text" id="f_title" value="${esc(t.title||"")}" placeholder="z. B. Klassenarbeit korrigieren">
-      <label>Datum</label><input type="date" id="f_start" value="${t.startDate||todayKey()}">
+      <label>Datum (optional)</label><input type="date" id="f_start" value="${t.startDate||""}">
       <label>Uhrzeit (optional)</label><input type="time" id="f_time" value="${t.startTime||""}">
       <div class="toggle-row"><div><div style="font-size:14px">Wöchentlich wiederholen</div>
         <div class="muted" style="font-size:12px" id="wdHint"></div></div>
         <button class="switch ${weekly?"on":""}" id="f_weekly"></button></div>`;
   }
-  const sync = isEdit ? (t.syncCalendar!==false) : DEFAULT_SYNC;
+  const sync = isEdit ? (t.syncCalendar!==false) : (type==="todo" ? false : DEFAULT_SYNC);
   const syncToggle = (type==="goal") ? "" : `<div class="toggle-row"><div><div style="font-size:14px">In Google Calendar</div>
     <div class="muted" style="font-size:12px">Termin synchronisieren</div></div>
     <button class="switch ${sync?"on":""}" id="f_sync"></button></div>`;
@@ -821,6 +915,31 @@ function openProjectForm(existing){
   $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
 }
 
+function openNoteForm(existing){
+  const isEdit=!!existing;
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>${isEdit?"Notiz bearbeiten":"Neue Notiz"}</h2>
+      <label>Text</label><textarea id="f_text" placeholder="Notiz schreiben..." style="width:100%;min-height:120px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.text||"")}</textarea>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="f_cancel">Abbrechen</button>
+        <button class="btn-primary" id="f_save">Speichern</button>
+      </div>
+    </div></div>`);
+  
+  $("f_cancel").onclick=()=>$("modalBg").remove();
+  $("f_save").onclick=async()=>{
+    const text=$("f_text").value.trim();
+    if(!text){ toast("Text erforderlich"); return; }
+    const data={text};
+    $("modalBg").remove();
+    if(isEdit) await updateNote(existing.id, data); else await addNote(data);
+  };
+  $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+}
+
+
+
 /* ============ EVENTS ============ */
 $("nav").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b){ view=b.dataset.view; render(); }});
 $("fab").addEventListener("click",()=>{
@@ -829,6 +948,7 @@ $("fab").addEventListener("click",()=>{
     return openForm("goal");
   }
   if(view==="projects") return openProjectForm();
+  if(view==="notes") return openNoteForm();
   openForm(view==="habits"?"habit":view==="duties"?"duty":"todo");
 });
 main.addEventListener("click",e=>{
@@ -839,6 +959,8 @@ main.addEventListener("click",e=>{
     const msg=(dt && dt.calendarEventId) ? "Wirklich löschen? Der verknüpfte Kalendertermin wird mitentfernt." : "Wirklich löschen?";
     if(confirm(msg)) deleteTask(dl.dataset.del); return;
   }
+  const en=e.target.closest("[data-edit-note]"); if(en){ const n=notes.find(x=>x.id===en.dataset.editNote); if(n) openNoteForm(n); return; }
+  const dn=e.target.closest("[data-del-note]"); if(dn){ deleteNote(dn.dataset.delNote); return; }
   const ep=e.target.closest("[data-edit-proj]"); if(ep){ const p=projects.find(x=>x.id===ep.dataset.editProj); if(p) openProjectForm(p); return; }
   const dp=e.target.closest("[data-del-proj]"); if(dp){
     if(confirm("Projekt wirklich löschen?")) deleteProject(dp.dataset.delProj); return;

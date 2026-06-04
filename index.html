@@ -384,6 +384,17 @@ async function deleteTask(id){
   await saveTasks(); await saveLogs();
   setSync("on"); render();
 }
+// Tages-Ziele eines vergangenen Tages restlos entfernen (täglicher Reset = leeres Blatt)
+async function purgeStaleGoals(){
+  const today=todayKey();
+  const stale=tasks.filter(t=>t.type==="goal" && (t.startDate||"")!==today);
+  if(!stale.length) return false;
+  const ids=new Set(stale.map(t=>t.id));
+  tasks=tasks.filter(t=>!ids.has(t.id));
+  logs=logs.filter(l=>!ids.has(l.itemId));
+  await saveTasks(); await saveLogs();
+  return true;
+}
 async function toggleDone(id, key){
   setSync("busy");
   if(isDone(id,key)) logs=logs.filter(l=>!(l.itemId===id&&l.date===key));
@@ -472,11 +483,17 @@ function render(){
 
   if(view==="today"){
     const key=todayKey();
+    const goals=active.filter(t=>t.type==="goal");
     const due=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const open=due.filter(t=>!isDone(t.id,key)), done=due.filter(t=>isDone(t.id,key));
     let h=`<div class="section-title">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div>`;
+    if(goals.length){
+      const gd=goals.filter(t=>isDone(t.id,key)).length;
+      h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goals.length);
+    }
     if(!due.length) h+=empty("Heute nichts fällig. 🎉");
     else{
+      if(goals.length) h+=`<div class="section-title">Aufgaben</div>`;
       h+=open.length?open.map(t=>taskCard(t,{key})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
       if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{key})).join("");
     }
@@ -524,7 +541,7 @@ function render(){
         <button class="icon-btn" id="signoutBtn">Abmelden</button></div>
       <p class="muted" style="font-size:12px;margin-top:18px">Aufgaben & Termine liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an), der Zielkalender pro Eintrag wählbar.</p>`;
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
-    $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); setSync("on"); render(); toast("Aktualisiert"); };
+    $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); setSync("on"); render(); toast("Aktualisiert"); };
     $("signoutBtn").onclick=signOut;
   }
 }
@@ -539,7 +556,7 @@ function openForm(type, existing){
   }
   if(type==="goal"){
     typeFields=`<label>Ziel</label><input type="text" id="f_title" value="${esc(t.title||"")}" placeholder="z. B. 2 l Wasser trinken">
-      <p class="muted" style="font-size:12px;margin-top:8px">Setzt sich täglich um Mitternacht zurück.</p>`;
+      <p class="muted" style="font-size:12px;margin-top:8px">Wird täglich um Mitternacht geleert — morgens neu eintragen.</p>`;
   }
   if(type==="duty"){
     const st=t.scheduleType||"daily";
@@ -622,7 +639,11 @@ $("fab").addEventListener("click",()=>{
 main.addEventListener("click",e=>{
   const tg=e.target.closest("[data-toggle]"); if(tg){ toggleDone(tg.dataset.toggle, tg.dataset.key); return; }
   const ed=e.target.closest("[data-edit]"); if(ed){ const t=tasks.find(x=>x.id===ed.dataset.edit); if(t) openForm(t.type,t); return; }
-  const dl=e.target.closest("[data-del]"); if(dl){ if(confirm("Wirklich löschen? Ein verknüpfter Kalendertermin wird mitentfernt.")) deleteTask(dl.dataset.del); return; }
+  const dl=e.target.closest("[data-del]"); if(dl){
+    const dt=tasks.find(x=>x.id===dl.dataset.del);
+    const msg=(dt && dt.calendarEventId) ? "Wirklich löschen? Der verknüpfte Kalendertermin wird mitentfernt." : "Wirklich löschen?";
+    if(confirm(msg)) deleteTask(dl.dataset.del); return;
+  }
 });
 
 /* ============ ANMELDUNG / START ============ */
@@ -630,6 +651,7 @@ async function bootData(){
   setSync("busy");
   await ensureSheet();
   await loadAll();
+  await purgeStaleGoals();
   await loadCalendars();
   setSync("on");
   $("acctBtn").textContent="Verbunden";
@@ -674,7 +696,7 @@ $("acctBtn").addEventListener("click",()=>{ if(accessToken) view="settings",rend
 
 // Tageswechsel: Tages-Ziele um Mitternacht zurücksetzen (Ansicht bei laufender App)
 let _curDay=todayKey();
-setInterval(()=>{ const k=todayKey(); if(k!==_curDay){ _curDay=k; if(accessToken) render(); } },60000);
+setInterval(async()=>{ const k=todayKey(); if(k!==_curDay){ _curDay=k; if(accessToken){ await purgeStaleGoals(); render(); } } },60000);
 
 // Service Worker
 if("serviceWorker" in navigator){

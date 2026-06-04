@@ -692,7 +692,12 @@ function sortTasksForToday(tasks,key){
   tasks.forEach(t=>{(isDone(t.id,key)?done:open).push(t);});
   const withDate=open.filter(t=>t.startDate).sort((a,b)=>urgencyDays(a.startDate)-urgencyDays(b.startDate));
   const noDate=open.filter(t=>!t.startDate);
-  return [...withDate,...noDate,...done];
+  console.log("sortTasksForToday: open=",open.length,"done=",done.length,"withDate=",withDate.length,"noDate=",noDate.length);
+  open.forEach((t,i)=>console.log(`  open[${i}]:`,t.type,t.title,"startDate=",t.startDate));
+  noDate.forEach((t,i)=>console.log(`  noDate[${i}]:`,t.type,t.title));
+  const result=[...withDate,...noDate,...done];
+  console.log("sortTasksForToday result order:",result.map((t,i)=>`${i}:${t.type}(${t.title.substring(0,10)})`).join(" "));
+  return result;
 }
 
 function render(){
@@ -737,8 +742,14 @@ function render(){
     main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:false})).join(""):empty("Noch keine Pflichtaufgaben. Mit + anlegen.");
   }
   else if(view==="todos"){
-    const list=active.filter(t=>t.type==="todo").sort((a,b)=>(a.startDate||"").localeCompare(b.startDate||""));
-    main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:false})).join(""):empty("Noch keine ToDos. Mit + anlegen.");
+    const todos=active.filter(t=>t.type==="todo");
+    const key=todayKey();
+    // Sortiere: mit Termin (nach Dringlichkeit) → ohne Termin → erledigte
+    const withDate=todos.filter(t=>t.startDate && !isDone(t.id,key)).sort((a,b)=>urgencyDays(a.startDate)-urgencyDays(b.startDate));
+    const noDate=todos.filter(t=>!t.startDate && !isDone(t.id,key));
+    const done=todos.filter(t=>isDone(t.id,key));
+    const list=[...withDate,...noDate,...done];
+    main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:false,key})).join(""):empty("Noch keine ToDos. Mit + anlegen.");
   }
   else if(view==="goals"){
     const list=active.filter(t=>t.type==="goal" && t.startDate===todayKey());

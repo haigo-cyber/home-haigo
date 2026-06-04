@@ -172,15 +172,6 @@ function dateKey(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(
 function parseDate(s){ if(!s) return null; const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); }
 function diffDays(a,b){ return Math.round((Date.UTC(b.getFullYear(),b.getMonth(),b.getDate())-Date.UTC(a.getFullYear(),a.getMonth(),a.getDate()))/86400000); }
 function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-function linkify(text){
-  // Regex erkenne URLs, aber escape nur den normalen Text
-  return (text||"").split(/(https?:\/\/[^\s]+)/g).map((part,i)=>{
-    // Ungerade Indizes sind URLs
-    if(i%2===1) return `<a href="${esc(part)}" target="_blank" rel="noopener" style="color:#a5b4fc;text-decoration:underline;cursor:pointer">${esc(part)}</a>`;
-    // Gerade Indizes sind normaler Text
-    return esc(part);
-  }).join("");
-}
 let toastTimer;
 function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2200); }
 function setSync(state){ const d=$("syncDot"); d.className="dot"+(state==="on"?" on":state==="busy"?" busy":""); }
@@ -588,7 +579,7 @@ function checkSvg(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" 
 function taskCard(t,{showCheck=true, key=todayKey()}={}){
   const done=isDone(t.id,key);
   const cal=t.syncCalendar?'<span class="badge cal">📆 Kalender</span>':'';
-  const notes=t.notes?`<details class="note-detail"><summary>📝 ${t.notes.length} Zeichen</summary><div class="note-text">${linkify(t.notes)}</div></details>`:'';
+  const notes=t.notes?`<details class="note-detail"><summary>📝 ${t.notes.length} Zeichen</summary><div class="note-text">${esc(t.notes)}</div></details>`:'';
   const urgency=t.startDate?urgencyBar(urgencyDays(t.startDate)):'';
   return `<div class="card${done?' done':''}">
     ${showCheck?`<div class="check${done?' on':''}" data-toggle="${t.id}" data-key="${key}">${checkSvg()}</div>`:''}
@@ -835,9 +826,10 @@ function render(){
         <div class="body">
           <div class="title">${esc(n.text.split('\n')[0].substring(0,50))}</div>
           <div class="sub">${new Date(n.createdAt).toLocaleDateString("de-DE")}</div>
-          <div class="note-text" style="margin-top:8px;font-size:13px;color:var(--text)">${linkify(n.text.substring(0,100))}</div>
+          <div class="note-text" style="margin-top:8px;font-size:13px;color:var(--text)">${esc(n.text.substring(0,100))}</div>
         </div>
         <div class="row-actions">
+          ${n.url?`<a href="${esc(n.url)}" target="_blank" rel="noopener" class="mini" style="color:var(--accent);text-decoration:none;cursor:pointer">🔗</a>`:''}
           <button class="mini" data-edit-note="${n.id}">Bearb.</button>
           <button class="mini" data-del-note="${n.id}">🗑</button>
         </div>
@@ -853,9 +845,10 @@ function render(){
       <div class="body">
         <div class="title">${esc(n.text.split('\n')[0].substring(0,50))}</div>
         <div class="sub">${new Date(n.createdAt).toLocaleDateString("de-DE")}</div>
-        <div class="note-text" style="margin-top:8px;font-size:13px;color:var(--text)">${linkify(n.text.substring(0,100))}</div>
+        <div class="note-text" style="margin-top:8px;font-size:13px;color:var(--text)">${esc(n.text.substring(0,100))}</div>
       </div>
       <div class="row-actions">
+        ${n.url?`<a href="${esc(n.url)}" target="_blank" rel="noopener" class="mini" style="color:var(--accent);text-decoration:none;cursor:pointer">🔗</a>`:''}
         <button class="mini" data-edit-note="${n.id}">Bearb.</button>
         <button class="mini" data-del-note="${n.id}">🗑</button>
       </div>
@@ -1140,6 +1133,7 @@ function openProjectForm(existing){
 function openNoteForm(existing){
   const isEdit=!!existing;
   const curProj=(isEdit && existing.projectId) ? existing.projectId : "";
+  const curUrl=(isEdit && existing.url) ? existing.url : "";
   const projSelect=`<label>Projekt (optional)</label>
     <select id="f_proj">
       <option value="">— kein Projekt —</option>
@@ -1149,6 +1143,7 @@ function openNoteForm(existing){
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${isEdit?"Notiz bearbeiten":"Neue Notiz"}</h2>
       <label>Text</label><textarea id="f_text" placeholder="Notiz schreiben..." style="width:100%;min-height:120px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.text||"")}</textarea>
+      <label>Link (optional)</label><input type="text" id="f_url" placeholder="https://example.com" value="${esc(curUrl)}" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:8px;font-size:15px;box-sizing:border-box">
       ${projSelect}
       <div class="modal-actions">
         <button class="btn-ghost" id="f_cancel">Abbrechen</button>
@@ -1162,6 +1157,7 @@ function openNoteForm(existing){
     if(!text){ toast("Text erforderlich"); return; }
     const data={text};
     const fp=$("f_proj"); if(fp && fp.value) data.projectId=fp.value;
+    const fu=$("f_url"); if(fu && fu.value.trim()) data.url=fu.value.trim();
     $("modalBg").remove();
     if(isEdit) await updateNote(existing.id, data); else await addNote(data);
   };

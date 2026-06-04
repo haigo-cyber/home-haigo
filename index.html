@@ -285,13 +285,18 @@ async function loadAll(){
     ...x, syncCalendar:x.syncCalendar!=="false", archived:x.archived==="true"
   }));
   logs=rowsToObjs(l.values, LOG_COLS).filter(x=>x.itemId&&x.date);
-  // Projekte laden
-  await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
-    {method:"PUT",body:JSON.stringify({values:[PROJ_COLS]})});
-  const p=await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${colLetter(PROJ_COLS.length)}`);
-  projects=rowsToObjs(p.values, PROJ_COLS).filter(x=>x.id).map(x=>({
-    ...x, priority:parseInt(x.priority)||1, archived:x.archived==="true"
-  }));
+  // Projekte laden (mit Fehlerbehandlung)
+  try{
+    await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
+      {method:"PUT",body:JSON.stringify({values:[PROJ_COLS]})});
+    const p=await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${colLetter(PROJ_COLS.length)}`);
+    projects=rowsToObjs(p.values, PROJ_COLS).filter(x=>x.id).map(x=>({
+      ...x, priority:parseInt(x.priority)||1, archived:x.archived==="true"
+    }));
+  }catch(e){
+    console.warn("Projekte nicht ladbar:",e);
+    projects=[];
+  }
 }
 async function loadCalendars(){
   try{
@@ -816,7 +821,7 @@ async function signIn(){
 }
 function signOut(){
   if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
-  accessToken=null; tasks=[]; logs=[];
+  accessToken=null; tasks=[]; logs=[]; projects=[];
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";
   $("acctBtn").textContent="Anmelden"; setSync("");

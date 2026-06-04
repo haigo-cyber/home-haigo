@@ -650,14 +650,15 @@ function empty(msg){ return `<div class="empty">${msg}</div>`; }
 function projectCard(p){
   const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
   const bgColor=colors[5-p.priority]||colors[2];
-  return `<div class="card" style="background-color:${bgColor};color:#000">
+  const todos=tasks.filter(t=>t.projectId===p.id && !t.archived).length;
+  return `<div class="card" style="background-color:${bgColor};color:#000;cursor:pointer" data-view-proj="${p.id}">
     <div class="body">
       <div class="title">${esc(p.name)}</div>
-      <div class="sub"><span>Priorität: ${p.priority}</span></div>
+      <div class="sub"><span>Priorität: ${p.priority}</span>${todos>0?` • ${todos} Todos`:""}</div>
     </div>
     <div class="row-actions">
-      <button class="mini" data-edit-proj="${p.id}">Bearb.</button>
-      <button class="mini" data-del-proj="${p.id}">🗑</button>
+      <button class="mini" data-edit-proj="${p.id}" onclick="event.stopPropagation()">Bearb.</button>
+      <button class="mini" data-del-proj="${p.id}" onclick="event.stopPropagation()">🗑</button>
     </div>
   </div>`;
 }
@@ -771,6 +772,29 @@ function render(){
     h+=`<div class="section-title">Alle Projekte</div>`;
     h+=list.length?list.map(projectCard).join(""):empty("Noch keine Projekte. Mit + anlegen.");
     main.innerHTML=h;
+  }
+  else if(view==="projectDetail" && selectedProjectId){
+    const proj=projects.find(p=>p.id===selectedProjectId);
+    if(!proj){ view="projects"; render(); return; }
+    const key=todayKey();
+    const projTodos=tasks.filter(t=>t.projectId===selectedProjectId && !t.archived);
+    const open=projTodos.filter(t=>!isDone(t.id,key));
+    const done=projTodos.filter(t=>isDone(t.id,key));
+    const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
+    const bgColor=colors[5-proj.priority]||colors[2];
+    let h=`<button id="backBtn" style="padding:8px 12px;margin-bottom:12px;background:var(--line);border:none;border-radius:4px;cursor:pointer">← Zurück</button>
+      <div style="background-color:${bgColor};color:#000;padding:16px;border-radius:8px;margin-bottom:16px">
+        <div style="font-size:20px;font-weight:bold">${esc(proj.name)}</div>
+        <div style="font-size:13px;margin-top:4px">Priorität: ${proj.priority}</div>
+      </div>
+      <div class="section-title">Aufgaben</div>`;
+    if(!projTodos.length) h+=empty("Keine Todos in diesem Projekt.");
+    else{
+      h+=open.length?open.map(t=>taskCard(t,{showCheck:true,key})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
+      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{showCheck:true,key})).join("");
+    }
+    main.innerHTML=h;
+    $("backBtn").onclick=()=>{ selectedProjectId=null; view="projects"; render(); };
   }
   else if(view==="notes"){
     let h=`<div class="section-title">Notizen</div>`;
@@ -1112,6 +1136,7 @@ main.addEventListener("click",e=>{
   const dp=e.target.closest("[data-del-proj]"); if(dp){
     if(confirm("Projekt wirklich löschen?")) deleteProject(dp.dataset.delProj); return;
   }
+  const vp=e.target.closest("[data-view-proj]"); if(vp){ selectedProjectId=vp.dataset.viewProj; view="projectDetail"; render(); return; }
 });
 
 /* ============ ANMELDUNG / START ============ */

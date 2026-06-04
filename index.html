@@ -664,6 +664,7 @@ function projectCard(p){
       <div class="sub"><span>Priorität: ${p.priority}</span>${todos>0?` • ${todos} Todos`:""}</div>
     </div>
     <div class="row-actions">
+      ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener" class="mini" style="color:${textColor};text-decoration:none;cursor:pointer">🔗</a>`:''}
       <button class="mini" data-view-proj="${p.id}" style="color:${textColor}">➜</button>
       <button class="mini" data-edit-proj="${p.id}" style="color:${textColor}">Bearb.</button>
       <button class="mini" data-del-proj="${p.id}" style="color:${textColor}">🗑</button>
@@ -739,7 +740,10 @@ function render(){
         const textColor=lum>0.5?'#000':'#fff';
         h+=`<div style="background-color:${bgColor};color:${textColor};padding:8px 12px;border-radius:6px;margin-bottom:6px;font-weight:bold;font-size:14px;display:flex;justify-content:space-between;align-items:center">
           <span>${esc(p.name)} (Prio ${p.priority})</span>
-          <button class="mini" data-view-proj="${p.id}" style="color:${textColor};background:transparent;border:none;cursor:pointer;padding:0;font-size:16px">➜</button>
+          <div style="display:flex;gap:6px">
+            ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:${textColor};text-decoration:none;cursor:pointer;font-size:16px">🔗</a>`:''}
+            <button class="mini" data-view-proj="${p.id}" style="color:${textColor};background:transparent;border:none;cursor:pointer;padding:0;font-size:16px">➜</button>
+          </div>
         </div>`;
       });
     }
@@ -812,7 +816,7 @@ function render(){
     let h=`<button id="backBtn" style="padding:8px 12px;margin-bottom:12px;background:var(--line);border:none;border-radius:4px;cursor:pointer">← Zurück</button>
       <div style="background-color:${bgColor};color:${textColor};padding:16px;border-radius:8px;margin-bottom:16px">
         <div style="font-size:20px;font-weight:bold">${esc(proj.name)}</div>
-        <div style="font-size:13px;margin-top:4px">Priorität: ${proj.priority}</div>
+        <div style="font-size:13px;margin-top:4px">Priorität: ${proj.priority}${proj.url?` • <a href="${esc(proj.url)}" target="_blank" rel="noopener" style="color:${textColor};text-decoration:underline">🔗 Link</a>`:''}</div>
       </div>
       <div class="section-title">Aufgaben</div>`;
     if(!projTodos.length) h+=empty("Keine Todos in diesem Projekt.");
@@ -1102,7 +1106,8 @@ function openProjectForm(existing){
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${isEdit?"Projekt bearbeiten":"Neues Projekt"}</h2>
       <label>Name</label><input type="text" id="f_name" value="${esc(existing?.name||"")}" placeholder="z. B. Blogpost über AI">
-      <label>Priorität (1–5)</label>
+      <label>Link (optional)</label><input type="text" id="f_url" value="${esc(existing?.url||"")}" placeholder="https://example.com" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px">
+      <label style="margin-top:12px">Priorität (1–5)</label>
       <div style="display:flex;gap:8px;margin-bottom:16px">
         ${[5,4,3,2,1].map(p=>`<button data-prio="${p}" style="flex:1;padding:8px;border:1px solid var(--line);border-radius:4px;cursor:pointer;${(existing?.priority||1)==p?'background-color:var(--text);color:#fff':'background-color:transparent'}">${p}</button>`).join("")}
       </div>
@@ -1124,6 +1129,8 @@ function openProjectForm(existing){
     const name=$("f_name").value.trim();
     if(!name){ toast("Name erforderlich"); return; }
     const data={name, priority:prioVal};
+    const url=$("f_url").value.trim();
+    if(url) data.url=url;
     $("modalBg").remove();
     if(isEdit) await updateProject(existing.id, data); else await addProject(data);
   };

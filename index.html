@@ -105,6 +105,10 @@
   .legend{display:flex;gap:20px;margin-top:10px;font-size:13px;color:var(--muted)}
   .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
   .legend i.green{background:var(--green)} .legend i.red{background:var(--red)}
+  .note-detail{margin-top:8px;cursor:pointer}
+  .note-detail summary{font-size:13px;color:var(--muted);user-select:none}
+  .note-detail[open] summary{color:var(--text)}
+  .note-text{font-size:13px;color:var(--muted);margin-top:6px;white-space:pre-wrap;word-wrap:break-word;line-height:1.4}
   .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#000;
     border:1px solid var(--line);color:#fff;padding:9px 16px;border-radius:10px;font-size:13px;z-index:30;opacity:0;transition:.2s;pointer-events:none}
   .toast.show{opacity:1}
@@ -121,7 +125,8 @@
   <button class="fab" id="fab" style="display:none">+</button>
   <nav id="nav" style="display:none">
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
-    <button data-view="goals"><span class="nico">🎯</span>Ziele</button>
+    <button data-view="projects"><span class="nico">🎯</span>Projekte</button>
+    <button data-view="goals"><span class="nico">⭐</span>Ziele</button>
     <button data-view="habits"><span class="nico">🔥</span>Gewohn.</button>
     <button data-view="duties"><span class="nico">🔁</span>Pflicht</button>
     <button data-view="todos"><span class="nico">✓</span>ToDos</button>
@@ -146,12 +151,13 @@ const SHEET_NAME = "ToDo App Data";
 const DEFAULT_SYNC = true;          // Kalender-Sync standardmäßig AN
 const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived","calendarId","startTime"];
 const LOG_COLS  = ["itemId","date","doneAt"];
+const PROJ_COLS = ["id","name","priority","archived"];
 const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 
 /* ============ ZUSTAND ============ */
 let accessToken = null, tokenClient = null, tokenResolve = null, tokenReject = null;
 let spreadsheetId = localStorage.getItem("ssid") || null;
-let tasks = [], logs = [];
+let tasks = [], logs = [], projects = [];
 let view = "today";
 let calendars = [];                                       // schreibbare Kalender des Nutzers
 let defaultCalId = localStorage.getItem("defcal") || "primary";
@@ -279,6 +285,13 @@ async function loadAll(){
     ...x, syncCalendar:x.syncCalendar!=="false", archived:x.archived==="true"
   }));
   logs=rowsToObjs(l.values, LOG_COLS).filter(x=>x.itemId&&x.date);
+  // Projekte laden
+  await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
+    {method:"PUT",body:JSON.stringify({values:[PROJ_COLS]})});
+  const p=await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${colLetter(PROJ_COLS.length)}`);
+  projects=rowsToObjs(p.values, PROJ_COLS).filter(x=>x.id).map(x=>({
+    ...x, priority:parseInt(x.priority)||1, archived:x.archived==="true"
+  }));
 }
 async function loadCalendars(){
   try{
@@ -309,6 +322,15 @@ async function saveLogs(){
   await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000:clear`,{method:"POST",body:"{}"});
   const values=logs.map(l=>LOG_COLS.map(c=>l[c]||""));
   if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Log!A2?valueInputOption=RAW`,
+    {method:"PUT",body:JSON.stringify({values})});
+}
+async function saveProjects(){
+  const last=colLetter(PROJ_COLS.length);
+  await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${last}10000:clear`,{method:"POST",body:"{}"});
+  const values=projects.map(p=>PROJ_COLS.map(c=>{
+    const v=p[c]; return typeof v==="boolean"?String(v):(v==null?"":String(v));
+  }));
+  if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values})});
 }
 
@@ -400,6 +422,26 @@ async function deleteTask(id){
   await saveTasks(); await saveLogs();
   setSync("on"); render();
 }
+async function addProject(data){
+  setSync("busy");
+  const p=Object.assign({id:uid(),archived:false},data);
+  projects.push(p);
+  await saveProjects();
+  setSync("on"); render(); toast("Projekt gespeichert");
+}
+async function updateProject(id, data){
+  setSync("busy");
+  const p=projects.find(x=>x.id===id); if(!p) return;
+  Object.assign(p,data);
+  await saveProjects();
+  setSync("on"); render();
+}
+async function deleteProject(id){
+  setSync("busy");
+  projects=projects.filter(x=>x.id!==id);
+  await saveProjects();
+  setSync("on"); render();
+}
 // Tages-Ziele eines vergangenen Tages restlos entfernen (täglicher Reset = leeres Blatt)
 async function purgeStaleGoals(){
   const today=todayKey();
@@ -426,11 +468,13 @@ function checkSvg(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" 
 function taskCard(t,{showCheck=true, key=todayKey()}={}){
   const done=isDone(t.id,key);
   const cal=t.syncCalendar?'<span class="badge cal">📆 Kalender</span>':'';
+  const notes=t.notes?`<details class="note-detail"><summary>📝 ${t.notes.length} Zeichen</summary><div class="note-text">${esc(t.notes)}</div></details>`:'';
   return `<div class="card${done?' done':''}">
     ${showCheck?`<div class="check${done?' on':''}" data-toggle="${t.id}" data-key="${key}">${checkSvg()}</div>`:''}
     <div class="body">
       <div class="title">${esc(t.title)}</div>
       <div class="sub"><span>${esc(scheduleLabel(t))}</span>${cal}</div>
+      ${notes}
     </div>
     <div class="row-actions">
       <button class="mini" data-edit="${t.id}">Bearb.</button>
@@ -490,22 +534,61 @@ function pieBlock(done,total){
 }
 function empty(msg){ return `<div class="empty">${msg}</div>`; }
 
+function projectCard(p){
+  const colors=['#e0e0e0','#ffebee','#ffe0b2','#c8e6c9','#a5d6a7'];
+  const bgColor=colors[5-p.priority]||colors[2];
+  return `<div class="card" style="background-color:${bgColor}">
+    <div class="body">
+      <div class="title">${esc(p.name)}</div>
+      <div class="sub"><span>Priorität: ${p.priority}</span></div>
+    </div>
+    <div class="row-actions">
+      <button class="mini" data-edit-proj="${p.id}">Bearb.</button>
+      <button class="mini" data-del-proj="${p.id}">🗑</button>
+    </div>
+  </div>`;
+}
+
+function priorityBoard(){
+  const active=projects.filter(p=>!p.archived);
+  const by=[[],[],[],[],[]];
+  active.forEach(p=>{ if(p.priority>=1 && p.priority<=5) by[5-p.priority].push(p); });
+  const colors=['#f5f5f5','#ffcdd2','#ffe0b2','#c8e6c9','#81c784'];
+  const labels=['Prio 1','Prio 2','Prio 3','Prio 4','Prio 5'];
+  let html=`<div style="display:flex;gap:12px;overflow-x:auto;padding:16px">`;
+  for(let i=0; i<5; i++){
+    const col=by[i];
+    html+=`<div style="flex:1;min-width:200px;background-color:${colors[i]};border-radius:8px;padding:12px">
+      <div style="font-weight:bold;margin-bottom:8px;font-size:13px">${labels[i]}</div>
+      ${col.length?col.map(p=>`<div style="background-color:#fff;padding:8px;border-radius:4px;margin-bottom:6px;font-size:13px">${esc(p.name)}</div>`).join(''):'<div style="color:#999;font-size:12px;italic">—</div>'}
+    </div>`;
+  }
+  html+=`</div>`;
+  return html;
+}
+
 function render(){
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  const titles={today:"Heute",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",settings:"Konto"};
+  const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",settings:"Konto"};
   $("hTitle").textContent=titles[view]||"ToDo";
   $("fab").style.display=(view==="today"||view==="settings")?"none":"block";
   const active=tasks.filter(t=>!t.archived);
 
   if(view==="today"){
     const key=todayKey();
+    const topProjects=projects.filter(p=>!p.archived&&p.priority>=4).sort((a,b)=>b.priority-a.priority);
     const goals=active.filter(t=>t.type==="goal" && t.startDate===todayKey());
     const due=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const open=due.filter(t=>!isDone(t.id,key)), done=due.filter(t=>isDone(t.id,key));
     let h=`<div class="section-title">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div>`;
+    if(topProjects.length){
+      h+=`<div class="section-title">Wichtige Projekte</div>`;
+      const colors=['#e0e0e0','#ffebee','#ffe0b2','#c8e6c9','#a5d6a7'];
+      topProjects.forEach(p=>{ h+=`<div style="background-color:${colors[5-p.priority]||colors[2]};padding:8px;border-radius:6px;margin-bottom:6px;font-weight:bold;font-size:14px">${esc(p.name)} (Prio ${p.priority})</div>`; });
+    }
     if(goals.length){
       const gd=goals.filter(t=>isDone(t.id,key)).length;
-      h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goals.length);
+      h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goals.length)+goals.map(goalCard).join("");
     }
     if(!due.length) h+=empty("Heute nichts fällig. 🎉");
     else{
@@ -533,6 +616,13 @@ function render(){
     const doneCount=list.filter(t=>isDone(t.id,key)).length;
     let h=list.length?list.map(goalCard).join(""):empty("Noch keine Tages-Ziele. Bis zu 4 mit + anlegen.");
     if(list.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,list.length);
+    main.innerHTML=h;
+  }
+  else if(view==="projects"){
+    const list=projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority);
+    let h=`<div class="section-title">Prioritäts-Übersicht</div>`+priorityBoard();
+    h+=`<div class="section-title">Alle Projekte</div>`;
+    h+=list.length?list.map(projectCard).join(""):empty("Noch keine Projekte. Mit + anlegen.");
     main.innerHTML=h;
   }
   else if(view==="settings"){
@@ -608,6 +698,7 @@ function openForm(type, existing){
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${isEdit?"Bearbeiten":"Neu: "+titleTxt}</h2>
       ${typeFields}${syncToggle}${calSelect}
+      <label>Notizen (optional)</label><textarea id="f_notes" placeholder="Zusätzliche Infos..." style="width:100%;min-height:60px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.notes||"")}</textarea>
       <div class="modal-actions">
         <button class="btn-ghost" id="f_cancel">Abbrechen</button>
         <button class="btn-primary" id="f_save">Speichern</button>
@@ -641,9 +732,44 @@ function openForm(type, existing){
       const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):""; }
     const ft=$("f_time"); if(ft && ft.value) data.startTime=ft.value;
     const cs=$("f_cal"); if(cs) data.calendarId=cs.value;
+    const fn=$("f_notes"); if(fn && fn.value.trim()) data.notes=fn.value.trim();
     $("modalBg").remove();
     if(isEdit) await updateTask(existing.id, data); else await addTask(data);
   };
+}
+
+function openProjectForm(existing){
+  const isEdit=!!existing;
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>${isEdit?"Projekt bearbeiten":"Neues Projekt"}</h2>
+      <label>Name</label><input type="text" id="f_name" value="${esc(existing?.name||"")}" placeholder="z. B. Blogpost über AI">
+      <label>Priorität (1–5)</label>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        ${[1,2,3,4,5].map(p=>`<button data-prio="${p}" style="flex:1;padding:8px;border:1px solid var(--line);border-radius:4px;cursor:pointer;${(existing?.priority||1)==p?'background-color:var(--text);color:#fff':'background-color:transparent'}">${p}</button>`).join("")}
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="f_cancel">Abbrechen</button>
+        <button class="btn-primary" id="f_save">Speichern</button>
+      </div>
+    </div></div>`);
+  
+  let prioVal=(existing?.priority||1);
+  document.querySelectorAll('[data-prio]').forEach(b=>{
+    b.onclick=()=>{
+      document.querySelectorAll('[data-prio]').forEach(x=>{ x.style.backgroundColor='transparent'; x.style.color=''; });
+      b.style.backgroundColor='var(--text)'; b.style.color='#fff'; prioVal=parseInt(b.dataset.prio);
+    };
+  });
+  $("f_cancel").onclick=()=>$("modalBg").remove();
+  $("f_save").onclick=async()=>{
+    const name=$("f_name").value.trim();
+    if(!name){ toast("Name erforderlich"); return; }
+    const data={name, priority:prioVal};
+    $("modalBg").remove();
+    if(isEdit) await updateProject(existing.id, data); else await addProject(data);
+  };
+  $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
 }
 
 /* ============ EVENTS ============ */
@@ -653,6 +779,7 @@ $("fab").addEventListener("click",()=>{
     if(tasks.filter(t=>t.type==="goal"&&!t.archived).length>=4){ toast("Maximal 4 Tages-Ziele"); return; }
     return openForm("goal");
   }
+  if(view==="projects") return openProjectForm();
   openForm(view==="habits"?"habit":view==="duties"?"duty":"todo");
 });
 main.addEventListener("click",e=>{
@@ -662,6 +789,10 @@ main.addEventListener("click",e=>{
     const dt=tasks.find(x=>x.id===dl.dataset.del);
     const msg=(dt && dt.calendarEventId) ? "Wirklich löschen? Der verknüpfte Kalendertermin wird mitentfernt." : "Wirklich löschen?";
     if(confirm(msg)) deleteTask(dl.dataset.del); return;
+  }
+  const ep=e.target.closest("[data-edit-proj]"); if(ep){ const p=projects.find(x=>x.id===ep.dataset.editProj); if(p) openProjectForm(p); return; }
+  const dp=e.target.closest("[data-del-proj]"); if(dp){
+    if(confirm("Projekt wirklich löschen?")) deleteProject(dp.dataset.delProj); return;
   }
 });
 

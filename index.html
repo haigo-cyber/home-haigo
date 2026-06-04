@@ -279,6 +279,36 @@ async function ensureSheet(){
   spreadsheetId = await findSheet();
   if(!spreadsheetId) spreadsheetId = await createSheet();
   localStorage.setItem("ssid", spreadsheetId);
+  // Sicherstellen, dass Projects und Notes Tabs existieren
+  try{
+    await api(`${SHEETS}/${spreadsheetId}`,{method:"GET"});
+    const ss=await api(`${SHEETS}/${spreadsheetId}?fields=sheets(properties(title))`);
+    const titles=ss.sheets?.map(s=>s.properties?.title)||[];
+    const requests=[];
+    if(!titles.includes("Projects")){
+      requests.push({addSheet:{properties:{title:"Projects"}}});
+    }
+    if(!titles.includes("Notes")){
+      requests.push({addSheet:{properties:{title:"Notes"}}});
+    }
+    if(requests.length){
+      await api(`${SHEETS}/${spreadsheetId}:batchUpdate`,{
+        method:"POST",
+        body:JSON.stringify({requests})
+      });
+      // Initialisiere die neuen Tabs
+      if(!titles.includes("Projects")){
+        await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
+          {method:"PUT",body:JSON.stringify({values:[[JSON.stringify([])]]})});
+      }
+      if(!titles.includes("Notes")){
+        await api(`${SHEETS}/${spreadsheetId}/values/Notes!A1?valueInputOption=RAW`,
+          {method:"PUT",body:JSON.stringify({values:[[JSON.stringify([])]]})});
+      }
+    }
+  }catch(e){
+    console.warn("ensureSheetTabs fehlgeschlagen:",e);
+  }
 }
 
 /* ---- Laden ---- */
@@ -297,11 +327,13 @@ async function loadAll(){
   logs=rowsToObjs(l.values, LOG_COLS).filter(x=>x.itemId&&x.date);
   // Projekte: JSON von Projects!A1 laden
   try{
+    console.log("📖 loadAll Projects START");
     const p=await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1`);
     const json=p.values?.[0]?.[0];
     if(json) projects=JSON.parse(json); else projects=[];
+    console.log("✅ loadAll Projects OK, Anzahl:",projects.length);
   }catch(e){
-    console.warn("Projekte laden fehlgeschlagen:",e);
+    console.warn("❌ loadAll Projects FEHLER:",e.message);
     projects=[];
   }
   // Notizen: JSON von Notes!A1 laden
@@ -428,20 +460,41 @@ async function deleteTask(id){
   setSync("on"); render();
 }
 async function saveProjects(){
-  const json=JSON.stringify(projects);
-  await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
-    {method:"PUT",body:JSON.stringify({values:[[json]]})});
+  console.log("💾 saveProjects START, Anzahl:",projects.length,"spreadsheetId:",spreadsheetId);
+  if(!spreadsheetId){
+    const msg="FEHLER: spreadsheetId nicht gesetzt!";
+    console.error(msg);
+    alert(msg);
+    throw new Error(msg);
+  }
+  try{
+    const json=JSON.stringify(projects);
+    console.log("  JSON-Länge:",json.length);
+    const url=`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`;
+    console.log("  Speichere zu:",url);
+    const resp=await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+    console.log("✅ saveProjects OK, Antwort:",resp);
+    toast("Projekte gespeichert ✓");
+    return resp;
+  }catch(e){
+    const msg="❌ saveProjects FEHLER: "+e.message;
+    console.error(msg);
+    alert(msg);
+    toast(msg);
+    throw e;
+  }
 }
 async function addProject(data){
   setSync("busy");
   try{
     const p=Object.assign({id:uid(), priority:1, archived:false}, data);
+    console.log("addProject: Neues Projekt",p);
     projects.push(p);
     await saveProjects();
-    setSync("on"); render(); toast("Projekt gespeichert");
+    setSync("on"); render();
   }catch(e){
-    console.error("addProject Fehler:",e);
-    toast("Speichern fehlgeschlagen");
+    console.error("❌ addProject Fehler:",e.message);
+    alert("Projekt speichern FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -449,13 +502,14 @@ async function updateProject(id, data){
   setSync("busy");
   try{
     const p=projects.find(x=>x.id===id);
-    if(!p) return;
+    if(!p){ alert("Projekt nicht gefunden!"); return; }
+    console.log("updateProject:",id,data);
     Object.assign(p, data);
     await saveProjects();
     setSync("on"); render();
   }catch(e){
-    console.error("updateProject Fehler:",e);
-    toast("Update fehlgeschlagen");
+    console.error("❌ updateProject Fehler:",e.message);
+    alert("Projekt Update FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -722,17 +776,40 @@ function render(){
 
 /* ============ FORMULARE ============ */
 async function saveNotes(){
-  const json=JSON.stringify(notes);
-  await api(`${SHEETS}/${spreadsheetId}/values/Notes!A1?valueInputOption=RAW`,
-    {method:"PUT",body:JSON.stringify({values:[[json]]})});
+  console.log("💾 saveNotes START, Anzahl:",notes.length,"spreadsheetId:",spreadsheetId);
+  if(!spreadsheetId){
+    const msg="FEHLER: spreadsheetId nicht gesetzt!";
+    console.error(msg);
+    alert(msg);
+    throw new Error(msg);
+  }
+  try{
+    const json=JSON.stringify(notes);
+    console.log("  JSON-Länge:",json.length);
+    const url=`${SHEETS}/${spreadsheetId}/values/Notes!A1?valueInputOption=RAW`;
+    console.log("  Speichere zu:",url);
+    const resp=await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+    console.log("✅ saveNotes OK, Antwort:",resp);
+    toast("Notizen gespeichert ✓");
+    return resp;
+  }catch(e){
+    const msg="❌ saveNotes FEHLER: "+e.message;
+    console.error(msg);
+    alert(msg);
+    toast(msg);
+    throw e;
+  }
 }
 async function loadNotes(){
   try{
+    console.log("📖 loadNotes START");
     const res=await api(`${SHEETS}/${spreadsheetId}/values/Notes!A1`);
     const cell=res.values?.[0]?.[0]||"[]";
+    console.log("  Geladen, JSON-Länge:",cell.length);
     notes=JSON.parse(cell);
+    console.log("✅ loadNotes OK, Anzahl:",notes.length);
   }catch(e){
-    console.error("loadNotes Fehler:",e);
+    console.error("❌ loadNotes FEHLER:",e.message);
     notes=[];
   }
 }
@@ -740,12 +817,13 @@ async function addNote(data){
   setSync("busy");
   try{
     const n=Object.assign({id:uid(), createdAt:new Date().toISOString()}, data);
+    console.log("addNote: Neue Notiz",n);
     notes.push(n);
     await saveNotes();
-    setSync("on"); render(); toast("Notiz gespeichert");
+    setSync("on"); render();
   }catch(e){
-    console.error("addNote Fehler:",e);
-    toast("Speichern fehlgeschlagen");
+    console.error("❌ addNote Fehler:",e.message);
+    alert("Notiz speichern FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -753,11 +831,14 @@ async function updateNote(id, data){
   setSync("busy");
   try{
     const n=notes.find(x=>x.id===id);
-    if(n) Object.assign(n, data, {updatedAt:new Date().toISOString()});
+    if(!n){ alert("Notiz nicht gefunden!"); return; }
+    console.log("updateNote:",id,data);
+    Object.assign(n, data, {updatedAt:new Date().toISOString()});
     await saveNotes();
-    setSync("on"); render(); toast("Notiz aktualisiert");
+    setSync("on"); render();
   }catch(e){
-    console.error("updateNote Fehler:",e);
+    console.error("❌ updateNote Fehler:",e.message);
+    alert("Notiz Update FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -947,15 +1028,35 @@ main.addEventListener("click",e=>{
 
 /* ============ ANMELDUNG / START ============ */
 async function bootData(){
+  console.log("🚀 bootData START");
   setSync("busy");
-  await ensureSheet();
-  await loadAll();
-  await purgeStaleGoals();
-  await loadCalendars();
-  setSync("on");
-  $("acctBtn").textContent="Verbunden";
-  $("nav").style.display="flex";
-  render();
+  try{
+    console.log("1️⃣ ensureSheet...");
+    await ensureSheet();
+    console.log("  ✓ ensureSheet ok, spreadsheetId:",spreadsheetId);
+    
+    console.log("2️⃣ loadAll...");
+    await loadAll();
+    console.log("  ✓ loadAll ok, tasks:",tasks.length,"projects:",projects.length,"notes:",notes.length);
+    
+    console.log("3️⃣ purgeStaleGoals...");
+    await purgeStaleGoals();
+    console.log("  ✓ purgeStaleGoals ok");
+    
+    console.log("4️⃣ loadCalendars...");
+    await loadCalendars();
+    console.log("  ✓ loadCalendars ok, calendars:",calendars.length);
+    
+    setSync("on");
+    $("acctBtn").textContent="Verbunden";
+    $("nav").style.display="flex";
+    render();
+    console.log("✅ bootData FERTIG");
+  }catch(e){
+    console.error("❌ bootData FEHLER:",e.message);
+    alert("Anmeldung fehlgeschlagen:\n"+e.message);
+    setSync("off");
+  }
 }
 async function signIn(){
   try{

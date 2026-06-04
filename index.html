@@ -509,6 +509,19 @@ async function saveProjects(){
     throw new Error(msg);
   }
   try{
+    // Stelle sicher, dass Projects-Tab existiert
+    const ss=await api(`${SHEETS}/${spreadsheetId}?fields=sheets(properties(title))`);
+    const titles=(ss.sheets||[]).map(s=>s.properties?.title||"");
+    if(!titles.includes("Projects")){
+      console.log("  Projects-Tab nicht vorhanden, erstelle ihn...");
+      await api(`${SHEETS}/${spreadsheetId}:batchUpdate`,{
+        method:"POST",
+        body:JSON.stringify({requests:[{addSheet:{properties:{title:"Projects"}}}]})
+      });
+      console.log("  ✓ Projects-Tab erstellt");
+      await new Promise(r=>setTimeout(r,500));
+    }
+    
     const json=JSON.stringify(projects);
     console.log("  JSON-Länge:",json.length);
     const url=`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`;
@@ -971,6 +984,19 @@ async function saveNotes(){
     throw new Error(msg);
   }
   try{
+    // Stelle sicher, dass Notes-Tab existiert
+    const ss=await api(`${SHEETS}/${spreadsheetId}?fields=sheets(properties(title))`);
+    const titles=(ss.sheets||[]).map(s=>s.properties?.title||"");
+    if(!titles.includes("Notes")){
+      console.log("  Notes-Tab nicht vorhanden, erstelle ihn...");
+      await api(`${SHEETS}/${spreadsheetId}:batchUpdate`,{
+        method:"POST",
+        body:JSON.stringify({requests:[{addSheet:{properties:{title:"Notes"}}}]})
+      });
+      console.log("  ✓ Notes-Tab erstellt");
+      await new Promise(r=>setTimeout(r,500));
+    }
+    
     const json=JSON.stringify(notes);
     console.log("  JSON-Länge:",json.length);
     const url=`${SHEETS}/${spreadsheetId}/values/Notes!A1?valueInputOption=RAW`;
@@ -1003,6 +1029,19 @@ async function loadNotes(){
 async function saveLinks(){
   console.log("💾 saveLinks START, Anzahl:",links.length);
   try{
+    // Stelle sicher, dass Links-Tab existiert
+    const ss=await api(`${SHEETS}/${spreadsheetId}?fields=sheets(properties(title))`);
+    const titles=(ss.sheets||[]).map(s=>s.properties?.title||"");
+    if(!titles.includes("Links")){
+      console.log("  Links-Tab nicht vorhanden, erstelle ihn...");
+      await api(`${SHEETS}/${spreadsheetId}:batchUpdate`,{
+        method:"POST",
+        body:JSON.stringify({requests:[{addSheet:{properties:{title:"Links"}}}]})
+      });
+      console.log("  ✓ Links-Tab erstellt");
+      await new Promise(r=>setTimeout(r,500)); // Warte kurz
+    }
+    
     const json=JSON.stringify(links);
     const url=`${SHEETS}/${spreadsheetId}/values/Links!A1?valueInputOption=RAW`;
     await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});

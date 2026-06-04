@@ -285,17 +285,18 @@ async function loadAll(){
     ...x, syncCalendar:x.syncCalendar!=="false", archived:x.archived==="true"
   }));
   logs=rowsToObjs(l.values, LOG_COLS).filter(x=>x.itemId&&x.date);
-  // Projekte laden (mit Fehlerbehandlung)
+  // Projekte laden (robust: alte Daten behalten wenn Fehler)
   try{
     await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
       {method:"PUT",body:JSON.stringify({values:[PROJ_COLS]})});
     const p=await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${colLetter(PROJ_COLS.length)}`);
-    projects=rowsToObjs(p.values, PROJ_COLS).filter(x=>x.id).map(x=>({
+    const loaded=rowsToObjs(p.values, PROJ_COLS).filter(x=>x.id).map(x=>({
       ...x, priority:parseInt(x.priority)||1, archived:x.archived==="true"
     }));
+    if(loaded.length) projects=loaded; // Nur aktualisieren wenn Daten vorhanden
   }catch(e){
-    console.warn("Projekte nicht ladbar:",e);
-    projects=[];
+    console.warn("Projekte laden fehlgeschlagen, bestehende behalten:",e);
+    // projects bleibt unverändert (behalte alte Daten)
   }
 }
 async function loadCalendars(){
@@ -330,13 +331,21 @@ async function saveLogs(){
     {method:"PUT",body:JSON.stringify({values})});
 }
 async function saveProjects(){
-  const last=colLetter(PROJ_COLS.length);
-  await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${last}10000:clear`,{method:"POST",body:"{}"});
+  // Header schreiben (Tab erstellen wenn nicht existiert)
+  await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
+    {method:"PUT",body:JSON.stringify({values:[PROJ_COLS]})});
+  // Neue Daten schreiben (überschreibt alte Zeilen)
   const values=projects.map(p=>PROJ_COLS.map(c=>{
     const v=p[c]; return typeof v==="boolean"?String(v):(v==null?"":String(v));
   }));
-  if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2?valueInputOption=RAW`,
-    {method:"PUT",body:JSON.stringify({values})});
+  if(values.length) {
+    await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2?valueInputOption=RAW`,
+      {method:"PUT",body:JSON.stringify({values})});
+  } else {
+    // Wenn keine Projekte, zuerst alte Daten löschen
+    const last=colLetter(PROJ_COLS.length);
+    await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${last}10000:clear`,{method:"POST",body:"{}"});
+  }
 }
 
 /* ============ KALENDER-SYNC ============ */

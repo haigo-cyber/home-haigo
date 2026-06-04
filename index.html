@@ -651,14 +651,22 @@ function projectCard(p){
   const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
   const bgColor=colors[5-p.priority]||colors[2];
   const todos=tasks.filter(t=>t.projectId===p.id && !t.archived).length;
-  return `<div class="card" style="background-color:${bgColor};color:#000;cursor:pointer" data-view-proj="${p.id}">
+  
+  // Luminanz berechnen für automatische Text-Farbe
+  const hex=bgColor.replace('#','');
+  const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
+  const lum=(0.299*r + 0.587*g + 0.114*b)/255;
+  const textColor=lum>0.5?'#000':'#fff';
+  
+  return `<div class="card" style="background-color:${bgColor};color:${textColor}">
     <div class="body">
       <div class="title">${esc(p.name)}</div>
       <div class="sub"><span>Priorität: ${p.priority}</span>${todos>0?` • ${todos} Todos`:""}</div>
     </div>
     <div class="row-actions">
-      <button class="mini" data-edit-proj="${p.id}" onclick="event.stopPropagation()">Bearb.</button>
-      <button class="mini" data-del-proj="${p.id}" onclick="event.stopPropagation()">🗑</button>
+      <button class="mini" data-view-proj="${p.id}" style="color:${textColor}">➜</button>
+      <button class="mini" data-edit-proj="${p.id}" style="color:${textColor}">Bearb.</button>
+      <button class="mini" data-del-proj="${p.id}" style="color:${textColor}">🗑</button>
     </div>
   </div>`;
 }
@@ -723,7 +731,17 @@ function render(){
     if(topProjects.length){
       h+=`<div class="section-title">Wichtige Projekte</div>`;
       const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
-      topProjects.forEach(p=>{ h+=`<div style="background-color:${colors[5-p.priority]||colors[2]};color:#000;padding:8px;border-radius:6px;margin-bottom:6px;font-weight:bold;font-size:14px">${esc(p.name)} (Prio ${p.priority})</div>`; });
+      topProjects.forEach(p=>{
+        const bgColor=colors[5-p.priority]||colors[2];
+        const hex=bgColor.replace('#','');
+        const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
+        const lum=(0.299*r + 0.587*g + 0.114*b)/255;
+        const textColor=lum>0.5?'#000':'#fff';
+        h+=`<div style="background-color:${bgColor};color:${textColor};padding:8px 12px;border-radius:6px;margin-bottom:6px;font-weight:bold;font-size:14px;display:flex;justify-content:space-between;align-items:center">
+          <span>${esc(p.name)} (Prio ${p.priority})</span>
+          <button class="mini" data-view-proj="${p.id}" style="color:${textColor};background:transparent;border:none;cursor:pointer;padding:0;font-size:16px">➜</button>
+        </div>`;
+      });
     }
     if(goals.length){
       const gd=goals.filter(t=>isDone(t.id,key)).length;
@@ -774,16 +792,25 @@ function render(){
     main.innerHTML=h;
   }
   else if(view==="projectDetail" && selectedProjectId){
+    console.log("🎨 RENDER projectDetail, selectedProjectId:", selectedProjectId);
     const proj=projects.find(p=>p.id===selectedProjectId);
-    if(!proj){ view="projects"; render(); return; }
+    console.log("  Projekt gefunden:", proj);
+    if(!proj){ console.log("  ❌ Projekt nicht gefunden, zurück zu projects"); view="projects"; render(); return; }
     const key=todayKey();
     const projTodos=tasks.filter(t=>t.projectId===selectedProjectId && !t.archived);
+    console.log("  Todos für dieses Projekt:", projTodos.length);
     const open=projTodos.filter(t=>!isDone(t.id,key));
     const done=projTodos.filter(t=>isDone(t.id,key));
+    const projNotes=notes.filter(n=>n.projectId===selectedProjectId);
+    console.log("  Notizen:", projNotes.length);
     const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
     const bgColor=colors[5-proj.priority]||colors[2];
+    const hex=bgColor.replace('#','');
+    const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
+    const lum=(0.299*r + 0.587*g + 0.114*b)/255;
+    const textColor=lum>0.5?'#000':'#fff';
     let h=`<button id="backBtn" style="padding:8px 12px;margin-bottom:12px;background:var(--line);border:none;border-radius:4px;cursor:pointer">← Zurück</button>
-      <div style="background-color:${bgColor};color:#000;padding:16px;border-radius:8px;margin-bottom:16px">
+      <div style="background-color:${bgColor};color:${textColor};padding:16px;border-radius:8px;margin-bottom:16px">
         <div style="font-size:20px;font-weight:bold">${esc(proj.name)}</div>
         <div style="font-size:13px;margin-top:4px">Priorität: ${proj.priority}</div>
       </div>
@@ -793,7 +820,22 @@ function render(){
       h+=open.length?open.map(t=>taskCard(t,{showCheck:true,key})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
       if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{showCheck:true,key})).join("");
     }
+    if(projNotes.length){
+      h+=`<div class="section-title">Notizen</div>`;
+      h+=projNotes.map(n=>`<div class="card">
+        <div class="body">
+          <div class="title">${esc(n.text.split('\n')[0].substring(0,50))}</div>
+          <div class="sub">${new Date(n.createdAt).toLocaleDateString("de-DE")}</div>
+          <div class="note-text" style="margin-top:8px;font-size:13px;color:var(--text)">${esc(n.text.substring(0,100))}</div>
+        </div>
+        <div class="row-actions">
+          <button class="mini" data-edit-note="${n.id}">Bearb.</button>
+          <button class="mini" data-del-note="${n.id}">🗑</button>
+        </div>
+      </div>`).join("");
+    }
     main.innerHTML=h;
+    console.log("  ✅ HTML gerendert");
     $("backBtn").onclick=()=>{ selectedProjectId=null; view="projects"; render(); };
   }
   else if(view==="notes"){
@@ -1088,10 +1130,17 @@ function openProjectForm(existing){
 
 function openNoteForm(existing){
   const isEdit=!!existing;
+  const curProj=(isEdit && existing.projectId) ? existing.projectId : "";
+  const projSelect=`<label>Projekt (optional)</label>
+    <select id="f_proj">
+      <option value="">— kein Projekt —</option>
+      ${projects.filter(p=>!p.archived).map(p=>`<option value="${esc(p.id)}" ${p.id===curProj?"selected":""}>${esc(p.name)}</option>`).join("")}
+    </select>`;
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${isEdit?"Notiz bearbeiten":"Neue Notiz"}</h2>
       <label>Text</label><textarea id="f_text" placeholder="Notiz schreiben..." style="width:100%;min-height:120px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.text||"")}</textarea>
+      ${projSelect}
       <div class="modal-actions">
         <button class="btn-ghost" id="f_cancel">Abbrechen</button>
         <button class="btn-primary" id="f_save">Speichern</button>
@@ -1103,6 +1152,7 @@ function openNoteForm(existing){
     const text=$("f_text").value.trim();
     if(!text){ toast("Text erforderlich"); return; }
     const data={text};
+    const fp=$("f_proj"); if(fp && fp.value) data.projectId=fp.value;
     $("modalBg").remove();
     if(isEdit) await updateNote(existing.id, data); else await addNote(data);
   };
@@ -1132,11 +1182,17 @@ main.addEventListener("click",e=>{
   }
   const en=e.target.closest("[data-edit-note]"); if(en){ const n=notes.find(x=>x.id===en.dataset.editNote); if(n) openNoteForm(n); return; }
   const dn=e.target.closest("[data-del-note]"); if(dn){ deleteNote(dn.dataset.delNote); return; }
+  const vp=e.target.closest("[data-view-proj]"); if(vp){ 
+    console.log("🎯 Projekt-Button geklickt! data-view-proj:", vp.dataset.viewProj);
+    selectedProjectId=vp.dataset.viewProj; 
+    view="projectDetail"; 
+    render(); 
+    return; 
+  }
   const ep=e.target.closest("[data-edit-proj]"); if(ep){ const p=projects.find(x=>x.id===ep.dataset.editProj); if(p) openProjectForm(p); return; }
   const dp=e.target.closest("[data-del-proj]"); if(dp){
     if(confirm("Projekt wirklich löschen?")) deleteProject(dp.dataset.delProj); return;
   }
-  const vp=e.target.closest("[data-view-proj]"); if(vp){ selectedProjectId=vp.dataset.viewProj; view="projectDetail"; render(); return; }
 });
 
 /* ============ ANMELDUNG / START ============ */

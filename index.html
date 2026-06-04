@@ -179,6 +179,7 @@ function setSync(state){ const d=$("syncDot"); d.className="dot"+(state==="on"?"
 function isDue(task, date){
   if(task.archived) return false;
   if(task.type==="habit") return true;
+  if(task.type==="todo" && !task.startDate) return true; // Todo ohne Termin ist immer fällig
   const start=parseDate(task.startDate); if(!start) return false;
   const d=diffDays(start,date); if(d<0) return false;
   if(task.type==="duty"){
@@ -255,13 +256,22 @@ async function findSheet(){
 async function createSheet(){
   const ss=await api(SHEETS,{method:"POST",body:JSON.stringify({
     properties:{title:SHEET_NAME},
-    sheets:[{properties:{title:"Tasks"}},{properties:{title:"Log"}}]
+    sheets:[
+      {properties:{title:"Tasks"}},
+      {properties:{title:"Log"}},
+      {properties:{title:"Projects"}},
+      {properties:{title:"Notes"}}
+    ]
   })});
   const id=ss.spreadsheetId;
   await api(`${SHEETS}/${id}/values/Tasks!A1?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values:[TASK_COLS]})});
   await api(`${SHEETS}/${id}/values/Log!A1?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values:[LOG_COLS]})});
+  await api(`${SHEETS}/${id}/values/Projects!A1?valueInputOption=RAW`,
+    {method:"PUT",body:JSON.stringify({values:[[JSON.stringify([])]]})});
+  await api(`${SHEETS}/${id}/values/Notes!A1?valueInputOption=RAW`,
+    {method:"PUT",body:JSON.stringify({values:[[JSON.stringify([])]]})});
   return id;
 }
 async function ensureSheet(){

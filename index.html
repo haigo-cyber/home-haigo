@@ -151,7 +151,6 @@ const SHEET_NAME = "ToDo App Data";
 const DEFAULT_SYNC = true;          // Kalender-Sync standardmäßig AN
 const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived","calendarId","startTime"];
 const LOG_COLS  = ["itemId","date","doneAt"];
-const PROJ_COLS = ["id","name","priority","archived"];
 const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 
 /* ============ ZUSTAND ============ */
@@ -285,18 +284,14 @@ async function loadAll(){
     ...x, syncCalendar:x.syncCalendar!=="false", archived:x.archived==="true"
   }));
   logs=rowsToObjs(l.values, LOG_COLS).filter(x=>x.itemId&&x.date);
-  // Projekte laden (robust: alte Daten behalten wenn Fehler)
+  // Projekte: JSON von Projects!A1 laden
   try{
-    await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
-      {method:"PUT",body:JSON.stringify({values:[PROJ_COLS]})});
-    const p=await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${colLetter(PROJ_COLS.length)}`);
-    const loaded=rowsToObjs(p.values, PROJ_COLS).filter(x=>x.id).map(x=>({
-      ...x, priority:parseInt(x.priority)||1, archived:x.archived==="true"
-    }));
-    if(loaded.length) projects=loaded; // Nur aktualisieren wenn Daten vorhanden
+    const p=await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1`);
+    const json=p.values?.[0]?.[0];
+    if(json) projects=JSON.parse(json); else projects=[];
   }catch(e){
-    console.warn("Projekte laden fehlgeschlagen, bestehende behalten:",e);
-    // projects bleibt unverändert (behalte alte Daten)
+    console.warn("Projekte laden fehlgeschlagen:",e);
+    projects=[];
   }
 }
 async function loadCalendars(){
@@ -331,20 +326,35 @@ async function saveLogs(){
     {method:"PUT",body:JSON.stringify({values})});
 }
 async function saveProjects(){
-  // Header schreiben (Tab erstellen wenn nicht existiert)
-  await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
-    {method:"PUT",body:JSON.stringify({values:[PROJ_COLS]})});
-  // Neue Daten schreiben (überschreibt alte Zeilen)
-  const values=projects.map(p=>PROJ_COLS.map(c=>{
-    const v=p[c]; return typeof v==="boolean"?String(v):(v==null?"":String(v));
-  }));
-  if(values.length) {
-    await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2?valueInputOption=RAW`,
-      {method:"PUT",body:JSON.stringify({values})});
-  } else {
-    // Wenn keine Projekte, zuerst alte Daten löschen
-    const last=colLetter(PROJ_COLS.length);
-    await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${last}10000:clear`,{method:"POST",body:"{}"});
+  console.log("📝 saveProjects START, Anzahl Projekte:",projects.length);
+  try{
+    // Header schreiben (Tab erstellen wenn nicht existiert)
+    console.log("1️⃣ Schreibe Header...");
+    await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
+      {method:"PUT",body:JSON.stringify({values:[PROJ_COLS]})});
+    console.log("✓ Header ok");
+    
+    // Neue Daten schreiben (überschreibt alte Zeilen)
+    const values=projects.map(p=>PROJ_COLS.map(c=>{
+      const v=p[c]; return typeof v==="boolean"?String(v):(v==null?"":String(v));
+    }));
+    console.log("2️⃣ Daten vorbereitet:",values.length,"Zeilen");
+    
+    if(values.length) {
+      console.log("3️⃣ Schreibe Daten...");
+      await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2?valueInputOption=RAW`,
+        {method:"PUT",body:JSON.stringify({values})});
+      console.log("✓ Daten ok");
+    } else {
+      console.log("3️⃣ Keine Daten, lösche stattdessen...");
+      const last=colLetter(PROJ_COLS.length);
+      await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${last}10000:clear`,{method:"POST",body:"{}"});
+      console.log("✓ Gelöscht ok");
+    }
+    console.log("✅ saveProjects ERFOLG");
+  }catch(e){
+    console.error("❌ saveProjects FEHLER:",e.message);
+    throw e;
   }
 }
 
@@ -436,28 +446,34 @@ async function deleteTask(id){
   await saveTasks(); await saveLogs();
   setSync("on"); render();
 }
+async function saveProjects(){
+  const json=JSON.stringify(projects);
+  await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
+    {method:"PUT",body:JSON.stringify({values:[[json]]})});
+}
 async function addProject(data){
   setSync("busy");
   try{
-    const p=Object.assign({id:uid(),archived:false},data);
+    const p=Object.assign({id:uid(), priority:1, archived:false}, data);
     projects.push(p);
     await saveProjects();
     setSync("on"); render(); toast("Projekt gespeichert");
   }catch(e){
-    console.error("Projekt-Fehler:",e);
-    toast("Projekt-Speichern fehlgeschlagen");
+    console.error("addProject Fehler:",e);
+    toast("Speichern fehlgeschlagen");
     setSync("on");
   }
 }
 async function updateProject(id, data){
   setSync("busy");
   try{
-    const p=projects.find(x=>x.id===id); if(!p) return;
-    Object.assign(p,data);
+    const p=projects.find(x=>x.id===id);
+    if(!p) return;
+    Object.assign(p, data);
     await saveProjects();
     setSync("on"); render();
   }catch(e){
-    console.error("Update-Fehler:",e);
+    console.error("updateProject Fehler:",e);
     toast("Update fehlgeschlagen");
     setSync("on");
   }
@@ -469,7 +485,7 @@ async function deleteProject(id){
     await saveProjects();
     setSync("on"); render();
   }catch(e){
-    console.error("Delete-Fehler:",e);
+    console.error("deleteProject Fehler:",e);
     toast("Löschen fehlgeschlagen");
     setSync("on");
   }
@@ -849,7 +865,7 @@ async function signIn(){
 }
 function signOut(){
   if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
-  accessToken=null; tasks=[]; logs=[]; projects=[];
+  accessToken=null; tasks=[]; logs=[];
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";
   $("acctBtn").textContent="Anmelden"; setSync("");

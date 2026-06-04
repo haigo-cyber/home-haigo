@@ -328,38 +328,6 @@ async function saveLogs(){
   if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Log!A2?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values})});
 }
-async function saveProjects(){
-  console.log("📝 saveProjects START, Anzahl Projekte:",projects.length);
-  try{
-    // Header schreiben (Tab erstellen wenn nicht existiert)
-    console.log("1️⃣ Schreibe Header...");
-    await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`,
-      {method:"PUT",body:JSON.stringify({values:[PROJ_COLS]})});
-    console.log("✓ Header ok");
-    
-    // Neue Daten schreiben (überschreibt alte Zeilen)
-    const values=projects.map(p=>PROJ_COLS.map(c=>{
-      const v=p[c]; return typeof v==="boolean"?String(v):(v==null?"":String(v));
-    }));
-    console.log("2️⃣ Daten vorbereitet:",values.length,"Zeilen");
-    
-    if(values.length) {
-      console.log("3️⃣ Schreibe Daten...");
-      await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2?valueInputOption=RAW`,
-        {method:"PUT",body:JSON.stringify({values})});
-      console.log("✓ Daten ok");
-    } else {
-      console.log("3️⃣ Keine Daten, lösche stattdessen...");
-      const last=colLetter(PROJ_COLS.length);
-      await api(`${SHEETS}/${spreadsheetId}/values/Projects!A2:${last}10000:clear`,{method:"POST",body:"{}"});
-      console.log("✓ Gelöscht ok");
-    }
-    console.log("✅ saveProjects ERFOLG");
-  }catch(e){
-    console.error("❌ saveProjects FEHLER:",e.message);
-    throw e;
-  }
-}
 
 /* ============ KALENDER-SYNC ============ */
 function rruleFor(t){

@@ -150,7 +150,7 @@ const SCOPES = [
 ].join(" ");
 const SHEET_NAME = "ToDo App Data";
 const DEFAULT_SYNC = true;          // Kalender-Sync standardmäßig AN
-const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived","calendarId","startTime"];
+const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived","calendarId","startTime","projectId"];
 const LOG_COLS  = ["itemId","date","doneAt"];
 const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 
@@ -159,6 +159,7 @@ let accessToken = null, tokenClient = null, tokenResolve = null, tokenReject = n
 let spreadsheetId = localStorage.getItem("ssid") || null;
 let tasks = [], logs = [], projects = [], notes = [];
 let view = "today";
+let selectedProjectId = null;
 let calendars = [];                                       // schreibbare Kalender des Nutzers
 let defaultCalId = localStorage.getItem("defcal") || "primary";
 
@@ -539,6 +540,10 @@ async function updateProject(id, data){
 async function deleteProject(id){
   setSync("busy");
   try{
+    // Entferne projectId aus allen Todos, die dieses Projekt haben
+    tasks.forEach(t=>{ if(t.projectId===id) delete t.projectId; });
+    await saveTask();
+    // Lösche das Projekt
     projects=projects.filter(x=>x.id!==id);
     await saveProjects();
     setSync("on"); render();
@@ -955,9 +960,16 @@ function openForm(type, existing){
   }
   if(type==="todo"){
     const weekly=t.scheduleType==="weekly";
+    const curProj=(isEdit && t.projectId) ? t.projectId : "";
+    const projSelect=`<label>Projekt (optional)</label>
+      <select id="f_proj">
+        <option value="">— kein Projekt —</option>
+        ${projects.filter(p=>!p.archived).map(p=>`<option value="${esc(p.id)}" ${p.id===curProj?"selected":""}>${esc(p.name)}</option>`).join("")}
+      </select>`;
     typeFields=`<label>Titel</label><input type="text" id="f_title" value="${esc(t.title||"")}" placeholder="z. B. Klassenarbeit korrigieren">
       <label>Datum (optional)</label><input type="date" id="f_start" value="${t.startDate||""}">
       <label>Uhrzeit (optional)</label><input type="time" id="f_time" value="${t.startTime||""}">
+      ${projSelect}
       <div class="toggle-row"><div><div style="font-size:14px">Wöchentlich wiederholen</div>
         <div class="muted" style="font-size:12px" id="wdHint"></div></div>
         <button class="switch ${weekly?"on":""}" id="f_weekly"></button></div>`;
@@ -1006,7 +1018,8 @@ function openForm(type, existing){
     if(type==="duty"){ data.scheduleType=segSel.v; data.startDate=$("f_start").value; }
     if(type==="todo"){ data.startDate=$("f_start").value;
       data.scheduleType=weeklyBtn.classList.contains("on")?"weekly":"once";
-      const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):""; }
+      const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):"";
+      const fp=$("f_proj"); if(fp && fp.value) data.projectId=fp.value; }
     const ft=$("f_time"); if(ft && ft.value) data.startTime=ft.value;
     const cs=$("f_cal"); if(cs) data.calendarId=cs.value;
     const fn=$("f_notes"); if(fn && fn.value.trim()) data.notes=fn.value.trim();

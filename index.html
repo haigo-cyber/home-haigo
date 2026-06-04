@@ -1029,24 +1029,41 @@ async function loadNotes(){
 async function saveLinks(){
   console.log("💾 saveLinks START, Anzahl:",links.length);
   try{
-    // Stelle sicher, dass Links-Tab existiert
-    const ss=await api(`${SHEETS}/${spreadsheetId}?fields=sheets(properties(title))`);
-    const titles=(ss.sheets||[]).map(s=>s.properties?.title||"");
-    if(!titles.includes("Links")){
-      console.log("  Links-Tab nicht vorhanden, erstelle ihn...");
-      await api(`${SHEETS}/${spreadsheetId}:batchUpdate`,{
-        method:"POST",
-        body:JSON.stringify({requests:[{addSheet:{properties:{title:"Links"}}}]})
-      });
-      console.log("  ✓ Links-Tab erstellt");
-      await new Promise(r=>setTimeout(r,500)); // Warte kurz
-    }
-    
     const json=JSON.stringify(links);
     const url=`${SHEETS}/${spreadsheetId}/values/Links!A1?valueInputOption=RAW`;
-    await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
-    console.log("✅ saveLinks OK");
-    toast("Links gespeichert ✓");
+    
+    // Versuch 1: Direkt speichern
+    console.log("  Versuch 1: Speichern...");
+    try{
+      await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+      console.log("✅ saveLinks OK (Versuch 1)");
+      toast("Links gespeichert ✓");
+      return;
+    }catch(err){
+      // Wenn "Unable to parse range" → Tab existiert nicht
+      if(err.message.includes("Unable to parse range")){
+        console.log("  Links-Tab existiert nicht, erstelle ihn...");
+        try{
+          await api(`${SHEETS}/${spreadsheetId}:batchUpdate`,{
+            method:"POST",
+            body:JSON.stringify({requests:[{addSheet:{properties:{title:"Links"}}}]})
+          });
+          console.log("  ✓ Links-Tab erstellt");
+        }catch(e){
+          console.warn("  batchUpdate fehlgeschlagen (Tab existiert vielleicht schon):",e.message);
+        }
+        
+        // Versuch 2: Nach Tab-Erstellung speichern
+        console.log("  Versuch 2: Nach 1s erneut speichern...");
+        await new Promise(r=>setTimeout(r,1000));
+        await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+        console.log("✅ saveLinks OK (Versuch 2)");
+        toast("Links gespeichert ✓");
+        return;
+      }
+      // Andere Fehler → durchreichen
+      throw err;
+    }
   }catch(e){
     console.error("❌ saveLinks FEHLER:",e.message);
     alert("Links speichern FEHLGESCHLAGEN:\n"+e.message);

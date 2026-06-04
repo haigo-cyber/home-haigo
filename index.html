@@ -126,6 +126,7 @@
   <nav id="nav" style="display:none">
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
     <button data-view="projects"><span class="nico">🎯</span>Projekte</button>
+    <button data-view="links"><span class="nico">🔗</span>Links</button>
     <button data-view="notes"><span class="nico">📝</span>Notizen</button>
     <button data-view="goals"><span class="nico">⭐</span>Ziele</button>
     <button data-view="habits"><span class="nico">🔥</span>Gewohn.</button>
@@ -157,7 +158,7 @@ const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freita
 /* ============ ZUSTAND ============ */
 let accessToken = null, tokenClient = null, tokenResolve = null, tokenReject = null;
 let spreadsheetId = localStorage.getItem("ssid") || null;
-let tasks = [], logs = [], projects = [], notes = [];
+let tasks = [], logs = [], projects = [], notes = [], links = [];
 let view = "today";
 let selectedProjectId = null;
 let calendars = [];                                       // schreibbare Kalender des Nutzers
@@ -271,7 +272,8 @@ async function createSheet(){
       {properties:{title:"Tasks"}},
       {properties:{title:"Log"}},
       {properties:{title:"Projects"}},
-      {properties:{title:"Notes"}}
+      {properties:{title:"Notes"}},
+      {properties:{title:"Links"}}
     ]
   })});
   const id=ss.spreadsheetId;
@@ -282,6 +284,8 @@ async function createSheet(){
   await api(`${SHEETS}/${id}/values/Projects!A1?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values:[[JSON.stringify([])]]})});
   await api(`${SHEETS}/${id}/values/Notes!A1?valueInputOption=RAW`,
+    {method:"PUT",body:JSON.stringify({values:[[JSON.stringify([])]]})});
+  await api(`${SHEETS}/${id}/values/Links!A1?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values:[[JSON.stringify([])]]})});
   return id;
 }
@@ -301,12 +305,14 @@ async function ensureSheet(){
     
     const needProjects=!titles.includes("Projects");
     const needNotes=!titles.includes("Notes");
+    const needLinks=!titles.includes("Links");
     
-    if(needProjects || needNotes){
-      console.log("  Erstelle fehlende Tabs: Projects=",needProjects," Notes=",needNotes);
+    if(needProjects || needNotes || needLinks){
+      console.log("  Erstelle fehlende Tabs: Projects=",needProjects," Notes=",needNotes," Links=",needLinks);
       const requests=[];
       if(needProjects) requests.push({addSheet:{properties:{title:"Projects"}}});
       if(needNotes) requests.push({addSheet:{properties:{title:"Notes"}}});
+      if(needLinks) requests.push({addSheet:{properties:{title:"Links"}}});
       
       const result=await api(`${SHEETS}/${spreadsheetId}:batchUpdate`,{
         method:"POST",
@@ -326,6 +332,12 @@ async function ensureSheet(){
         await api(`${SHEETS}/${spreadsheetId}/values/Notes!A1?valueInputOption=RAW`,
           {method:"PUT",body:JSON.stringify({values:[[JSON.stringify([])]]})});
         console.log("    ✓ Notes initialized");
+      }
+      if(needLinks){
+        console.log("  Initialisiere Links tab...");
+        await api(`${SHEETS}/${spreadsheetId}/values/Links!A1?valueInputOption=RAW`,
+          {method:"PUT",body:JSON.stringify({values:[[JSON.stringify([])]]})});
+        console.log("    ✓ Links initialized");
       }
     }
     console.log("✅ ensureSheet OK");
@@ -362,6 +374,7 @@ async function loadAll(){
   }
   // Notizen: JSON von Notes!A1 laden
   await loadNotes();
+  await loadLinks();
 }
 async function loadCalendars(){
   try{
@@ -859,6 +872,24 @@ function render(){
     </div>`).join(""):empty("Keine Notizen. Mit + anlegen.");
     main.innerHTML=h;
   }
+  else if(view==="links"){
+    let h=`<div class="section-title">Links</div>`;
+    h+=links.length?links.map(l=>{
+      const proj=projects.find(p=>p.id===l.projectId);
+      return `<div class="card">
+      <div class="body">
+        <div class="title"><a href="${esc(l.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${esc(l.title||l.url.substring(0,40))}</a></div>
+        <div class="sub">${proj?'🎯 '+esc(proj.name):'—'}</div>
+        <div class="muted" style="margin-top:4px;font-size:12px">${esc(l.url.substring(0,60))}</div>
+      </div>
+      <div class="row-actions">
+        <button class="mini" data-edit-link="${l.id}">Bearb.</button>
+        <button class="mini" data-del-link="${l.id}">🗑</button>
+      </div>
+    </div>`;
+    }).join(""):empty("Keine Links. Mit + anlegen.");
+    main.innerHTML=h;
+  }
   else if(view==="settings"){
     main.innerHTML=`
       <div class="section-title">Kalender</div>
@@ -965,6 +996,33 @@ async function loadNotes(){
     notes=[];
   }
 }
+async function saveLinks(){
+  console.log("💾 saveLinks START, Anzahl:",links.length);
+  try{
+    const json=JSON.stringify(links);
+    const url=`${SHEETS}/${spreadsheetId}/values/Links!A1?valueInputOption=RAW`;
+    await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+    console.log("✅ saveLinks OK");
+    toast("Links gespeichert ✓");
+  }catch(e){
+    console.error("❌ saveLinks FEHLER:",e.message);
+    alert("Links speichern FEHLGESCHLAGEN:\n"+e.message);
+    throw e;
+  }
+}
+async function loadLinks(){
+  try{
+    console.log("📖 loadLinks START");
+    const res=await api(`${SHEETS}/${spreadsheetId}/values/Links!A1`);
+    const cell=res.values?.[0]?.[0]||"[]";
+    console.log("  Geladen, JSON-Länge:",cell.length);
+    links=JSON.parse(cell);
+    console.log("✅ loadLinks OK, Anzahl:",links.length);
+  }catch(e){
+    console.error("❌ loadLinks FEHLER:",e.message);
+    links=[];
+  }
+}
 async function addNote(data){
   setSync("busy");
   try{
@@ -1003,6 +1061,48 @@ async function deleteNote(id){
     setSync("on"); render(); toast("Notiz gelöscht");
   }catch(e){
     console.error("deleteNote Fehler:",e);
+    setSync("on");
+  }
+}
+
+async function addLink(data){
+  setSync("busy");
+  try{
+    const l=Object.assign({id:uid(), createdAt:new Date().toISOString()}, data);
+    console.log("addLink: Neuer Link",l);
+    links.push(l);
+    await saveLinks();
+    setSync("on"); render();
+  }catch(e){
+    console.error("❌ addLink Fehler:",e.message);
+    alert("Link speichern FEHLGESCHLAGEN:\n"+e.message);
+    setSync("on");
+  }
+}
+async function updateLink(id, data){
+  setSync("busy");
+  try{
+    const l=links.find(x=>x.id===id);
+    if(!l){ alert("Link nicht gefunden!"); return; }
+    console.log("updateLink:",id,data);
+    Object.assign(l, data, {updatedAt:new Date().toISOString()});
+    await saveLinks();
+    setSync("on"); render();
+  }catch(e){
+    console.error("❌ updateLink Fehler:",e.message);
+    alert("Link Update FEHLGESCHLAGEN:\n"+e.message);
+    setSync("on");
+  }
+}
+async function deleteLink(id){
+  if(!confirm("Link löschen?")) return;
+  setSync("busy");
+  try{
+    links=links.filter(l=>l.id!==id);
+    await saveLinks();
+    setSync("on"); render(); toast("Link gelöscht");
+  }catch(e){
+    console.error("deleteLink Fehler:",e);
     setSync("on");
   }
 }
@@ -1177,6 +1277,46 @@ function openNoteForm(existing){
   $("modalBg").onclick=e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
 }
 
+function openLinkForm(existing){
+  const isEdit=!!existing;
+  const url=existing?.url||"";
+  const title=existing?.title||"";
+  const pid=existing?.projectId||"";
+  
+  let html='<div class="modal-bg" id="modalBg"><div class="modal">';
+  html+='<h2>'+(isEdit?'Link bearbeiten':'Neuer Link')+'</h2>';
+  html+='<label>URL</label>';
+  html+='<input type="text" id="f_url" placeholder="https://..." value="'+esc(url)+'" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px;margin-bottom:12px">';
+  html+='<label>Titel (optional)</label>';
+  html+='<input type="text" id="f_title" placeholder="z. B. Wichtiger Artikel" value="'+esc(title)+'" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px;margin-bottom:12px">';
+  html+='<label>Projekt (optional)</label>';
+  html+='<select id="f_proj" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px">';
+  html+='<option value="">— kein —</option>';
+  projects.filter(p=>!p.archived).forEach(p=>{
+    html+='<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+'>'+esc(p.name)+'</option>';
+  });
+  html+='</select>';
+  html+='<div class="modal-actions"><button class="btn-ghost" id="f_cancel">Abbrechen</button><button class="btn-primary" id="f_save">Speichern</button></div>';
+  html+='</div></div>';
+  
+  document.body.insertAdjacentHTML("beforeend", html);
+  
+  $("f_cancel").onclick=()=>$("modalBg").remove();
+  $("f_save").onclick=async()=>{
+    const u=$("f_url").value.trim();
+    if(!u){ toast("URL erforderlich"); return; }
+    const data={url:u};
+    const t=$("f_title").value.trim();
+    if(t) data.title=t;
+    const pr=$("f_proj").value;
+    if(pr) data.projectId=pr;
+    $("modalBg").remove();
+    if(isEdit) await updateLink(existing.id,data);
+    else await addLink(data);
+  };
+  $("modalBg").onclick=e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+}
+
 
 
 /* ============ EVENTS ============ */
@@ -1187,6 +1327,7 @@ $("fab").addEventListener("click",()=>{
     return openForm("goal");
   }
   if(view==="projects") return openProjectForm();
+  if(view==="links") return openLinkForm();
   if(view==="notes") return openNoteForm();
   openForm(view==="habits"?"habit":view==="duties"?"duty":"todo");
 });
@@ -1211,6 +1352,8 @@ main.addEventListener("click",e=>{
   const dp=e.target.closest("[data-del-proj]"); if(dp){
     if(confirm("Projekt wirklich löschen?")) deleteProject(dp.dataset.delProj); return;
   }
+  const el=e.target.closest("[data-edit-link]"); if(el){ const l=links.find(x=>x.id===el.dataset.editLink); if(l) openLinkForm(l); return; }
+  const dl2=e.target.closest("[data-del-link]"); if(dl2){ deleteLink(dl2.dataset.delLink); return; }
 });
 
 /* ============ ANMELDUNG / START ============ */

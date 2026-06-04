@@ -760,27 +760,43 @@ function render(){
   else if(view==="settings"){
     main.innerHTML=`
       <div class="section-title">Kalender</div>
-      <div class="card"><div class="body" style="width:100%">
-        <div class="title">Standard-Kalender</div>
-        <div class="sub" style="margin-bottom:8px">Für neue Einträge vorausgewählt</div>
-        <select id="defCalSel">${calendars.map(c=>`<option value="${esc(c.id)}" ${c.id===defaultCalId?"selected":""}>${esc(c.summary)}</option>`).join("")}</select>
-      </div></div>
+      <div class="card">
+        <div class="body">
+          <div class="title">Standard-Kalender</div>
+          <div class="sub" style="margin-bottom:8px">Für neue Einträge vorausgewählt</div>
+          <select id="defCalSel">${calendars.map(c=>`<option value="${esc(c.id)}" ${c.id===defaultCalId?"selected":""}>${esc(c.summary)}</option>`).join("")}</select>
+        </div>
+      </div>
+      
       <div class="section-title">Daten</div>
-      <div class="card"><div class="body">
-        <div class="title">Google-Tabelle</div>
-        <div class="sub">${spreadsheetId?`<a href="https://docs.google.com/spreadsheets/d/${spreadsheetId}" target="_blank" rel="noopener">Im Browser öffnen ↗</a>`:"noch nicht angelegt"}</div>
-      </div></div>
-      <div class="card"><div class="body">
-        <div class="title">Aktualisieren</div><div class="sub">Daten neu aus der Tabelle laden</div>
-      </div><button class="icon-btn" id="reloadBtn">Neu laden</button></div>
+      <div class="card">
+        <div class="body">
+          <div class="title">Google-Tabelle</div>
+          <div class="sub">${spreadsheetId?`<a href="https://docs.google.com/spreadsheets/d/${spreadsheetId}" target="_blank" rel="noopener">Im Browser öffnen ↗</a>`:"noch nicht angelegt"}</div>
+        </div>
+        <button class="icon-btn" id="reloadBtn">Neu laden</button>
+      </div>
+      
+      <div class="section-title">Verwaltung</div>
+      <div class="card">
+        <div class="body">
+          <div class="title">Tabelle zurücksetzen</div>
+          <div class="sub">Erstellt eine neue leere Tabelle (alte wird gelöscht)</div>
+        </div>
+        <button id="resetSheetBtn" style="padding:12px 16px;background-color:#f44336;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;width:100%;margin-top:8px">🗑️ Tabelle zurücksetzen</button>
+      </div>
+      
       <div class="section-title">Konto</div>
-      <div class="card"><div class="body"><div class="title">Abmelden</div>
-        <div class="sub">Trennt dieses Gerät vom Google-Konto</div></div>
-        <button class="icon-btn" id="signoutBtn">Abmelden</button></div>
-      <div class="card"><div class="body"><div class="title">Tabelle zurücksetzen</div>
-        <div class="sub">Erstellt eine neue leere Tabelle (alte wird gelöscht)</div></div>
-        <button id="resetSheetBtn" style="padding:12px 16px;background-color:#f44336;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px">🗑️ Tabelle zurücksetzen</button></div>
-      <p class="muted" style="font-size:12px;margin-top:18px">Aufgaben & Termine liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an), der Zielkalender pro Eintrag wählbar.</p>`;
+      <div class="card">
+        <div class="body">
+          <div class="title">Abmelden</div>
+          <div class="sub">Trennt dieses Gerät vom Google-Konto</div>
+        </div>
+        <button class="icon-btn" id="signoutBtn">Abmelden</button>
+      </div>
+      
+      <p class="muted" style="font-size:12px;margin-top:18px">Aufgaben, Projekte & Notizen liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an), der Zielkalender pro Eintrag wählbar.</p>
+    `;
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
     $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); setSync("on"); render(); toast("Aktualisiert"); };
     $("signoutBtn").onclick=signOut;

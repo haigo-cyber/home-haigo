@@ -1132,36 +1132,42 @@ function openProjectForm(existing){
 
 function openNoteForm(existing){
   const isEdit=!!existing;
-  const curProj=(isEdit && existing.projectId) ? existing.projectId : "";
-  const curUrl=(isEdit && existing.url) ? existing.url : "";
-  const projOptions=projects.filter(p=>!p.archived).map(p=>`<option value="${esc(p.id)}" ${p.id===curProj?"selected":""}>${esc(p.name)}</option>`).join("");
-  const html=`<div class="modal-bg" id="modalBg"><div class="modal">
-    <h2>${isEdit?"Notiz bearbeiten":"Neue Notiz"}</h2>
-    <label>Text</label><textarea id="f_text" placeholder="Notiz schreiben..." style="width:100%;min-height:120px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.text||"")}</textarea>
-    <label>Link (optional)</label><input type="text" id="f_url" placeholder="https://example.com" value="${esc(curUrl)}" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:8px;font-size:15px;box-sizing:border-box">
-    <label>Projekt (optional)</label>
-    <select id="f_proj" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:8px;font-size:15px">
-      <option value="">— kein Projekt —</option>
-      ${projOptions}
-    </select>
-    <div class="modal-actions">
-      <button class="btn-ghost" id="f_cancel">Abbrechen</button>
-      <button class="btn-primary" id="f_save">Speichern</button>
-    </div>
-  </div></div>`;
+  const text=existing?.text||"";
+  const url=existing?.url||"";
+  const pid=existing?.projectId||"";
+  
+  let html='<div class="modal-bg" id="modalBg"><div class="modal">';
+  html+='<h2>'+(isEdit?'Notiz bearbeiten':'Neue Notiz')+'</h2>';
+  html+='<label>Text</label>';
+  html+='<textarea id="f_text" placeholder="Notiz..." style="width:100%;min-height:100px;padding:10px;border:1px solid var(--line);border-radius:6px;font-family:inherit">'+esc(text)+'</textarea>';
+  html+='<label style="margin-top:12px">Link (optional)</label>';
+  html+='<input type="text" id="f_url" placeholder="https://..." value="'+esc(url)+'" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px;margin-bottom:12px">';
+  html+='<label>Projekt (optional)</label>';
+  html+='<select id="f_proj" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px">';
+  html+='<option value="">— kein —</option>';
+  projects.filter(p=>!p.archived).forEach(p=>{
+    html+='<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+'>'+esc(p.name)+'</option>';
+  });
+  html+='</select>';
+  html+='<div class="modal-actions"><button class="btn-ghost" id="f_cancel">Abbrechen</button><button class="btn-primary" id="f_save">Speichern</button></div>';
+  html+='</div></div>';
+  
   document.body.insertAdjacentHTML("beforeend", html);
   
   $("f_cancel").onclick=()=>$("modalBg").remove();
   $("f_save").onclick=async()=>{
-    const text=$("f_text").value.trim();
-    if(!text){ toast("Text erforderlich"); return; }
-    const data={text};
-    const fp=$("f_proj"); if(fp && fp.value) data.projectId=fp.value;
-    const fu=$("f_url"); if(fu && fu.value.trim()) data.url=fu.value.trim();
+    const t=$("f_text").value.trim();
+    if(!t){ toast("Text erforderlich"); return; }
+    const data={text:t};
+    const u=$("f_url").value.trim();
+    if(u) data.url=u;
+    const pr=$("f_proj").value;
+    if(pr) data.projectId=pr;
     $("modalBg").remove();
-    if(isEdit) await updateNote(existing.id, data); else await addNote(data);
+    if(isEdit) await updateNote(existing.id,data);
+    else await addNote(data);
   };
-  $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  $("modalBg").onclick=e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
 }
 
 

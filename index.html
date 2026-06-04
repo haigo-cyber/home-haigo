@@ -429,23 +429,41 @@ async function deleteTask(id){
 }
 async function addProject(data){
   setSync("busy");
-  const p=Object.assign({id:uid(),archived:false},data);
-  projects.push(p);
-  await saveProjects();
-  setSync("on"); render(); toast("Projekt gespeichert");
+  try{
+    const p=Object.assign({id:uid(),archived:false},data);
+    projects.push(p);
+    await saveProjects();
+    setSync("on"); render(); toast("Projekt gespeichert");
+  }catch(e){
+    console.error("Projekt-Fehler:",e);
+    toast("Projekt-Speichern fehlgeschlagen");
+    setSync("on");
+  }
 }
 async function updateProject(id, data){
   setSync("busy");
-  const p=projects.find(x=>x.id===id); if(!p) return;
-  Object.assign(p,data);
-  await saveProjects();
-  setSync("on"); render();
+  try{
+    const p=projects.find(x=>x.id===id); if(!p) return;
+    Object.assign(p,data);
+    await saveProjects();
+    setSync("on"); render();
+  }catch(e){
+    console.error("Update-Fehler:",e);
+    toast("Update fehlgeschlagen");
+    setSync("on");
+  }
 }
 async function deleteProject(id){
   setSync("busy");
-  projects=projects.filter(x=>x.id!==id);
-  await saveProjects();
-  setSync("on"); render();
+  try{
+    projects=projects.filter(x=>x.id!==id);
+    await saveProjects();
+    setSync("on"); render();
+  }catch(e){
+    console.error("Delete-Fehler:",e);
+    toast("Löschen fehlgeschlagen");
+    setSync("on");
+  }
 }
 // Tages-Ziele eines vergangenen Tages restlos entfernen (täglicher Reset = leeres Blatt)
 async function purgeStaleGoals(){
@@ -540,7 +558,7 @@ function pieBlock(done,total){
 function empty(msg){ return `<div class="empty">${msg}</div>`; }
 
 function projectCard(p){
-  const colors=['#fdd835','#ffebee','#ffe0b2','#c8e6c9','#a5d6a7'];
+  const colors=['#fdd835','#ffcdd2','#ffe0b2','#c8e6c9','#81c784'];
   const bgColor=colors[5-p.priority]||colors[2];
   return `<div class="card" style="background-color:${bgColor};color:#000">
     <div class="body">
@@ -589,7 +607,7 @@ function render(){
     let h=`<div class="section-title">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div>`;
     if(topProjects.length){
       h+=`<div class="section-title">Wichtige Projekte</div>`;
-      const colors=['#fdd835','#ffebee','#ffe0b2','#c8e6c9','#a5d6a7'];
+      const colors=['#fdd835','#ffcdd2','#ffe0b2','#c8e6c9','#81c784'];
       topProjects.forEach(p=>{ h+=`<div style="background-color:${colors[5-p.priority]||colors[2]};color:#000;padding:8px;border-radius:6px;margin-bottom:6px;font-weight:bold;font-size:14px">${esc(p.name)} (Prio ${p.priority})</div>`; });
     }
     if(goals.length){

@@ -138,7 +138,7 @@
 </div>
 <div class="toast" id="toast"></div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
 <script>
 "use strict";
 
@@ -218,17 +218,23 @@ function scheduleLabel(t){
 
 /* ============ GOOGLE OAUTH ============ */
 function initTokenClient(){
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID, scope: SCOPES,
-    callback: (resp)=>{
-      if(resp && resp.access_token){ accessToken=resp.access_token; if(tokenResolve) tokenResolve(resp); }
-      else if(tokenReject) tokenReject(resp);
-      tokenResolve=tokenReject=null;
-    },
-    error_callback: (err)=>{ if(tokenReject) tokenReject(err); tokenResolve=tokenReject=null; }
-  });
+  try{
+    console.log("🔧 Initialisiere tokenClient mit CLIENT_ID:", CLIENT_ID.slice(0,20)+"...");
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID, scope: SCOPES,
+      callback: (resp)=>{
+        console.log("📱 Token Callback:", resp);
+        if(resp && resp.access_token){ accessToken=resp.access_token; if(tokenResolve) tokenResolve(resp); }
+        else if(tokenReject) tokenReject(resp);
+        tokenResolve=tokenReject=null;
+      },
+      error_callback: (err)=>{ console.error("❌ Token Fehler:", err); if(tokenReject) tokenReject(err); tokenResolve=tokenReject=null; }
+    });
+    console.log("✅ tokenClient initialisiert:", tokenClient);
+  }catch(e){ console.error("❌ tokenClient init failed:", e); tokenClient=null; }
 }
 function requestToken(interactive){
+  if(!tokenClient){ return Promise.reject(new Error("tokenClient not initialized")); }
   return new Promise((res,rej)=>{ tokenResolve=res; tokenReject=rej;
     try{ tokenClient.requestAccessToken({prompt: interactive?"consent":""}); }
     catch(e){ rej(e); } });
@@ -566,7 +572,32 @@ async function updateProject(id, data){
     const p=projects.find(x=>x.id===id);
     if(!p){ alert("Projekt nicht gefunden!"); return; }
     console.log("updateProject:",id,data);
+    
+    // Prüfe ob Projekt gerade archiviert wird
+    const wasArchived=p.archived;
+    const isArchivingNow=data.archived && !wasArchived;
+    
     Object.assign(p, data);
+    
+    // Wenn gerade archiviert: erstelle Auto-Notiz
+    if(isArchivingNow){
+      const projTasks=tasks.filter(t=>t.projectId===id && !t.archived);
+      let noteText=`📋 Projekt abgeschlossen: ${p.name}\n\n`;
+      
+      if(projTasks.length){
+        noteText+=`Aufgaben:\n`;
+        projTasks.forEach(t=>{
+          const dateStr=t.startDate?new Date(t.startDate).toLocaleDateString("de-DE"):'';
+          const timeStr=t.startTime?` ${t.startTime} Uhr`:'';
+          const timeInfo=dateStr?(dateStr+timeStr):'(kein Datum)';
+          noteText+=`• ${t.title} - ${timeInfo}\n`;
+        });
+      }
+      
+      await addNote({text:noteText, projectId:id});
+      console.log("✅ Auto-Notiz erstellt für Projekt:",p.name);
+    }
+    
     await saveProjects();
     setSync("on"); render();
   }catch(e){
@@ -696,7 +727,7 @@ function projectCard(p){
   const lum=(0.299*r + 0.587*g + 0.114*b)/255;
   const textColor=lum>0.5?'#000':'#fff';
   
-  return `<div class="card" style="background-color:${bgColor};color:${textColor}">
+  return `<div class="card" style="background-color:${bgColor};color:${textColor};opacity:${p.archived?0.6:1}">
     <div class="body">
       <div class="title">${esc(p.name)}</div>
       <div class="sub"><span>Priorität: ${p.priority}</span>${todos>0?` • ${todos} Todos`:""}</div>
@@ -705,7 +736,25 @@ function projectCard(p){
       ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener" class="mini" style="color:${textColor};text-decoration:none;cursor:pointer">🔗</a>`:''}
       <button class="mini" data-view-proj="${p.id}" style="color:${textColor}">➜</button>
       <button class="mini" data-edit-proj="${p.id}" style="color:${textColor}">Bearb.</button>
+      <button class="mini" data-done-proj="${p.id}" style="color:${textColor}" title="${p.archived?'Wiederherstellen':'Erledigt'}">${p.archived?'↩':'✓'}</button>
       <button class="mini" data-del-proj="${p.id}" style="color:${textColor}">🗑</button>
+    </div>
+  </div>`;
+}
+
+function noteCard(n){
+  const isArchived=n.archived||false;
+  return `<div class="card" style="opacity:${isArchived?0.6:1}">
+    <div class="body">
+      <div class="title" style="color:#000">${esc(n.text).substring(0,60)}${n.text.length>60?'...':''}</div>
+      ${n.projectId?`<div class="sub" style="color:#000">📌 ${esc(projects.find(p=>p.id===n.projectId)?.name||'Projekt')}</div>`:''}
+    </div>
+    <div class="row-actions">
+      <button class="mini" data-done-note="${n.id}" title="${isArchived?'Wiederherstellen':'Erledigt'}">
+        ${isArchived?'↩':'✓'}
+      </button>
+      <button class="mini" data-edit-note="${n.id}">Bearb.</button>
+      <button class="mini" data-del-note="${n.id}">🗑</button>
     </div>
   </div>`;
 }
@@ -753,6 +802,21 @@ function sortTasksForToday(tasks,key){
   return result;
 }
 
+function sortTasksByDateAndTime(tasks){
+  return tasks.sort((a,b)=>{
+    if(!a.startDate && !b.startDate) return 0;
+    if(!a.startDate) return 1;
+    if(!b.startDate) return -1;
+    const dateA=new Date(a.startDate).getTime();
+    const dateB=new Date(b.startDate).getTime();
+    if(dateA!==dateB) return dateA-dateB;
+    const timeA=(a.startTime||'00:00').split(':').map(Number);
+    const timeB=(b.startTime||'00:00').split(':').map(Number);
+    const minA=timeA[0]*60+timeA[1], minB=timeB[0]*60+timeB[1];
+    return minA-minB;
+  });
+}
+
 function render(){
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",settings:"Konto"};
@@ -763,6 +827,7 @@ function render(){
   if(view==="today"){
     const key=todayKey();
     const topProjects=projects.filter(p=>!p.archived&&p.priority>=4).sort((a,b)=>b.priority-a.priority);
+    const activeNotes=notes.filter(n=>!n.archived);
     const goals=active.filter(t=>t.type==="goal" && t.startDate===todayKey());
     const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const sorted=sortTasksForToday(tasks, key);
@@ -785,6 +850,10 @@ function render(){
         </div>`;
       });
     }
+    if(activeNotes.length){
+      h+=`<div class="section-title">Notizen</div>`;
+      h+=activeNotes.map(noteCard).join("");
+    }
     if(goals.length){
       const gd=goals.filter(t=>isDone(t.id,key)).length;
       h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goals.length)+goals.map(goalCard).join("");
@@ -805,16 +874,25 @@ function render(){
   }
   else if(view==="duties"){
     const key=todayKey();
-    const list=active.filter(t=>t.type==="duty");
+    const list=sortTasksByDateAndTime(active.filter(t=>t.type==="duty"));
     main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:true, key:key})).join(""):empty("Noch keine Pflichtaufgaben. Mit + anlegen.");
   }
   else if(view==="todos"){
     const key=todayKey();
     const todos=active.filter(t=>t.type==="todo");
-    // Sortiere: mit Termin (nach Dringlichkeit) → ohne Termin → erledigte
-    const withDate=todos.filter(t=>t.startDate && !isDone(t.id,key)).sort((a,b)=>urgencyDays(a.startDate)-urgencyDays(b.startDate));
+    // Sortiere: mit Termin (nach Datum+Uhrzeit) → ohne Termin → erledigte
+    const withDate=todos.filter(t=>t.startDate && !isDone(t.id,key));
     const noDate=todos.filter(t=>!t.startDate && !isDone(t.id,key));
     const done=todos.filter(t=>isDone(t.id,key));
+    withDate.sort((a,b)=>{
+      const dateA=new Date(a.startDate).getTime();
+      const dateB=new Date(b.startDate).getTime();
+      if(dateA!==dateB) return dateA-dateB;
+      const timeA=(a.startTime||'00:00').split(':').map(Number);
+      const timeB=(b.startTime||'00:00').split(':').map(Number);
+      const minA=timeA[0]*60+timeA[1], minB=timeB[0]*60+timeB[1];
+      return minA-minB;
+    });
     const list=[...withDate,...noDate,...done];
     main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:true, key:key})).join(""):empty("Noch keine ToDos. Mit + anlegen.");
   }
@@ -828,9 +906,14 @@ function render(){
   }
   else if(view==="projects"){
     const list=projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority);
+    const archived=projects.filter(p=>p.archived).sort((a,b)=>b.priority-a.priority);
     let h=`<div class="section-title">Prioritäts-Übersicht</div>`+priorityBoard();
     h+=`<div class="section-title">Alle Projekte</div>`;
     h+=list.length?list.map(projectCard).join(""):empty("Noch keine Projekte. Mit + anlegen.");
+    if(archived.length){
+      h+=`<div class="section-title">Abgeschlossene Projekte</div>`;
+      h+=archived.map(projectCard).join("");
+    }
     main.innerHTML=h;
   }
   else if(view==="projectDetail" && selectedProjectId){
@@ -841,8 +924,8 @@ function render(){
     const key=todayKey();
     const projTodos=tasks.filter(t=>t.projectId===selectedProjectId && !t.archived);
     console.log("  Todos für dieses Projekt:", projTodos.length);
-    const open=projTodos.filter(t=>!isDone(t.id,key));
-    const done=projTodos.filter(t=>isDone(t.id,key));
+    const open=sortTasksByDateAndTime(projTodos.filter(t=>!isDone(t.id,key)));
+    const done=sortTasksByDateAndTime(projTodos.filter(t=>isDone(t.id,key)));
     const projNotes=notes.filter(n=>n.projectId===selectedProjectId);
     console.log("  Notizen:", projNotes.length);
     const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
@@ -882,19 +965,34 @@ function render(){
     $("backBtn").onclick=()=>{ selectedProjectId=null; view="projects"; render(); };
   }
   else if(view==="notes"){
+    const activeNotes=notes.filter(n=>!n.archived);
+    const archivedNotes=notes.filter(n=>n.archived);
     let h=`<div class="section-title">Notizen</div>`;
-    h+=notes.length?notes.map(n=>`<div class="card">
+    h+=activeNotes.length?activeNotes.map(n=>`<div class="card">
       <div class="body">
-        <div class="title">${esc(n.text.split('\n')[0].substring(0,50))}</div>
-        <div class="sub">${new Date(n.createdAt).toLocaleDateString("de-DE")}</div>
+        <div class="title" style="color:#000">${esc(n.text.split('\n')[0].substring(0,50))}</div>
+        <div class="sub" style="color:#000">${new Date(n.createdAt).toLocaleDateString("de-DE")}</div>
         <div class="note-text" style="margin-top:8px;font-size:13px;color:var(--text)">${esc(n.text.substring(0,100))}</div>
       </div>
       <div class="row-actions">
-        ${n.url?`<a href="${esc(n.url)}" target="_blank" rel="noopener" class="mini" style="color:var(--accent);text-decoration:none;cursor:pointer">🔗</a>`:''}
+        <button class="mini" data-done-note="${n.id}" title="Erledigt">✓</button>
         <button class="mini" data-edit-note="${n.id}">Bearb.</button>
         <button class="mini" data-del-note="${n.id}">🗑</button>
       </div>
-    </div>`).join(""):empty("Keine Notizen. Mit + anlegen.");
+    </div>`).join(""):empty("Keine aktiven Notizen. Mit + anlegen.");
+    if(archivedNotes.length){
+      h+=`<div class="section-title">Erledigt</div>`;
+      h+=archivedNotes.map(n=>`<div class="card" style="opacity:0.6">
+        <div class="body">
+          <div class="title" style="color:#000">${esc(n.text.split('\n')[0].substring(0,50))}</div>
+          <div class="sub" style="color:#000">${new Date(n.createdAt).toLocaleDateString("de-DE")}</div>
+        </div>
+        <div class="row-actions">
+          <button class="mini" data-done-note="${n.id}" title="Wiederherstellen">↩</button>
+          <button class="mini" data-del-note="${n.id}">🗑</button>
+        </div>
+      </div>`).join("");
+    }
     main.innerHTML=h;
   }
   else if(view==="links"){
@@ -1094,7 +1192,7 @@ async function loadLinks(){
 async function addNote(data){
   setSync("busy");
   try{
-    const n=Object.assign({id:uid(), createdAt:new Date().toISOString()}, data);
+    const n=Object.assign({id:uid(), createdAt:new Date().toISOString(), archived:false}, data);
     console.log("addNote: Neue Notiz",n);
     notes.push(n);
     await saveNotes();
@@ -1408,12 +1506,22 @@ main.addEventListener("click",e=>{
     if(confirm(msg)) deleteTask(dl.dataset.del); return;
   }
   const en=e.target.closest("[data-edit-note]"); if(en){ const n=notes.find(x=>x.id===en.dataset.editNote); if(n) openNoteForm(n); return; }
+  const donn=e.target.closest("[data-done-note]"); if(donn){ 
+    const n=notes.find(x=>x.id===donn.dataset.doneNote); 
+    if(n) updateNote(n.id, {archived:!n.archived}); 
+    return; 
+  }
   const dn=e.target.closest("[data-del-note]"); if(dn){ deleteNote(dn.dataset.delNote); return; }
   const vp=e.target.closest("[data-view-proj]"); if(vp){ 
     console.log("🎯 Projekt-Button geklickt! data-view-proj:", vp.dataset.viewProj);
     selectedProjectId=vp.dataset.viewProj; 
     view="projectDetail"; 
     render(); 
+    return; 
+  }
+  const dopp=e.target.closest("[data-done-proj]"); if(dopp){ 
+    const p=projects.find(x=>x.id===dopp.dataset.doneProj); 
+    if(p) updateProject(p.id, {archived:!p.archived}); 
     return; 
   }
   const ep=e.target.closest("[data-edit-proj]"); if(ep){ const p=projects.find(x=>x.id===ep.dataset.editProj); if(p) openProjectForm(p); return; }
@@ -1486,10 +1594,21 @@ $("acctBtn").addEventListener("click",()=>{ if(accessToken) view="settings",rend
 // Auf GIS-Skript warten
 (function waitGIS(){
   if(window.google && google.accounts && google.accounts.oauth2){
-    initTokenClient(); showSignin();
-    // Stiller Versuch, falls bereits zugestimmt
-    requestToken(false).then(bootData).catch(()=>{});
-  }else setTimeout(waitGIS,150);
+    console.log("✅ Google Library geladen");
+    try{
+      initTokenClient(); 
+      console.log("✅ tokenClient initialized");
+      showSignin();
+      // Stiller Versuch, falls bereits zugestimmt
+      requestToken(false).then(bootData).catch(()=>{});
+    }catch(e){
+      console.error("❌ Init-Fehler:", e);
+      showSignin();
+    }
+  }else{
+    console.log("⏳ Warte auf Google Library...", {google: !!window.google, accounts: !!window.google?.accounts, oauth2: !!window.google?.accounts?.oauth2});
+    setTimeout(waitGIS,50);
+  }
 })();
 
 // Tageswechsel: Tages-Ziele um Mitternacht zurücksetzen (Ansicht bei laufender App)

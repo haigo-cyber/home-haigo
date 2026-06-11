@@ -197,6 +197,7 @@ function isDue(task, date){
   return false;
 }
 function isDone(itemId, key){ return logs.some(l=>l.itemId===itemId && l.date===key); }
+function isEverDone(itemId){ return logs.some(l=>l.itemId===itemId); }
 function streakDays(itemId){
   let n=0; const d=new Date();
   while(isDone(itemId,dateKey(d))){ n++; d.setDate(d.getDate()-1); }
@@ -881,9 +882,9 @@ function render(){
     const key=todayKey();
     const todos=active.filter(t=>t.type==="todo");
     // Sortiere: mit Termin (nach Datum+Uhrzeit) → ohne Termin → erledigte
-    const withDate=todos.filter(t=>t.startDate && !isDone(t.id,key));
-    const noDate=todos.filter(t=>!t.startDate && !isDone(t.id,key));
-    const done=todos.filter(t=>isDone(t.id,key));
+    const withDate=todos.filter(t=>t.startDate && !isEverDone(t.id));
+    const noDate=todos.filter(t=>!t.startDate && !isEverDone(t.id));
+    const done=todos.filter(t=>isEverDone(t.id));
     withDate.sort((a,b)=>{
       const dateA=new Date(a.startDate).getTime();
       const dateB=new Date(b.startDate).getTime();

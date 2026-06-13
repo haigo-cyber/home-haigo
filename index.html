@@ -636,8 +636,14 @@ async function purgeStaleGoals(){
 }
 async function toggleDone(id, key){
   setSync("busy");
-  if(isDone(id,key)) logs=logs.filter(l=>!(l.itemId===id&&l.date===key));
-  else logs.push({itemId:id,date:key,doneAt:new Date().toISOString()});
+  if(key==="once"){
+    // Einmaliges ToDo: Erledigung dauerhaft (nicht datumsgebunden)
+    if(isEverDone(id)) logs=logs.filter(l=>l.itemId!==id);
+    else logs.push({itemId:id,date:todayKey(),doneAt:new Date().toISOString()});
+  }else{
+    if(isDone(id,key)) logs=logs.filter(l=>!(l.itemId===id&&l.date===key));
+    else logs.push({itemId:id,date:key,doneAt:new Date().toISOString()});
+  }
   render();
   await saveLogs();
   setSync("on");
@@ -646,13 +652,14 @@ async function toggleDone(id, key){
 /* ============ RENDERING ============ */
 function checkSvg(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'; }
 
-function taskCard(t,{showCheck=true, key=todayKey()}={}){
-  const done=isDone(t.id,key);
+function taskCard(t,{showCheck=true, key=todayKey(), oneTime=false}={}){
+  const done=oneTime?isEverDone(t.id):isDone(t.id,key);
+  const toggleKey=oneTime?"once":key;
   const cal=t.syncCalendar?'<span class="badge cal">📆 Kalender</span>':'';
   const notes=t.notes?`<details class="note-detail"><summary style="color:#000">📝 ${t.notes.length} Zeichen</summary><div class="note-text" style="color:#000">${esc(t.notes)}</div></details>`:'';
   const urgency=t.startDate?urgencyBar(urgencyDays(t.startDate)):'';
   return `<div class="card${done?' done':''}">
-    ${showCheck?`<div class="check${done?' on':''}" data-toggle="${t.id}" data-key="${key}">${checkSvg()}</div>`:''}
+    ${showCheck?`<div class="check${done?' on':''}" data-toggle="${t.id}" data-key="${toggleKey}">${checkSvg()}</div>`:''}
     <div class="body">
       <div class="title" style="color:#000">${esc(t.title)}</div>
       ${urgency}
@@ -792,7 +799,10 @@ function urgencyBar(d){
 }
 function sortTasksForToday(tasks,key){
   const open=[],done=[];
-  tasks.forEach(t=>{(isDone(t.id,key)?done:open).push(t);});
+  tasks.forEach(t=>{
+    const d = t.type==="todo" ? isEverDone(t.id) : isDone(t.id,key);
+    (d?done:open).push(t);
+  });
   const withDate=open.filter(t=>t.startDate).sort((a,b)=>urgencyDays(a.startDate)-urgencyDays(b.startDate));
   const noDate=open.filter(t=>!t.startDate);
   console.log("sortTasksForToday: open=",open.length,"done=",done.length,"withDate=",withDate.length,"noDate=",noDate.length);
@@ -860,8 +870,8 @@ function render(){
       if(goals.length) h+=`<div class="section-title">Aufgaben</div>`;
       const open=sorted.filter(t=>!isDone(t.id,key));
       const done=sorted.filter(t=>isDone(t.id,key));
-      h+=open.length?open.map(t=>taskCard(t,{key})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
-      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{key})).join("");
+      h+=open.length?open.map(t=>taskCard(t,{key,oneTime:t.type==="todo"})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
+      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{key,oneTime:t.type==="todo"})).join("");
     }
     if(activeNotes.length){
       h+=`<div class="section-title">Notizen</div>`;
@@ -895,7 +905,7 @@ function render(){
       return minA-minB;
     });
     const list=[...withDate,...noDate,...done];
-    main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:true, key:key})).join(""):empty("Noch keine ToDos. Mit + anlegen.");
+    main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:true, key:key, oneTime:true})).join(""):empty("Noch keine ToDos. Mit + anlegen.");
   }
   else if(view==="goals"){
     const list=active.filter(t=>t.type==="goal" && t.startDate===todayKey());
@@ -925,8 +935,8 @@ function render(){
     const key=todayKey();
     const projTodos=tasks.filter(t=>t.projectId===selectedProjectId && !t.archived);
     console.log("  Todos für dieses Projekt:", projTodos.length);
-    const open=sortTasksByDateAndTime(projTodos.filter(t=>!isDone(t.id,key)));
-    const done=sortTasksByDateAndTime(projTodos.filter(t=>isDone(t.id,key)));
+    const open=sortTasksByDateAndTime(projTodos.filter(t=>!isEverDone(t.id)));
+    const done=sortTasksByDateAndTime(projTodos.filter(t=>isEverDone(t.id)));
     const projNotes=notes.filter(n=>n.projectId===selectedProjectId);
     console.log("  Notizen:", projNotes.length);
     const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
@@ -943,8 +953,8 @@ function render(){
       <div class="section-title">Aufgaben</div>`;
     if(!projTodos.length) h+=empty("Keine Todos in diesem Projekt.");
     else{
-      h+=open.length?open.map(t=>taskCard(t,{showCheck:true,key})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
-      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{showCheck:true,key})).join("");
+      h+=open.length?open.map(t=>taskCard(t,{showCheck:true,key,oneTime:true})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
+      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{showCheck:true,key,oneTime:true})).join("");
     }
     if(projNotes.length){
       h+=`<div class="section-title">Notizen</div>`;

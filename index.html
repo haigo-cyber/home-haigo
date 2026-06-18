@@ -165,6 +165,7 @@ let view = "today";
 let selectedProjectId = null;
 let calendars = [];                                       // schreibbare Kalender des Nutzers
 let gtasks = [];                                          // Google-Tasks-Einträge (Standardliste)
+let gtasksStatus = "";                                    // Diagnose-Text fürs UI
 let defaultCalId = localStorage.getItem("defcal") || "primary";
 
 /* ============ HILFEN ============ */
@@ -270,18 +271,21 @@ const GTASKS="https://tasks.googleapis.com/tasks/v1";
 /* ---- Google Tasks laden (Standardliste, heute fällig + überfällig) ---- */
 async function loadGTasks(){
   try{
-    const res=await api(`${GTASKS}/lists/@default/tasks?showCompleted=false&maxResults=100`);
+    // Alle Aufgabenlisten holen, um die Standardliste zuverlässig zu finden
+    const lists=await api(`${GTASKS}/users/@me/lists?maxResults=100`);
+    const listItems=(lists && lists.items)||[];
+    const defaultList=listItems[0]; // erste Liste = Standardliste "Meine Aufgaben"
+    if(!defaultList){ gtasksStatus="Keine Aufgabenliste gefunden."; gtasks=[]; return; }
+    const res=await api(`${GTASKS}/lists/${encodeURIComponent(defaultList.id)}/tasks?showCompleted=false&maxResults=100`);
     const items=(res && res.items)||[];
     const today=todayKey(); // YYYY-MM-DD
-    // Nur offene mit Fälligkeitsdatum heute oder früher
-    gtasks=items.filter(t=>{
-      if(t.status==="completed") return false;
-      if(!t.due) return false;
-      const dueKey=t.due.slice(0,10); // RFC3339 → YYYY-MM-DD
-      return dueKey<=today;
-    });
-    console.log("  ✓ loadGTasks:",gtasks.length,"fällige Google-Tasks");
+    const open=items.filter(t=>t.status!=="completed");
+    const withDate=open.filter(t=>t.due);
+    gtasks=withDate.filter(t=>t.due.slice(0,10)<=today);
+    gtasksStatus=`Liste "${defaultList.title}": ${items.length} geholt, ${open.length} offen, ${withDate.length} mit Datum, ${gtasks.length} heute/überfällig.`;
+    console.log("  ✓ loadGTasks:",gtasksStatus);
   }catch(e){
+    gtasksStatus="Fehler beim Laden: "+e.message;
     console.error("❌ loadGTasks Fehler:",e.message);
     gtasks=[];
   }
@@ -917,7 +921,7 @@ function render(){
         const dueLabel=dueKey?new Date(dueKey).toLocaleDateString("de-DE",{day:"numeric",month:"short"}):"";
         const labelColor=overdue?"#E24B4A":"#000";
         const labelText=overdue?`überfällig · ${dueLabel}`:`heute`;
-        h+=`<div class="card">
+        h+=`<div class="card" style="background:#d4f1c5">
           <div class="check" data-gtask="${t.id}">${checkSvg()}</div>
           <div class="body">
             <div class="title" style="color:#000">${esc(t.title||"(ohne Titel)")}</div>

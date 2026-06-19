@@ -1,5 +1,5 @@
 // Service Worker – cacht nur die App-Hülle, niemals Google-API-Antworten.
-const CACHE = "todo-shell-v51";
+const CACHE = "todo-shell-v54";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -23,7 +23,25 @@ self.addEventListener("fetch", (e) => {
     return;
   }
   if (e.request.method !== "GET") return;
-  // App-Hülle: erst Cache, dann Netz (und Cache aktualisieren).
+
+  // Die Seite selbst: erst Netz, dann Cache. So sind Änderungen sofort sichtbar.
+  const isHTML = e.request.mode === "navigate" ||
+                 url.pathname.endsWith("/") ||
+                 url.pathname.endsWith("/index.html");
+  if (isHTML) {
+    e.respondWith(
+      fetch(e.request).then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
+        return res;
+      }).catch(() => caches.match(e.request).then((c) => c || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  // Übrige App-Hülle (Icons, Manifest): erst Cache, dann Netz.
   e.respondWith(
     caches.match(e.request).then((cached) => {
       const net = fetch(e.request).then((res) => {

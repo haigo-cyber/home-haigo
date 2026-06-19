@@ -697,6 +697,8 @@ async function purgeStaleGoals(){
   const today=todayKey();
   const stale=tasks.filter(t=>t.type==="goal" && (t.startDate||"")!==today);
   if(!stale.length) return false;
+  // Verknüpfte Kalendertermine der abgelaufenen Ziele entfernen
+  for(const g of stale){ if(g.calendarEventId){ try{ await deleteCalendar(g); }catch(e){} } }
   const ids=new Set(stale.map(t=>t.id));
   tasks=tasks.filter(t=>!ids.has(t.id));
   logs=logs.filter(l=>!ids.has(l.itemId));
@@ -760,7 +762,7 @@ function habitCard(t){
 }
 function goalCard(t){
   const done=isDone(t.id,todayKey());
-  return `<div class="card${done?' done':''}">
+  return `<div class="card${done?' done':''}" style="background:#d4f1c5">
     <div class="check${done?' on':''}" data-toggle="${t.id}" data-key="${todayKey()}">${checkSvg()}</div>
     <div class="body"><div class="title" style="color:#000">${esc(t.title)}</div></div>
     <div class="row-actions">
@@ -912,25 +914,6 @@ function render(){
     const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const sorted=sortTasksForToday(tasks, key);
     let h=`<div class="section-title">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div>`;
-    if(gtasks.length){
-      h+=`<div class="section-title">⭐ Wichtige Termine (Google Tasks)</div>`;
-      const sortedGT=[...gtasks].sort((a,b)=>(a.due||"").localeCompare(b.due||""));
-      sortedGT.forEach(t=>{
-        const dueKey=t.due?t.due.slice(0,10):"";
-        const overdue=dueKey && dueKey<key;
-        const dueLabel=dueKey?new Date(dueKey).toLocaleDateString("de-DE",{day:"numeric",month:"short"}):"";
-        const labelColor=overdue?"#E24B4A":"#000";
-        const labelText=overdue?`überfällig · ${dueLabel}`:`heute`;
-        h+=`<div class="card" style="background:#d4f1c5">
-          <div class="check" data-gtask="${t.id}">${checkSvg()}</div>
-          <div class="body">
-            <div class="title" style="color:#000">${esc(t.title||"(ohne Titel)")}</div>
-            <div class="sub" style="color:${labelColor}">${labelText}</div>
-            ${t.notes?`<div class="note-text" style="color:#000">${esc(t.notes)}</div>`:""}
-          </div>
-        </div>`;
-      });
-    }
     if(topProjects.length){
       h+=`<div class="section-title">Wichtige Projekte</div>`;
       const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
@@ -952,6 +935,25 @@ function render(){
     if(goals.length){
       const gd=goals.filter(t=>isDone(t.id,key)).length;
       h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goals.length)+goals.map(goalCard).join("");
+    }
+    if(gtasks.length){
+      h+=`<div class="section-title">⭐ Wichtige Termine (Google Tasks)</div>`;
+      const sortedGT=[...gtasks].sort((a,b)=>(a.due||"").localeCompare(b.due||""));
+      sortedGT.forEach(t=>{
+        const dueKey=t.due?t.due.slice(0,10):"";
+        const overdue=dueKey && dueKey<key;
+        const dueLabel=dueKey?new Date(dueKey).toLocaleDateString("de-DE",{day:"numeric",month:"short"}):"";
+        const labelColor=overdue?"#E24B4A":"#000";
+        const labelText=overdue?`überfällig · ${dueLabel}`:`heute`;
+        h+=`<div class="card" style="background:#d4f1c5">
+          <div class="check" data-gtask="${t.id}">${checkSvg()}</div>
+          <div class="body">
+            <div class="title" style="color:#000">${esc(t.title||"(ohne Titel)")}</div>
+            <div class="sub" style="color:${labelColor}">${labelText}</div>
+            ${t.notes?`<div class="note-text" style="color:#000">${esc(t.notes)}</div>`:""}
+          </div>
+        </div>`;
+      });
     }
     if(!sorted.length) h+=empty("Heute nichts fällig. 🎉");
     else{
@@ -1451,7 +1453,7 @@ function openForm(type, existing){
     if(!title){ toast("Titel fehlt"); return; }
     const data={type, title, syncCalendar: syncBtn ? syncBtn.classList.contains("on") : false};
     if(type==="habit"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); }
-    if(type==="goal"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); }
+    if(type==="goal"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); data.syncCalendar=true; }
     if(type==="duty"){ data.scheduleType=segSel.v; data.startDate=$("f_start").value; }
     if(type==="todo"){ data.startDate=$("f_start").value;
       data.scheduleType=weeklyBtn.classList.contains("on")?"weekly":"once";

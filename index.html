@@ -164,8 +164,11 @@ let tasks = [], logs = [], projects = [], notes = [], links = [];
 let view = "today";
 let selectedProjectId = null;
 let calendars = [];                                       // schreibbare Kalender des Nutzers
-let gtasks = [];                                          // Google-Tasks-Einträge (Standardliste)
+let gtasks = [];                                          // Google-Tasks-Einträge (Standardliste, grüne Sektion)
 let gtasksStatus = "";                                    // Diagnose-Text fürs UI
+let goalTasks = [];                                       // heutige Tagesziele (offen + heute erledigt) aus Google Tasks
+let defaultGTaskListId = "";                              // ID der Standard-Aufgabenliste
+const GOAL_MARKER = "[Tagesziel]";                        // Kennzeichnung von Zielen in den Notizen
 let defaultCalId = localStorage.getItem("defcal") || "primary";
 
 /* ============ HILFEN ============ */
@@ -268,41 +271,70 @@ async function api(url, opts={}, retried=false){
 const SHEETS="https://sheets.googleapis.com/v4/spreadsheets";
 const GTASKS="https://tasks.googleapis.com/tasks/v1";
 
-/* ---- Google Tasks laden (Standardliste, heute fällig + überfällig) ---- */
+/* ---- Google Tasks laden: grüne Sektion + heutige Ziele (offen + heute erledigt) ---- */
+function isGoalTask(t){ return (t.notes||"").includes(GOAL_MARKER); }
+
 async function loadGTasks(){
   try{
-    // Alle Aufgabenlisten holen, um die Standardliste zuverlässig zu finden
     const lists=await api(`${GTASKS}/users/@me/lists?maxResults=100`);
     const listItems=(lists && lists.items)||[];
     const defaultList=listItems[0]; // erste Liste = Standardliste "Meine Aufgaben"
-    if(!defaultList){ gtasksStatus="Keine Aufgabenliste gefunden."; gtasks=[]; return; }
-    const res=await api(`${GTASKS}/lists/${encodeURIComponent(defaultList.id)}/tasks?showCompleted=false&maxResults=100`);
-    const items=(res && res.items)||[];
-    const today=todayKey(); // YYYY-MM-DD
-    const open=items.filter(t=>t.status!=="completed");
-    const withDate=open.filter(t=>t.due);
-    gtasks=withDate.filter(t=>t.due.slice(0,10)<=today);
-    gtasksStatus=`Liste "${defaultList.title}": ${items.length} geholt, ${open.length} offen, ${withDate.length} mit Datum, ${gtasks.length} heute/überfällig.`;
-    console.log("  ✓ loadGTasks:",gtasksStatus);
+    if(!defaultList){ gtasks=[]; goalTasks=[]; return; }
+    defaultGTaskListId=defaultList.id;
+    const today=todayKey();
+    // 1) Offene Aufgaben
+    const resOpen=await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks?showCompleted=false&maxResults=100`);
+    const openItems=((resOpen && resOpen.items)||[]).filter(t=>t.status!=="completed");
+    // 2) Heute erledigte Aufgaben (für die Ziel-Grafik)
+    const startISO=new Date(today+"T00:00:00").toISOString();
+    const resDone=await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks?showCompleted=true&showHidden=true&completedMin=${encodeURIComponent(startISO)}&maxResults=100`);
+    const doneItems=((resDone && resDone.items)||[]).filter(t=>t.status==="completed");
+    // Grüne Sektion: offene, heute fällige oder überfällige (inkl. Ziele)
+    gtasks=openItems.filter(t=>t.due && t.due.slice(0,10)<=today);
+    // Ziele heute: offene + heute erledigte, jeweils mit Marker und Fälligkeit heute
+    const openGoals=openItems.filter(t=>isGoalTask(t) && t.due && t.due.slice(0,10)===today)
+      .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false}));
+    const doneGoals=doneItems.filter(t=>isGoalTask(t) && t.due && t.due.slice(0,10)===today)
+      .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:true}));
+    goalTasks=[...openGoals, ...doneGoals];
+    console.log("  ✓ loadGTasks: grün",gtasks.length,"| Ziele",goalTasks.length,"(",doneGoals.length,"erledigt )");
   }catch(e){
-    gtasksStatus="Fehler beim Laden: "+e.message;
     console.error("❌ loadGTasks Fehler:",e.message);
-    gtasks=[];
+    gtasks=[]; goalTasks=[];
   }
 }
 
-/* ---- Google Task als erledigt zurückschreiben ---- */
+/* ---- Ziel als Google Task anlegen (Standardliste, Fälligkeit heute, mit Marker) ---- */
+async function addGoalTask(title){
+  setSync("busy");
+  try{
+    if(!defaultGTaskListId){ await loadGTasks(); }
+    const due=todayKey()+"T00:00:00.000Z";
+    await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks`, {
+      method:"POST",
+      body:JSON.stringify({title:title, notes:GOAL_MARKER, due:due})
+    });
+    await loadGTasks();
+    setSync("on"); render(); toast("Ziel gespeichert");
+  }catch(e){
+    console.error("❌ addGoalTask Fehler:",e.message);
+    alert("Ziel speichern fehlgeschlagen:\n"+e.message);
+    setSync("on");
+  }
+}
+
+/* ---- Google Task abhaken ---- */
 async function completeGTask(taskId){
   setSync("busy");
   try{
     const gt=gtasks.find(t=>t.id===taskId);
-    // 1) In Google Tasks auf erledigt setzen
-    await api(`${GTASKS}/lists/@default/tasks/${encodeURIComponent(taskId)}`, {
-      method:"PATCH",
-      body:JSON.stringify({status:"completed"})
+    const goal=gt?isGoalTask(gt):goalTasks.some(g=>g.id===taskId);
+    const listId=defaultGTaskListId||"@default";
+    await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`, {
+      method:"PATCH", body:JSON.stringify({status:"completed"})
     });
-    // 2) Im Sheet protokollieren (Tasks-Blatt + Log-Blatt)
-    if(gt){
+    // Nur normale Aufgaben (keine Ziele) zusätzlich im Sheet protokollieren
+    if(gt && !goal){
       const protoId="gt_"+taskId;
       const dueKey=gt.due?gt.due.slice(0,10):todayKey();
       if(!tasks.some(t=>t.id===protoId)){
@@ -321,12 +353,43 @@ async function completeGTask(taskId){
         await saveLogs();
       }
     }
-    gtasks=gtasks.filter(t=>t.id!==taskId);
-    render();
-    setSync("on");
+    await loadGTasks();
+    render(); setSync("on");
   }catch(e){
     console.error("❌ completeGTask Fehler:",e.message);
-    alert("Google Task abhaken fehlgeschlagen:\n"+e.message);
+    alert("Abhaken fehlgeschlagen:\n"+e.message);
+    setSync("on");
+  }
+}
+
+/* ---- Ziel wieder öffnen (Häkchen entfernen) ---- */
+async function uncompleteGTask(taskId){
+  setSync("busy");
+  try{
+    const listId=defaultGTaskListId||"@default";
+    await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`, {
+      method:"PATCH", body:JSON.stringify({status:"needsAction", completed:null})
+    });
+    await loadGTasks();
+    render(); setSync("on");
+  }catch(e){
+    console.error("❌ uncompleteGTask Fehler:",e.message);
+    alert("Wiederöffnen fehlgeschlagen:\n"+e.message);
+    setSync("on");
+  }
+}
+
+/* ---- Google Task löschen ---- */
+async function deleteGTask(taskId){
+  setSync("busy");
+  try{
+    const listId=defaultGTaskListId||"@default";
+    await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`, {method:"DELETE"});
+    await loadGTasks();
+    render(); setSync("on");
+  }catch(e){
+    console.error("❌ deleteGTask Fehler:",e.message);
+    alert("Löschen fehlgeschlagen:\n"+e.message);
     setSync("on");
   }
 }
@@ -543,7 +606,7 @@ async function syncCalendar(t){
       await api(`${url}/${t.calendarEventId}`,{method:"DELETE"});
       t.calendarEventId="";
     }
-  }catch(e){ console.warn("Kalender-Sync fehlgeschlagen:",e); toast("Kalender-Sync fehlgeschlagen"); }
+  }catch(e){ console.warn("Kalender-Sync fehlgeschlagen:",e); alert("Kalender-Sync fehlgeschlagen:\n"+(e&&e.message?e.message:e)); }
 }
 async function deleteCalendar(t){
   if(t.calendarEventId){ try{ await api(`${calUrl(effectiveCalId(t))}/${t.calendarEventId}`,{method:"DELETE"}); }catch(e){} }
@@ -771,6 +834,15 @@ function goalCard(t){
     </div>
   </div>`;
 }
+function goalTaskCard(g){
+  return `<div class="card${g.completed?' done':''}" style="background:#d4f1c5">
+    <div class="check${g.completed?' on':''}" data-${g.completed?'guncheck':'gtask'}="${g.id}">${checkSvg()}</div>
+    <div class="body"><div class="title" style="color:#000">${esc(g.title)}</div></div>
+    <div class="row-actions">
+      <button class="mini" data-gdel="${g.id}">🗑</button>
+    </div>
+  </div>`;
+}
 function pieBlock(done,total){
   const f = total ? done/total : 0;
   const pct = Math.round(f*100);
@@ -910,7 +982,6 @@ function render(){
     const key=todayKey();
     const topProjects=projects.filter(p=>!p.archived&&p.priority>=4).sort((a,b)=>b.priority-a.priority);
     const activeNotes=notes.filter(n=>!n.archived);
-    const goals=active.filter(t=>t.type==="goal" && t.startDate===todayKey());
     const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const sorted=sortTasksForToday(tasks, key);
     let h=`<div class="section-title">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div>`;
@@ -932,9 +1003,9 @@ function render(){
         </div>`;
       });
     }
-    if(goals.length){
-      const gd=goals.filter(t=>isDone(t.id,key)).length;
-      h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goals.length)+goals.map(goalCard).join("");
+    if(goalTasks.length){
+      const gd=goalTasks.filter(g=>g.completed).length;
+      h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goalTasks.length);
     }
     if(gtasks.length){
       h+=`<div class="section-title">⭐ Wichtige Termine (Google Tasks)</div>`;
@@ -943,21 +1014,23 @@ function render(){
         const dueKey=t.due?t.due.slice(0,10):"";
         const overdue=dueKey && dueKey<key;
         const dueLabel=dueKey?new Date(dueKey).toLocaleDateString("de-DE",{day:"numeric",month:"short"}):"";
+        const goal=isGoalTask(t);
         const labelColor=overdue?"#E24B4A":"#000";
-        const labelText=overdue?`überfällig · ${dueLabel}`:`heute`;
+        const labelText=(goal?"🎯 Ziel · ":"")+(overdue?`überfällig · ${dueLabel}`:`heute`);
+        const cleanNotes=(t.notes||"").replace(GOAL_MARKER,"").trim();
         h+=`<div class="card" style="background:#d4f1c5">
           <div class="check" data-gtask="${t.id}">${checkSvg()}</div>
           <div class="body">
             <div class="title" style="color:#000">${esc(t.title||"(ohne Titel)")}</div>
             <div class="sub" style="color:${labelColor}">${labelText}</div>
-            ${t.notes?`<div class="note-text" style="color:#000">${esc(t.notes)}</div>`:""}
+            ${cleanNotes?`<div class="note-text" style="color:#000">${esc(cleanNotes)}</div>`:""}
           </div>
         </div>`;
       });
     }
     if(!sorted.length) h+=empty("Heute nichts fällig. 🎉");
     else{
-      if(goals.length) h+=`<div class="section-title">Aufgaben</div>`;
+      if(goalTasks.length||gtasks.length) h+=`<div class="section-title">Aufgaben</div>`;
       const open=sorted.filter(t=>!isDone(t.id,key));
       const done=sorted.filter(t=>isDone(t.id,key));
       h+=open.length?open.map(t=>taskCard(t,{key,oneTime:t.type==="todo"})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
@@ -998,11 +1071,9 @@ function render(){
     main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:true, key:key, oneTime:true})).join(""):empty("Noch keine ToDos. Mit + anlegen.");
   }
   else if(view==="goals"){
-    const list=active.filter(t=>t.type==="goal" && t.startDate===todayKey());
-    const key=todayKey();
-    const doneCount=list.filter(t=>isDone(t.id,key)).length;
-    let h=list.length?list.map(goalCard).join(""):empty("Noch keine Tages-Ziele. Bis zu 4 mit + anlegen.");
-    if(list.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,list.length);
+    const doneCount=goalTasks.filter(g=>g.completed).length;
+    let h=goalTasks.length?goalTasks.map(goalTaskCard).join(""):empty("Noch keine Tages-Ziele. Bis zu 4 mit + anlegen.");
+    if(goalTasks.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,goalTasks.length);
     main.innerHTML=h;
   }
   else if(view==="projects"){
@@ -1451,9 +1522,10 @@ function openForm(type, existing){
   $("f_save").onclick=async()=>{
     const title=$("f_title").value.trim();
     if(!title){ toast("Titel fehlt"); return; }
+    // Ziele laufen über Google Tasks, nicht über das Sheet
+    if(type==="goal"){ $("modalBg").remove(); await addGoalTask(title); return; }
     const data={type, title, syncCalendar: syncBtn ? syncBtn.classList.contains("on") : false};
     if(type==="habit"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); }
-    if(type==="goal"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); data.syncCalendar=true; }
     if(type==="duty"){ data.scheduleType=segSel.v; data.startDate=$("f_start").value; }
     if(type==="todo"){ data.startDate=$("f_start").value;
       data.scheduleType=weeklyBtn.classList.contains("on")?"weekly":"once";
@@ -1590,7 +1662,7 @@ function openLinkForm(existing){
 $("nav").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b){ view=b.dataset.view; render(); }});
 $("fab").addEventListener("click",()=>{
   if(view==="goals"){
-    if(tasks.filter(t=>t.type==="goal"&&!t.archived).length>=4){ toast("Maximal 4 Tages-Ziele"); return; }
+    if(goalTasks.length>=4){ toast("Maximal 4 Tages-Ziele"); return; }
     return openForm("goal");
   }
   if(view==="projects") return openProjectForm();
@@ -1601,6 +1673,8 @@ $("fab").addEventListener("click",()=>{
 main.addEventListener("click",e=>{
   const tg=e.target.closest("[data-toggle]"); if(tg){ toggleDone(tg.dataset.toggle, tg.dataset.key); return; }
   const gt=e.target.closest("[data-gtask]"); if(gt){ completeGTask(gt.dataset.gtask); return; }
+  const guc=e.target.closest("[data-guncheck]"); if(guc){ uncompleteGTask(guc.dataset.guncheck); return; }
+  const gdl=e.target.closest("[data-gdel]"); if(gdl){ if(confirm("Ziel wirklich löschen?")) deleteGTask(gdl.dataset.gdel); return; }
   const ed=e.target.closest("[data-edit]"); if(ed){ const t=tasks.find(x=>x.id===ed.dataset.edit); if(t) openForm(t.type,t); return; }
   const dl=e.target.closest("[data-del]"); if(dl){
     const dt=tasks.find(x=>x.id===dl.dataset.del);

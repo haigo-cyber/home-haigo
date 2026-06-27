@@ -1585,7 +1585,7 @@ function openForm(type, existing){
   $("f_cancel").onclick=()=>$("modalBg").remove();
   $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
 
-  $("f_save").onclick=async()=>{
+  const doSave=async()=>{
     const title=$("f_title").value.trim();
     if(!title){ toast("Titel fehlt"); return; }
     // Ziele laufen über Google Tasks, nicht über das Sheet
@@ -1603,6 +1603,13 @@ function openForm(type, existing){
     $("modalBg").remove();
     if(isEdit) await updateTask(existing.id, data); else await addTask(data);
   };
+  $("f_save").onclick=doSave;
+  // Enter speichert – außer im mehrzeiligen Notizfeld
+  $("modalBg").addEventListener("keydown",(e)=>{
+    if(e.key==="Enter" && e.target.tagName!=="TEXTAREA"){ e.preventDefault(); doSave(); }
+  });
+  // Cursor direkt ins Titelfeld
+  setTimeout(()=>{ const ft=$("f_title"); if(ft) ft.focus(); },50);
 }
 
 function openProjectForm(existing){

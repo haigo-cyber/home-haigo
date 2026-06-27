@@ -133,6 +133,7 @@
     <button data-view="habits"><span class="nico">🔥</span>Gewohn.</button>
     <button data-view="duties"><span class="nico">🔁</span>Pflicht</button>
     <button data-view="todos"><span class="nico">✓</span>ToDos</button>
+    <button data-view="stats"><span class="nico">📊</span>Statistik</button>
     <button data-view="settings"><span class="nico">⚙️</span>Konto</button>
   </nav>
 </div>
@@ -843,6 +844,16 @@ function goalTaskCard(g){
     </div>
   </div>`;
 }
+function statBars(items, color){
+  const max=Math.max(1, ...items.map(i=>i.value));
+  return items.map(i=>{
+    const w=Math.round((i.value/max)*100);
+    return `<div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text);margin-bottom:3px"><span>${esc(i.label)}</span><span style="color:var(--muted)">${i.value}</span></div>
+      <div style="background:var(--surface2);border-radius:6px;height:10px;overflow:hidden"><div style="width:${w}%;height:100%;background:${color};border-radius:6px"></div></div>
+    </div>`;
+  }).join("");
+}
 function pieBlock(done,total){
   const f = total ? done/total : 0;
   const pct = Math.round(f*100);
@@ -973,9 +984,9 @@ function sortTasksByDateAndTime(tasks){
 
 function render(){
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",settings:"Konto"};
+  const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",stats:"Statistik",settings:"Konto"};
   $("hTitle").textContent=titles[view]||"ToDo";
-  $("fab").style.display=(view==="today"||view==="settings")?"none":"block";
+  $("fab").style.display=(view==="today"||view==="settings"||view==="stats")?"none":"block";
   const active=tasks.filter(t=>!t.archived);
 
   if(view==="today"){
@@ -1074,6 +1085,61 @@ function render(){
     const doneCount=goalTasks.filter(g=>g.completed).length;
     let h=goalTasks.length?goalTasks.map(goalTaskCard).join(""):empty("Noch keine Tages-Ziele. Bis zu 4 mit + anlegen.");
     if(goalTasks.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,goalTasks.length);
+    main.innerHTML=h;
+  }
+  else if(view==="stats"){
+    const byId={}; tasks.forEach(t=>byId[t.id]=t);
+    const today=todayKey();
+    const keyDaysAgo=(n)=>{ const d=new Date(); d.setDate(d.getDate()-n); return dateKey(d); };
+    const k7=keyDaysAgo(6), k30=keyDaysAgo(29);
+    const inRange=(date,from)=> date>=from && date<=today;
+    const cntToday=logs.filter(l=>l.date===today).length;
+    const cnt7=logs.filter(l=>inRange(l.date,k7)).length;
+    const cnt30=logs.filter(l=>inRange(l.date,k30)).length;
+    // Nach Bereich (30 Tage)
+    const typeLabel={habit:"Gewohnheiten",duty:"Pflichtaufgaben",todo:"ToDos"};
+    const byType={habit:0,duty:0,todo:0};
+    logs.filter(l=>inRange(l.date,k30)).forEach(l=>{ const t=byId[l.itemId]; if(t&&byType[t.type]!=null) byType[t.type]++; });
+    // Nach Projekt (30 Tage)
+    const projName={}; projects.forEach(p=>projName[p.id]=p.name);
+    const byProj={};
+    logs.filter(l=>inRange(l.date,k30)).forEach(l=>{ const t=byId[l.itemId]; if(t&&t.projectId){ const n=projName[t.projectId]||"(unbekannt)"; byProj[n]=(byProj[n]||0)+1; } });
+    // Pro Tag (14 Tage)
+    const perDay=[]; for(let i=13;i>=0;i--){ const k=keyDaysAgo(i); perDay.push({k, n:logs.filter(l=>l.date===k).length}); }
+    const maxDay=Math.max(1,...perDay.map(d=>d.n));
+    const goalsDone=goalTasks.filter(g=>g.completed).length, goalsTot=goalTasks.length;
+
+    const card=(label,val)=>`<div style="flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center">
+      <div style="font-size:22px;font-weight:700;color:var(--text)">${val}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${label}</div></div>`;
+
+    let h=`<div style="display:flex;gap:8px;margin-bottom:14px">
+      ${card("heute",cntToday)}${card("7 Tage",cnt7)}${card("30 Tage",cnt30)}</div>`;
+
+    h+=`<div class="section-title">Tagesziele heute</div>`;
+    h+= goalsTot? pieBlock(goalsDone,goalsTot) : `<div class="muted center" style="padding:8px">Heute keine Ziele angelegt</div>`;
+
+    h+=`<div class="section-title">Erledigt pro Tag (14 Tage)</div>`;
+    h+=`<div style="display:flex;align-items:flex-end;gap:3px;height:90px;padding:6px 2px;background:var(--surface2);border:1px solid var(--line);border-radius:10px">`;
+    perDay.forEach(d=>{
+      const ht=Math.round((d.n/maxDay)*70);
+      const wd=new Date(d.k).toLocaleDateString("de-DE",{weekday:"short"}).slice(0,1);
+      h+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+        <div style="font-size:9px;color:var(--muted)">${d.n||""}</div>
+        <div style="width:70%;height:${ht}px;background:var(--green);border-radius:3px 3px 0 0;min-height:${d.n?3:0}px"></div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px">${wd}</div>
+      </div>`;
+    });
+    h+=`</div>`;
+
+    h+=`<div class="section-title">Nach Bereich (30 Tage)</div>`;
+    const typeItems=Object.keys(byType).map(k=>({label:typeLabel[k],value:byType[k]}));
+    h+= typeItems.some(i=>i.value)? statBars(typeItems,"var(--accent)") : `<div class="muted center" style="padding:8px">Noch keine Daten</div>`;
+
+    h+=`<div class="section-title">Nach Projekt (30 Tage)</div>`;
+    const projItems=Object.keys(byProj).map(n=>({label:n,value:byProj[n]})).sort((a,b)=>b.value-a.value).slice(0,8);
+    h+= projItems.length? statBars(projItems,"#ff9800") : `<div class="muted center" style="padding:8px">Noch keine Projekt-Erledigungen</div>`;
+
     main.innerHTML=h;
   }
   else if(view==="projects"){

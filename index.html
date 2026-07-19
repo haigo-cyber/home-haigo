@@ -232,7 +232,16 @@ function initTokenClient(){
       client_id: CLIENT_ID, scope: SCOPES,
       callback: (resp)=>{
         console.log("📱 Token Callback:", resp);
-        if(resp && resp.access_token){ accessToken=resp.access_token; if(tokenResolve) tokenResolve(resp); }
+        if(resp && resp.access_token){
+          accessToken=resp.access_token;
+          // Token lokal speichern, damit ein Neustart innerhalb der Gültigkeit ohne Anmeldung auskommt
+          const ttl=(resp.expires_in?parseInt(resp.expires_in):3600);
+          try{
+            localStorage.setItem("gtok", accessToken);
+            localStorage.setItem("gtok_exp", String(Date.now()+(ttl-60)*1000)); // 60 s Sicherheitspuffer
+          }catch(e){}
+          if(tokenResolve) tokenResolve(resp);
+        }
         else if(tokenReject) tokenReject(resp);
         tokenResolve=tokenReject=null;
       },
@@ -1815,7 +1824,10 @@ async function bootData(){
   }catch(e){
     console.error("❌ bootData FEHLER:",e.message);
     alert("Anmeldung fehlgeschlagen:\n"+e.message);
+    localStorage.removeItem("gtok"); localStorage.removeItem("gtok_exp");
+    accessToken=null;
     setSync("off");
+    showSignin();
   }
 }
 async function signIn(){
@@ -1827,6 +1839,7 @@ async function signIn(){
 function signOut(){
   if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
   accessToken=null; tasks=[]; logs=[];
+  localStorage.removeItem("gtok"); localStorage.removeItem("gtok_exp");
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";
   $("acctBtn").textContent="Anmelden"; setSync("");
@@ -1852,7 +1865,17 @@ $("acctBtn").addEventListener("click",()=>{ if(accessToken) view="settings",rend
     try{
       initTokenClient(); 
       console.log("✅ tokenClient initialized");
-      showSignin();
+      // Gespeichertes Token prüfen: falls noch gültig, ohne Anmeldedialog starten
+      const tok=localStorage.getItem("gtok");
+      const exp=parseInt(localStorage.getItem("gtok_exp")||"0");
+      if(tok && exp>Date.now()){
+        console.log("🔑 Gültiges gespeichertes Token gefunden, starte direkt");
+        accessToken=tok;
+        bootData();
+      }else{
+        if(tok){ localStorage.removeItem("gtok"); localStorage.removeItem("gtok_exp"); }
+        showSignin();
+      }
     }catch(e){
       console.error("❌ Init-Fehler:", e);
       showSignin();

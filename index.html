@@ -422,6 +422,60 @@ async function deleteSheet(id){
     console.warn("deleteSheet Fehler:",e.message);
   }
 }
+/* ============ BACKUP ============ */
+const BACKUP_PREFIX="ToDo Backup ";
+const BACKUP_KEEP=5;      // so viele Kopien werden behalten
+const BACKUP_DAYS=7;      // Abstand des automatischen Backups
+async function listBackups(){
+  const q=encodeURIComponent(`name contains '${BACKUP_PREFIX}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`);
+  const res=await api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,createdTime)&orderBy=createdTime desc`);
+  return (res.files||[]);
+}
+async function createBackup(manual){
+  if(!spreadsheetId){ if(manual) toast("Keine Tabelle vorhanden"); return; }
+  setSync("busy");
+  try{
+    const name=BACKUP_PREFIX+todayKey();
+    await api(`https://www.googleapis.com/drive/v3/files/${spreadsheetId}/copy`,
+      {method:"POST",body:JSON.stringify({name})});
+    // Alte Kopien aufräumen, nur die neuesten BACKUP_KEEP behalten
+    const files=await listBackups();
+    for(const f of files.slice(BACKUP_KEEP)){
+      try{ await api(`https://www.googleapis.com/drive/v3/files/${f.id}`,{method:"DELETE"}); }catch(e){}
+    }
+    console.log("✅ Backup erstellt:",name);
+    setSync("on");
+    if(manual) toast("Backup erstellt: "+name);
+    return name;
+  }catch(e){
+    console.error("❌ Backup fehlgeschlagen:",e.message);
+    setSync("on");
+    if(manual) alert("Backup fehlgeschlagen:\n"+e.message);
+  }
+}
+async function autoBackupIfDue(){
+  try{
+    const files=await listBackups();
+    const newest=files[0];
+    if(!newest || (Date.now()-new Date(newest.createdTime).getTime())>BACKUP_DAYS*86400000){
+      const name=await createBackup(false);
+      if(name) toast("Wöchentliches Backup erstellt");
+    }else{
+      console.log("Backup aktuell, letztes:",newest.name);
+    }
+  }catch(e){ console.warn("autoBackup:",e.message); }
+}
+function exportJSON(){
+  const data={exportedAt:new Date().toISOString(), spreadsheetId, tasks, logs, projects, notes, links};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="todo-export-"+todayKey()+".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  toast("JSON-Export heruntergeladen");
+}
+
 async function createSheet(){
   const ss=await api(SHEETS,{method:"POST",body:JSON.stringify({
     properties:{title:SHEET_NAME},
@@ -536,6 +590,12 @@ async function loadAll(){
   // Notizen: JSON von Notes!A1 laden
   await loadNotes();
   await loadLinks();
+  // Zähler nur bei vorhandenen Daten aktualisieren; leere Ladungen lassen den Schutz aktiv
+  [["tasks",tasks.length],["logs",logs.length],["projects",projects.length],["notes",notes.length],["links",links.length]]
+    .forEach(([k,n])=>{ if(n>0) setKnownCount(k,n); });
+  if(tasks.length===0 && getKnownCount("tasks")>2){
+    alert(`Hinweis: Die Tabelle enthält keine Aufgaben, zuvor waren ${getKnownCount("tasks")} bekannt.\n\nBitte prüfe in Google Sheets den Versionsverlauf (Datei → Versionsverlauf) oder stelle ein Backup wieder her, bevor du neue Einträge anlegst.`);
+  }
 }
 async function loadCalendars(){
   try{
@@ -553,20 +613,36 @@ async function loadCalendars(){
 function colLetter(n){ let s=""; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
 
 /* ---- Speichern (komplette Bereiche neu schreiben) ---- */
+/* ---- Bekannte Datenmengen (Schutz vor versehentlichem Leer-Überschreiben) ---- */
+function getKnownCount(k){ try{ return (JSON.parse(localStorage.getItem("counts")||"{}"))[k]||0; }catch(e){ return 0; } }
+function setKnownCount(k,v){ try{ const c=JSON.parse(localStorage.getItem("counts")||"{}"); c[k]=v; localStorage.setItem("counts",JSON.stringify(c)); }catch(e){} }
+function guardEmpty(k, len, label){
+  if(len===0 && getKnownCount(k)>2){
+    if(!confirm(`Achtung: Es sind aktuell keine ${label} geladen, zuvor waren aber ${getKnownCount(k)} gespeichert. Beim Speichern würden alle ${label} aus der Tabelle entfernt.\n\nWirklich fortfahren?`)){
+      throw new Error("Speichern abgebrochen (Schutz vor Datenverlust)");
+    }
+  }
+}
+
+/* ---- Speichern: erst schreiben, dann nur überzählige alte Zeilen entfernen ---- */
 async function saveTasks(){
+  guardEmpty("tasks", tasks.length, "Aufgaben");
   const last=colLetter(TASK_COLS.length);
-  await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2:${last}10000:clear`,{method:"POST",body:"{}"});
   const values=tasks.map(t=>TASK_COLS.map(c=>{
     const v=t[c]; return typeof v==="boolean"?String(v):(v==null?"":String(v));
   }));
   if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values})});
+  await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A${2+values.length}:${last}10000:clear`,{method:"POST",body:"{}"});
+  setKnownCount("tasks", tasks.length);
 }
 async function saveLogs(){
-  await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000:clear`,{method:"POST",body:"{}"});
+  guardEmpty("logs", logs.length, "Erledigungs-Einträge");
   const values=logs.map(l=>LOG_COLS.map(c=>l[c]||""));
   if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Log!A2?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values})});
+  await api(`${SHEETS}/${spreadsheetId}/values/Log!A${2+values.length}:C10000:clear`,{method:"POST",body:"{}"});
+  setKnownCount("logs", logs.length);
 }
 
 /* ============ KALENDER-SYNC ============ */
@@ -666,6 +742,7 @@ async function saveProjects(){
     throw new Error(msg);
   }
   try{
+    guardEmpty("projects", projects.length, "Projekte");
     // Stelle sicher, dass Projects-Tab existiert
     const ss=await api(`${SHEETS}/${spreadsheetId}?fields=sheets(properties(title))`);
     const titles=(ss.sheets||[]).map(s=>s.properties?.title||"");
@@ -685,6 +762,7 @@ async function saveProjects(){
     console.log("  Speichere zu:",url);
     const resp=await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
     console.log("✅ saveProjects OK, Antwort:",resp);
+    setKnownCount("projects", projects.length);
     toast("Projekte gespeichert ✓");
     return resp;
   }catch(e){
@@ -1280,6 +1358,22 @@ function render(){
         <button class="icon-btn" id="reloadBtn">Neu laden</button>
       </div>
       
+      <div class="section-title">Sicherung</div>
+      <div class="card">
+        <div class="body">
+          <div class="title">Backup der Google-Tabelle</div>
+          <div class="sub">Automatisch alle ${BACKUP_DAYS} Tage beim App-Start, ${BACKUP_KEEP} Kopien werden behalten. <span id="lastBackupInfo">Letztes Backup wird geprüft…</span></div>
+        </div>
+        <button class="icon-btn" id="backupNowBtn">Jetzt sichern</button>
+      </div>
+      <div class="card">
+        <div class="body">
+          <div class="title">JSON-Export</div>
+          <div class="sub">Lädt alle Daten als Datei aufs Gerät (unabhängig von Google)</div>
+        </div>
+        <button class="icon-btn" id="exportJsonBtn">Exportieren</button>
+      </div>
+      
       <div class="section-title">Verwaltung</div>
       <div class="card">
         <div class="body">
@@ -1302,6 +1396,12 @@ function render(){
     `;
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
     $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); setSync("on"); render(); toast("Aktualisiert"); };
+    $("backupNowBtn").onclick=()=>createBackup(true).then(()=>{ if(view==="settings") render(); });
+    $("exportJsonBtn").onclick=exportJSON;
+    listBackups().then(files=>{
+      const el=$("lastBackupInfo"); if(!el) return;
+      el.textContent=files.length?("Letztes Backup: "+files[0].name.replace(BACKUP_PREFIX,"")):"Noch kein Backup vorhanden.";
+    }).catch(()=>{ const el=$("lastBackupInfo"); if(el) el.textContent=""; });
     $("signoutBtn").onclick=signOut;
     $("resetSheetBtn").onclick=async()=>{
       if(!confirm("⚠️ ACHTUNG:\nDies wird die aktuelle Tabelle LÖSCHEN und eine neue erstellen!\nAlle Daten gehen verloren!\n\nWirklich fortfahren?")) return;
@@ -1337,6 +1437,7 @@ async function saveNotes(){
     throw new Error(msg);
   }
   try{
+    guardEmpty("notes", notes.length, "Notizen");
     // Stelle sicher, dass Notes-Tab existiert
     const ss=await api(`${SHEETS}/${spreadsheetId}?fields=sheets(properties(title))`);
     const titles=(ss.sheets||[]).map(s=>s.properties?.title||"");
@@ -1356,6 +1457,7 @@ async function saveNotes(){
     console.log("  Speichere zu:",url);
     const resp=await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
     console.log("✅ saveNotes OK, Antwort:",resp);
+    setKnownCount("notes", notes.length);
     toast("Notizen gespeichert ✓");
     return resp;
   }catch(e){
@@ -1381,6 +1483,7 @@ async function loadNotes(){
 }
 async function saveLinks(){
   console.log("💾 saveLinks START, Anzahl:",links.length);
+  guardEmpty("links", links.length, "Links");
   try{
     const json=JSON.stringify(links);
     const url=`${SHEETS}/${spreadsheetId}/values/Links!A1?valueInputOption=RAW`;
@@ -1389,7 +1492,7 @@ async function saveLinks(){
     console.log("  Versuch 1: Speichern...");
     try{
       await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
-      console.log("✅ saveLinks OK (Versuch 1)");
+      console.log("✅ saveLinks OK (Versuch 1)"); setKnownCount("links", links.length);
       toast("Links gespeichert ✓");
       return;
     }catch(err){
@@ -1410,7 +1513,7 @@ async function saveLinks(){
         console.log("  Versuch 2: Nach 1s erneut speichern...");
         await new Promise(r=>setTimeout(r,1000));
         await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
-        console.log("✅ saveLinks OK (Versuch 2)");
+        console.log("✅ saveLinks OK (Versuch 2)"); setKnownCount("links", links.length);
         toast("Links gespeichert ✓");
         return;
       }
@@ -1815,6 +1918,9 @@ async function bootData(){
     
     console.log("5️⃣ loadGTasks...");
     await loadGTasks();
+    
+    console.log("6️⃣ autoBackupIfDue (im Hintergrund)...");
+    autoBackupIfDue();
     
     setSync("on");
     $("acctBtn").textContent="Verbunden";

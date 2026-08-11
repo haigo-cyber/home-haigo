@@ -65,7 +65,10 @@
   .fab{position:fixed;right:calc(50% - 280px + 16px);bottom:78px;width:54px;height:54px;border-radius:50%;
     background:var(--accent2);color:#fff;border:none;font-size:28px;cursor:pointer;
     box-shadow:0 6px 18px rgba(0,0,0,.4);z-index:6}
-  @media(max-width:592px){.fab{right:16px}}
+  .fab-quick{position:fixed;right:calc(50% - 280px + 16px);bottom:142px;width:46px;height:46px;border-radius:50%;
+    background:var(--green);color:#fff;border:none;font-size:20px;cursor:pointer;
+    box-shadow:0 6px 18px rgba(0,0,0,.4);z-index:6}
+  @media(max-width:592px){.fab{right:16px}.fab-quick{right:20px}}
 
   nav{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--surface);
     border-top:1px solid var(--line);display:flex;max-width:560px;margin:0 auto;
@@ -123,6 +126,7 @@
     <button class="icon-btn" id="acctBtn">Anmelden</button>
   </header>
   <main id="main"></main>
+  <button class="fab-quick" id="fabQuick" style="display:none" title="Schnell erfassen">⚡</button>
   <button class="fab" id="fab" style="display:none">+</button>
   <nav id="nav" style="display:none">
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
@@ -133,6 +137,7 @@
     <button data-view="habits"><span class="nico">🔥</span>Gewohn.</button>
     <button data-view="duties"><span class="nico">🔁</span>Pflicht</button>
     <button data-view="todos"><span class="nico">✓</span>ToDos</button>
+    <button data-view="migrate"><span class="nico">↪️</span>Offen</button>
     <button data-view="stats"><span class="nico">📊</span>Statistik</button>
     <button data-view="settings"><span class="nico">⚙️</span>Konto</button>
   </nav>
@@ -170,6 +175,7 @@ let gtasksStatus = "";                                    // Diagnose-Text fürs
 let goalTasks = [];                                       // heutige Tagesziele (offen + heute erledigt) aus Google Tasks
 let defaultGTaskListId = "";                              // ID der Standard-Aufgabenliste
 const GOAL_MARKER = "[Tagesziel]";                        // Kennzeichnung von Zielen in den Notizen
+const INBOX_MARKER = "[Posteingang]";                     // Kennzeichnung schnell erfasster, noch nicht einsortierter Einträge
 let defaultCalId = localStorage.getItem("defcal") || "primary";
 
 /* ============ HILFEN ============ */
@@ -232,16 +238,7 @@ function initTokenClient(){
       client_id: CLIENT_ID, scope: SCOPES,
       callback: (resp)=>{
         console.log("📱 Token Callback:", resp);
-        if(resp && resp.access_token){
-          accessToken=resp.access_token;
-          // Token lokal speichern, damit ein Neustart innerhalb der Gültigkeit ohne Anmeldung auskommt
-          const ttl=(resp.expires_in?parseInt(resp.expires_in):3600);
-          try{
-            localStorage.setItem("gtok", accessToken);
-            localStorage.setItem("gtok_exp", String(Date.now()+(ttl-60)*1000)); // 60 s Sicherheitspuffer
-          }catch(e){}
-          if(tokenResolve) tokenResolve(resp);
-        }
+        if(resp && resp.access_token){ accessToken=resp.access_token; if(tokenResolve) tokenResolve(resp); }
         else if(tokenReject) tokenReject(resp);
         tokenResolve=tokenReject=null;
       },
@@ -422,60 +419,6 @@ async function deleteSheet(id){
     console.warn("deleteSheet Fehler:",e.message);
   }
 }
-/* ============ BACKUP ============ */
-const BACKUP_PREFIX="ToDo Backup ";
-const BACKUP_KEEP=5;      // so viele Kopien werden behalten
-const BACKUP_DAYS=7;      // Abstand des automatischen Backups
-async function listBackups(){
-  const q=encodeURIComponent(`name contains '${BACKUP_PREFIX}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`);
-  const res=await api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,createdTime)&orderBy=createdTime desc`);
-  return (res.files||[]);
-}
-async function createBackup(manual){
-  if(!spreadsheetId){ if(manual) toast("Keine Tabelle vorhanden"); return; }
-  setSync("busy");
-  try{
-    const name=BACKUP_PREFIX+todayKey();
-    await api(`https://www.googleapis.com/drive/v3/files/${spreadsheetId}/copy`,
-      {method:"POST",body:JSON.stringify({name})});
-    // Alte Kopien aufräumen, nur die neuesten BACKUP_KEEP behalten
-    const files=await listBackups();
-    for(const f of files.slice(BACKUP_KEEP)){
-      try{ await api(`https://www.googleapis.com/drive/v3/files/${f.id}`,{method:"DELETE"}); }catch(e){}
-    }
-    console.log("✅ Backup erstellt:",name);
-    setSync("on");
-    if(manual) toast("Backup erstellt: "+name);
-    return name;
-  }catch(e){
-    console.error("❌ Backup fehlgeschlagen:",e.message);
-    setSync("on");
-    if(manual) alert("Backup fehlgeschlagen:\n"+e.message);
-  }
-}
-async function autoBackupIfDue(){
-  try{
-    const files=await listBackups();
-    const newest=files[0];
-    if(!newest || (Date.now()-new Date(newest.createdTime).getTime())>BACKUP_DAYS*86400000){
-      const name=await createBackup(false);
-      if(name) toast("Wöchentliches Backup erstellt");
-    }else{
-      console.log("Backup aktuell, letztes:",newest.name);
-    }
-  }catch(e){ console.warn("autoBackup:",e.message); }
-}
-function exportJSON(){
-  const data={exportedAt:new Date().toISOString(), spreadsheetId, tasks, logs, projects, notes, links};
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="todo-export-"+todayKey()+".json";
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-  toast("JSON-Export heruntergeladen");
-}
-
 async function createSheet(){
   const ss=await api(SHEETS,{method:"POST",body:JSON.stringify({
     properties:{title:SHEET_NAME},
@@ -590,12 +533,6 @@ async function loadAll(){
   // Notizen: JSON von Notes!A1 laden
   await loadNotes();
   await loadLinks();
-  // Zähler nur bei vorhandenen Daten aktualisieren; leere Ladungen lassen den Schutz aktiv
-  [["tasks",tasks.length],["logs",logs.length],["projects",projects.length],["notes",notes.length],["links",links.length]]
-    .forEach(([k,n])=>{ if(n>0) setKnownCount(k,n); });
-  if(tasks.length===0 && getKnownCount("tasks")>2){
-    alert(`Hinweis: Die Tabelle enthält keine Aufgaben, zuvor waren ${getKnownCount("tasks")} bekannt.\n\nBitte prüfe in Google Sheets den Versionsverlauf (Datei → Versionsverlauf) oder stelle ein Backup wieder her, bevor du neue Einträge anlegst.`);
-  }
 }
 async function loadCalendars(){
   try{
@@ -613,36 +550,20 @@ async function loadCalendars(){
 function colLetter(n){ let s=""; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
 
 /* ---- Speichern (komplette Bereiche neu schreiben) ---- */
-/* ---- Bekannte Datenmengen (Schutz vor versehentlichem Leer-Überschreiben) ---- */
-function getKnownCount(k){ try{ return (JSON.parse(localStorage.getItem("counts")||"{}"))[k]||0; }catch(e){ return 0; } }
-function setKnownCount(k,v){ try{ const c=JSON.parse(localStorage.getItem("counts")||"{}"); c[k]=v; localStorage.setItem("counts",JSON.stringify(c)); }catch(e){} }
-function guardEmpty(k, len, label){
-  if(len===0 && getKnownCount(k)>2){
-    if(!confirm(`Achtung: Es sind aktuell keine ${label} geladen, zuvor waren aber ${getKnownCount(k)} gespeichert. Beim Speichern würden alle ${label} aus der Tabelle entfernt.\n\nWirklich fortfahren?`)){
-      throw new Error("Speichern abgebrochen (Schutz vor Datenverlust)");
-    }
-  }
-}
-
-/* ---- Speichern: erst schreiben, dann nur überzählige alte Zeilen entfernen ---- */
 async function saveTasks(){
-  guardEmpty("tasks", tasks.length, "Aufgaben");
   const last=colLetter(TASK_COLS.length);
+  await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2:${last}10000:clear`,{method:"POST",body:"{}"});
   const values=tasks.map(t=>TASK_COLS.map(c=>{
     const v=t[c]; return typeof v==="boolean"?String(v):(v==null?"":String(v));
   }));
   if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values})});
-  await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A${2+values.length}:${last}10000:clear`,{method:"POST",body:"{}"});
-  setKnownCount("tasks", tasks.length);
 }
 async function saveLogs(){
-  guardEmpty("logs", logs.length, "Erledigungs-Einträge");
+  await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000:clear`,{method:"POST",body:"{}"});
   const values=logs.map(l=>LOG_COLS.map(c=>l[c]||""));
   if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Log!A2?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values})});
-  await api(`${SHEETS}/${spreadsheetId}/values/Log!A${2+values.length}:C10000:clear`,{method:"POST",body:"{}"});
-  setKnownCount("logs", logs.length);
 }
 
 /* ============ KALENDER-SYNC ============ */
@@ -724,6 +645,13 @@ async function updateTask(id, data){
   await saveTasks();
   setSync("on"); render();
 }
+async function migrateTask(id, when){
+  const t=tasks.find(x=>x.id===id); if(!t) return;
+  const startDate = when==="today" ? todayKey() : nextDayKey(todayKey());
+  const wd=parseDate(startDate);
+  await updateTask(id, {startDate, weekday: wd?String(wd.getDay()):""});
+  toast(when==="today"?"Auf heute geholt":"Auf morgen geschoben");
+}
 async function deleteTask(id){
   setSync("busy");
   const t=tasks.find(x=>x.id===id);
@@ -742,7 +670,6 @@ async function saveProjects(){
     throw new Error(msg);
   }
   try{
-    guardEmpty("projects", projects.length, "Projekte");
     // Stelle sicher, dass Projects-Tab existiert
     const ss=await api(`${SHEETS}/${spreadsheetId}?fields=sheets(properties(title))`);
     const titles=(ss.sheets||[]).map(s=>s.properties?.title||"");
@@ -762,7 +689,6 @@ async function saveProjects(){
     console.log("  Speichere zu:",url);
     const resp=await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
     console.log("✅ saveProjects OK, Antwort:",resp);
-    setKnownCount("projects", projects.length);
     toast("Projekte gespeichert ✓");
     return resp;
   }catch(e){
@@ -874,21 +800,28 @@ async function toggleDone(id, key){
 /* ============ RENDERING ============ */
 function checkSvg(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'; }
 
+function isInboxTask(t){ return (t.notes||"").includes(INBOX_MARKER); }
 function taskCard(t,{showCheck=true, key=todayKey(), oneTime=false}={}){
   const done=oneTime?isEverDone(t.id):isDone(t.id,key);
   const toggleKey=oneTime?"once":key;
+  const inbox=isInboxTask(t);
   const cal=t.syncCalendar?'<span class="badge cal">📆 Kalender</span>':'';
-  const notes=t.notes?`<details class="note-detail"><summary style="color:#000">📝 ${t.notes.length} Zeichen</summary><div class="note-text" style="color:#000">${esc(t.notes)}</div></details>`:'';
+  const cleanNotes=(t.notes||"").replace(INBOX_MARKER,"").trim();
+  const notes=cleanNotes?`<details class="note-detail"><summary style="color:#000">📝 ${cleanNotes.length} Zeichen</summary><div class="note-text" style="color:#000">${esc(cleanNotes)}</div></details>`:'';
   const urgency=t.startDate?urgencyBar(urgencyDays(t.startDate)):'';
+  const inboxBadge=inbox?'<span class="badge" style="background:#d4f1c5;color:#000">⚡ unsortiert</span>':'';
+  const projObj=t.projectId?projects.find(p=>p.id===t.projectId):null;
+  const projBadge=projObj?`<span class="badge">🎯 ${esc(projObj.name)}</span>`:'';
   return `<div class="card${done?' done':''}">
     ${showCheck?`<div class="check${done?' on':''}" data-toggle="${t.id}" data-key="${toggleKey}">${checkSvg()}</div>`:''}
     <div class="body">
       <div class="title" style="color:#000">${esc(t.title)}</div>
       ${urgency}
-      <div class="sub" style="color:#000"><span>${esc(scheduleLabel(t))}</span>${cal}</div>
+      <div class="sub" style="color:#000"><span>${esc(scheduleLabel(t))}</span>${cal}${projBadge}${inboxBadge}</div>
       ${notes}
     </div>
     <div class="row-actions">
+      ${inbox?`<button class="mini" data-sort="${t.id}" title="Einsortieren">➜ Einsortieren</button>`:''}
       <button class="mini" data-edit="${t.id}">Bearb.</button>
       <button class="mini" data-del="${t.id}">🗑</button>
     </div>
@@ -1071,9 +1004,10 @@ function sortTasksByDateAndTime(tasks){
 
 function render(){
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",stats:"Statistik",settings:"Konto"};
+  const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",settings:"Konto"};
   $("hTitle").textContent=titles[view]||"ToDo";
-  $("fab").style.display=(view==="today"||view==="settings"||view==="stats")?"none":"block";
+  $("fab").style.display=(view==="today"||view==="settings"||view==="stats"||view==="migrate")?"none":"block";
+  $("fabQuick").style.display=(view==="settings")?"none":"block";
   const active=tasks.filter(t=>!t.archived);
 
   if(view==="today"){
@@ -1174,6 +1108,48 @@ function render(){
     if(goalTasks.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,goalTasks.length);
     main.innerHTML=h;
   }
+  else if(view==="migrate"){
+    const today=todayKey();
+    // Überfällige, noch offene ToDos (einmalige Aufgaben mit Datum in der Vergangenheit)
+    const overdue=active.filter(t=>t.type==="todo" && t.startDate && t.startDate<today && !isEverDone(t.id) && !isInboxTask(t))
+      .sort((a,b)=>a.startDate.localeCompare(b.startDate));
+    // ToDos ohne Datum
+    const undated=active.filter(t=>t.type==="todo" && !t.startDate && !isEverDone(t.id) && !isInboxTask(t));
+    const inbox=active.filter(t=>isInboxTask(t) && !isEverDone(t.id));
+    let h=`<p class="muted" style="font-size:13px;margin-bottom:10px">Geh die offenen Punkte durch: einsortieren, auf heute holen, auf morgen schieben, erledigen oder verwerfen.</p>`;
+    if(inbox.length){
+      h+=`<div class="section-title">⚡ Posteingang – noch einsortieren (${inbox.length})</div>`;
+      h+=inbox.map(t=>taskCard(t,{showCheck:true,key:today,oneTime:true})).join("");
+    }
+    if(!overdue.length && !undated.length && !inbox.length){
+      h+=empty("Nichts Offenes. Alles aufgeräumt. 🎉");
+    }else{
+      const row=(t,label)=>`<div class="card">
+        <div class="body">
+          <div class="title" style="color:#000">${esc(t.title)}</div>
+          <div class="sub" style="color:#000">${label}</div>
+        </div>
+        <div class="row-actions">
+          <button class="mini" data-mig-today="${t.id}" title="Auf heute">Heute</button>
+          <button class="mini" data-mig-tomorrow="${t.id}" title="Auf morgen">Morgen</button>
+          <button class="mini" data-mig-done="${t.id}" title="Erledigt">✓</button>
+          <button class="mini" data-mig-drop="${t.id}" title="Verwerfen">🗑</button>
+        </div>
+      </div>`;
+      if(overdue.length){
+        h+=`<div class="section-title">Überfällig (${overdue.length})</div>`;
+        overdue.forEach(t=>{
+          const days=Math.round((parseDate(today)-parseDate(t.startDate))/86400000);
+          h+=row(t,`seit ${days} ${days===1?"Tag":"Tagen"} · ${new Date(t.startDate).toLocaleDateString("de-DE",{day:"numeric",month:"short"})}`);
+        });
+      }
+      if(undated.length){
+        h+=`<div class="section-title">Ohne Datum (${undated.length})</div>`;
+        undated.forEach(t=>h+=row(t,"kein Termin"));
+      }
+    }
+    main.innerHTML=h;
+  }
   else if(view==="stats"){
     const byId={}; tasks.forEach(t=>byId[t.id]=t);
     const today=todayKey();
@@ -1227,6 +1203,13 @@ function render(){
     const projItems=Object.keys(byProj).map(n=>({label:n,value:byProj[n]})).sort((a,b)=>b.value-a.value).slice(0,8);
     h+= projItems.length? statBars(projItems,"#ff9800") : `<div class="muted center" style="padding:8px">Noch keine Projekt-Erledigungen</div>`;
 
+    h+=`<div class="section-title">Bericht erstellen</div>
+      <div class="seg">
+        <button data-report="7">7 Tage</button>
+        <button data-report="30">30 Tage</button>
+        <button data-report="90">90 Tage</button>
+      </div>`;
+
     main.innerHTML=h;
   }
   else if(view==="projects"){
@@ -1248,9 +1231,10 @@ function render(){
     if(!proj){ console.log("  ❌ Projekt nicht gefunden, zurück zu projects"); view="projects"; render(); return; }
     const key=todayKey();
     const projTodos=tasks.filter(t=>t.projectId===selectedProjectId && !t.archived);
-    console.log("  Todos für dieses Projekt:", projTodos.length);
-    const open=sortTasksByDateAndTime(projTodos.filter(t=>!isEverDone(t.id)));
-    const done=sortTasksByDateAndTime(projTodos.filter(t=>isEverDone(t.id)));
+    console.log("  Aufgaben für dieses Projekt:", projTodos.length);
+    const isTaskDone=(t)=> t.type==="todo" ? isEverDone(t.id) : isDone(t.id,key);
+    const open=sortTasksByDateAndTime(projTodos.filter(t=>!isTaskDone(t)));
+    const done=sortTasksByDateAndTime(projTodos.filter(t=>isTaskDone(t)));
     const projNotes=notes.filter(n=>n.projectId===selectedProjectId);
     console.log("  Notizen:", projNotes.length);
     const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
@@ -1265,10 +1249,10 @@ function render(){
         <div style="font-size:13px;margin-top:4px">Priorität: ${proj.priority}${proj.url?` • <a href="${esc(proj.url)}" target="_blank" rel="noopener" style="color:${textColor};text-decoration:underline">🔗 Link</a>`:''}</div>
       </div>
       <div class="section-title">Aufgaben</div>`;
-    if(!projTodos.length) h+=empty("Keine Todos in diesem Projekt.");
+    if(!projTodos.length) h+=empty("Keine Aufgaben in diesem Projekt.");
     else{
-      h+=open.length?open.map(t=>taskCard(t,{showCheck:true,key,oneTime:true})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
-      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{showCheck:true,key,oneTime:true})).join("");
+      h+=open.length?open.map(t=>taskCard(t,{showCheck:true,key,oneTime:t.type==="todo"})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
+      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{showCheck:true,key,oneTime:t.type==="todo"})).join("");
     }
     if(projNotes.length){
       h+=`<div class="section-title">Notizen</div>`;
@@ -1358,22 +1342,6 @@ function render(){
         <button class="icon-btn" id="reloadBtn">Neu laden</button>
       </div>
       
-      <div class="section-title">Sicherung</div>
-      <div class="card">
-        <div class="body">
-          <div class="title">Backup der Google-Tabelle</div>
-          <div class="sub">Automatisch alle ${BACKUP_DAYS} Tage beim App-Start, ${BACKUP_KEEP} Kopien werden behalten. <span id="lastBackupInfo">Letztes Backup wird geprüft…</span></div>
-        </div>
-        <button class="icon-btn" id="backupNowBtn">Jetzt sichern</button>
-      </div>
-      <div class="card">
-        <div class="body">
-          <div class="title">JSON-Export</div>
-          <div class="sub">Lädt alle Daten als Datei aufs Gerät (unabhängig von Google)</div>
-        </div>
-        <button class="icon-btn" id="exportJsonBtn">Exportieren</button>
-      </div>
-      
       <div class="section-title">Verwaltung</div>
       <div class="card">
         <div class="body">
@@ -1396,12 +1364,6 @@ function render(){
     `;
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
     $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); setSync("on"); render(); toast("Aktualisiert"); };
-    $("backupNowBtn").onclick=()=>createBackup(true).then(()=>{ if(view==="settings") render(); });
-    $("exportJsonBtn").onclick=exportJSON;
-    listBackups().then(files=>{
-      const el=$("lastBackupInfo"); if(!el) return;
-      el.textContent=files.length?("Letztes Backup: "+files[0].name.replace(BACKUP_PREFIX,"")):"Noch kein Backup vorhanden.";
-    }).catch(()=>{ const el=$("lastBackupInfo"); if(el) el.textContent=""; });
     $("signoutBtn").onclick=signOut;
     $("resetSheetBtn").onclick=async()=>{
       if(!confirm("⚠️ ACHTUNG:\nDies wird die aktuelle Tabelle LÖSCHEN und eine neue erstellen!\nAlle Daten gehen verloren!\n\nWirklich fortfahren?")) return;
@@ -1437,7 +1399,6 @@ async function saveNotes(){
     throw new Error(msg);
   }
   try{
-    guardEmpty("notes", notes.length, "Notizen");
     // Stelle sicher, dass Notes-Tab existiert
     const ss=await api(`${SHEETS}/${spreadsheetId}?fields=sheets(properties(title))`);
     const titles=(ss.sheets||[]).map(s=>s.properties?.title||"");
@@ -1457,7 +1418,6 @@ async function saveNotes(){
     console.log("  Speichere zu:",url);
     const resp=await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
     console.log("✅ saveNotes OK, Antwort:",resp);
-    setKnownCount("notes", notes.length);
     toast("Notizen gespeichert ✓");
     return resp;
   }catch(e){
@@ -1483,7 +1443,6 @@ async function loadNotes(){
 }
 async function saveLinks(){
   console.log("💾 saveLinks START, Anzahl:",links.length);
-  guardEmpty("links", links.length, "Links");
   try{
     const json=JSON.stringify(links);
     const url=`${SHEETS}/${spreadsheetId}/values/Links!A1?valueInputOption=RAW`;
@@ -1492,7 +1451,7 @@ async function saveLinks(){
     console.log("  Versuch 1: Speichern...");
     try{
       await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
-      console.log("✅ saveLinks OK (Versuch 1)"); setKnownCount("links", links.length);
+      console.log("✅ saveLinks OK (Versuch 1)");
       toast("Links gespeichert ✓");
       return;
     }catch(err){
@@ -1513,7 +1472,7 @@ async function saveLinks(){
         console.log("  Versuch 2: Nach 1s erneut speichern...");
         await new Promise(r=>setTimeout(r,1000));
         await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
-        console.log("✅ saveLinks OK (Versuch 2)"); setKnownCount("links", links.length);
+        console.log("✅ saveLinks OK (Versuch 2)");
         toast("Links gespeichert ✓");
         return;
       }
@@ -1623,6 +1582,225 @@ async function deleteLink(id){
   }
 }
 
+/* ---- Bericht erstellen ---- */
+function buildReport(days){
+  const byId={}; tasks.forEach(t=>byId[t.id]=t);
+  const projName={}; projects.forEach(p=>projName[p.id]=p.name);
+  const today=todayKey();
+  const from=(()=>{ const d=new Date(); d.setDate(d.getDate()-(days-1)); return dateKey(d); })();
+  const rel=logs.filter(l=>l.date>=from && l.date<=today);
+  const fmt=(k)=>new Date(k).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"});
+  const typeLabel={habit:"Gewohnheit",duty:"Pflichtaufgabe",todo:"ToDo",goal:"Tagesziel"};
+
+  let out=`BERICHT ${fmt(from)} bis ${fmt(today)} (${days} Tage)\n`;
+  out+=`Erstellt am ${new Date().toLocaleString("de-DE")}\n`;
+  out+=`${"=".repeat(46)}\n\n`;
+  out+=`ZUSAMMENFASSUNG\n`;
+  out+=`Erledigte Eintraege gesamt: ${rel.length}\n`;
+  const activeDays=new Set(rel.map(l=>l.date)).size;
+  out+=`Aktive Tage: ${activeDays} von ${days}\n`;
+  out+=`Durchschnitt pro Tag: ${(rel.length/days).toFixed(1)}\n\n`;
+
+  // Nach Bereich
+  const byType={};
+  rel.forEach(l=>{ const t=byId[l.itemId]; const k=t?t.type:"unbekannt"; byType[k]=(byType[k]||0)+1; });
+  out+=`NACH BEREICH\n`;
+  Object.keys(byType).sort((a,b)=>byType[b]-byType[a]).forEach(k=>{
+    out+=`  ${(typeLabel[k]||k).padEnd(18)} ${byType[k]}\n`;
+  });
+  out+=`\n`;
+
+  // Nach Projekt
+  const byProj={};
+  rel.forEach(l=>{ const t=byId[l.itemId]; if(t&&t.projectId){ const n=projName[t.projectId]||"(unbekannt)"; byProj[n]=(byProj[n]||0)+1; } });
+  const projKeys=Object.keys(byProj).sort((a,b)=>byProj[b]-byProj[a]);
+  out+=`NACH PROJEKT\n`;
+  out+= projKeys.length? projKeys.map(n=>`  ${n.padEnd(24)} ${byProj[n]}\n`).join("") : `  (keine Projektzuordnungen)\n`;
+  out+=`\n`;
+
+  // Chronologisch
+  out+=`ERLEDIGT IM DETAIL\n`;
+  const byDate={};
+  rel.forEach(l=>{ (byDate[l.date]=byDate[l.date]||[]).push(l); });
+  Object.keys(byDate).sort().reverse().forEach(d=>{
+    out+=`\n${fmt(d)}\n`;
+    byDate[d].forEach(l=>{
+      const t=byId[l.itemId];
+      const title=t?t.title:"(geloeschter Eintrag)";
+      const typ=t?(typeLabel[t.type]||t.type):"";
+      const proj=(t&&t.projectId&&projName[t.projectId])?` [${projName[t.projectId]}]`:"";
+      out+=`  - ${title}${proj}${typ?` (${typ})`:""}\n`;
+    });
+  });
+  out+=`\n`;
+
+  // Offene Punkte
+  const openTodos=tasks.filter(t=>!t.archived && t.type==="todo" && !isEverDone(t.id));
+  const overdue=openTodos.filter(t=>t.startDate && t.startDate<today);
+  out+=`${"=".repeat(46)}\n`;
+  out+=`OFFEN ZUM STICHTAG\n`;
+  out+=`Offene ToDos: ${openTodos.length}, davon ueberfaellig: ${overdue.length}\n`;
+  if(overdue.length){
+    overdue.sort((a,b)=>a.startDate.localeCompare(b.startDate)).forEach(t=>{
+      out+=`  - ${t.title} (faellig ${fmt(t.startDate)})\n`;
+    });
+  }
+  const openProj=projects.filter(p=>!p.archived);
+  out+=`\nAktive Projekte: ${openProj.length}\n`;
+  openProj.sort((a,b)=>b.priority-a.priority).forEach(p=>{
+    const n=tasks.filter(t=>t.projectId===p.id && !t.archived && !isEverDone(t.id)).length;
+    out+=`  - ${p.name} (Prio ${p.priority}, ${n} offene ToDos)\n`;
+  });
+  return out;
+}
+
+function openReport(days){
+  const text=buildReport(days);
+  main.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>Bericht (${days} Tage)</h2>
+      <textarea id="r_text" readonly style="width:100%;height:280px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:monospace;font-size:11px;resize:vertical;white-space:pre"></textarea>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="r_close">Schliessen</button>
+        <button class="btn-ghost" id="r_copy">Kopieren</button>
+        <button class="btn-primary" id="r_dl">Herunterladen</button>
+      </div>
+    </div></div>`);
+  $("r_text").value=text;
+  $("r_close").onclick=()=>$("modalBg").remove();
+  $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  $("r_copy").onclick=async()=>{
+    try{ await navigator.clipboard.writeText(text); toast("In die Zwischenablage kopiert"); }
+    catch(e){ const ta=$("r_text"); ta.removeAttribute("readonly"); ta.select(); toast("Text markiert - bitte manuell kopieren"); }
+  };
+  $("r_dl").onclick=()=>{
+    const blob=new Blob([text],{type:"text/plain;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download=`Bericht_${todayKey()}_${days}Tage.txt`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    toast("Bericht heruntergeladen");
+  };
+}
+
+/* ---- Einsortieren: schnell erfassten Eintrag einem Ziel/Typ/Projekt zuordnen ---- */
+function openSortForm(id){
+  const t=tasks.find(x=>x.id===id); if(!t){ toast("Eintrag nicht gefunden"); return; }
+  const projOpts=projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority)
+    .map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  main.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>➜ Einsortieren</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">${esc(t.title)}</p>
+      <label>Wohin?</label>
+      <div class="seg" id="s_target">
+        <button data-t="todo" class="sel">ToDo</button>
+        <button data-t="duty">Pflicht</button>
+        <button data-t="habit">Gewohnheit</button>
+        <button data-t="goal">Tagesziel</button>
+        <button data-t="note">Notiz</button>
+      </div>
+      <div id="s_projWrap" style="margin-top:10px">
+        <label>Projekt (optional)</label>
+        <select id="s_proj" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px">
+          <option value="">— kein Projekt —</option>${projOpts}
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="s_cancel">Abbrechen</button>
+        <button class="btn-primary" id="s_save">Übernehmen</button>
+      </div>
+    </div></div>`);
+
+  let target="todo";
+  $("s_target").querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    $("s_target").querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
+    b.classList.add("sel"); target=b.dataset.t;
+    // Projektzuordnung für alle Aufgabentypen, nicht für Ziele (Google Tasks)
+    $("s_projWrap").style.display=(target==="goal")?"none":"block";
+  });
+  $("s_cancel").onclick=()=>$("modalBg").remove();
+  $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+
+  const sortSave=async()=>{
+    const cleanNotes=(t.notes||"").replace(INBOX_MARKER,"").trim();
+    $("modalBg").remove();
+    if(target==="goal"){
+      await addGoalTask(t.title);
+      await deleteTask(id);
+      return;
+    }
+    if(target==="note"){
+      await addNote({text:t.title+(cleanNotes?"\n\n"+cleanNotes:"")});
+      await deleteTask(id);
+      return;
+    }
+    const data={notes:cleanNotes, type:target};
+    const sp=$("s_proj"); data.projectId=sp?sp.value:"";
+    if(target==="habit"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); }
+    if(target==="duty"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); }
+    if(target==="todo"){
+      data.scheduleType=t.scheduleType||"once";
+      data.startDate=t.startDate||"";
+    }
+    await updateTask(id, data);
+    toast("Einsortiert");
+  };
+  $("s_save").onclick=sortSave;
+  $("modalBg").addEventListener("keydown",(e)=>{ if(e.key==="Enter"){ e.preventDefault(); sortSave(); } });
+}
+
+/* ---- Schnellerfassung (Rapid Logging) ---- */
+function openQuickAdd(){
+  main.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>⚡ Schnell erfassen</h2>
+      <input type="text" id="q_text" placeholder="Was ist zu tun?" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:15px">
+      <div class="seg" id="q_when" style="margin-top:10px">
+        <button data-w="today" class="sel">Heute</button>
+        <button data-w="tomorrow">Morgen</button>
+        <button data-w="none">Ohne Datum</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:8px">Wird als ToDo angelegt. Details kannst du später ergänzen.</p>
+      <label>Projekt (optional)</label>
+      <select id="q_proj" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface2);color:var(--text)">
+        <option value="">— kein Projekt —</option>
+        ${projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}
+      </select>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="q_cancel">Abbrechen</button>
+        <button class="btn-primary" id="q_save">Speichern</button>
+      </div>
+    </div></div>`);
+
+  let when="today";
+  $("q_when").querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    $("q_when").querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
+    b.classList.add("sel"); when=b.dataset.w;
+  });
+  $("q_cancel").onclick=()=>$("modalBg").remove();
+  $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+
+  const quickSave=async()=>{
+    const title=$("q_text").value.trim();
+    if(!title){ toast("Text fehlt"); return; }
+    let startDate="";
+    if(when==="today") startDate=todayKey();
+    else if(when==="tomorrow") startDate=nextDayKey(todayKey());
+    const data={type:"todo", title, syncCalendar:false, scheduleType:"once", startDate, notes:INBOX_MARKER};
+    const qp=$("q_proj"); if(qp && qp.value) data.projectId=qp.value;
+    if(startDate){ const wd=parseDate(startDate); data.weekday=wd?String(wd.getDay()):""; }
+    $("modalBg").remove();
+    await addTask(data);
+  };
+  $("q_save").onclick=quickSave;
+  $("modalBg").addEventListener("keydown",(e)=>{
+    if(e.key==="Enter"){ e.preventDefault(); quickSave(); }
+  });
+  setTimeout(()=>{ const q=$("q_text"); if(q) q.focus(); },50);
+}
+
 function openForm(type, existing){
   const t=existing||{};
   const isEdit=!!existing;
@@ -1648,20 +1826,20 @@ function openForm(type, existing){
   }
   if(type==="todo"){
     const weekly=t.scheduleType==="weekly";
-    const curProj=(isEdit && t.projectId) ? t.projectId : "";
-    const projSelect=`<label>Projekt (optional)</label>
-      <select id="f_proj">
-        <option value="">— kein Projekt —</option>
-        ${projects.filter(p=>!p.archived).map(p=>`<option value="${esc(p.id)}" ${p.id===curProj?"selected":""}>${esc(p.name)}</option>`).join("")}
-      </select>`;
     typeFields=`<label>Titel</label><input type="text" id="f_title" value="${esc(t.title||"")}" placeholder="z. B. Klassenarbeit korrigieren">
       <label>Datum (optional)</label><input type="date" id="f_start" value="${t.startDate||""}">
       <label>Uhrzeit (optional)</label><input type="time" id="f_time" value="${t.startTime||""}">
-      ${projSelect}
       <div class="toggle-row"><div><div style="font-size:14px">Wöchentlich wiederholen</div>
         <div class="muted" style="font-size:12px" id="wdHint"></div></div>
         <button class="switch ${weekly?"on":""}" id="f_weekly"></button></div>`;
   }
+  // Projektzuordnung für alle Aufgabentypen (außer Tagesziele, die in Google Tasks liegen)
+  const curProj=(isEdit && t.projectId) ? t.projectId : "";
+  const projSelect = (type==="goal") ? "" : `<label>Projekt (optional)</label>
+      <select id="f_proj" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px">
+        <option value="">— kein Projekt —</option>
+        ${projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority).map(p=>`<option value="${esc(p.id)}" ${p.id===curProj?"selected":""}>${esc(p.name)}</option>`).join("")}
+      </select>`;
   const sync = isEdit ? (t.syncCalendar!==false) : (type==="todo" ? false : DEFAULT_SYNC);
   const syncToggle = (type==="goal") ? "" : `<div class="toggle-row"><div><div style="font-size:14px">In Google Calendar</div>
     <div class="muted" style="font-size:12px">Termin synchronisieren</div></div>
@@ -1674,7 +1852,7 @@ function openForm(type, existing){
   main.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${isEdit?"Bearbeiten":"Neu: "+titleTxt}</h2>
-      ${typeFields}${syncToggle}${calSelect}
+      ${typeFields}${projSelect}${syncToggle}${calSelect}
       <label>Notizen (optional)</label><textarea id="f_notes" placeholder="Zusätzliche Infos..." style="width:100%;min-height:60px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.notes||"")}</textarea>
       <div class="modal-actions">
         <button class="btn-ghost" id="f_cancel">Abbrechen</button>
@@ -1707,8 +1885,9 @@ function openForm(type, existing){
     if(type==="duty"){ data.scheduleType=segSel.v; data.startDate=$("f_start").value; }
     if(type==="todo"){ data.startDate=$("f_start").value;
       data.scheduleType=weeklyBtn.classList.contains("on")?"weekly":"once";
-      const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):"";
-      const fp=$("f_proj"); if(fp && fp.value) data.projectId=fp.value; }
+      const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):""; }
+    // Projektzuordnung gilt für alle Aufgabentypen; leere Auswahl hebt sie auf
+    const fp=$("f_proj"); if(fp) data.projectId=fp.value||"";
     const ft=$("f_time"); if(ft && ft.value) data.startTime=ft.value;
     const cs=$("f_cal"); if(cs) data.calendarId=cs.value;
     const fn=$("f_notes"); if(fn && fn.value.trim()) data.notes=fn.value.trim();
@@ -1845,6 +2024,7 @@ function openLinkForm(existing){
 
 /* ============ EVENTS ============ */
 $("nav").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b){ view=b.dataset.view; render(); }});
+$("fabQuick").addEventListener("click",openQuickAdd);
 $("fab").addEventListener("click",()=>{
   if(view==="goals"){
     if(goalTasks.length>=4){ toast("Maximal 4 Tages-Ziele"); return; }
@@ -1857,6 +2037,12 @@ $("fab").addEventListener("click",()=>{
 });
 main.addEventListener("click",e=>{
   const tg=e.target.closest("[data-toggle]"); if(tg){ toggleDone(tg.dataset.toggle, tg.dataset.key); return; }
+  const rep=e.target.closest("[data-report]"); if(rep){ openReport(parseInt(rep.dataset.report)); return; }
+  const srt=e.target.closest("[data-sort]"); if(srt){ openSortForm(srt.dataset.sort); return; }
+  const mTod=e.target.closest("[data-mig-today]"); if(mTod){ migrateTask(mTod.dataset.migToday,"today"); return; }
+  const mTom=e.target.closest("[data-mig-tomorrow]"); if(mTom){ migrateTask(mTom.dataset.migTomorrow,"tomorrow"); return; }
+  const mDone=e.target.closest("[data-mig-done]"); if(mDone){ toggleDone(mDone.dataset.migDone,"once"); return; }
+  const mDrop=e.target.closest("[data-mig-drop]"); if(mDrop){ if(confirm("Diesen Punkt verwerfen?")) deleteTask(mDrop.dataset.migDrop); return; }
   const gt=e.target.closest("[data-gtask]"); if(gt){ completeGTask(gt.dataset.gtask); return; }
   const guc=e.target.closest("[data-guncheck]"); if(guc){ uncompleteGTask(guc.dataset.guncheck); return; }
   const gdl=e.target.closest("[data-gdel]"); if(gdl){ if(confirm("Ziel wirklich löschen?")) deleteGTask(gdl.dataset.gdel); return; }
@@ -1919,9 +2105,6 @@ async function bootData(){
     console.log("5️⃣ loadGTasks...");
     await loadGTasks();
     
-    console.log("6️⃣ autoBackupIfDue (im Hintergrund)...");
-    autoBackupIfDue();
-    
     setSync("on");
     $("acctBtn").textContent="Verbunden";
     $("nav").style.display="flex";
@@ -1930,10 +2113,7 @@ async function bootData(){
   }catch(e){
     console.error("❌ bootData FEHLER:",e.message);
     alert("Anmeldung fehlgeschlagen:\n"+e.message);
-    localStorage.removeItem("gtok"); localStorage.removeItem("gtok_exp");
-    accessToken=null;
     setSync("off");
-    showSignin();
   }
 }
 async function signIn(){
@@ -1945,7 +2125,6 @@ async function signIn(){
 function signOut(){
   if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
   accessToken=null; tasks=[]; logs=[];
-  localStorage.removeItem("gtok"); localStorage.removeItem("gtok_exp");
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";
   $("acctBtn").textContent="Anmelden"; setSync("");
@@ -1971,17 +2150,7 @@ $("acctBtn").addEventListener("click",()=>{ if(accessToken) view="settings",rend
     try{
       initTokenClient(); 
       console.log("✅ tokenClient initialized");
-      // Gespeichertes Token prüfen: falls noch gültig, ohne Anmeldedialog starten
-      const tok=localStorage.getItem("gtok");
-      const exp=parseInt(localStorage.getItem("gtok_exp")||"0");
-      if(tok && exp>Date.now()){
-        console.log("🔑 Gültiges gespeichertes Token gefunden, starte direkt");
-        accessToken=tok;
-        bootData();
-      }else{
-        if(tok){ localStorage.removeItem("gtok"); localStorage.removeItem("gtok_exp"); }
-        showSignin();
-      }
+      showSignin();
     }catch(e){
       console.error("❌ Init-Fehler:", e);
       showSignin();

@@ -41,30 +41,23 @@
   .dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
   .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
   .toolbar h2{flex:1;margin:0;font-size:18px;min-width:150px;}
-  .node{background:transparent;border-radius:0;padding:0;margin-bottom:0;border-left:none;display:flex;flex-direction:column;}
-  .node-row{display:flex;align-items:center;gap:3px;padding:4px 0;position:relative;height:26px;}
-  .node-expand{width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);font-size:11px;flex-shrink:0;user-select:none;}
-  .node-expand:hover{opacity:0.7;}
-  .node-expand.leaf{visibility:hidden;}
-  .node-badge{flex-shrink:0;height:20px;display:flex;align-items:center;}
-  .node-title{flex:1;font-size:12px;cursor:pointer;padding:2px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
-  .node-actions{display:flex;gap:2px;flex-shrink:0;}
-  .node-actions button{padding:2px 5px;font-size:9px;border-radius:4px;}
-  .status-btn{cursor:pointer !important;}
-  .status-btn:hover{opacity:0.8;}
-  .progress-bar{width:100%;height:3px;background:var(--bg2);border-radius:1px;margin-top:2px;overflow:hidden;}
+  .node{background:var(--card);border-radius:6px;padding:6px 8px;margin-bottom:3px;border-left:3px solid;display:flex;flex-direction:column;gap:4px;}
+  .node-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .node-title{flex:1;font-size:12px;cursor:pointer;padding:1px 0;min-width:100px;}
+  .node-actions{display:flex;gap:3px;}
+  .node-actions button{padding:3px 6px;font-size:10px;border-radius:4px;}
+  .progress-bar{width:100%;height:4px;background:var(--bg2);border-radius:2px;overflow:hidden;}
   .progress-fill{height:100%;background:linear-gradient(90deg,var(--rot) 0%,var(--orange) 33%,var(--blau) 66%,var(--gruen) 100%);transition:width 0.2s;}
-  .status-offen{border-left:none;}
-  .status-begonnen{border-left:none;}
-  .status-weit{border-left:none;}
-  .status-fertig{border-left:none;opacity:1;}
-  .badge{font-size:9px;padding:2px 6px;border-radius:12px;font-weight:600;white-space:nowrap;}
+  .status-offen{border-left-color:var(--rot);}
+  .status-begonnen{border-left-color:var(--orange);}
+  .status-weit{border-left-color:var(--blau);}
+  .status-fertig{border-left-color:var(--gruen);}
+  .badge{font-size:9px;padding:2px 6px;border-radius:10px;font-weight:600;white-space:nowrap;}
   .badge-offen{background:rgba(239,68,68,0.25);color:var(--rot);}
   .badge-begonnen{background:rgba(249,115,22,0.25);color:var(--orange);}
   .badge-weit{background:rgba(59,130,246,0.25);color:var(--blau);}
   .badge-fertig{background:rgba(74,222,128,0.25);color:var(--gruen);}
-  .children{margin-left:12px;margin-top:0;border-left:1px solid var(--border);padding-left:0;}
-  .children.collapsed{display:none;}
+  .children{margin-left:16px;margin-top:4px;padding-left:8px;border-left:1px solid var(--border);}
   textarea{width:100%;min-height:400px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.5;}
   .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
   .next-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;}
@@ -448,21 +441,18 @@ function renderNode(node, isRoot){
   const pg = hasChildren ? nodeProgress(node) : 0;
   const pct = Math.round(pg * 100);
   const displayStatus = getNodeStatus(node);
-  const expandBtn = hasChildren ? `<div class="node-expand" data-nid="${node._id}" data-role="expand">▼</div>` : `<div class="node-expand leaf"></div>`;
-  const childrenHtml = hasChildren ? `<div class="children" data-nid="${node._id}" data-role="children">${inner}</div>` : "";
   const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
   const statusDisplay = hasChildren 
-    ? `<span class="badge badge-${displayStatus}" style="cursor:default">${STATUS_LABEL[displayStatus]} ${pct}%</span>`
-    : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}" title="Status wechseln">${STATUS_LABEL[displayStatus]}</button>`;
+    ? `<span class="badge badge-${displayStatus}">${STATUS_LABEL[displayStatus]} ${pct}%</span>`
+    : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}">${STATUS_LABEL[displayStatus]}</button>`;
   return `<div class="node status-${displayStatus}">
     <div class="node-row">
-      ${expandBtn}
-      <div class="node-badge">${statusDisplay}</div>
+      ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       <div class="node-actions">${addBtn}${delBtn}</div>
     </div>
     ${progressHtml}
-    ${childrenHtml}
+    ${hasChildren ? `<div class="children">${inner}</div>` : ""}
   </div>`;
 }
 
@@ -478,17 +468,6 @@ function getNodeStatus(node){
 }
 
 function bindNodeEvents(container){
-  container.querySelectorAll('[data-role="expand"]').forEach(el=>{
-    el.onclick = (ev)=>{
-      ev.stopPropagation();
-      const nid = el.dataset.nid;
-      const childrenDiv = container.querySelector(`[data-role="children"][data-nid="${nid}"]`);
-      if(childrenDiv){
-        childrenDiv.classList.toggle("collapsed");
-        el.textContent = childrenDiv.classList.contains("collapsed") ? "▶" : "▼";
-      }
-    };
-  });
   container.querySelectorAll('.status-btn').forEach(el=>{
     el.onclick = (ev)=>{
       ev.stopPropagation();

@@ -117,6 +117,8 @@
       <div class="toolbar">
         <button class="ghost" id="btnBack">Zurück</button>
         <h2 id="detailTitle"></h2>
+        <button class="ghost" id="btnZoomOut" title="Verkleinern">A−</button>
+        <button class="ghost" id="btnZoomIn" title="Vergrößern">A+</button>
         <button class="ghost" id="btnToggleRaw">Rohtext</button>
         <button class="danger" id="btnDeleteProject">Löschen</button>
       </div>
@@ -221,6 +223,10 @@ let tokenClient = null;
 let folderId = null;
 let projects = []; // {fileId, name, root, dirty}
 let currentProject = null;
+let nodeRegistry = {};
+function lsGet(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+let treeScale = parseFloat(lsGet("pf_treeScale","1")) || 1;
 
 /* ============ Google Auth ============ */
 window.addEventListener("load", ()=>{
@@ -426,6 +432,17 @@ function openProject(project){
   renderDetail();
 }
 
+function applyTreeScale(){
+  const tree = document.getElementById("treeView");
+  if(tree) tree.style.zoom = treeScale;
+}
+
+function changeZoom(delta){
+  treeScale = Math.min(2, Math.max(0.6, Math.round((treeScale + delta)*10)/10));
+  lsSet("pf_treeScale", String(treeScale));
+  applyTreeScale();
+}
+
 function renderDetail(){
   const root = currentProject.root;
   const top = root.children[0];
@@ -433,6 +450,7 @@ function renderDetail(){
   document.getElementById("donutWrap").innerHTML = donutHtml(pg,"big");
   const tree = document.getElementById("treeView");
   tree.innerHTML = top ? renderNode(top, true) : `<div class="center">Kein Inhalt. Nutze Rohtext, um eine Überschrift anzulegen.</div>`;
+  applyTreeScale();
   bindNodeEvents(tree);
 }
 
@@ -462,7 +480,6 @@ function renderNode(node, isRoot){
   </div>`;
 }
 
-let nodeRegistry = {};
 function registerNode(n){ nodeRegistry[n._id||(n._id=uid())] = n; }
 function uid(){ return "n"+Math.random().toString(36).slice(2,10); }
 function getNodeStatus(node){
@@ -567,6 +584,9 @@ document.getElementById("btnBack").onclick = ()=>{
   document.getElementById("tabOverview").classList.remove("hidden");
   renderOverview();
 };
+
+document.getElementById("btnZoomIn").onclick = ()=> changeZoom(0.1);
+document.getElementById("btnZoomOut").onclick = ()=> changeZoom(-0.1);
 
 /* ============ Neues Projekt ============ */
 document.getElementById("btnNewProject").onclick = async ()=>{

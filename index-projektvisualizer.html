@@ -41,23 +41,27 @@
   .dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
   .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
   .toolbar h2{flex:1;margin:0;font-size:18px;min-width:150px;}
-  .node{background:var(--card);border-radius:6px;padding:6px 8px;margin-bottom:3px;border-left:3px solid;display:flex;flex-direction:column;gap:4px;}
-  .node-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-  .node-title{flex:1;font-size:12px;cursor:pointer;padding:1px 0;min-width:100px;}
-  .node-actions{display:flex;gap:3px;}
+  .node{background:transparent;border:none;padding:0;margin-bottom:4px;border-left:none;display:flex;flex-direction:column;gap:2px;}
+  .node-indent-0 .node-row{padding-left:0;}
+  .node-indent-1 .node-row{padding-left:20px;}
+  .node-indent-2 .node-row{padding-left:40px;}
+  .node-indent-3 .node-row{padding-left:60px;}
+  .node-row{display:flex;align-items:center;gap:6px;position:relative;height:24px;}
+  .node-row::before{content:"▪";color:var(--muted);position:absolute;left:6px;font-size:10px;}
+  .node-indent-0 .node-row::before{display:none;}
+  .node-title{flex:1;font-size:12px;cursor:pointer;padding:0 0 0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .node-actions{display:flex;gap:3px;flex-shrink:0;}
   .node-actions button{padding:3px 6px;font-size:10px;border-radius:4px;}
-  .progress-bar{width:100%;height:4px;background:var(--bg2);border-radius:2px;overflow:hidden;}
+  .progress-bar{width:100%;height:3px;background:var(--bg2);border-radius:1px;overflow:hidden;margin-left:12px;margin-right:60px;}
   .progress-fill{height:100%;background:linear-gradient(90deg,var(--rot) 0%,var(--orange) 33%,var(--blau) 66%,var(--gruen) 100%);transition:width 0.2s;}
-  .status-offen{border-left-color:var(--rot);}
-  .status-begonnen{border-left-color:var(--orange);}
-  .status-weit{border-left-color:var(--blau);}
-  .status-fertig{border-left-color:var(--gruen);}
-  .badge{font-size:9px;padding:2px 6px;border-radius:10px;font-weight:600;white-space:nowrap;}
-  .badge-offen{background:rgba(239,68,68,0.25);color:var(--rot);}
-  .badge-begonnen{background:rgba(249,115,22,0.25);color:var(--orange);}
-  .badge-weit{background:rgba(59,130,246,0.25);color:var(--blau);}
-  .badge-fertig{background:rgba(74,222,128,0.25);color:var(--gruen);}
-  .children{margin-left:16px;margin-top:4px;padding-left:8px;border-left:1px solid var(--border);}
+  .status-btn{cursor:pointer !important;font-size:8px;padding:1px 4px;}
+  .status-btn:hover{opacity:0.8;}
+  .badge{font-size:8px;padding:1px 4px;border-radius:6px;font-weight:600;white-space:nowrap;}
+  .badge-offen{background:rgba(239,68,68,0.3);color:var(--rot);}
+  .badge-begonnen{background:rgba(249,115,22,0.3);color:var(--orange);}
+  .badge-weit{background:rgba(59,130,246,0.3);color:var(--blau);}
+  .badge-fertig{background:rgba(74,222,128,0.3);color:var(--gruen);}
+  .children{display:flex;flex-direction:column;gap:0;margin-top:2px;border-left:1px solid var(--border);padding-left:0;margin-left:8px;}
   textarea{width:100%;min-height:400px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.5;}
   .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
   .next-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;}
@@ -441,18 +445,20 @@ function renderNode(node, isRoot){
   const pg = hasChildren ? nodeProgress(node) : 0;
   const pct = Math.round(pg * 100);
   const displayStatus = getNodeStatus(node);
-  const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
+  const indent = isRoot ? 0 : node.level;
   const statusDisplay = hasChildren 
-    ? `<span class="badge badge-${displayStatus}">${STATUS_LABEL[displayStatus]} ${pct}%</span>`
+    ? `<span class="badge badge-${displayStatus}">${pct}%</span>`
     : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}">${STATUS_LABEL[displayStatus]}</button>`;
-  return `<div class="node status-${displayStatus}">
+  const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
+  const childrenHtml = hasChildren ? `<div class="children">${inner}</div>` : "";
+  return `<div class="node node-indent-${indent}">
     <div class="node-row">
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       <div class="node-actions">${addBtn}${delBtn}</div>
     </div>
     ${progressHtml}
-    ${hasChildren ? `<div class="children">${inner}</div>` : ""}
+    ${childrenHtml}
   </div>`;
 }
 

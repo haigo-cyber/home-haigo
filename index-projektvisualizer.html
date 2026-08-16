@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Projekt-Fortschritt</title>
+<style>
+  :root{
+    --bg:#12141a; --bg2:#191c24; --card:#1e222c; --border:#2b3040;
+    --text:#e8eaf0; --muted:#8b93a7;
+    --rot:#ef4444; --orange:#f97316; --blau:#3b82f6; --gruen:#4ade80;
+    --accent:#6d8dfc;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  header{position:sticky;top:0;z-index:10;background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  header h1{font-size:17px;margin:0;flex:1;min-width:120px;}
+  button{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:14px;cursor:pointer;}
+  button:active{transform:scale(0.97);}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#0c1120;font-weight:600;}
+  button.danger{border-color:var(--rot);color:var(--rot);}
+  button.ghost{background:transparent;}
+  main{padding:16px;max-width:900px;margin:0 auto;padding-bottom:80px;}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;}
+  .tabs button{flex:1;}
+  .tabs button.active{background:var(--accent);color:#0c1120;border-color:var(--accent);font-weight:600;}
+  .hidden{display:none !important;}
+  .center{text-align:center;color:var(--muted);padding:40px 10px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;cursor:pointer;display:flex;align-items:center;gap:14px;}
+  .card:active{transform:scale(0.98);}
+  .card .info{flex:1;min-width:0;}
+  .card h3{margin:0 0 4px;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .card .sub{color:var(--muted);font-size:12px;}
+  .donut{width:56px;height:56px;border-radius:50%;flex:none;position:relative;}
+  .donut .hole{position:absolute;inset:7px;background:var(--card);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;}
+  .donut-big{width:120px;height:120px;margin:0 auto;}
+  .donut-big .hole{inset:16px;background:var(--bg2);font-size:20px;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin:10px 0 6px;font-size:12px;color:var(--muted);}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+  .toolbar h2{flex:1;margin:0;font-size:18px;min-width:150px;}
+  .node{border-left:4px solid var(--border);background:var(--card);border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+  .node-row{display:flex;align-items:center;gap:8px;}
+  .node-title{flex:1;font-size:14px;cursor:pointer;padding:2px 0;}
+  .node-actions{display:flex;gap:6px;}
+  .node-actions button{padding:5px 9px;font-size:12px;border-radius:8px;}
+  .status-offen{border-left-color:var(--rot);}
+  .status-begonnen{border-left-color:var(--orange);}
+  .status-weit{border-left-color:var(--blau);}
+  .status-fertig{border-left-color:var(--gruen);opacity:0.8;}
+  .badge{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;white-space:nowrap;}
+  .badge-offen{background:rgba(239,68,68,0.18);color:var(--rot);}
+  .badge-begonnen{background:rgba(249,115,22,0.18);color:var(--orange);}
+  .badge-weit{background:rgba(59,130,246,0.18);color:var(--blau);}
+  .badge-fertig{background:rgba(74,222,128,0.18);color:var(--gruen);}
+  .children{margin-left:16px;margin-top:8px;}
+  textarea{width:100%;min-height:400px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.5;}
+  .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  .next-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;}
+  .next-item .proj{color:var(--muted);font-size:11px;}
+  .login-box{max-width:340px;margin:60px auto;text-align:center;}
+  .login-box p{color:var(--muted);font-size:13px;}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .modal{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;max-width:420px;width:100%;}
+  .modal h3{margin-top:0;}
+  input[type=text],input[type=file]{width:100%;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:14px;}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border);padding:10px 16px;border-radius:10px;font-size:13px;z-index:60;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Projekt-Fortschritt</h1>
+  <span id="userLabel" class="sub" style="color:var(--muted);font-size:12px;"></span>
+  <button id="btnBackup" class="ghost hidden">Backup</button>
+  <button id="btnSignOut" class="ghost hidden">Abmelden</button>
+</header>
+
+<main>
+
+  <div id="loginView" class="login-box">
+    <p>Melde dich mit Google an, um deine Projekte aus Google Drive zu laden.</p>
+    <button class="primary" id="btnSignIn">Mit Google anmelden</button>
+  </div>
+
+  <div id="appView" class="hidden">
+
+    <div class="tabs">
+      <button id="tabOverviewBtn" class="active">Übersicht</button>
+      <button id="tabNextBtn">Nächste Schritte</button>
+    </div>
+
+    <div id="tabOverview">
+      <div class="toolbar">
+        <h2>Projekte</h2>
+        <button class="primary" id="btnNewProject">Neues Projekt</button>
+      </div>
+      <div id="projectGrid" class="grid"></div>
+      <div id="overviewEmpty" class="center hidden">Noch keine Projekte. Lege dein erstes Projekt an.</div>
+    </div>
+
+    <div id="tabNext" class="hidden">
+      <div class="toolbar"><h2>Nächste Schritte</h2></div>
+      <div id="nextList"></div>
+      <div id="nextEmpty" class="center hidden">Alles erledigt oder keine offenen Schritte.</div>
+    </div>
+
+    <div id="tabDetail" class="hidden">
+      <div class="toolbar">
+        <button class="ghost" id="btnBack">Zurück</button>
+        <h2 id="detailTitle"></h2>
+        <button class="ghost" id="btnToggleRaw">Rohtext</button>
+        <button class="danger" id="btnDeleteProject">Löschen</button>
+      </div>
+      <div id="donutWrap" class="center"></div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--rot)"></i>nicht begonnen</span>
+        <span><i class="dot" style="background:var(--orange)"></i>angefangen</span>
+        <span><i class="dot" style="background:var(--blau)"></i>weitgehend fertig</span>
+        <span><i class="dot" style="background:var(--gruen)"></i>abgeschlossen</span>
+      </div>
+      <div id="treeView"></div>
+      <div id="rawView" class="hidden">
+        <textarea id="rawText"></textarea>
+        <div class="row">
+          <button class="primary" id="btnSaveRaw">Speichern</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+"use strict";
+
+/* ============ Konfiguration ============ */
+const CLIENT_ID = "DEINE_CLIENT_ID.apps.googleusercontent.com"; // vor dem Deploy ersetzen
+const SCOPES = "https://www.googleapis.com/auth/drive.file";
+const FOLDER_NAME = "Projekt-Fortschritt";
+const APP_TAG = "projekt-fortschritt";
+
+/* ============ Status-Modell ============ */
+const STATUS_ORDER = ["offen","begonnen","weit","fertig"];
+const STATUS_LABEL = {offen:"nicht begonnen",begonnen:"angefangen",weit:"weitgehend fertig",fertig:"abgeschlossen"};
+const STATUS_COLOR = {offen:"var(--rot)",begonnen:"var(--orange)",weit:"var(--blau)",fertig:"var(--gruen)"};
+const STATUS_WEIGHT = {offen:0,begonnen:1/3,weit:2/3,fertig:1};
+
+function nextStatus(s){ const i = STATUS_ORDER.indexOf(s); return STATUS_ORDER[(i+1)%STATUS_ORDER.length]; }
+
+/* ============ Markdown Parsing / Serialisierung ============ */
+const HEAD_RE = /^(#{1,6})\s+(.*?)\s*(<!--status:(offen|begonnen|weit|fertig)-->)?\s*$/;
+
+function parseMarkdown(text){
+  const lines = (text||"").split(/\r?\n/);
+  const root = {level:0, title:"", status:"offen", body:[], children:[], parent:null};
+  const stack = [root];
+  for(const line of lines){
+    const m = line.match(HEAD_RE);
+    if(m){
+      const level = m[1].length;
+      const title = m[2].trim();
+      const status = m[4] || "offen";
+      const node = {level, title, status, body:[], children:[], parent:null};
+      while(stack.length && stack[stack.length-1].level >= level) stack.pop();
+      const parent = stack[stack.length-1];
+      node.parent = parent;
+      parent.children.push(node);
+      stack.push(node);
+    } else {
+      stack[stack.length-1].body.push(line);
+    }
+  }
+  return root;
+}
+
+function serializeMarkdown(root){
+  const out = [];
+  function walk(n){
+    if(n.level>0){
+      out.push("#".repeat(n.level)+" "+n.title+" <!--status:"+n.status+"-->");
+    }
+    n.body.forEach(l=>out.push(l));
+    n.children.forEach(walk);
+  }
+  walk(root);
+  // trailing leere Zeilen entfernen
+  while(out.length && out[out.length-1].trim()==="") out.pop();
+  return out.join("\n");
+}
+
+function nodeProgress(node){
+  if(node.children.length===0) return STATUS_WEIGHT[node.status];
+  const vals = node.children.map(nodeProgress);
+  return vals.reduce((a,b)=>a+b,0)/vals.length;
+}
+
+function collectLeaves(node, projName, out){
+  if(node.level>0 && node.children.length===0){
+    out.push({title:node.title, status:node.status, project:projName, node});
+  }
+  node.children.forEach(c=>collectLeaves(c, projName, out));
+}
+
+/* ============ Zustand ============ */
+let accessToken = null;
+let tokenClient = null;
+let folderId = null;
+let projects = []; // {fileId, name, root, dirty}
+let currentProject = null;
+
+/* ============ Google Auth ============ */
+window.addEventListener("load", ()=>{
+  const check = setInterval(()=>{
+    if(window.google && google.accounts && google.accounts.oauth2){
+      clearInterval(check);
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: async (resp)=>{
+          if(resp.error){ toast("Anmeldung fehlgeschlagen: "+resp.error); return; }
+          accessToken = resp.access_token;
+          await onSignedIn();
+        }
+      });
+    }
+  }, 200);
+});
+
+document.getElementById("btnSignIn").onclick = ()=> tokenClient.requestAccessToken();
+document.getElementById("btnSignOut").onclick = ()=>{
+  if(accessToken) google.accounts.oauth2.revoke(accessToken, ()=>{});
+  accessToken = null;
+  document.getElementById("appView").classList.add("hidden");
+  document.getElementById("loginView").classList.remove("hidden");
+  document.getElementById("btnSignOut").classList.add("hidden");
+  document.getElementById("btnBackup").classList.add("hidden");
+};
+
+async function onSignedIn(){
+  document.getElementById("loginView").classList.add("hidden");
+  document.getElementById("appView").classList.remove("hidden");
+  document.getElementById("btnSignOut").classList.remove("hidden");
+  document.getElementById("btnBackup").classList.remove("hidden");
+  await ensureFolder();
+  await loadAllProjects();
+  renderOverview();
+}
+
+/* ============ Drive Hilfsfunktionen ============ */
+async function driveFetch(url, opts={}){
+  opts.headers = Object.assign({}, opts.headers, {Authorization:"Bearer "+accessToken});
+  const r = await fetch(url, opts);
+  if(!r.ok){
+    const t = await r.text();
+    throw new Error("Drive-Fehler "+r.status+": "+t);
+  }
+  return r;
+}
+
+async function ensureFolder(){
+  const q = encodeURIComponent(`name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
+  const data = await r.json();
+  if(data.files && data.files.length){ folderId = data.files[0].id; return; }
+  const r2 = await driveFetch("https://www.googleapis.com/drive/v3/files", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name:FOLDER_NAME, mimeType:"application/vnd.google-apps.folder"})
+  });
+  const created = await r2.json();
+  folderId = created.id;
+}
+
+async function loadAllProjects(){
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed=false and mimeType='text/markdown'`);
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`);
+  const data = await r.json();
+  projects = [];
+  for(const f of (data.files||[])){
+    const content = await driveGetContent(f.id);
+    const root = parseMarkdown(content);
+    const title = (root.children[0] && root.children[0].title) || f.name.replace(/\.md$/,"");
+    projects.push({fileId:f.id, name:f.name, title, root});
+  }
+  projects.sort((a,b)=>a.title.localeCompare(b.title,"de"));
+}
+
+async function driveGetContent(fileId){
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  return await r.text();
+}
+
+async function driveCreateFile(name, content){
+  const boundary = "-----projfort"+Date.now();
+  const metadata = {name, parents:[folderId], mimeType:"text/markdown", appProperties:{app:APP_TAG}};
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`+
+    `--${boundary}\r\nContent-Type: text/markdown\r\n\r\n${content}\r\n--${boundary}--`;
+  const r = await driveFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
+    method:"POST",
+    headers:{"Content-Type":`multipart/related; boundary=${boundary}`},
+    body
+  });
+  const data = await r.json();
+  return data.id;
+}
+
+async function driveUpdateFile(fileId, content){
+  await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method:"PATCH",
+    headers:{"Content-Type":"text/markdown"},
+    body: content
+  });
+}
+
+async function driveDeleteFile(fileId){
+  await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {method:"DELETE"});
+}
+
+/* ============ Speichern (debounced) ============ */
+let saveTimer = null;
+function scheduleSave(project){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>saveProject(project), 600);
+}
+async function saveProject(project){
+  const content = serializeMarkdown(project.root);
+  try{
+    if(project.fileId){
+      await driveUpdateFile(project.fileId, content);
+    } else {
+      project.fileId = await driveCreateFile(project.name, content);
+    }
+    toast("Gespeichert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen");
+  }
+}
+
+/* ============ Rendering: Übersicht ============ */
+function donutHtml(pct, size){
+  const cls = size==="big" ? "donut donut-big" : "donut";
+  const p = Math.round(pct*100);
+  return `<div class="${cls}" style="background:conic-gradient(var(--gruen) 0% ${p}%, var(--rot) ${p}% 100%)">
+    <div class="hole">${p}%</div>
+  </div>`;
+}
+
+function renderOverview(){
+  const grid = document.getElementById("projectGrid");
+  const empty = document.getElementById("overviewEmpty");
+  if(projects.length===0){
+    grid.innerHTML = "";
+    empty.classList.remove("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+  grid.innerHTML = projects.map((p,i)=>{
+    const pg = p.root.children[0] ? nodeProgress(p.root.children[0]) : 0;
+    const leaves = [];
+    collectLeaves(p.root, p.title, leaves);
+    const open = leaves.filter(l=>l.status!=="fertig").length;
+    return `<div class="card" data-i="${i}">
+      ${donutHtml(pg,"small")}
+      <div class="info">
+        <h3>${escapeHtml(p.title)}</h3>
+        <div class="sub">${leaves.length} Punkte, ${open} offen</div>
+      </div>
+    </div>`;
+  }).join("");
+  [...grid.querySelectorAll(".card")].forEach(el=>{
+    el.onclick = ()=> openProject(projects[+el.dataset.i]);
+  });
+}
+
+/* ============ Rendering: Nächste Schritte ============ */
+function renderNext(){
+  const all = [];
+  projects.forEach(p=>{
+    const leaves = [];
+    collectLeaves(p.root, p.title, leaves);
+    leaves.forEach(l=>{ if(l.status!=="fertig") all.push({...l, project:p}); });
+  });
+  const prio = {begonnen:0, weit:1, offen:2};
+  all.sort((a,b)=> prio[a.status]-prio[b.status] || a.title.localeCompare(b.title,"de"));
+  const list = document.getElementById("nextList");
+  const empty = document.getElementById("nextEmpty");
+  if(all.length===0){ list.innerHTML=""; empty.classList.remove("hidden"); return; }
+  empty.classList.add("hidden");
+  list.innerHTML = all.map((item,i)=>`
+    <div class="next-item" data-i="${i}">
+      <span class="badge badge-${item.status}">${STATUS_LABEL[item.status]}</span>
+      <div style="flex:1">
+        <div>${escapeHtml(item.title)}</div>
+        <div class="proj">${escapeHtml(item.project.title)}</div>
+      </div>
+    </div>`).join("");
+  [...list.querySelectorAll(".next-item")].forEach(el=>{
+    el.onclick = ()=> openProject(all[+el.dataset.i].project);
+  });
+}
+
+/* ============ Rendering: Projektdetail ============ */
+function openProject(project){
+  currentProject = project;
+  document.getElementById("tabOverview").classList.add("hidden");
+  document.getElementById("tabNext").classList.add("hidden");
+  document.getElementById("tabDetail").classList.remove("hidden");
+  document.getElementById("rawView").classList.add("hidden");
+  document.getElementById("treeView").classList.remove("hidden");
+  document.getElementById("detailTitle").textContent = project.title;
+  renderDetail();
+}
+
+function renderDetail(){
+  const root = currentProject.root;
+  const top = root.children[0];
+  const pg = top ? nodeProgress(top) : 0;
+  document.getElementById("donutWrap").innerHTML = donutHtml(pg,"big");
+  const tree = document.getElementById("treeView");
+  tree.innerHTML = top ? renderNode(top, true) : `<div class="center">Kein Inhalt. Nutze Rohtext, um eine Überschrift anzulegen.</div>`;
+  bindNodeEvents(tree);
+}
+
+function renderNode(node, isRoot){
+  const inner = node.children.map(c=>renderNode(c,false)).join("");
+  const addBtn = `<button class="btnAdd" data-nid="${node._id=node._id||uid()}">+</button>`;
+  const delBtn = isRoot ? "" : `<button class="btnDel" data-nid="${node._id}">x</button>`;
+  registerNode(node);
+  return `<div class="node status-${node.status}">
+    <div class="node-row">
+      <span class="badge badge-${node.status}" data-nid="${node._id}" data-role="status">${STATUS_LABEL[node.status]}</span>
+      <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
+      <div class="node-actions">${addBtn}${delBtn}</div>
+    </div>
+    <div class="children">${inner}</div>
+  </div>`;
+}
+
+let nodeRegistry = {};
+function registerNode(n){ nodeRegistry[n._id||(n._id=uid())] = n; }
+function uid(){ return "n"+Math.random().toString(36).slice(2,10); }
+
+function bindNodeEvents(container){
+  container.querySelectorAll('[data-role="status"]').forEach(el=>{
+    el.onclick = ()=>{
+      const n = nodeRegistry[el.dataset.nid];
+      n.status = nextStatus(n.status);
+      renderDetail();
+      scheduleSave(currentProject);
+    };
+  });
+  container.querySelectorAll('[data-role="rename"]').forEach(el=>{
+    el.onclick = ()=>{
+      const n = nodeRegistry[el.dataset.nid];
+      const val = prompt("Titel", n.title);
+      if(val!==null && val.trim()!==""){ n.title = val.trim(); renderDetail(); scheduleSave(currentProject); }
+    };
+  });
+  container.querySelectorAll(".btnAdd").forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      const val = prompt("Titel des neuen Punkts");
+      if(val && val.trim()!==""){
+        const child = {level:n.level+1, title:val.trim(), status:"offen", body:[], children:[], parent:n};
+        n.children.push(child);
+        renderDetail();
+        scheduleSave(currentProject);
+      }
+    };
+  });
+  container.querySelectorAll(".btnDel").forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      if(!confirm('"'+n.title+'" inklusive Unterpunkte löschen?')) return;
+      const idx = n.parent.children.indexOf(n);
+      n.parent.children.splice(idx,1);
+      renderDetail();
+      scheduleSave(currentProject);
+    };
+  });
+}
+
+/* ============ Rohtext-Modus ============ */
+document.getElementById("btnToggleRaw").onclick = ()=>{
+  const raw = document.getElementById("rawView");
+  const tree = document.getElementById("treeView");
+  const donut = document.getElementById("donutWrap");
+  if(raw.classList.contains("hidden")){
+    document.getElementById("rawText").value = serializeMarkdown(currentProject.root);
+    raw.classList.remove("hidden");
+    tree.classList.add("hidden");
+    donut.classList.add("hidden");
+  } else {
+    raw.classList.add("hidden");
+    tree.classList.remove("hidden");
+    donut.classList.remove("hidden");
+  }
+};
+document.getElementById("btnSaveRaw").onclick = ()=>{
+  const text = document.getElementById("rawText").value;
+  currentProject.root = parseMarkdown(text);
+  currentProject.title = (currentProject.root.children[0] && currentProject.root.children[0].title) || currentProject.title;
+  document.getElementById("detailTitle").textContent = currentProject.title;
+  saveProject(currentProject);
+  document.getElementById("rawView").classList.add("hidden");
+  document.getElementById("treeView").classList.remove("hidden");
+  document.getElementById("donutWrap").classList.remove("hidden");
+  renderDetail();
+};
+
+/* ============ Navigation ============ */
+document.getElementById("tabOverviewBtn").onclick = ()=>{
+  document.getElementById("tabOverviewBtn").classList.add("active");
+  document.getElementById("tabNextBtn").classList.remove("active");
+  document.getElementById("tabOverview").classList.remove("hidden");
+  document.getElementById("tabNext").classList.add("hidden");
+  document.getElementById("tabDetail").classList.add("hidden");
+  renderOverview();
+};
+document.getElementById("tabNextBtn").onclick = ()=>{
+  document.getElementById("tabNextBtn").classList.add("active");
+  document.getElementById("tabOverviewBtn").classList.remove("active");
+  document.getElementById("tabNext").classList.remove("hidden");
+  document.getElementById("tabOverview").classList.add("hidden");
+  document.getElementById("tabDetail").classList.add("hidden");
+  renderNext();
+};
+document.getElementById("btnBack").onclick = ()=>{
+  document.getElementById("tabDetail").classList.add("hidden");
+  document.getElementById("tabOverview").classList.remove("hidden");
+  renderOverview();
+};
+
+/* ============ Neues Projekt ============ */
+document.getElementById("btnNewProject").onclick = async ()=>{
+  const title = prompt("Titel des neuen Projekts");
+  if(!title || !title.trim()) return;
+  const content = "# "+title.trim()+" <!--status:offen-->";
+  const fileName = slug(title)+".md";
+  try{
+    const fileId = await driveCreateFile(fileName, content);
+    const root = parseMarkdown(content);
+    const project = {fileId, name:fileName, title:title.trim(), root};
+    projects.push(project);
+    projects.sort((a,b)=>a.title.localeCompare(b.title,"de"));
+    renderOverview();
+    openProject(project);
+  }catch(e){ toast("Anlegen fehlgeschlagen"); }
+};
+
+document.getElementById("btnDeleteProject").onclick = async ()=>{
+  if(!currentProject) return;
+  if(!confirm('Projekt "'+currentProject.title+'" endgültig löschen?')) return;
+  try{
+    if(currentProject.fileId) await driveDeleteFile(currentProject.fileId);
+    projects = projects.filter(p=>p!==currentProject);
+    document.getElementById("tabDetail").classList.add("hidden");
+    document.getElementById("tabOverview").classList.remove("hidden");
+    renderOverview();
+  }catch(e){ toast("Löschen fehlgeschlagen"); }
+};
+
+/* ============ Backup ============ */
+document.getElementById("btnBackup").onclick = ()=> showBackupModal();
+
+function showBackupModal(){
+  document.getElementById("modalRoot").innerHTML = `
+    <div class="modal-bg" id="modalBg">
+      <div class="modal">
+        <h3>Backup</h3>
+        <p style="color:var(--muted);font-size:13px;">Sichert alle Projekte als eine Datei auf deinem Gerät, oder stellt aus einer solchen Datei wieder her. Bestehende Projekte werden dabei nicht überschrieben, nur fehlende ergänzt.</p>
+        <div class="row">
+          <button class="primary" id="btnDoBackup">Backup herunterladen</button>
+        </div>
+        <div class="row">
+          <input type="file" id="restoreFile" accept="application/json">
+        </div>
+        <div class="row">
+          <button id="btnDoRestore">Wiederherstellen</button>
+          <button class="ghost" id="btnCloseModal">Schließen</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById("btnCloseModal").onclick = ()=> document.getElementById("modalRoot").innerHTML="";
+  document.getElementById("btnDoBackup").onclick = doBackup;
+  document.getElementById("btnDoRestore").onclick = doRestore;
+}
+
+function doBackup(){
+  const data = {
+    type:"projekt-fortschritt-backup",
+    version:1,
+    created: new Date().toISOString(),
+    files: projects.map(p=>({name:p.name, content: serializeMarkdown(p.root)}))
+  };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "projekt-fortschritt-backup-"+new Date().toISOString().slice(0,10)+".json";
+  a.click();
+  URL.revokeObjectURL(url);
+  toast("Backup heruntergeladen");
+}
+
+async function doRestore(){
+  const input = document.getElementById("restoreFile");
+  if(!input.files || !input.files[0]){ toast("Keine Datei gewählt"); return; }
+  const text = await input.files[0].text();
+  let data;
+  try{ data = JSON.parse(text); }catch(e){ toast("Ungültige Datei"); return; }
+  if(!data.files){ toast("Ungültiges Format"); return; }
+  const existingNames = new Set(projects.map(p=>p.name));
+  let added = 0;
+  for(const f of data.files){
+    if(existingNames.has(f.name)) continue;
+    const fileId = await driveCreateFile(f.name, f.content);
+    const root = parseMarkdown(f.content);
+    const title = (root.children[0] && root.children[0].title) || f.name.replace(/\.md$/,"");
+    projects.push({fileId, name:f.name, title, root});
+    added++;
+  }
+  projects.sort((a,b)=>a.title.localeCompare(b.title,"de"));
+  document.getElementById("modalRoot").innerHTML = "";
+  renderOverview();
+  toast(added+" Projekt(e) wiederhergestellt");
+}
+
+/* ============ Hilfsfunktionen ============ */
+function escapeHtml(s){
+  return (s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function slug(s){
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"") || "projekt";
+}
+function toast(msg){
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = msg;
+  document.getElementById("toastRoot").appendChild(el);
+  setTimeout(()=>el.remove(), 2500);
+}
+</script>
+</body>
+</html>

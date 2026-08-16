@@ -442,11 +442,16 @@ function renderNode(node, isRoot){
   const hasChildren = node.children.length > 0;
   const pg = hasChildren ? nodeProgress(node) : 0;
   const pct = Math.round(pg * 100);
+  const displayStatus = getNodeStatus(node);
   const childrenHtml = hasChildren ? `<div class="children">${inner}</div>` : "";
   const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
-  return `<div class="node status-${node.status}">
+  const buttonClass = hasChildren ? "status-btn-disabled" : "status-btn";
+  const buttonHtml = hasChildren 
+    ? `<span class="badge badge-${displayStatus}" style="cursor:default">${STATUS_LABEL[displayStatus]} (${pct}%)</span>`
+    : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}" title="Status wechseln">${STATUS_LABEL[displayStatus]}</button>`;
+  return `<div class="node status-${displayStatus}">
     <div class="node-row">
-      <button class="status-btn badge badge-${node.status}" data-nid="${node._id}" title="Status wechseln">${STATUS_LABEL[node.status]}</button>
+      ${buttonHtml}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       <div class="node-actions">${addBtn}${delBtn}</div>
     </div>
@@ -457,7 +462,14 @@ function renderNode(node, isRoot){
 
 let nodeRegistry = {};
 function registerNode(n){ nodeRegistry[n._id||(n._id=uid())] = n; }
-function uid(){ return "n"+Math.random().toString(36).slice(2,10); }
+function getNodeStatus(node){
+  if(node.children.length === 0) return node.status;
+  const pg = nodeProgress(node);
+  if(pg < 0.25) return "offen";
+  if(pg < 0.5) return "begonnen";
+  if(pg < 0.75) return "weit";
+  return "fertig";
+}
 
 function bindNodeEvents(container){
   container.querySelectorAll('.status-btn').forEach(el=>{

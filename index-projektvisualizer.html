@@ -46,6 +46,8 @@
   .node-title{flex:1;font-size:13px;cursor:pointer;padding:1px 0;}
   .node-actions{display:flex;gap:4px;}
   .node-actions button{padding:4px 7px;font-size:11px;border-radius:6px;}
+  .status-btn{cursor:pointer !important;}
+  .status-btn:hover{opacity:0.8;}
   .progress-bar{width:100%;height:5px;background:var(--bg2);border-radius:2px;margin-top:4px;overflow:hidden;}
   .progress-fill{height:100%;background:linear-gradient(90deg,var(--rot) 0%,var(--orange) 33%,var(--blau) 66%,var(--gruen) 100%);transition:width 0.2s;}
   .status-offen{border-left-color:var(--rot);}
@@ -440,14 +442,16 @@ function renderNode(node, isRoot){
   const hasChildren = node.children.length > 0;
   const pg = hasChildren ? nodeProgress(node) : 0;
   const pct = Math.round(pg * 100);
+  const childrenHtml = hasChildren ? `<div class="children">${inner}</div>` : "";
+  const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
   return `<div class="node status-${node.status}">
     <div class="node-row">
-      <span class="badge badge-${node.status}" data-nid="${node._id}" data-role="status">${STATUS_LABEL[node.status]}</span>
+      <button class="status-btn badge badge-${node.status}" data-nid="${node._id}" title="Status wechseln">${STATUS_LABEL[node.status]}</button>
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       <div class="node-actions">${addBtn}${delBtn}</div>
     </div>
-    ${hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : ""}
-    ${hasChildren ? `<div class="children">${inner}</div>` : ""}
+    ${progressHtml}
+    ${childrenHtml}
   </div>`;
 }
 
@@ -456,8 +460,9 @@ function registerNode(n){ nodeRegistry[n._id||(n._id=uid())] = n; }
 function uid(){ return "n"+Math.random().toString(36).slice(2,10); }
 
 function bindNodeEvents(container){
-  container.querySelectorAll('[data-role="status"]').forEach(el=>{
-    el.onclick = ()=>{
+  container.querySelectorAll('.status-btn').forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
       const n = nodeRegistry[el.dataset.nid];
       n.status = nextStatus(n.status);
       renderDetail();

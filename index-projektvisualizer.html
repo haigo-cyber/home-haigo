@@ -67,6 +67,13 @@
   .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
   .next-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;}
   .next-item .proj{color:var(--muted);font-size:11px;}
+  .due-input{width:34px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:1px 3px;font-size:9px;flex:none;cursor:pointer;color-scheme:dark;}
+  .due-input:focus{width:auto;color:var(--text);outline:1px solid var(--accent);}
+  .due-input::-webkit-calendar-picker-indicator{filter:invert(0.6);cursor:pointer;}
+  .gt-dot{width:6px;height:6px;border-radius:50%;background:var(--gruen);flex:none;}
+  .gt-dot.off{background:var(--border);}
+  .due-chip{font-size:10px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;white-space:nowrap;flex:none;}
+  .due-chip.overdue{color:var(--rot);border-color:var(--rot);}
   .login-box{max-width:340px;margin:60px auto;text-align:center;}
   .login-box p{color:var(--muted);font-size:13px;}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
@@ -102,6 +109,7 @@
     <div id="tabOverview">
       <div class="toolbar">
         <h2>Projekte</h2>
+        <button class="ghost" id="btnSyncTasks" title="Erledigte aus der ToDo-App übernehmen und Termine nach Google Tasks schreiben">Google Tasks abgleichen</button>
         <button class="primary" id="btnNewProject">Neues Projekt</button>
       </div>
       <div id="projectGrid" class="grid"></div>
@@ -152,9 +160,12 @@
 
 /* ============ Konfiguration ============ */
 const CLIENT_ID = "22658520266-72537b3ef6bi63gmfaavt4r5snnjv0ln.apps.googleusercontent.com";
-const SCOPES = "https://www.googleapis.com/auth/drive.file";
+const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/tasks";
 const FOLDER_NAME = "Projekt-Fortschritt";
 const APP_TAG = "projekt-fortschritt";
+const GTASKS = "https://tasks.googleapis.com/tasks/v1";
+const GT_LIST = "@default";
+const GT_MARKER = "[Projekt-Visualizer]";
 
 /* ============ Status-Modell ============ */
 const STATUS_ORDER = ["offen","begonnen","weit","fertig"];
@@ -165,20 +176,34 @@ const STATUS_WEIGHT = {offen:0,begonnen:1/3,weit:2/3,fertig:1};
 function nextStatus(s){ const i = STATUS_ORDER.indexOf(s); return STATUS_ORDER[(i+1)%STATUS_ORDER.length]; }
 
 /* ============ Markdown Parsing / Serialisierung ============ */
-const HEAD_RE = /^(#{1,6})\s+(.*?)\s*(<!--status:(offen|begonnen|weit|fertig)-->)?\s*$/;
+const HEAD_RE = /^(#{1,6})\s+(.*)$/;
+const META_RE = /<!--\s*(status|due|gt):([^>]*?)-->/g;
+
+function parseHeadingLine(line){
+  const m = line.match(HEAD_RE);
+  if(!m) return null;
+  const level = m[1].length;
+  let rest = m[2];
+  const meta = {status:"offen", due:null, gtId:null};
+  rest = rest.replace(META_RE, (whole, key, val)=>{
+    val = (val||"").trim();
+    if(key==="status"){ if(STATUS_ORDER.includes(val)) meta.status = val; }
+    else if(key==="due"){ meta.due = val || null; }
+    else if(key==="gt"){ meta.gtId = val || null; }
+    return "";
+  });
+  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId};
+}
 
 function parseMarkdown(text){
   const lines = (text||"").split(/\r?\n/);
-  const root = {level:0, title:"", status:"offen", body:[], children:[], parent:null};
+  const root = {level:0, title:"", status:"offen", due:null, gtId:null, body:[], children:[], parent:null};
   const stack = [root];
   for(const line of lines){
-    const m = line.match(HEAD_RE);
-    if(m){
-      const level = m[1].length;
-      const title = m[2].trim();
-      const status = m[4] || "offen";
-      const node = {level, title, status, body:[], children:[], parent:null};
-      while(stack.length && stack[stack.length-1].level >= level) stack.pop();
+    const h = parseHeadingLine(line);
+    if(h){
+      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, body:[], children:[], parent:null};
+      while(stack.length && stack[stack.length-1].level >= node.level) stack.pop();
       const parent = stack[stack.length-1];
       node.parent = parent;
       parent.children.push(node);
@@ -194,7 +219,10 @@ function serializeMarkdown(root){
   const out = [];
   function walk(n){
     if(n.level>0){
-      out.push("#".repeat(n.level)+" "+n.title+" <!--status:"+n.status+"-->");
+      let line = "#".repeat(n.level)+" "+n.title+" <!--status:"+n.status+"-->";
+      if(n.due) line += " <!--due:"+n.due+"-->";
+      if(n.gtId) line += " <!--gt:"+n.gtId+"-->";
+      out.push(line);
     }
     n.body.forEach(l=>out.push(l));
     n.children.forEach(walk);
@@ -265,6 +293,7 @@ async function onSignedIn(){
   await ensureFolder();
   await loadAllProjects();
   renderOverview();
+  syncTasks(true);
 }
 
 /* ============ Drive Hilfsfunktionen ============ */
@@ -358,6 +387,106 @@ async function saveProject(project){
   }
 }
 
+/* ============ Google Tasks Anbindung ============ */
+async function gtApi(path, opts={}, allow404=false){
+  opts.headers = Object.assign({}, opts.headers, {Authorization:"Bearer "+accessToken});
+  const r = await fetch(GTASKS+path, opts);
+  if(r.status===404 && allow404) return null;
+  if(!r.ok){ const t = await r.text(); throw new Error("Tasks-Fehler "+r.status+": "+t); }
+  if(r.status===204) return null;
+  return await r.json();
+}
+function dueToRfc(date){ return date ? new Date(date+"T00:00:00.000Z").toISOString() : undefined; }
+
+async function gtCreate(node, projectTitle){
+  const body = {title: node.title || "(ohne Titel)", notes: GT_MARKER+" "+projectTitle};
+  if(node.due) body.due = dueToRfc(node.due);
+  const t = await gtApi("/lists/"+GT_LIST+"/tasks", {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)
+  });
+  return t.id;
+}
+async function gtUpdate(node, projectTitle){
+  const body = {id: node.gtId, title: node.title || "(ohne Titel)", notes: GT_MARKER+" "+projectTitle};
+  if(node.due) body.due = dueToRfc(node.due);
+  await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(node.gtId), {
+    method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)
+  });
+}
+async function gtComplete(gtId){
+  await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(gtId), {
+    method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({status:"completed"})
+  });
+}
+async function gtGet(gtId){
+  return await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(gtId), {}, true);
+}
+async function gtDelete(gtId){
+  await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(gtId), {method:"DELETE"}, true);
+}
+
+/* Einzelnes Blatt sofort mit Google Tasks abgleichen (bei Datum/Status-Änderung) */
+async function syncOne(node, project){
+  if(!accessToken) return;
+  try{
+    const isDone = node.status==="fertig";
+    if(node.due && !isDone){
+      if(!node.gtId){ node.gtId = await gtCreate(node, project.title); }
+      else { await gtUpdate(node, project.title); }
+      scheduleSave(project);
+    } else if(isDone && node.gtId){
+      await gtComplete(node.gtId);
+    }
+  }catch(e){ toast("Google-Tasks-Fehler"); }
+}
+
+/* Vollständiger Abgleich über alle Projekte: erledigte zurücklesen, offene mit Datum anlegen */
+let syncing = false;
+async function syncTasks(silent){
+  if(!accessToken || syncing) return;
+  syncing = true;
+  let pushed = 0, pulled = 0;
+  const changed = new Set();
+  try{
+    for(const p of projects){
+      const leaves = [];
+      collectLeaves(p.root, p.title, leaves);
+      for(const l of leaves){
+        const node = l.node;
+        // 1) Erledigt-Status aus Google Tasks zurücklesen
+        if(node.gtId){
+          const t = await gtGet(node.gtId);
+          if(t === null){
+            node.gtId = null; changed.add(p);       // Task wurde gelöscht: Verknüpfung lösen
+          } else if(t.status === "completed"){
+            if(node.status !== "fertig"){ node.status = "fertig"; pulled++; changed.add(p); }
+            continue;                                 // bereits erledigt: kein Push nötig
+          }
+        }
+        // 2) Offene Schritte mit Datum nach Google Tasks schieben
+        const isDone = node.status === "fertig";
+        if(node.due && !isDone){
+          if(!node.gtId){ node.gtId = await gtCreate(node, p.title); pushed++; changed.add(p); }
+          else { await gtUpdate(node, p.title); }
+        } else if(isDone && node.gtId){
+          await gtComplete(node.gtId);                // im Visualizer erledigt: Task abschließen
+        }
+      }
+    }
+    for(const p of changed){ await saveProject(p); }
+    if(!silent) toast("Sync: "+pushed+" neu, "+pulled+" erledigt übernommen");
+  }catch(e){
+    if(!silent) toast("Sync fehlgeschlagen");
+  }
+  syncing = false;
+  const detail = document.getElementById("tabDetail");
+  if(detail && !detail.classList.contains("hidden") && currentProject) renderDetail();
+  const nextTab = document.getElementById("tabNext");
+  if(nextTab && !nextTab.classList.contains("hidden")) renderNext();
+  const ovTab = document.getElementById("tabOverview");
+  if(ovTab && !ovTab.classList.contains("hidden")) renderOverview();
+}
+
 /* ============ Rendering: Übersicht ============ */
 function donutHtml(pct, size){
   const cls = size==="big" ? "donut donut-big" : "donut";
@@ -403,19 +532,32 @@ function renderNext(){
     leaves.forEach(l=>{ if(l.status!=="fertig") all.push({...l, project:p}); });
   });
   const prio = {begonnen:0, weit:1, offen:2};
-  all.sort((a,b)=> prio[a.status]-prio[b.status] || a.title.localeCompare(b.title,"de"));
+  const dueOf = x => (x.node && x.node.due) ? x.node.due : null;
+  all.sort((a,b)=>{
+    const da=dueOf(a), db=dueOf(b);
+    if(da && db) return da.localeCompare(db);
+    if(da) return -1;
+    if(db) return 1;
+    return prio[a.status]-prio[b.status] || a.title.localeCompare(b.title,"de");
+  });
+  const today = new Date().toISOString().slice(0,10);
   const list = document.getElementById("nextList");
   const empty = document.getElementById("nextEmpty");
   if(all.length===0){ list.innerHTML=""; empty.classList.remove("hidden"); return; }
   empty.classList.add("hidden");
-  list.innerHTML = all.map((item,i)=>`
-    <div class="next-item" data-i="${i}">
+  list.innerHTML = all.map((item,i)=>{
+    const due = dueOf(item);
+    const overdue = due && due < today;
+    const dueHtml = due ? `<span class="due-chip ${overdue?'overdue':''}">${fmtDate(due)}</span>` : "";
+    return `<div class="next-item" data-i="${i}">
       <span class="badge badge-${item.status}">${STATUS_LABEL[item.status]}</span>
       <div style="flex:1">
         <div>${escapeHtml(item.title)}</div>
         <div class="proj">${escapeHtml(item.project.title)}</div>
       </div>
-    </div>`).join("");
+      ${dueHtml}
+    </div>`;
+  }).join("");
   [...list.querySelectorAll(".next-item")].forEach(el=>{
     el.onclick = ()=> openProject(all[+el.dataset.i].project);
   });
@@ -468,12 +610,16 @@ function renderNode(node, isRoot){
   const statusDisplay = hasChildren 
     ? `<span class="badge badge-${displayStatus}">${pct}%</span>`
     : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}">${STATUS_LABEL[displayStatus]}</button>`;
+  const dueChip = hasChildren ? "" :
+    `<span class="gt-dot ${node.gtId?'':'off'}" title="${node.gtId?'in Google Tasks':'nicht in Google Tasks'}"></span>`+
+    `<input type="date" class="due-input" data-nid="${node._id}" value="${node.due||''}" title="Fälligkeitsdatum">`;
   const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
   const childrenHtml = hasChildren ? `<div class="children">${inner}</div>` : "";
   return `<div class="node node-indent-${indent}">
     <div class="node-row">
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
+      ${dueChip}
       <div class="node-actions">${addBtn}${delBtn}</div>
     </div>
     ${progressHtml}
@@ -494,12 +640,29 @@ function getNodeStatus(node){
 
 function bindNodeEvents(container){
   container.querySelectorAll('.status-btn').forEach(el=>{
-    el.onclick = (ev)=>{
+    el.onclick = async (ev)=>{
       ev.stopPropagation();
       const n = nodeRegistry[el.dataset.nid];
       n.status = nextStatus(n.status);
       renderDetail();
       scheduleSave(currentProject);
+      if(n.due || n.gtId){ await syncOne(n, currentProject); renderDetail(); }
+    };
+  });
+  container.querySelectorAll('.due-input').forEach(el=>{
+    el.onchange = async ()=>{
+      const n = nodeRegistry[el.dataset.nid];
+      const val = el.value; // "" oder "YYYY-MM-DD"
+      if(val){
+        n.due = val;
+        scheduleSave(currentProject);
+        await syncOne(n, currentProject);
+      } else {
+        n.due = null;
+        if(n.gtId){ try{ await gtDelete(n.gtId); }catch(e){} n.gtId = null; }
+        scheduleSave(currentProject);
+      }
+      renderDetail();
     };
   });
   container.querySelectorAll('[data-role="rename"]').forEach(el=>{
@@ -515,7 +678,10 @@ function bindNodeEvents(container){
       const n = nodeRegistry[el.dataset.nid];
       const val = prompt("Titel des neuen Punkts");
       if(val && val.trim()!==""){
-        const child = {level:n.level+1, title:val.trim(), status:"offen", body:[], children:[], parent:n};
+        // War n bisher ein Blatt mit Termin/Task, wird es jetzt Elternknoten: Task aufräumen
+        if(n.children.length===0 && n.gtId){ gtDelete(n.gtId).catch(()=>{}); }
+        if(n.children.length===0){ n.gtId=null; n.due=null; }
+        const child = {level:n.level+1, title:val.trim(), status:"offen", due:null, gtId:null, body:[], children:[], parent:n};
         n.children.push(child);
         renderDetail();
         scheduleSave(currentProject);
@@ -527,6 +693,9 @@ function bindNodeEvents(container){
       ev.stopPropagation();
       const n = nodeRegistry[el.dataset.nid];
       if(!confirm('"'+n.title+'" inklusive Unterpunkte löschen?')) return;
+      const ids = [];
+      (function collect(x){ if(x.gtId) ids.push(x.gtId); x.children.forEach(collect); })(n);
+      ids.forEach(id=> gtDelete(id).catch(()=>{}));
       const idx = n.parent.children.indexOf(n);
       n.parent.children.splice(idx,1);
       renderDetail();
@@ -588,6 +757,7 @@ document.getElementById("btnBack").onclick = ()=>{
 
 document.getElementById("btnZoomIn").onclick = ()=> changeZoom(0.1);
 document.getElementById("btnZoomOut").onclick = ()=> changeZoom(-0.1);
+document.getElementById("btnSyncTasks").onclick = ()=> syncTasks(false);
 
 /* ============ Neues Projekt ============ */
 document.getElementById("btnNewProject").onclick = async ()=>{
@@ -688,6 +858,7 @@ async function doRestore(){
 function escapeHtml(s){
   return (s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
+function fmtDate(iso){ if(!iso) return ""; const p=iso.split("-"); return p.length===3 ? p[2]+"."+p[1]+"."+p[0] : iso; }
 function slug(s){
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
     .replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"") || "projekt";

@@ -74,6 +74,9 @@
   .gt-dot.off{background:var(--border);}
   .due-chip{font-size:10px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;white-space:nowrap;flex:none;}
   .due-chip.overdue{color:var(--rot);border-color:var(--rot);}
+  .card-archived{opacity:.5;filter:grayscale(0.5);}
+  .card-archived:hover{opacity:.8;}
+  .archive-h{font-size:13px;color:var(--muted);margin:18px 0 8px;font-weight:600;}
   .login-box{max-width:340px;margin:60px auto;text-align:center;}
   .login-box p{color:var(--muted);font-size:13px;}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
@@ -114,6 +117,10 @@
       </div>
       <div id="projectGrid" class="grid"></div>
       <div id="overviewEmpty" class="center hidden">Noch keine Projekte. Lege dein erstes Projekt an.</div>
+      <div id="archiveWrap" class="hidden">
+        <h3 class="archive-h">Archiv</h3>
+        <div id="archiveGrid" class="grid"></div>
+      </div>
     </div>
 
     <div id="tabNext" class="hidden">
@@ -129,6 +136,7 @@
         <button class="ghost" id="btnZoomOut" title="Verkleinern">A−</button>
         <button class="ghost" id="btnZoomIn" title="Vergrößern">A+</button>
         <button class="ghost" id="btnToggleRaw">Rohtext</button>
+        <button class="ghost" id="btnArchiveProject">Archivieren</button>
         <button class="danger" id="btnDeleteProject">Löschen</button>
       </div>
       <div id="donutWrap" style="text-align:center;padding:10px 0;"></div>
@@ -177,22 +185,23 @@ function nextStatus(s){ const i = STATUS_ORDER.indexOf(s); return STATUS_ORDER[(
 
 /* ============ Markdown Parsing / Serialisierung ============ */
 const HEAD_RE = /^(#{1,6})\s+(.*)$/;
-const META_RE = /<!--\s*(status|due|gt):([^>]*?)-->/g;
+const META_RE = /<!--\s*(status|due|gt|archived):([^>]*?)-->/g;
 
 function parseHeadingLine(line){
   const m = line.match(HEAD_RE);
   if(!m) return null;
   const level = m[1].length;
   let rest = m[2];
-  const meta = {status:"offen", due:null, gtId:null};
+  const meta = {status:"offen", due:null, gtId:null, archived:false};
   rest = rest.replace(META_RE, (whole, key, val)=>{
     val = (val||"").trim();
     if(key==="status"){ if(STATUS_ORDER.includes(val)) meta.status = val; }
     else if(key==="due"){ meta.due = val || null; }
     else if(key==="gt"){ meta.gtId = val || null; }
+    else if(key==="archived"){ meta.archived = (val==="1"||val==="true"); }
     return "";
   });
-  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId};
+  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived};
 }
 
 function parseMarkdown(text){
@@ -202,7 +211,7 @@ function parseMarkdown(text){
   for(const line of lines){
     const h = parseHeadingLine(line);
     if(h){
-      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, body:[], children:[], parent:null};
+      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, body:[], children:[], parent:null};
       while(stack.length && stack[stack.length-1].level >= node.level) stack.pop();
       const parent = stack[stack.length-1];
       node.parent = parent;
@@ -222,6 +231,7 @@ function serializeMarkdown(root){
       let line = "#".repeat(n.level)+" "+n.title+" <!--status:"+n.status+"-->";
       if(n.due) line += " <!--due:"+n.due+"-->";
       if(n.gtId) line += " <!--gt:"+n.gtId+"-->";
+      if(n.archived) line += " <!--archived:1-->";
       out.push(line);
     }
     n.body.forEach(l=>out.push(l));
@@ -330,7 +340,8 @@ async function loadAllProjects(){
     const content = await driveGetContent(f.id);
     const root = parseMarkdown(content);
     const title = (root.children[0] && root.children[0].title) || f.name.replace(/\.md$/,"");
-    projects.push({fileId:f.id, name:f.name, title, root});
+    const archived = !!(root.children[0] && root.children[0].archived);
+    projects.push({fileId:f.id, name:f.name, title, root, archived});
   }
   projects.sort((a,b)=>a.title.localeCompare(b.title,"de"));
 }
@@ -427,7 +438,7 @@ async function gtDelete(gtId){
 
 /* Einzelnes Blatt sofort mit Google Tasks abgleichen (bei Datum/Status-Änderung) */
 async function syncOne(node, project){
-  if(!accessToken) return;
+  if(!accessToken || (project && project.archived)) return;
   try{
     const isDone = node.status==="fertig";
     if(node.due && !isDone){
@@ -449,6 +460,7 @@ async function syncTasks(silent){
   const changed = new Set();
   try{
     for(const p of projects){
+      if(p.archived) continue;
       const leaves = [];
       collectLeaves(p.root, p.title, leaves);
       for(const l of leaves){
@@ -496,37 +508,58 @@ function donutHtml(pct, size){
   </div>`;
 }
 
+function projectCardHtml(p, i, isArchived){
+  const pg = p.root.children[0] ? nodeProgress(p.root.children[0]) : 0;
+  const leaves = [];
+  collectLeaves(p.root, p.title, leaves);
+  const open = leaves.filter(l=>l.status!=="fertig").length;
+  const sub = isArchived ? `${leaves.length} Punkte, abgeschlossen` : `${leaves.length} Punkte, ${open} offen`;
+  return `<div class="card${isArchived?' card-archived':''}" data-i="${i}">
+    ${donutHtml(pg,"small")}
+    <div class="info">
+      <h3>${escapeHtml(p.title)}</h3>
+      <div class="sub">${sub}</div>
+    </div>
+  </div>`;
+}
+
 function renderOverview(){
   const grid = document.getElementById("projectGrid");
   const empty = document.getElementById("overviewEmpty");
-  if(projects.length===0){
+  const archWrap = document.getElementById("archiveWrap");
+  const archGrid = document.getElementById("archiveGrid");
+  const active = projects.filter(p=>!p.archived);
+  const arch = projects.filter(p=>p.archived);
+
+  if(active.length===0){
     grid.innerHTML = "";
-    empty.classList.remove("hidden");
-    return;
+    if(arch.length===0) empty.classList.remove("hidden");
+    else empty.classList.add("hidden");
+  } else {
+    empty.classList.add("hidden");
+    grid.innerHTML = active.map((p,i)=>projectCardHtml(p,i,false)).join("");
   }
-  empty.classList.add("hidden");
-  grid.innerHTML = projects.map((p,i)=>{
-    const pg = p.root.children[0] ? nodeProgress(p.root.children[0]) : 0;
-    const leaves = [];
-    collectLeaves(p.root, p.title, leaves);
-    const open = leaves.filter(l=>l.status!=="fertig").length;
-    return `<div class="card" data-i="${i}">
-      ${donutHtml(pg,"small")}
-      <div class="info">
-        <h3>${escapeHtml(p.title)}</h3>
-        <div class="sub">${leaves.length} Punkte, ${open} offen</div>
-      </div>
-    </div>`;
-  }).join("");
   [...grid.querySelectorAll(".card")].forEach(el=>{
-    el.onclick = ()=> openProject(projects[+el.dataset.i]);
+    el.onclick = ()=> openProject(active[+el.dataset.i]);
   });
+
+  if(arch.length===0){
+    archWrap.classList.add("hidden");
+    archGrid.innerHTML = "";
+  } else {
+    archWrap.classList.remove("hidden");
+    archGrid.innerHTML = arch.map((p,i)=>projectCardHtml(p,i,true)).join("");
+    [...archGrid.querySelectorAll(".card")].forEach(el=>{
+      el.onclick = ()=> openProject(arch[+el.dataset.i]);
+    });
+  }
 }
 
 /* ============ Rendering: Nächste Schritte ============ */
 function renderNext(){
   const all = [];
   projects.forEach(p=>{
+    if(p.archived) return;
     const leaves = [];
     collectLeaves(p.root, p.title, leaves);
     leaves.forEach(l=>{ if(l.status!=="fertig") all.push({...l, project:p}); });
@@ -587,6 +620,8 @@ function changeZoom(delta){
 }
 
 function renderDetail(){
+  const ab = document.getElementById("btnArchiveProject");
+  if(ab && currentProject) ab.textContent = currentProject.archived ? "Reaktivieren" : "Archivieren";
   const root = currentProject.root;
   const top = root.children[0];
   const pg = top ? nodeProgress(top) : 0;
@@ -776,6 +811,33 @@ document.getElementById("btnNewProject").onclick = async ()=>{
   }catch(e){ toast("Anlegen fehlgeschlagen"); }
 };
 
+document.getElementById("btnArchiveProject").onclick = async ()=>{
+  if(!currentProject) return;
+  const top = currentProject.root.children[0];
+  if(currentProject.archived){
+    if(top) top.archived = false;
+    currentProject.archived = false;
+    renderDetail();
+    await saveProject(currentProject);
+    toast("Projekt reaktiviert");
+    return;
+  }
+  const leaves = [];
+  collectLeaves(currentProject.root, currentProject.title, leaves);
+  const abgeschlossen = leaves.length>0 && leaves.every(l=>l.status==="fertig");
+  if(!abgeschlossen){
+    toast("Nur möglich, wenn alle Schritte abgeschlossen sind");
+    return;
+  }
+  if(top) top.archived = true;
+  currentProject.archived = true;
+  await saveProject(currentProject);
+  toast("Projekt archiviert");
+  document.getElementById("tabDetail").classList.add("hidden");
+  document.getElementById("tabOverview").classList.remove("hidden");
+  renderOverview();
+};
+
 document.getElementById("btnDeleteProject").onclick = async ()=>{
   if(!currentProject) return;
   if(!confirm('Projekt "'+currentProject.title+'" endgültig löschen?')) return;
@@ -845,7 +907,8 @@ async function doRestore(){
     const fileId = await driveCreateFile(f.name, f.content);
     const root = parseMarkdown(f.content);
     const title = (root.children[0] && root.children[0].title) || f.name.replace(/\.md$/,"");
-    projects.push({fileId, name:f.name, title, root});
+    const archived = !!(root.children[0] && root.children[0].archived);
+    projects.push({fileId, name:f.name, title, root, archived});
     added++;
   }
   projects.sort((a,b)=>a.title.localeCompare(b.title,"de"));

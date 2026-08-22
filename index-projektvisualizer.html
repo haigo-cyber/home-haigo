@@ -77,6 +77,11 @@
   .card-archived{opacity:.5;filter:grayscale(0.5);}
   .card-archived:hover{opacity:.8;}
   .archive-h{font-size:13px;color:var(--muted);margin:18px 0 8px;font-weight:600;}
+  .sel-box,.next-sel{width:16px;height:16px;flex:0 0 auto;cursor:pointer;accent-color:var(--blau);}
+  .bulk-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:8px 0;}
+  .bulk-count{font-size:13px;color:var(--muted);font-weight:600;margin-right:4px;}
+  .bulk-date,.bulk-num{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 7px;font:inherit;}
+  .bulk-num{width:70px;}
   .login-box{max-width:340px;margin:60px auto;text-align:center;}
   .login-box p{color:var(--muted);font-size:13px;}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
@@ -125,6 +130,14 @@
 
     <div id="tabNext" class="hidden">
       <div class="toolbar"><h2>Nächste Schritte</h2></div>
+      <div id="bulkBarNext" class="bulk-bar hidden">
+        <span class="bulk-count" id="bulkCountNext">0 markiert</span>
+        <input type="date" id="bulkDateNext" class="bulk-date" title="Neues Fälligkeitsdatum">
+        <button class="ghost" id="bulkSetNext">Auf Datum setzen</button>
+        <input type="number" id="bulkShiftNext" class="bulk-num" value="7" title="Tage (auch negativ)">
+        <button class="ghost" id="bulkShiftBtnNext">Tage verschieben</button>
+        <button class="ghost" id="bulkClearNext">Auswahl aufheben</button>
+      </div>
       <div id="nextList"></div>
       <div id="nextEmpty" class="center hidden">Alles erledigt oder keine offenen Schritte.</div>
     </div>
@@ -145,6 +158,14 @@
         <span><i class="dot" style="background:var(--orange)"></i>angefangen</span>
         <span><i class="dot" style="background:var(--blau)"></i>weitgehend fertig</span>
         <span><i class="dot" style="background:var(--gruen)"></i>abgeschlossen</span>
+      </div>
+      <div id="bulkBarDetail" class="bulk-bar hidden">
+        <span class="bulk-count" id="bulkCountDetail">0 markiert</span>
+        <input type="date" id="bulkDateDetail" class="bulk-date" title="Neues Fälligkeitsdatum">
+        <button class="ghost" id="bulkSetDetail">Auf Datum setzen</button>
+        <input type="number" id="bulkShiftDetail" class="bulk-num" value="7" title="Tage (auch negativ)">
+        <button class="ghost" id="bulkShiftBtnDetail">Tage verschieben</button>
+        <button class="ghost" id="bulkClearDetail">Auswahl aufheben</button>
       </div>
       <div id="treeView"></div>
       <div id="rawView" class="hidden">
@@ -263,6 +284,9 @@ let folderId = null;
 let projects = []; // {fileId, name, root, dirty}
 let currentProject = null;
 let nodeRegistry = {};
+let selectedNids = new Set();
+let nextItems = [];
+let selectedNext = new Set();
 function lsGet(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 let treeScale = parseFloat(lsGet("pf_treeScale","1")) || 1;
@@ -576,13 +600,15 @@ function renderNext(){
   const today = new Date().toISOString().slice(0,10);
   const list = document.getElementById("nextList");
   const empty = document.getElementById("nextEmpty");
-  if(all.length===0){ list.innerHTML=""; empty.classList.remove("hidden"); return; }
+  nextItems = all;
+  if(all.length===0){ list.innerHTML=""; empty.classList.remove("hidden"); updateBulkBarNext(); return; }
   empty.classList.add("hidden");
   list.innerHTML = all.map((item,i)=>{
     const due = dueOf(item);
     const overdue = due && due < today;
     const dueHtml = due ? `<span class="due-chip ${overdue?'overdue':''}">${fmtDate(due)}</span>` : "";
     return `<div class="next-item" data-i="${i}">
+      <input type="checkbox" class="next-sel" data-i="${i}" ${selectedNext.has(i)?'checked':''} title="Für Sammelaktion markieren">
       <span class="badge badge-${item.status}">${STATUS_LABEL[item.status]}</span>
       <div style="flex:1">
         <div>${escapeHtml(item.title)}</div>
@@ -591,14 +617,24 @@ function renderNext(){
       ${dueHtml}
     </div>`;
   }).join("");
+  [...list.querySelectorAll(".next-sel")].forEach(el=>{
+    el.onclick = (ev)=> ev.stopPropagation();
+    el.onchange = ()=>{
+      const i = +el.dataset.i;
+      if(el.checked) selectedNext.add(i); else selectedNext.delete(i);
+      updateBulkBarNext();
+    };
+  });
   [...list.querySelectorAll(".next-item")].forEach(el=>{
     el.onclick = ()=> openProject(all[+el.dataset.i].project);
   });
+  updateBulkBarNext();
 }
 
 /* ============ Rendering: Projektdetail ============ */
 function openProject(project){
   currentProject = project;
+  selectedNids.clear();
   document.getElementById("tabOverview").classList.add("hidden");
   document.getElementById("tabNext").classList.add("hidden");
   document.getElementById("tabDetail").classList.remove("hidden");
@@ -606,6 +642,57 @@ function openProject(project){
   document.getElementById("treeView").classList.remove("hidden");
   document.getElementById("detailTitle").textContent = project.title;
   renderDetail();
+}
+
+/* ---- Sammel-Leiste: Detailansicht ---- */
+function resolveDetailTargets(){
+  const map = new Map();
+  selectedNids.forEach(nid=>{
+    const n = nodeRegistry[nid];
+    if(!n) return;
+    const leaves = [];
+    collectOpenLeafNodes(n, leaves);
+    leaves.forEach(l=> map.set(l._id||(l._id=uid()), l));
+  });
+  return [...map.values()].map(node=>({node, project:currentProject}));
+}
+function updateBulkBarDetail(){
+  const bar = document.getElementById("bulkBarDetail");
+  if(!bar) return;
+  if(selectedNids.size===0){ bar.classList.add("hidden"); return; }
+  const targets = resolveDetailTargets();
+  document.getElementById("bulkCountDetail").textContent = targets.length+" Schritte markiert";
+  bar.classList.remove("hidden");
+}
+async function runBulkDetail(op){
+  let targets = resolveDetailTargets();
+  if(op.shift!==undefined) targets = targets.filter(t=>t.node.due);
+  if(!targets.length){ toast(op.shift!==undefined ? "Keine Schritte mit Datum markiert" : "Keine offenen Schritte markiert"); return; }
+  const n = await applyBulk(targets, op);
+  selectedNids.clear();
+  renderDetail();
+  toast(n + (op.date ? " umdatiert" : " verschoben"));
+}
+
+/* ---- Sammel-Leiste: Nächste Schritte ---- */
+function resolveNextTargets(){
+  return [...selectedNext].map(i=>nextItems[i]).filter(Boolean).map(it=>({node:it.node, project:it.project}));
+}
+function updateBulkBarNext(){
+  const bar = document.getElementById("bulkBarNext");
+  if(!bar) return;
+  if(selectedNext.size===0){ bar.classList.add("hidden"); return; }
+  document.getElementById("bulkCountNext").textContent = selectedNext.size+" Schritte markiert";
+  bar.classList.remove("hidden");
+}
+async function runBulkNext(op){
+  let targets = resolveNextTargets();
+  if(op.shift!==undefined) targets = targets.filter(t=>t.node.due);
+  if(!targets.length){ toast(op.shift!==undefined ? "Keine Schritte mit Datum markiert" : "Keine Schritte markiert"); return; }
+  const n = await applyBulk(targets, op);
+  selectedNext.clear();
+  renderNext();
+  toast(n + (op.date ? " umdatiert" : " verschoben"));
 }
 
 function applyTreeScale(){
@@ -630,6 +717,7 @@ function renderDetail(){
   tree.innerHTML = top ? renderNode(top, true) : `<div class="center">Kein Inhalt. Nutze Rohtext, um eine Überschrift anzulegen.</div>`;
   applyTreeScale();
   bindNodeEvents(tree);
+  updateBulkBarDetail();
 }
 
 function renderNode(node, isRoot){
@@ -652,6 +740,7 @@ function renderNode(node, isRoot){
   const childrenHtml = hasChildren ? `<div class="children">${inner}</div>` : "";
   return `<div class="node node-indent-${indent}">
     <div class="node-row">
+      <input type="checkbox" class="sel-box" data-nid="${node._id}" ${selectedNids.has(node._id)?'checked':''} title="Für Sammelaktion markieren">
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
@@ -664,6 +753,38 @@ function renderNode(node, isRoot){
 
 function registerNode(n){ nodeRegistry[n._id||(n._id=uid())] = n; }
 function uid(){ return "n"+Math.random().toString(36).slice(2,10); }
+
+/* ============ Sammel-Umdatierung ============ */
+function addDays(dateStr, n){
+  const d = new Date(dateStr+"T00:00:00Z");
+  d.setUTCDate(d.getUTCDate()+n);
+  return d.toISOString().slice(0,10);
+}
+function collectOpenLeafNodes(node, out){
+  if(node.children.length===0){
+    if(node.level>0 && node.status!=="fertig") out.push(node);
+  } else {
+    node.children.forEach(c=>collectOpenLeafNodes(c, out));
+  }
+}
+// pairs: [{node, project}]; op: {date:"YYYY-MM-DD"} oder {shift:Zahl}
+async function applyBulk(pairs, op){
+  let changed = 0;
+  const projSet = new Set();
+  for(const {node, project} of pairs){
+    if(op.date){
+      node.due = op.date;
+    } else {
+      if(!node.due) continue;
+      node.due = addDays(node.due, op.shift);
+    }
+    projSet.add(project);
+    changed++;
+    try{ await syncOne(node, project); }catch(e){}
+  }
+  for(const p of projSet){ try{ await saveProject(p); }catch(e){} }
+  return changed;
+}
 function getNodeStatus(node){
   if(node.children.length === 0) return node.status;
   const pg = nodeProgress(node);
@@ -674,6 +795,14 @@ function getNodeStatus(node){
 }
 
 function bindNodeEvents(container){
+  container.querySelectorAll('.sel-box').forEach(el=>{
+    el.onclick = (ev)=> ev.stopPropagation();
+    el.onchange = ()=>{
+      if(el.checked) selectedNids.add(el.dataset.nid);
+      else selectedNids.delete(el.dataset.nid);
+      updateBulkBarDetail();
+    };
+  });
   container.querySelectorAll('.status-btn').forEach(el=>{
     el.onclick = async (ev)=>{
       ev.stopPropagation();
@@ -782,6 +911,7 @@ document.getElementById("tabNextBtn").onclick = ()=>{
   document.getElementById("tabNext").classList.remove("hidden");
   document.getElementById("tabOverview").classList.add("hidden");
   document.getElementById("tabDetail").classList.add("hidden");
+  selectedNext.clear();
   renderNext();
 };
 document.getElementById("btnBack").onclick = ()=>{
@@ -789,6 +919,30 @@ document.getElementById("btnBack").onclick = ()=>{
   document.getElementById("tabOverview").classList.remove("hidden");
   renderOverview();
 };
+
+document.getElementById("bulkSetDetail").onclick = ()=>{
+  const d = document.getElementById("bulkDateDetail").value;
+  if(!d){ toast("Bitte Datum wählen"); return; }
+  runBulkDetail({date:d});
+};
+document.getElementById("bulkShiftBtnDetail").onclick = ()=>{
+  const n = parseInt(document.getElementById("bulkShiftDetail").value,10);
+  if(isNaN(n)){ toast("Bitte Tageszahl angeben"); return; }
+  runBulkDetail({shift:n});
+};
+document.getElementById("bulkClearDetail").onclick = ()=>{ selectedNids.clear(); renderDetail(); };
+
+document.getElementById("bulkSetNext").onclick = ()=>{
+  const d = document.getElementById("bulkDateNext").value;
+  if(!d){ toast("Bitte Datum wählen"); return; }
+  runBulkNext({date:d});
+};
+document.getElementById("bulkShiftBtnNext").onclick = ()=>{
+  const n = parseInt(document.getElementById("bulkShiftNext").value,10);
+  if(isNaN(n)){ toast("Bitte Tageszahl angeben"); return; }
+  runBulkNext({shift:n});
+};
+document.getElementById("bulkClearNext").onclick = ()=>{ selectedNext.clear(); renderNext(); };
 
 document.getElementById("btnZoomIn").onclick = ()=> changeZoom(0.1);
 document.getElementById("btnZoomOut").onclick = ()=> changeZoom(-0.1);

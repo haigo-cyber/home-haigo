@@ -82,6 +82,9 @@
   .bulk-count{font-size:13px;color:var(--muted);font-weight:600;margin-right:4px;}
   .bulk-date,.bulk-num{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 7px;font:inherit;}
   .bulk-num{width:70px;}
+  .node-archived{opacity:.5;}
+  .node-archived .node-title{text-decoration:line-through;}
+  .btnArcLeaf,.btnUnarcLeaf{font-size:11px;padding:2px 7px;}
   .login-box{max-width:340px;margin:60px auto;text-align:center;}
   .login-box p{color:var(--muted);font-size:13px;}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
@@ -149,6 +152,7 @@
         <button class="ghost" id="btnZoomOut" title="Verkleinern">A−</button>
         <button class="ghost" id="btnZoomIn" title="Vergrößern">A+</button>
         <button class="ghost" id="btnToggleRaw">Rohtext</button>
+        <button class="ghost" id="btnToggleArchived">Erledigte einblenden</button>
         <button class="ghost" id="btnArchiveProject">Archivieren</button>
         <button class="danger" id="btnDeleteProject">Löschen</button>
       </div>
@@ -287,6 +291,7 @@ let nodeRegistry = {};
 let selectedNids = new Set();
 let nextItems = [];
 let selectedNext = new Set();
+let showArchived = lsGet("pf_showArchived","0")==="1";
 function lsGet(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 let treeScale = parseFloat(lsGet("pf_treeScale","1")) || 1;
@@ -489,6 +494,7 @@ async function syncTasks(silent){
       collectLeaves(p.root, p.title, leaves);
       for(const l of leaves){
         const node = l.node;
+        if(node.archived) continue;                   // archivierte Punkte in Ruhe lassen
         // 1) Erledigt-Status aus Google Tasks zurücklesen
         if(node.gtId){
           const t = await gtGet(node.gtId);
@@ -707,8 +713,11 @@ function changeZoom(delta){
 }
 
 function renderDetail(){
+  if(!currentProject) return;
   const ab = document.getElementById("btnArchiveProject");
   if(ab && currentProject) ab.textContent = currentProject.archived ? "Reaktivieren" : "Archivieren";
+  const tg = document.getElementById("btnToggleArchived");
+  if(tg) tg.textContent = showArchived ? "Erledigte ausblenden" : "Erledigte einblenden";
   const root = currentProject.root;
   const top = root.children[0];
   const pg = top ? nodeProgress(top) : 0;
@@ -721,21 +730,41 @@ function renderDetail(){
 }
 
 function renderNode(node, isRoot){
-  const inner = node.children.map(c=>renderNode(c,false)).join("");
-  const addBtn = `<button class="btnAdd" data-nid="${node._id=node._id||uid()}">+</button>`;
-  const delBtn = isRoot ? "" : `<button class="btnDel" data-nid="${node._id}">x</button>`;
+  node._id = node._id || uid();
   registerNode(node);
   const hasChildren = node.children.length > 0;
+  const isLeaf = !hasChildren;
+
+  // Archivierter Punkt ausgeblendet, wenn nicht ausdrücklich eingeblendet
+  if(!isRoot && isLeaf && node.archived && !showArchived) return "";
+
+  const inner = node.children.map(c=>renderNode(c,false)).join("");
+  const addBtn = `<button class="btnAdd" data-nid="${node._id}">+</button>`;
+  const delBtn = isRoot ? "" : `<button class="btnDel" data-nid="${node._id}">x</button>`;
   const pg = hasChildren ? nodeProgress(node) : 0;
   const pct = Math.round(pg * 100);
   const displayStatus = getNodeStatus(node);
   const indent = isRoot ? 0 : node.level;
+
+  // Archivierter, aber eingeblendeter Punkt: schlanke, gedimmte Zeile
+  if(!isRoot && isLeaf && node.archived){
+    return `<div class="node node-indent-${indent}">
+      <div class="node-row node-archived">
+        <span class="badge badge-fertig">${STATUS_LABEL['fertig']}</span>
+        <span class="node-title">${escapeHtml(node.title)}</span>
+        <div class="node-actions"><button class="btnUnarcLeaf" data-nid="${node._id}" title="Punkt wieder aktiv setzen">Aktiv</button>${delBtn}</div>
+      </div>
+    </div>`;
+  }
+
   const statusDisplay = hasChildren 
     ? `<span class="badge badge-${displayStatus}">${pct}%</span>`
     : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}">${STATUS_LABEL[displayStatus]}</button>`;
   const dueChip = hasChildren ? "" :
     `<span class="gt-dot ${node.gtId?'':'off'}" title="${node.gtId?'in Google Tasks':'nicht in Google Tasks'}"></span>`+
     `<input type="date" class="due-input" data-nid="${node._id}" value="${node.due||''}" title="Fälligkeitsdatum">`;
+  const arcLeafBtn = (isLeaf && node.status==="fertig" && !node.archived)
+    ? `<button class="btnArcLeaf" data-nid="${node._id}" title="Erledigten Punkt archivieren">Archiv</button>` : "";
   const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
   const childrenHtml = hasChildren ? `<div class="children">${inner}</div>` : "";
   return `<div class="node node-indent-${indent}">
@@ -744,7 +773,7 @@ function renderNode(node, isRoot){
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
-      <div class="node-actions">${addBtn}${delBtn}</div>
+      <div class="node-actions">${arcLeafBtn}${addBtn}${delBtn}</div>
     </div>
     ${progressHtml}
     ${childrenHtml}
@@ -795,6 +824,26 @@ function getNodeStatus(node){
 }
 
 function bindNodeEvents(container){
+  container.querySelectorAll('.btnArcLeaf').forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      if(!n) return;
+      n.archived = true;              // Google Task bleibt unangetastet
+      scheduleSave(currentProject);
+      renderDetail();
+    };
+  });
+  container.querySelectorAll('.btnUnarcLeaf').forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      if(!n) return;
+      n.archived = false;
+      scheduleSave(currentProject);
+      renderDetail();
+    };
+  });
   container.querySelectorAll('.sel-box').forEach(el=>{
     el.onclick = (ev)=> ev.stopPropagation();
     el.onchange = ()=>{
@@ -946,6 +995,12 @@ document.getElementById("bulkClearNext").onclick = ()=>{ selectedNext.clear(); r
 
 document.getElementById("btnZoomIn").onclick = ()=> changeZoom(0.1);
 document.getElementById("btnZoomOut").onclick = ()=> changeZoom(-0.1);
+document.getElementById("btnToggleArchived").onclick = ()=>{
+  showArchived = !showArchived;
+  lsSet("pf_showArchived", showArchived ? "1" : "0");
+  document.getElementById("btnToggleArchived").textContent = showArchived ? "Erledigte ausblenden" : "Erledigte einblenden";
+  renderDetail();
+};
 document.getElementById("btnSyncTasks").onclick = ()=> syncTasks(false);
 
 /* ============ Neues Projekt ============ */

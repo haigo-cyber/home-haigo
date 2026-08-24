@@ -81,6 +81,16 @@
   input:focus, textarea:focus, select:focus, button:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 1px;
   }
+  input[type=checkbox], input[type=radio] {
+    width: auto;
+    padding: 0;
+    border: 1px solid var(--line);
+    background: #fff;
+    -webkit-appearance: auto;
+    -moz-appearance: auto;
+    appearance: auto;
+    accent-color: var(--accent);
+  }
   .card {
     background: var(--paper-raised);
     border: 1px solid var(--line);
@@ -159,7 +169,10 @@
 
 <header>
   <h1>Beziehungstracker</h1>
-  <span class="status ui" id="statusLine">nicht verbunden</span>
+  <div class="row ui" style="gap:14px;">
+    <a class="backlink ui" id="adminLink" style="display:none;" onclick="currentView = currentView==='admin' ? 'dashboard' : 'admin'; currentChildCode=null; renderApp();">Admin</a>
+    <span class="status ui" id="statusLine">nicht verbunden</span>
+  </div>
 </header>
 
 <main id="app"></main>
@@ -177,13 +190,18 @@ const PARTNERS = { K: "Kind", S: "Schulbegleitung", L: "Lehrkraft", E: "Elternte
 let accessToken = null;
 let fileId = null;
 let children = [];              // geparster Zustand
+let globalCatalog = [];         // Items, die für alle Kinder gelten
 let currentChildCode = null;
 let currentTab = "neu";
+let currentView = "dashboard";  // dashboard | admin
 let chartInstance = null;
 let tokenClient = null;
 let pendingPartner = null;
 let showArchivedChildren = false;
 let showArchivedEntries = false;
+let adhocRatings = [];          // einmalige Items nur für den aktuell erstellten Eintrag
+let adminItemsChild = null;
+let adminEntriesChild = null;
 
 /* ---------- Hilfsfunktionen ---------- */
 function todayISO() {
@@ -200,22 +218,34 @@ function toast(msg) {
 }
 function getChild(code) { return children.find(c => c.code === code); }
 
+const ALL_PARTNERS = ["K","S","L","E"];
+
 /* ---------- Markdown Parsing ---------- */
 function parseMarkdown(text) {
-  const out = [];
+  const children = [];
+  const globalCatalog = [];
   const lines = text.split(/\r?\n/);
   let current = null;
+  let isGlobal = false;
   let section = null;
   for (const raw of lines) {
     const line = raw;
+    if (line.startsWith("# Global")) {
+      if (current && !isGlobal) children.push(current);
+      current = { catalog: globalCatalog };
+      isGlobal = true;
+      section = null;
+      continue;
+    }
     if (line.startsWith("# Kind: ")) {
-      if (current) out.push(current);
+      if (current && !isGlobal) children.push(current);
       current = { code: line.slice(8).trim(), archived: false, catalog: [], entries: [] };
+      isGlobal = false;
       section = null;
       continue;
     }
     if (!current) continue;
-    if (line.startsWith("Status:")) {
+    if (!isGlobal && line.startsWith("Status:")) {
       current.archived = line.slice(7).trim().toLowerCase() === "archiviert";
       continue;
     }
@@ -227,12 +257,13 @@ function parseMarkdown(text) {
       if (cells.every(c => /^:?-+:?$/.test(c))) continue; // Trennzeile
       if (section === "catalog") {
         if (cells[0] === "Kategorie") continue;
-        const [kategorie, item, seit, status] = cells;
+        const [kategorie, item, seit, status, partnerStr] = cells;
         if (!kategorie || !item) continue;
         let cat = current.catalog.find(c => c.name === kategorie);
         if (!cat) { cat = { name: kategorie, items: [] }; current.catalog.push(cat); }
-        cat.items.push({ name: item, since: seit || todayISO(), archived: (status||"aktiv").toLowerCase() === "archiviert" });
-      } else if (section === "entries") {
+        const partners = partnerStr ? partnerStr.split(",").map(p=>p.trim()).filter(p=>ALL_PARTNERS.includes(p)) : ALL_PARTNERS.slice();
+        cat.items.push({ name: item, since: seit || todayISO(), archived: (status||"aktiv").toLowerCase() === "archiviert", partners: partners.length ? partners : ALL_PARTNERS.slice() });
+      } else if (section === "entries" && !isGlobal) {
         if (cells[0] === "EintragID") continue;
         const [id, datum, partner, status, item, bewertung] = cells;
         if (!id) continue;
@@ -245,23 +276,37 @@ function parseMarkdown(text) {
       }
     }
   }
-  if (current) out.push(current);
-  return out;
+  if (current && !isGlobal) children.push(current);
+  return { globalCatalog, children };
 }
 
-function serializeMarkdown(list) {
+function serializeMarkdown(globalCat, list) {
   const out = [];
+  if (globalCat && globalCat.some(c => c.items.length > 0)) {
+    out.push("# Global");
+    out.push("");
+    out.push("## Itemkatalog");
+    out.push("");
+    out.push("| Kategorie | Item | Seit | Status | Partner |");
+    out.push("|---|---|---|---|---|");
+    for (const cat of globalCat) {
+      for (const item of cat.items) {
+        out.push(`| ${cat.name} | ${item.name} | ${item.since} | ${item.archived ? "archiviert" : "aktiv"} | ${(item.partners||ALL_PARTNERS).join(",")} |`);
+      }
+    }
+    out.push("");
+  }
   for (const child of list) {
     out.push(`# Kind: ${child.code}`);
     out.push(`Status: ${child.archived ? "archiviert" : "aktiv"}`);
     out.push("");
     out.push("## Itemkatalog");
     out.push("");
-    out.push("| Kategorie | Item | Seit | Status |");
-    out.push("|---|---|---|---|");
+    out.push("| Kategorie | Item | Seit | Status | Partner |");
+    out.push("|---|---|---|---|---|");
     for (const cat of child.catalog) {
       for (const item of cat.items) {
-        out.push(`| ${cat.name} | ${item.name} | ${item.since} | ${item.archived ? "archiviert" : "aktiv"} |`);
+        out.push(`| ${cat.name} | ${item.name} | ${item.since} | ${item.archived ? "archiviert" : "aktiv"} | ${(item.partners||ALL_PARTNERS).join(",")} |`);
       }
     }
     out.push("");
@@ -283,6 +328,11 @@ function serializeMarkdown(list) {
     out.push("");
   }
   return out.join("\n");
+}
+
+function restoreArrayContents(arr, snapshot) {
+  arr.length = 0;
+  snapshot.forEach(x => arr.push(x));
 }
 
 /* ---------- Google Auth ---------- */
@@ -382,7 +432,7 @@ async function loadFileContent(id) {
 
 async function persist() {
   try {
-    await updateDriveFile(fileId, serializeMarkdown(children));
+    await updateDriveFile(fileId, serializeMarkdown(globalCatalog, children));
     return true;
   } catch (e) {
     if (e.message !== "401") { toast("Speichern fehlgeschlagen: " + e.message); console.error(e); }
@@ -401,7 +451,7 @@ async function ensureAutoBackupToday() {
     const name = `${BACKUP_PREFIX}${todayISO()}.md`;
     const existing = await searchDriveFileByName(name);
     if (!existing) {
-      await createDriveFile(name, serializeMarkdown(children));
+      await createDriveFile(name, serializeMarkdown(globalCatalog, children));
     }
   } catch (e) {
     console.error("Automatisches Backup fehlgeschlagen", e);
@@ -411,7 +461,7 @@ async function ensureAutoBackupToday() {
 async function createManualBackup() {
   try {
     const name = `${BACKUP_PREFIX}${todayISO()}_${timeStamp()}.md`;
-    await createDriveFile(name, serializeMarkdown(children));
+    await createDriveFile(name, serializeMarkdown(globalCatalog, children));
     toast("Backup erstellt: " + name);
   } catch (e) {
     if (e.message !== "401") toast("Backup fehlgeschlagen: " + e.message);
@@ -443,7 +493,8 @@ async function restoreBackup(id, name) {
     const restored = parseMarkdown(content);
     const ok = await updateDriveFile(fileId, content).then(()=>true).catch(()=>false);
     if (!ok) { toast("Wiederherstellen fehlgeschlagen."); return; }
-    children = restored;
+    children = restored.children;
+    globalCatalog = restored.globalCatalog;
     currentChildCode = null;
     toast("Backup wiederhergestellt.");
     renderApp();
@@ -457,7 +508,9 @@ async function bootAfterAuth() {
   try {
     fileId = await getOrCreateFileId();
     const content = await loadFileContent(fileId);
-    children = parseMarkdown(content);
+    const parsed = parseMarkdown(content);
+    children = parsed.children;
+    globalCatalog = parsed.globalCatalog;
     renderApp();
     ensureAutoBackupToday();
   } catch (e) {
@@ -494,24 +547,52 @@ async function toggleChildArchive(code) {
 }
 
 function openChild(code, tab) {
+  currentView = "dashboard";
   currentChildCode = code;
   currentTab = tab || "neu";
   pendingPartner = null;
+  adhocRatings = [];
   renderApp();
 }
 
 function startQuickEntry(code, partner) {
+  currentView = "dashboard";
   currentChildCode = code;
   currentTab = "neu";
   pendingPartner = partner;
+  adhocRatings = [];
+  renderApp();
+}
+
+function addAdhocRating() {
+  const nameEl = document.getElementById("adhocName");
+  const valEl = document.getElementById("adhocVal");
+  const name = nameEl.value.trim();
+  const val = Number(valEl.value);
+  if (!name) { toast("Bitte einen Namen für das einmalige Item angeben."); return; }
+  if (!val || val < 1 || val > 10) { toast("Bitte einen Wert zwischen 1 und 10 angeben."); return; }
+  adhocRatings.push({ name, value: val });
+  nameEl.value = "";
+  valEl.value = 5;
+  renderApp();
+}
+
+function removeAdhocRating(idx) {
+  adhocRatings.splice(idx, 1);
   renderApp();
 }
 
 async function importCatalogText(code) {
   const ta = document.getElementById("importArea");
+  const scopeEl = document.querySelector('input[name="importScope"]:checked');
+  const scope = scopeEl ? scopeEl.value : "child";
+  const partnerBoxes = document.querySelectorAll('.partnerScopeBox:checked');
+  const partners = Array.from(partnerBoxes).map(b => b.value);
+  if (partners.length === 0) { toast("Bitte mindestens einen Gesprächspartner-Typ auswählen."); return; }
   const text = ta.value;
   const child = getChild(code);
-  const snapshot = JSON.parse(JSON.stringify(child.catalog));
+  const targetArr = scope === "global" ? globalCatalog : child.catalog;
+  const snapshot = JSON.parse(JSON.stringify(targetArr));
   const lines = text.split(/\r?\n/);
   let currentCat = null;
   let added = 0;
@@ -522,21 +603,21 @@ async function importCatalogText(code) {
     if (line.startsWith("## ")) {
       const itemName = line.slice(3).trim();
       if (!currentCat || !itemName) continue;
-      let cat = child.catalog.find(c => c.name === currentCat);
-      if (!cat) { cat = { name: currentCat, items: [] }; child.catalog.push(cat); }
+      let cat = targetArr.find(c => c.name === currentCat);
+      if (!cat) { cat = { name: currentCat, items: [] }; targetArr.push(cat); }
       const exists = cat.items.some(it => it.name.toLowerCase() === itemName.toLowerCase());
-      if (!exists) { cat.items.push({ name: itemName, since: today, archived: false }); added++; }
+      if (!exists) { cat.items.push({ name: itemName, since: today, archived: false, partners: partners.slice() }); added++; }
     } else if (line.startsWith("# ")) {
       currentCat = line.slice(2).trim();
-      if (!child.catalog.some(c => c.name === currentCat)) child.catalog.push({ name: currentCat, items: [] });
+      if (!targetArr.some(c => c.name === currentCat)) targetArr.push({ name: currentCat, items: [] });
     }
   }
   if (added === 0) { toast("Keine neuen Items erkannt. Format: # Kategorie, dann ## Item"); return; }
   const ok = await persist();
-  if (!ok) { child.catalog = snapshot; renderApp(); return; }
+  if (!ok) { restoreArrayContents(targetArr, snapshot); renderApp(); return; }
   ta.value = "";
   renderApp();
-  toast(added + " Item(s) hinzugefügt.");
+  toast(added + " Item(s) hinzugefügt" + (scope === "global" ? " (für alle Kinder)." : " (nur für " + code + ")."));
 }
 
 async function saveEntry(code) {
@@ -550,11 +631,13 @@ async function saveEntry(code) {
     const rng = row.querySelector("input[type=range]");
     if (chk && chk.checked && rng) ratings[row.dataset.item] = Number(rng.value);
   });
+  adhocRatings.forEach(r => { ratings[r.name] = r.value; });
   const entry = { id: uid(), date: dateVal, partner, archived: false, ratings };
   child.entries.push(entry);
   const ok = await persist();
   if (!ok) { child.entries = child.entries.filter(e => e !== entry); renderApp(); return; }
   pendingPartner = null;
+  adhocRatings = [];
   currentTab = "eintraege";
   renderApp();
   toast("Eintrag gespeichert.");
@@ -567,6 +650,66 @@ async function toggleEntryArchive(code, id) {
   const ok = await persist();
   if (!ok) { entry.archived = !entry.archived; renderApp(); return; }
   renderApp();
+}
+
+/* ---------- Admin: endgültiges Löschen ---------- */
+async function adminDeleteChild(code) {
+  const sure = confirm(`Kind "${code}" inklusive Katalog und aller Einträge endgültig löschen? Das kann nicht rückgängig gemacht werden.`);
+  if (!sure) return;
+  const idx = children.findIndex(c => c.code === code);
+  if (idx === -1) return;
+  const backup = children[idx];
+  children.splice(idx, 1);
+  const ok = await persist();
+  if (!ok) { children.splice(idx, 0, backup); renderApp(); return; }
+  if (currentChildCode === code) currentChildCode = null;
+  renderApp();
+  toast("Kind gelöscht.");
+}
+
+async function adminDeleteGlobalItem(catName, itemName) {
+  const sure = confirm(`Globales Item "${itemName}" endgültig löschen? Bereits erfasste Bewertungen in bestehenden Einträgen bleiben unangetastet, das Item wird nur nicht mehr angeboten.`);
+  if (!sure) return;
+  const cat = globalCatalog.find(c => c.name === catName);
+  if (!cat) return;
+  const idx = cat.items.findIndex(i => i.name === itemName);
+  if (idx === -1) return;
+  const backup = cat.items[idx];
+  cat.items.splice(idx, 1);
+  const ok = await persist();
+  if (!ok) { cat.items.splice(idx, 0, backup); renderApp(); return; }
+  renderApp();
+  toast("Item gelöscht.");
+}
+
+async function adminDeleteChildItem(code, catName, itemName) {
+  const sure = confirm(`Item "${itemName}" für Kind "${code}" endgültig löschen? Bereits erfasste Bewertungen in bestehenden Einträgen bleiben unangetastet.`);
+  if (!sure) return;
+  const child = getChild(code);
+  const cat = child.catalog.find(c => c.name === catName);
+  if (!cat) return;
+  const idx = cat.items.findIndex(i => i.name === itemName);
+  if (idx === -1) return;
+  const backup = cat.items[idx];
+  cat.items.splice(idx, 1);
+  const ok = await persist();
+  if (!ok) { cat.items.splice(idx, 0, backup); renderApp(); return; }
+  renderApp();
+  toast("Item gelöscht.");
+}
+
+async function adminDeleteEntry(code, id) {
+  const sure = confirm("Diesen Eintrag endgültig löschen? Das kann nicht rückgängig gemacht werden, anders als beim Archivieren.");
+  if (!sure) return;
+  const child = getChild(code);
+  const idx = child.entries.findIndex(e => e.id === id);
+  if (idx === -1) return;
+  const backup = child.entries[idx];
+  child.entries.splice(idx, 1);
+  const ok = await persist();
+  if (!ok) { child.entries.splice(idx, 0, backup); renderApp(); return; }
+  renderApp();
+  toast("Eintrag gelöscht.");
 }
 
 function exportGlobalReport() {
@@ -596,6 +739,8 @@ function exportGlobalReport() {
 /* ---------- Rendering ---------- */
 function renderApp() {
   const app = document.getElementById("app");
+  const adminLink = document.getElementById("adminLink");
+  if (adminLink) adminLink.style.display = accessToken ? "inline" : "none";
   if (!accessToken) {
     app.innerHTML = `
       <div class="connect-screen">
@@ -605,11 +750,85 @@ function renderApp() {
       </div>`;
     return;
   }
+  if (currentView === "admin") {
+    renderAdmin(app);
+    return;
+  }
   if (currentChildCode && getChild(currentChildCode)) {
     renderChildDetail(app);
   } else {
     renderDashboard(app);
   }
+}
+
+function renderAdmin(app) {
+  let html = `<a class="backlink ui" onclick="currentView='dashboard';renderApp();">&larr; Übersicht</a>
+  <h2 style="margin:10px 0 4px;">Admin</h2>
+  <p class="ui" style="font-size:0.85rem;color:var(--muted);margin-bottom:16px;">Hier wird endgültig gelöscht statt nur archiviert, gedacht für Testdaten und Experimente. Für den Alltag reicht meist Archivieren, das lässt sich rückgängig machen.</p>`;
+
+  html += `<div class="card ui"><strong>Kinder endgültig löschen</strong>`;
+  if (children.length === 0) html += `<div class="empty">Keine Kinder vorhanden.</div>`;
+  for (const c of children) {
+    html += `<div class="entry-line"><span class="r">${esc(c.code)}${c.archived ? " (archiviert)" : ""}</span><a class="backlink" style="color:var(--danger);" onclick="adminDeleteChild('${esc(c.code)}')">löschen</a></div>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="card ui"><strong>Globale Items endgültig löschen</strong>`;
+  if (globalCatalog.length === 0 || globalCatalog.every(c => c.items.length === 0)) {
+    html += `<div class="empty">Kein globaler Katalog vorhanden.</div>`;
+  } else {
+    for (const cat of globalCatalog) {
+      if (cat.items.length === 0) continue;
+      html += `<div class="cat-title">${esc(cat.name)}</div>`;
+      for (const it of cat.items) {
+        html += `<div class="entry-line"><span class="r">${esc(it.name)}${partnerLabel(it)}</span><a class="backlink" style="color:var(--danger);" onclick="adminDeleteGlobalItem('${esc(cat.name)}','${esc(it.name)}')">löschen</a></div>`;
+      }
+    }
+  }
+  html += `</div>`;
+
+  html += `<div class="card ui"><strong>Items eines einzelnen Kindes endgültig löschen</strong>
+    <div class="field" style="margin-top:10px;">
+      <select onchange="adminItemsChild=this.value||null;renderApp();">
+        <option value="">Kind wählen …</option>
+        ${children.map(c => `<option value="${esc(c.code)}" ${adminItemsChild===c.code?"selected":""}>${esc(c.code)}</option>`).join("")}
+      </select>
+    </div>`;
+  if (adminItemsChild && getChild(adminItemsChild)) {
+    const c = getChild(adminItemsChild);
+    if (c.catalog.length === 0 || c.catalog.every(cat => cat.items.length === 0)) {
+      html += `<div class="empty">Kein Katalog für dieses Kind.</div>`;
+    } else {
+      for (const cat of c.catalog) {
+        if (cat.items.length === 0) continue;
+        html += `<div class="cat-title">${esc(cat.name)}</div>`;
+        for (const it of cat.items) {
+          html += `<div class="entry-line"><span class="r">${esc(it.name)}${partnerLabel(it)}</span><a class="backlink" style="color:var(--danger);" onclick="adminDeleteChildItem('${esc(c.code)}','${esc(cat.name)}','${esc(it.name)}')">löschen</a></div>`;
+        }
+      }
+    }
+  }
+  html += `</div>`;
+
+  html += `<div class="card ui"><strong>Einträge endgültig löschen</strong>
+    <div class="field" style="margin-top:10px;">
+      <select onchange="adminEntriesChild=this.value||null;renderApp();">
+        <option value="">Kind wählen …</option>
+        ${children.map(c => `<option value="${esc(c.code)}" ${adminEntriesChild===c.code?"selected":""}>${esc(c.code)}</option>`).join("")}
+      </select>
+    </div>`;
+  if (adminEntriesChild && getChild(adminEntriesChild)) {
+    const c = getChild(adminEntriesChild);
+    const sorted = c.entries.slice().sort((a,b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    if (sorted.length === 0) html += `<div class="empty">Keine Einträge.</div>`;
+    for (const e of sorted) {
+      const ratingStr = Object.entries(e.ratings).map(([k,v]) => `${esc(k)}: ${v}`).join(", ") || "keine Bewertung";
+      html += `<div class="entry-line"><span class="d">${e.date}</span><span class="pill ${e.partner}">${e.partner}</span><span class="r">${ratingStr}</span><a class="backlink" style="color:var(--danger);" onclick="adminDeleteEntry('${esc(c.code)}','${e.id}')">löschen</a></div>`;
+    }
+  }
+  html += `</div>`;
+
+  app.innerHTML = html;
 }
 
 function renderDashboard(app) {
@@ -695,10 +914,21 @@ function renderChildDetail(app) {
   if (currentTab === "diagramm") renderDiagrammTab(child);
 }
 
+function itemAppliesToPartner(item, partner) {
+  const p = item.partners && item.partners.length ? item.partners : ALL_PARTNERS;
+  if (!partner) return p.length === ALL_PARTNERS.length;
+  return p.includes(partner);
+}
+
 function renderNeuTab(child) {
-  const activeItems = child.catalog.map(cat => ({
+  const dateVal = document.getElementById("entryDate")?.value || todayISO();
+  const activeGlobal = globalCatalog.map(cat => ({
     name: cat.name,
-    items: cat.items.filter(it => !it.archived && it.since <= (document.getElementById("entryDate")?.value || todayISO()))
+    items: cat.items.filter(it => !it.archived && it.since <= dateVal && itemAppliesToPartner(it, pendingPartner))
+  })).filter(cat => cat.items.length > 0);
+  const activeChild = child.catalog.map(cat => ({
+    name: cat.name,
+    items: cat.items.filter(it => !it.archived && it.since <= dateVal && itemAppliesToPartner(it, pendingPartner))
   })).filter(cat => cat.items.length > 0);
 
   let html = `<div class="card ui">
@@ -711,26 +941,52 @@ function renderNeuTab(child) {
       <div class="row">
         ${["K","S","L","E"].map(p => `<button class="partner-btn ${pendingPartner===p?'active':''}" data-p="${p}" onclick="pendingPartner='${p}';renderApp();">${p} · ${PARTNERS[p]}</button>`).join("")}
       </div>
+      ${!pendingPartner ? `<p style="font-size:0.78rem;color:var(--muted);margin:6px 0 0;">Ohne Auswahl werden nur Items gezeigt, die für alle Gesprächspartner gelten.</p>` : ""}
     </div>
   </div>`;
 
-  if (child.catalog.length === 0) {
-    html += `<div class="empty ui">Noch keine Items im Katalog. Lege zuerst welche im Reiter Itemkatalog an.</div>`;
+  function renderItemRows(cat) {
+    let h = `<div class="cat-title">${esc(cat.name)}</div>`;
+    for (const item of cat.items) {
+      h += `<div class="item-row" data-item="${esc(item.name)}">
+        <span class="iname">${esc(item.name)}</span>
+        <input type="range" min="1" max="10" value="5" oninput="this.nextElementSibling.textContent=this.value">
+        <span class="val">5</span>
+        <label class="chk"><input type="checkbox"> bewerten</label>
+      </div>`;
+    }
+    return h;
+  }
+
+  if (activeGlobal.length === 0 && activeChild.length === 0) {
+    html += `<div class="empty ui">Noch keine Items im Katalog. Lege welche im Reiter Itemkatalog an.</div>`;
   } else {
     html += `<div class="card">`;
-    for (const cat of activeItems) {
-      html += `<div class="cat-title">${esc(cat.name)}</div>`;
-      for (const item of cat.items) {
-        html += `<div class="item-row" data-item="${esc(item.name)}">
-          <span class="iname">${esc(item.name)}</span>
-          <input type="range" min="1" max="10" value="5" oninput="this.nextElementSibling.textContent=this.value">
-          <span class="val">5</span>
-          <label class="chk"><input type="checkbox"> bewerten</label>
-        </div>`;
-      }
+    if (activeGlobal.length > 0) {
+      html += `<div class="badge ui" style="margin-bottom:4px;">Allgemein, für alle Kinder</div>`;
+      activeGlobal.forEach(cat => html += renderItemRows(cat));
     }
-    if (activeItems.length === 0) html += `<div class="empty ui">Keine aktiven Items für dieses Datum.</div>`;
+    if (activeChild.length > 0) {
+      html += `<div class="badge ui" style="margin:12px 0 4px;">Nur für ${esc(child.code)}</div>`;
+      activeChild.forEach(cat => html += renderItemRows(cat));
+    }
     html += `</div>`;
+  }
+
+  html += `<div class="card ui">
+    <div class="badge" style="margin-bottom:8px;">Einmalig, nur für diese Situation</div>
+    <div id="adhocList">
+      ${adhocRatings.map((r,i) => `<div class="entry-line"><span class="r">${esc(r.name)}: ${r.value}</span><a class="backlink" onclick="removeAdhocRating(${i})">entfernen</a></div>`).join("")}
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <input id="adhocName" placeholder="Name, z. B. Reaktion auf Regelwechsel" style="flex:2;">
+      <input id="adhocVal" type="number" min="1" max="10" value="5" style="flex:0 0 64px;">
+      <button onclick="addAdhocRating()">hinzufügen</button>
+    </div>
+    <p style="font-size:0.78rem;color:var(--muted);margin-top:6px;">Landet nur in diesem Eintrag, wird nicht Teil des wiederkehrenden Katalogs.</p>
+  </div>`;
+
+  if (activeGlobal.length > 0 || activeChild.length > 0 || adhocRatings.length > 0) {
     html += `<button class="primary ui" style="width:100%;" onclick="saveEntry('${esc(child.code)}')">Eintrag speichern</button>`;
   }
   return html;
@@ -756,16 +1012,43 @@ function renderEintraegeTab(child) {
   return html;
 }
 
+function partnerLabel(item) {
+  const p = item.partners && item.partners.length ? item.partners : ALL_PARTNERS;
+  if (p.length === ALL_PARTNERS.length) return "";
+  return " · nur " + p.join(", ");
+}
+
 function renderKatalogTab(child) {
-  let html = `<div class="card">`;
-  if (child.catalog.length === 0) html += `<div class="empty ui">Noch kein Katalog.</div>`;
-  for (const cat of child.catalog) {
-    html += `<div class="cat-title">${esc(cat.name)}</div>`;
-    for (const item of cat.items) {
-      html += `<div class="entry-line"><span class="r">${esc(item.name)}${item.archived ? " (archiviert)" : ""}</span><span class="d">seit ${item.since}</span></div>`;
+  let html = `<div class="card">
+    <div class="badge ui" style="margin-bottom:4px;">Allgemein, für alle Kinder</div>`;
+  if (globalCatalog.length === 0 || globalCatalog.every(c => c.items.length === 0)) {
+    html += `<div class="empty ui">Noch kein globaler Katalog.</div>`;
+  } else {
+    for (const cat of globalCatalog) {
+      if (cat.items.length === 0) continue;
+      html += `<div class="cat-title">${esc(cat.name)}</div>`;
+      for (const item of cat.items) {
+        html += `<div class="entry-line"><span class="r">${esc(item.name)}${item.archived ? " (archiviert)" : ""}${partnerLabel(item)}</span><span class="d">seit ${item.since}</span></div>`;
+      }
     }
   }
   html += `</div>`;
+
+  html += `<div class="card">
+    <div class="badge ui" style="margin-bottom:4px;">Nur für ${esc(child.code)}</div>`;
+  if (child.catalog.length === 0 || child.catalog.every(c => c.items.length === 0)) {
+    html += `<div class="empty ui">Noch kein eigener Katalog für dieses Kind.</div>`;
+  } else {
+    for (const cat of child.catalog) {
+      if (cat.items.length === 0) continue;
+      html += `<div class="cat-title">${esc(cat.name)}</div>`;
+      for (const item of cat.items) {
+        html += `<div class="entry-line"><span class="r">${esc(item.name)}${item.archived ? " (archiviert)" : ""}${partnerLabel(item)}</span><span class="d">seit ${item.since}</span></div>`;
+      }
+    }
+  }
+  html += `</div>`;
+
   html += `<div class="card ui">
     <label style="font-size:0.85rem;color:var(--muted);display:block;margin-bottom:6px;">Neue Items als Rohtext einfügen, eine Kategorie mit # und Items darunter mit ##</label>
     <textarea id="importArea" rows="6" placeholder="# Sozialverhalten
@@ -773,6 +1056,14 @@ function renderKatalogTab(child) {
 ## Konfliktverhalten
 # Emotionale Regulation
 ## Frustrationstoleranz"></textarea>
+    <div class="row" style="margin-top:8px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="radio" name="importScope" value="child" checked style="width:auto;"> nur für ${esc(child.code)}</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="radio" name="importScope" value="global" style="width:auto;"> für alle Kinder</label>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <label style="font-size:0.78rem;color:var(--muted);width:100%;">Gilt bei Gespräch mit:</label>
+      ${ALL_PARTNERS.map(p => `<label style="display:flex;align-items:center;gap:5px;font-size:0.85rem;"><input type="checkbox" class="partnerScopeBox" value="${p}" checked style="width:auto;"> ${p} · ${PARTNERS[p]}</label>`).join("")}
+    </div>
     <button class="primary" style="margin-top:8px;" onclick="importCatalogText('${esc(child.code)}')">Items übernehmen</button>
   </div>`;
   return html;
@@ -781,7 +1072,8 @@ function renderKatalogTab(child) {
 function renderDiagrammTab(child) {
   const host = document.getElementById("diagrammHost");
   const allItems = [];
-  child.catalog.forEach(cat => cat.items.forEach(it => allItems.push(it.name)));
+  globalCatalog.forEach(cat => cat.items.forEach(it => { if (!allItems.includes(it.name)) allItems.push(it.name); }));
+  child.catalog.forEach(cat => cat.items.forEach(it => { if (!allItems.includes(it.name)) allItems.push(it.name); }));
   let selectHtml = `<div class="card ui">
     <label style="font-size:0.85rem;color:var(--muted);">Ansicht</label>
     <select id="chartSelect" onchange="renderDiagrammTab(getChild('${esc(child.code)}'))">

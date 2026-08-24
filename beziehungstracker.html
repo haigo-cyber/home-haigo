@@ -202,6 +202,7 @@ let showArchivedEntries = false;
 let adhocRatings = [];          // einmalige Items nur für den aktuell erstellten Eintrag
 let adminItemsChild = null;
 let adminEntriesChild = null;
+let editingItem = null; // { scope, childCode, catName, itemName }
 
 /* ---------- Hilfsfunktionen ---------- */
 function todayISO() {
@@ -552,6 +553,7 @@ function openChild(code, tab) {
   currentTab = tab || "neu";
   pendingPartner = null;
   adhocRatings = [];
+  editingItem = null;
   renderApp();
 }
 
@@ -561,6 +563,7 @@ function startQuickEntry(code, partner) {
   currentTab = "neu";
   pendingPartner = partner;
   adhocRatings = [];
+  editingItem = null;
   renderApp();
 }
 
@@ -710,6 +713,74 @@ async function adminDeleteEntry(code, id) {
   if (!ok) { child.entries.splice(idx, 0, backup); renderApp(); return; }
   renderApp();
   toast("Eintrag gelöscht.");
+}
+
+/* ---------- Items bearbeiten ---------- */
+function editItemStart(scope, childCode, catName, itemName) {
+  editingItem = { scope, childCode: childCode || null, catName, itemName };
+  renderApp();
+}
+
+async function editItemSave(scope, childCode, catName, itemName) {
+  const nameEl = document.getElementById("editName");
+  const catEl = document.getElementById("editCat");
+  const sinceEl = document.getElementById("editSince");
+  const archivedEl = document.getElementById("editArchived");
+  const partnerBoxes = document.querySelectorAll(".editPartnerBox:checked");
+  const newName = nameEl.value.trim();
+  const newCatName = catEl.value.trim();
+  const newSince = sinceEl.value;
+  const newArchived = archivedEl.checked;
+  const newPartners = Array.from(partnerBoxes).map(b => b.value);
+
+  if (!newName || !newCatName) { toast("Name und Kategorie dürfen nicht leer sein."); return; }
+  if (newPartners.length === 0) { toast("Bitte mindestens einen Gesprächspartner-Typ auswählen."); return; }
+
+  const childrenSnapshot = JSON.parse(JSON.stringify(children));
+  const globalSnapshot = JSON.parse(JSON.stringify(globalCatalog));
+
+  const targetArr = scope === "global" ? globalCatalog : getChild(childCode).catalog;
+  const oldCat = targetArr.find(c => c.name === catName);
+  const idx = oldCat ? oldCat.items.findIndex(i => i.name === itemName) : -1;
+  if (idx === -1) { toast("Item nicht gefunden."); editingItem = null; renderApp(); return; }
+
+  const destCatCheck = targetArr.find(c => c.name === newCatName);
+  const collision = destCatCheck && destCatCheck.items.some((it,i) => it.name.toLowerCase() === newName.toLowerCase() && !(destCatCheck === oldCat && i === idx));
+  if (collision) { toast("Ein Item mit diesem Namen existiert in dieser Kategorie bereits."); return; }
+
+  const original = oldCat.items[idx];
+  const renamed = newName !== original.name;
+
+  oldCat.items.splice(idx, 1);
+  if (oldCat.items.length === 0) {
+    const oi = targetArr.indexOf(oldCat);
+    targetArr.splice(oi, 1);
+  }
+  let destCat = targetArr.find(c => c.name === newCatName);
+  if (!destCat) { destCat = { name: newCatName, items: [] }; targetArr.push(destCat); }
+  destCat.items.push({ name: newName, since: newSince || original.since, archived: newArchived, partners: newPartners });
+
+  if (renamed) {
+    const affected = scope === "global" ? children : [getChild(childCode)];
+    affected.forEach(c => c.entries.forEach(e => {
+      if (Object.prototype.hasOwnProperty.call(e.ratings, itemName) && !Object.prototype.hasOwnProperty.call(e.ratings, newName)) {
+        e.ratings[newName] = e.ratings[itemName];
+        delete e.ratings[itemName];
+      }
+    }));
+  }
+
+  const ok = await persist();
+  if (!ok) {
+    children = childrenSnapshot;
+    globalCatalog = globalSnapshot;
+    editingItem = null;
+    renderApp();
+    return;
+  }
+  editingItem = null;
+  renderApp();
+  toast("Item aktualisiert" + (renamed ? ", bestehende Bewertungen wurden auf den neuen Namen umgestellt." : "."));
 }
 
 function exportGlobalReport() {
@@ -1018,6 +1089,37 @@ function partnerLabel(item) {
   return " · nur " + p.join(", ");
 }
 
+function renderCatalogItemRow(scope, childCode, cat, item) {
+  const isEditing = editingItem && editingItem.scope === scope && editingItem.childCode === (childCode||null) && editingItem.catName === cat.name && editingItem.itemName === item.name;
+  if (!isEditing) {
+    const delCall = scope === "global"
+      ? `adminDeleteGlobalItem('${esc(cat.name)}','${esc(item.name)}')`
+      : `adminDeleteChildItem('${esc(childCode)}','${esc(cat.name)}','${esc(item.name)}')`;
+    return `<div class="entry-line">
+      <span class="r">${esc(item.name)}${item.archived ? " (archiviert)" : ""}${partnerLabel(item)}</span>
+      <span class="d">seit ${item.since}</span>
+      <a class="backlink ui" onclick="editItemStart('${scope}','${esc(childCode||"")}','${esc(cat.name)}','${esc(item.name)}')">bearbeiten</a>
+      <a class="backlink ui" style="color:var(--danger);" onclick="${delCall}">löschen</a>
+    </div>`;
+  }
+  const p = item.partners && item.partners.length ? item.partners : ALL_PARTNERS;
+  return `<div class="card ui" style="margin:8px 0;padding:12px;background:var(--accent-soft);">
+    <div class="field"><label>Name</label><input id="editName" value="${esc(item.name)}"></div>
+    <div class="field"><label>Kategorie</label><input id="editCat" value="${esc(cat.name)}"></div>
+    <div class="field"><label>Seit</label><input type="date" id="editSince" value="${item.since}"></div>
+    <div class="row">
+      ${ALL_PARTNERS.map(pt => `<label style="display:flex;align-items:center;gap:5px;font-size:0.85rem;"><input type="checkbox" class="editPartnerBox" value="${pt}" ${p.includes(pt)?"checked":""}> ${pt}</label>`).join("")}
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="editArchived" ${item.archived?"checked":""}> archiviert, wird nicht mehr angeboten</label>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <button class="primary" onclick="editItemSave('${scope}','${esc(childCode||"")}','${esc(cat.name)}','${esc(item.name)}')">Speichern</button>
+      <button class="ghost" onclick="editingItem=null;renderApp();">Abbrechen</button>
+    </div>
+  </div>`;
+}
+
 function renderKatalogTab(child) {
   let html = `<div class="card">
     <div class="badge ui" style="margin-bottom:4px;">Allgemein, für alle Kinder</div>`;
@@ -1028,7 +1130,7 @@ function renderKatalogTab(child) {
       if (cat.items.length === 0) continue;
       html += `<div class="cat-title">${esc(cat.name)}</div>`;
       for (const item of cat.items) {
-        html += `<div class="entry-line"><span class="r">${esc(item.name)}${item.archived ? " (archiviert)" : ""}${partnerLabel(item)}</span><span class="d">seit ${item.since}</span></div>`;
+        html += renderCatalogItemRow("global", null, cat, item);
       }
     }
   }
@@ -1043,7 +1145,7 @@ function renderKatalogTab(child) {
       if (cat.items.length === 0) continue;
       html += `<div class="cat-title">${esc(cat.name)}</div>`;
       for (const item of cat.items) {
-        html += `<div class="entry-line"><span class="r">${esc(item.name)}${item.archived ? " (archiviert)" : ""}${partnerLabel(item)}</span><span class="d">seit ${item.since}</span></div>`;
+        html += renderCatalogItemRow("child", child.code, cat, item);
       }
     }
   }

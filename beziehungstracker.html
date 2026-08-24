@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beziehungstracker</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root {
+    --ink: #23282f;
+    --paper: #f6f4ef;
+    --paper-raised: #ffffff;
+    --line: #dcd7cc;
+    --accent: #4a6b63;
+    --accent-soft: #e4ebe8;
+    --k: #4a6ba0;
+    --s: #4a8f7a;
+    --l: #b0793c;
+    --e: #8a5a8f;
+    --danger: #a14c3f;
+    --muted: #6f6a60;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Georgia", "Charter", serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .ui { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--paper);
+    position: sticky; top: 0; z-index: 5;
+  }
+  header h1 {
+    font-size: 1.35rem; margin: 0; font-weight: 600; letter-spacing: -0.01em;
+  }
+  header .status {
+    font-family: inherit;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 80px; }
+  button {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    cursor: pointer;
+    border: 1px solid var(--line);
+    background: var(--paper-raised);
+    color: var(--ink);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-size: 0.92rem;
+    transition: background 0.15s, transform 0.05s;
+  }
+  button:hover { background: var(--accent-soft); }
+  button:active { transform: scale(0.98); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { background: #3b564f; }
+  button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  button.ghost:hover { background: var(--accent-soft); }
+  button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+  button.danger:hover { background: #f3e6e3; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  input, textarea, select {
+    font-family: inherit;
+    font-size: 0.95rem;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    width: 100%;
+  }
+  input:focus, textarea:focus, select:focus, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  .card {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row.between { justify-content: space-between; }
+  .childcard { display: flex; flex-direction: column; gap: 10px; }
+  .childcard .codehead { display: flex; align-items: baseline; justify-content: space-between; }
+  .childcard .code { font-size: 1.15rem; font-weight: 600; }
+  .badge { font-family: -apple-system, sans-serif; font-size: 0.72rem; padding: 2px 8px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); }
+  .badge.arch { background: #ece8df; color: var(--muted); }
+  .partner-btn { flex: 1; min-width: 68px; text-align: center; font-weight: 600; font-family: -apple-system, sans-serif; }
+  .partner-btn[data-p="K"] { border-color: var(--k); color: var(--k); }
+  .partner-btn[data-p="S"] { border-color: var(--s); color: var(--s); }
+  .partner-btn[data-p="L"] { border-color: var(--l); color: var(--l); }
+  .partner-btn[data-p="E"] { border-color: var(--e); color: var(--e); }
+  .partner-btn.active[data-p="K"] { background: var(--k); color: #fff; }
+  .partner-btn.active[data-p="S"] { background: var(--s); color: #fff; }
+  .partner-btn.active[data-p="L"] { background: var(--l); color: #fff; }
+  .partner-btn.active[data-p="E"] { background: var(--e); color: #fff; }
+  .pill { display: inline-block; font-family: -apple-system, sans-serif; font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 6px; color: #fff; }
+  .pill.K { background: var(--k); } .pill.S { background: var(--s); } .pill.L { background: var(--l); } .pill.E { background: var(--e); }
+  .tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
+  .tabbar button { border: none; border-radius: 0; background: transparent; padding: 10px 12px; font-family: -apple-system, sans-serif; color: var(--muted); white-space: nowrap; }
+  .tabbar button.active { color: var(--accent); border-bottom: 2px solid var(--accent); font-weight: 600; }
+  .item-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .item-row:last-child { border-bottom: none; }
+  .item-row .iname { flex: 1; font-size: 0.94rem; }
+  .item-row input[type=range] { flex: 1.4; accent-color: var(--accent); }
+  .item-row .val { width: 24px; text-align: center; font-family: -apple-system, sans-serif; font-weight: 700; }
+  .item-row label.chk { display: flex; align-items: center; gap: 5px; font-family: -apple-system, sans-serif; font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+  .cat-title { font-family: -apple-system, sans-serif; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 16px 0 2px; }
+  .cat-title:first-child { margin-top: 0; }
+  .entry-line { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+  .entry-line:last-child { border-bottom: none; }
+  .entry-line .d { font-family: -apple-system, sans-serif; color: var(--muted); width: 92px; flex-shrink: 0; }
+  .entry-line .r { flex: 1; color: var(--ink); }
+  .empty { color: var(--muted); font-size: 0.9rem; padding: 12px 0; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-family: -apple-system, sans-serif; font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+  canvas { max-width: 100%; }
+  .connect-screen { text-align: center; padding: 60px 20px; }
+  .connect-screen h2 { font-size: 1.3rem; margin-bottom: 8px; }
+  .connect-screen p { color: var(--muted); font-family: -apple-system, sans-serif; font-size: 0.92rem; margin-bottom: 20px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; font-family: -apple-system, sans-serif; font-size: 0.85rem; opacity: 0; transition: opacity 0.25s; pointer-events: none; z-index: 50; }
+  .toast.show { opacity: 1; }
+  a.backlink { font-family: -apple-system, sans-serif; font-size: 0.85rem; color: var(--muted); text-decoration: none; cursor: pointer; }
+  a.backlink:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Beziehungstracker</h1>
+  <span class="status ui" id="statusLine">nicht verbunden</span>
+</header>
+
+<main id="app"></main>
+
+<div class="toast ui" id="toast"></div>
+
+<script>
+/* ---------- Konfiguration ---------- */
+const CLIENT_ID = "22658520266-72537b3ef6bi63gmfaavt4r5snnjv0ln.apps.googleusercontent.com";
+const SCOPES = "https://www.googleapis.com/auth/drive.file";
+const FILE_NAME = "beziehungstracker.md";
+const PARTNERS = { K: "Kind", S: "Schulbegleitung", L: "Lehrkraft", E: "Elternteil" };
+
+/* ---------- Zustand ---------- */
+let accessToken = null;
+let fileId = null;
+let children = [];              // geparster Zustand
+let currentChildCode = null;
+let currentTab = "neu";
+let chartInstance = null;
+let tokenClient = null;
+let pendingPartner = null;
+let showArchivedChildren = false;
+let showArchivedEntries = false;
+
+/* ---------- Hilfsfunktionen ---------- */
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function uid() { return Date.now().toString() + Math.floor(Math.random()*1000); }
+function esc(s) { return (s||"").replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c])); }
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 2200);
+}
+function getChild(code) { return children.find(c => c.code === code); }
+
+/* ---------- Markdown Parsing ---------- */
+function parseMarkdown(text) {
+  const out = [];
+  const lines = text.split(/\r?\n/);
+  let current = null;
+  let section = null;
+  for (const raw of lines) {
+    const line = raw;
+    if (line.startsWith("# Kind: ")) {
+      if (current) out.push(current);
+      current = { code: line.slice(8).trim(), archived: false, catalog: [], entries: [] };
+      section = null;
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith("Status:")) {
+      current.archived = line.slice(7).trim().toLowerCase() === "archiviert";
+      continue;
+    }
+    if (line.startsWith("## Itemkatalog")) { section = "catalog"; continue; }
+    if (line.startsWith("## Eintr")) { section = "entries"; continue; }
+    const t = line.trim();
+    if (t.startsWith("|")) {
+      const cells = t.split("|").map(c=>c.trim()).slice(1,-1);
+      if (cells.every(c => /^:?-+:?$/.test(c))) continue; // Trennzeile
+      if (section === "catalog") {
+        if (cells[0] === "Kategorie") continue;
+        const [kategorie, item, seit, status] = cells;
+        if (!kategorie || !item) continue;
+        let cat = current.catalog.find(c => c.name === kategorie);
+        if (!cat) { cat = { name: kategorie, items: [] }; current.catalog.push(cat); }
+        cat.items.push({ name: item, since: seit || todayISO(), archived: (status||"aktiv").toLowerCase() === "archiviert" });
+      } else if (section === "entries") {
+        if (cells[0] === "EintragID") continue;
+        const [id, datum, partner, status, item, bewertung] = cells;
+        if (!id) continue;
+        let entry = current.entries.find(e => e.id === id);
+        if (!entry) {
+          entry = { id, date: datum, partner, archived: (status||"aktiv").toLowerCase() === "archiviert", ratings: {} };
+          current.entries.push(entry);
+        }
+        if (item) entry.ratings[item] = Number(bewertung);
+      }
+    }
+  }
+  if (current) out.push(current);
+  return out;
+}
+
+function serializeMarkdown(list) {
+  const out = [];
+  for (const child of list) {
+    out.push(`# Kind: ${child.code}`);
+    out.push(`Status: ${child.archived ? "archiviert" : "aktiv"}`);
+    out.push("");
+    out.push("## Itemkatalog");
+    out.push("");
+    out.push("| Kategorie | Item | Seit | Status |");
+    out.push("|---|---|---|---|");
+    for (const cat of child.catalog) {
+      for (const item of cat.items) {
+        out.push(`| ${cat.name} | ${item.name} | ${item.since} | ${item.archived ? "archiviert" : "aktiv"} |`);
+      }
+    }
+    out.push("");
+    out.push("## Einträge");
+    out.push("");
+    out.push("| EintragID | Datum | Partner | Status | Item | Bewertung |");
+    out.push("|---|---|---|---|---|---|");
+    for (const entry of child.entries.slice().sort((a,b)=> a.id.localeCompare(b.id))) {
+      const items = Object.keys(entry.ratings);
+      const status = entry.archived ? "archiviert" : "aktiv";
+      if (items.length === 0) {
+        out.push(`| ${entry.id} | ${entry.date} | ${entry.partner} | ${status} |  |  |`);
+      } else {
+        for (const name of items) {
+          out.push(`| ${entry.id} | ${entry.date} | ${entry.partner} | ${status} | ${name} | ${entry.ratings[name]} |`);
+        }
+      }
+    }
+    out.push("");
+  }
+  return out.join("\n");
+}
+
+/* ---------- Google Auth ---------- */
+function initGoogle() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: async (resp) => {
+      if (resp.error) { toast("Anmeldung fehlgeschlagen: " + resp.error); return; }
+      accessToken = resp.access_token;
+      document.getElementById("statusLine").textContent = "verbunden";
+      await bootAfterAuth();
+    }
+  });
+}
+function connect() {
+  if (!tokenClient) { toast("Google-Skript noch nicht bereit, bitte kurz warten und erneut klicken."); return; }
+  if (CLIENT_ID.startsWith("DEINE_")) { toast("Bitte zuerst deine Client ID im Code eintragen."); return; }
+  tokenClient.requestAccessToken({ prompt: "" });
+}
+
+/* ---------- Drive I/O ---------- */
+async function driveFetch(url, opts={}) {
+  opts.headers = Object.assign({ Authorization: `Bearer ${accessToken}` }, opts.headers || {});
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    toast("Sitzung abgelaufen, bitte erneut verbinden.");
+    accessToken = null;
+    document.getElementById("statusLine").textContent = "nicht verbunden";
+    renderApp();
+    throw new Error("401");
+  }
+  return res;
+}
+
+async function getOrCreateFileId() {
+  const q = encodeURIComponent(`name='${FILE_NAME}' and trashed=false`);
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
+  const data = await res.json();
+  if (data.files && data.files.length > 0) return data.files[0].id;
+
+  const boundary = "beziehungstracker_boundary";
+  const metadata = { name: FILE_NAME, mimeType: "text/markdown" };
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\nContent-Type: text/markdown\r\n\r\n\r\n--${boundary}--`;
+  const res2 = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`, {
+    method: "POST",
+    headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+    body
+  });
+  const data2 = await res2.json();
+  return data2.id;
+}
+
+async function loadFileContent(id) {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
+  return await res.text();
+}
+
+async function persist() {
+  const content = serializeMarkdown(children);
+  await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method: "PATCH",
+    headers: { "Content-Type": "text/markdown" },
+    body: content
+  });
+}
+
+async function bootAfterAuth() {
+  try {
+    fileId = await getOrCreateFileId();
+    const content = await loadFileContent(fileId);
+    children = parseMarkdown(content);
+    renderApp();
+  } catch (e) {
+    if (e.message !== "401") toast("Fehler beim Laden der Datei.");
+    console.error(e);
+  }
+}
+
+/* ---------- Aktionen ---------- */
+async function addChild() {
+  const input = document.getElementById("newChildCode");
+  const code = input.value.trim();
+  if (!code) return;
+  if (children.some(c => c.code.toLowerCase() === code.toLowerCase())) {
+    toast("Dieser Code existiert bereits.");
+    return;
+  }
+  children.push({ code, archived: false, catalog: [], entries: [] });
+  input.value = "";
+  await persist();
+  renderApp();
+  toast("Kind hinzugefügt.");
+}
+
+async function toggleChildArchive(code) {
+  const child = getChild(code);
+  child.archived = !child.archived;
+  await persist();
+  currentChildCode = child.archived ? null : currentChildCode;
+  renderApp();
+}
+
+function openChild(code, tab) {
+  currentChildCode = code;
+  currentTab = tab || "neu";
+  pendingPartner = null;
+  renderApp();
+}
+
+function startQuickEntry(code, partner) {
+  currentChildCode = code;
+  currentTab = "neu";
+  pendingPartner = partner;
+  renderApp();
+}
+
+async function importCatalogText(code) {
+  const ta = document.getElementById("importArea");
+  const text = ta.value;
+  const child = getChild(code);
+  const lines = text.split(/\r?\n/);
+  let currentCat = null;
+  let added = 0;
+  const today = todayISO();
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    if (line.startsWith("## ")) {
+      const itemName = line.slice(3).trim();
+      if (!currentCat || !itemName) continue;
+      let cat = child.catalog.find(c => c.name === currentCat);
+      if (!cat) { cat = { name: currentCat, items: [] }; child.catalog.push(cat); }
+      const exists = cat.items.some(it => it.name.toLowerCase() === itemName.toLowerCase());
+      if (!exists) { cat.items.push({ name: itemName, since: today, archived: false }); added++; }
+    } else if (line.startsWith("# ")) {
+      currentCat = line.slice(2).trim();
+      if (!child.catalog.some(c => c.name === currentCat)) child.catalog.push({ name: currentCat, items: [] });
+    }
+  }
+  if (added === 0) { toast("Keine neuen Items erkannt. Format: # Kategorie, dann ## Item"); return; }
+  await persist();
+  ta.value = "";
+  renderApp();
+  toast(added + " Item(s) hinzugefügt.");
+}
+
+async function saveEntry(code) {
+  const child = getChild(code);
+  const dateVal = document.getElementById("entryDate").value || todayISO();
+  const partner = pendingPartner;
+  if (!partner) { toast("Bitte zuerst auswählen, mit wem gesprochen wurde."); return; }
+  const ratings = {};
+  document.querySelectorAll(".item-row").forEach(row => {
+    const chk = row.querySelector("input[type=checkbox]");
+    const rng = row.querySelector("input[type=range]");
+    if (chk && chk.checked && rng) ratings[row.dataset.item] = Number(rng.value);
+  });
+  const entry = { id: uid(), date: dateVal, partner, archived: false, ratings };
+  child.entries.push(entry);
+  await persist();
+  pendingPartner = null;
+  currentTab = "eintraege";
+  renderApp();
+  toast("Eintrag gespeichert.");
+}
+
+async function toggleEntryArchive(code, id) {
+  const child = getChild(code);
+  const entry = child.entries.find(e => e.id === id);
+  entry.archived = !entry.archived;
+  await persist();
+  renderApp();
+}
+
+function exportGlobalReport() {
+  const includeArchived = document.getElementById("reportIncludeArchived") ? document.getElementById("reportIncludeArchived").checked : false;
+  let lines = [];
+  lines.push("Bericht Beziehungstracker");
+  lines.push("erzeugt am " + new Date().toLocaleString("de-DE"));
+  lines.push("");
+  for (const child of children) {
+    if (child.archived && !includeArchived) continue;
+    lines.push("Kind: " + child.code + (child.archived ? " (archiviert)" : ""));
+    const entries = child.entries.filter(e => includeArchived || !e.archived).slice().sort((a,b)=>a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    if (entries.length === 0) lines.push("  keine Einträge");
+    for (const e of entries) {
+      const ratingStr = Object.entries(e.ratings).map(([k,v]) => `${k}: ${v}`).join(", ");
+      lines.push(`  ${e.date} | ${e.partner} (${PARTNERS[e.partner]||e.partner})${e.archived ? " [archiviert]" : ""} | ${ratingStr || "keine Bewertung"}`);
+    }
+    lines.push("");
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "bericht_" + todayISO() + ".txt";
+  a.click();
+}
+
+/* ---------- Rendering ---------- */
+function renderApp() {
+  const app = document.getElementById("app");
+  if (!accessToken) {
+    app.innerHTML = `
+      <div class="connect-screen">
+        <h2>Mit Google Drive verbinden</h2>
+        <p>Alle Daten werden in einer Markdown-Datei in deinem Google Drive gespeichert.</p>
+        <button class="primary ui" onclick="connect()">Verbinden</button>
+      </div>`;
+    return;
+  }
+  if (currentChildCode && getChild(currentChildCode)) {
+    renderChildDetail(app);
+  } else {
+    renderDashboard(app);
+  }
+}
+
+function renderDashboard(app) {
+  const visible = children.filter(c => showArchivedChildren || !c.archived);
+  let html = `<div class="card ui">
+    <div class="row">
+      <input id="newChildCode" placeholder="Neuer Code, z. B. C" style="flex:1">
+      <button class="primary" onclick="addChild()">Kind hinzufügen</button>
+    </div>
+  </div>`;
+
+  html += `<div class="row between ui" style="margin-bottom:10px;">
+    <label style="font-size:0.85rem;color:var(--muted);"><input type="checkbox" id="showArchChild" ${showArchivedChildren?"checked":""} onchange="showArchivedChildren=this.checked;renderApp();"> archivierte Kinder anzeigen</label>
+  </div>`;
+
+  if (visible.length === 0) {
+    html += `<div class="empty ui">Noch keine Kinder angelegt.</div>`;
+  }
+
+  for (const child of visible) {
+    html += `<div class="card childcard">
+      <div class="codehead">
+        <span class="code">${esc(child.code)}</span>
+        <span class="badge ${child.archived ? "arch" : ""} ui">${child.archived ? "archiviert" : "aktiv"}</span>
+      </div>
+      <div class="row ui">
+        ${["K","S","L","E"].map(p => `<button class="partner-btn" data-p="${p}" title="${PARTNERS[p]}" onclick="startQuickEntry('${esc(child.code)}','${p}')">${p}</button>`).join("")}
+      </div>
+      <div class="row ui">
+        <a class="backlink" onclick="openChild('${esc(child.code)}','eintraege')">Einträge</a>
+        <a class="backlink" onclick="openChild('${esc(child.code)}','katalog')">Itemkatalog</a>
+        <a class="backlink" onclick="openChild('${esc(child.code)}','diagramm')">Diagramm</a>
+        <a class="backlink" onclick="toggleChildArchive('${esc(child.code)}')">${child.archived ? "reaktivieren" : "archivieren"}</a>
+      </div>
+    </div>`;
+  }
+
+  html += `<div class="card ui">
+    <div class="row between">
+      <strong>Gesamtbericht</strong>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <label style="font-size:0.85rem;color:var(--muted);"><input type="checkbox" id="reportIncludeArchived"> archivierte einschließen</label>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button onclick="exportGlobalReport()">Bericht exportieren (.txt)</button>
+    </div>
+  </div>`;
+
+  app.innerHTML = html;
+}
+
+function renderChildDetail(app) {
+  const child = getChild(currentChildCode);
+  let html = `<a class="backlink ui" onclick="currentChildCode=null;renderApp();">&larr; Übersicht</a>
+  <h2 style="margin:10px 0 4px;">${esc(child.code)}</h2>
+  <div class="tabbar ui">
+    <button class="${currentTab==='neu'?'active':''}" onclick="currentTab='neu';renderApp();">Neuer Eintrag</button>
+    <button class="${currentTab==='eintraege'?'active':''}" onclick="currentTab='eintraege';renderApp();">Einträge</button>
+    <button class="${currentTab==='katalog'?'active':''}" onclick="currentTab='katalog';renderApp();">Itemkatalog</button>
+    <button class="${currentTab==='diagramm'?'active':''}" onclick="currentTab='diagramm';renderApp();">Diagramm</button>
+  </div>`;
+
+  if (currentTab === "neu") html += renderNeuTab(child);
+  else if (currentTab === "eintraege") html += renderEintraegeTab(child);
+  else if (currentTab === "katalog") html += renderKatalogTab(child);
+  else if (currentTab === "diagramm") html += `<div id="diagrammHost"></div>`;
+
+  app.innerHTML = html;
+
+  if (currentTab === "diagramm") renderDiagrammTab(child);
+}
+
+function renderNeuTab(child) {
+  const activeItems = child.catalog.map(cat => ({
+    name: cat.name,
+    items: cat.items.filter(it => !it.archived && it.since <= (document.getElementById("entryDate")?.value || todayISO()))
+  })).filter(cat => cat.items.length > 0);
+
+  let html = `<div class="card ui">
+    <div class="field">
+      <label>Datum</label>
+      <input type="date" id="entryDate" value="${todayISO()}" onchange="renderApp()">
+    </div>
+    <div class="field">
+      <label>Gesprächspartner</label>
+      <div class="row">
+        ${["K","S","L","E"].map(p => `<button class="partner-btn ${pendingPartner===p?'active':''}" data-p="${p}" onclick="pendingPartner='${p}';renderApp();">${p} · ${PARTNERS[p]}</button>`).join("")}
+      </div>
+    </div>
+  </div>`;
+
+  if (child.catalog.length === 0) {
+    html += `<div class="empty ui">Noch keine Items im Katalog. Lege zuerst welche im Reiter Itemkatalog an.</div>`;
+  } else {
+    html += `<div class="card">`;
+    for (const cat of activeItems) {
+      html += `<div class="cat-title">${esc(cat.name)}</div>`;
+      for (const item of cat.items) {
+        html += `<div class="item-row" data-item="${esc(item.name)}">
+          <span class="iname">${esc(item.name)}</span>
+          <input type="range" min="1" max="10" value="5" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="val">5</span>
+          <label class="chk"><input type="checkbox"> bewerten</label>
+        </div>`;
+      }
+    }
+    if (activeItems.length === 0) html += `<div class="empty ui">Keine aktiven Items für dieses Datum.</div>`;
+    html += `</div>`;
+    html += `<button class="primary ui" style="width:100%;" onclick="saveEntry('${esc(child.code)}')">Eintrag speichern</button>`;
+  }
+  return html;
+}
+
+function renderEintraegeTab(child) {
+  let html = `<div class="row" style="margin-bottom:10px;">
+    <label class="ui" style="font-size:0.85rem;color:var(--muted);"><input type="checkbox" id="showArchEntries" ${showArchivedEntries?"checked":""} onchange="showArchivedEntries=this.checked;renderApp();"> archivierte Einträge anzeigen</label>
+  </div>`;
+  const entries = child.entries.filter(e => showArchivedEntries || !e.archived).slice().sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  html += `<div class="card">`;
+  if (entries.length === 0) html += `<div class="empty ui">Keine Einträge vorhanden.</div>`;
+  for (const e of entries) {
+    const ratingStr = Object.entries(e.ratings).map(([k,v]) => `${esc(k)}: ${v}`).join(", ") || "keine Bewertung";
+    html += `<div class="entry-line">
+      <span class="d">${e.date}</span>
+      <span class="pill ${e.partner}">${e.partner}</span>
+      <span class="r">${ratingStr}${e.archived ? " · archiviert" : ""}</span>
+      <a class="backlink ui" onclick="toggleEntryArchive('${esc(child.code)}','${e.id}')">${e.archived ? "reaktivieren" : "archivieren"}</a>
+    </div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function renderKatalogTab(child) {
+  let html = `<div class="card">`;
+  if (child.catalog.length === 0) html += `<div class="empty ui">Noch kein Katalog.</div>`;
+  for (const cat of child.catalog) {
+    html += `<div class="cat-title">${esc(cat.name)}</div>`;
+    for (const item of cat.items) {
+      html += `<div class="entry-line"><span class="r">${esc(item.name)}${item.archived ? " (archiviert)" : ""}</span><span class="d">seit ${item.since}</span></div>`;
+    }
+  }
+  html += `</div>`;
+  html += `<div class="card ui">
+    <label style="font-size:0.85rem;color:var(--muted);display:block;margin-bottom:6px;">Neue Items als Rohtext einfügen, eine Kategorie mit # und Items darunter mit ##</label>
+    <textarea id="importArea" rows="6" placeholder="# Sozialverhalten
+## Kontaktaufnahme
+## Konfliktverhalten
+# Emotionale Regulation
+## Frustrationstoleranz"></textarea>
+    <button class="primary" style="margin-top:8px;" onclick="importCatalogText('${esc(child.code)}')">Items übernehmen</button>
+  </div>`;
+  return html;
+}
+
+function renderDiagrammTab(child) {
+  const host = document.getElementById("diagrammHost");
+  const allItems = [];
+  child.catalog.forEach(cat => cat.items.forEach(it => allItems.push(it.name)));
+  let selectHtml = `<div class="card ui">
+    <label style="font-size:0.85rem;color:var(--muted);">Ansicht</label>
+    <select id="chartSelect" onchange="renderDiagrammTab(getChild('${esc(child.code)}'))">
+      <option value="__all__">Gesamte Story (alle Items)</option>
+      ${allItems.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("")}
+    </select>
+  </div>
+  <div class="card"><canvas id="chartCanvas" height="220"></canvas></div>`;
+  host.innerHTML = selectHtml;
+
+  const select = document.getElementById("chartSelect");
+  const mode = select.value;
+
+  const entries = child.entries.filter(e => !e.archived).slice().sort((a,b)=> a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const labels = [...new Set(entries.map(e => e.date))].sort();
+
+  const palette = ["#4a6ba0","#4a8f7a","#b0793c","#8a5a8f","#a14c3f","#6b6b3a","#3a6b8a"];
+  let datasets = [];
+
+  if (mode === "__all__") {
+    allItems.forEach((name, idx) => {
+      const data = labels.map(d => {
+        const dayEntries = entries.filter(e => e.date === d && e.ratings[name] !== undefined);
+        if (dayEntries.length === 0) return null;
+        const avg = dayEntries.reduce((s,e)=>s+e.ratings[name],0) / dayEntries.length;
+        return Math.round(avg*10)/10;
+      });
+      if (data.some(v => v !== null)) {
+        datasets.push({ label: name, data, borderColor: palette[idx % palette.length], spanGaps: true, tension: 0.25 });
+      }
+    });
+  } else {
+    const data = labels.map(d => {
+      const dayEntries = entries.filter(e => e.date === d && e.ratings[mode] !== undefined);
+      if (dayEntries.length === 0) return null;
+      const avg = dayEntries.reduce((s,e)=>s+e.ratings[mode],0) / dayEntries.length;
+      return Math.round(avg*10)/10;
+    });
+    datasets.push({ label: mode, data, borderColor: palette[0], spanGaps: true, tension: 0.25 });
+  }
+
+  if (chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById("chartCanvas").getContext("2d");
+  if (datasets.length === 0) {
+    document.getElementById("chartCanvas").parentElement.innerHTML = `<div class="empty ui">Noch keine bewerteten Einträge für diese Auswahl.</div>`;
+    return;
+  }
+  chartInstance = new Chart(ctx, {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      scales: { y: { min: 1, max: 10, ticks: { stepSize: 1 } } },
+      plugins: { legend: { display: mode === "__all__" } }
+    }
+  });
+}
+
+/* ---------- Start ---------- */
+window.addEventListener("load", () => {
+  renderApp();
+  const check = setInterval(() => {
+    if (window.google && google.accounts && google.accounts.oauth2) {
+      clearInterval(check);
+      initGoogle();
+    }
+  }, 100);
+});
+</script>
+</body>
+</html>

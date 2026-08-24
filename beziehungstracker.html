@@ -284,9 +284,17 @@ function connect() {
 }
 
 /* ---------- Drive I/O ---------- */
+const BACKUP_PREFIX = "beziehungstracker_backup_";
+
 async function driveFetch(url, opts={}) {
   opts.headers = Object.assign({ Authorization: `Bearer ${accessToken}` }, opts.headers || {});
-  const res = await fetch(url, opts);
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (netErr) {
+    toast("Netzwerkfehler bei Google Drive: " + netErr.message);
+    throw netErr;
+  }
   if (res.status === 401) {
     toast("Sitzung abgelaufen, bitte erneut verbinden.");
     accessToken = null;
@@ -297,38 +305,131 @@ async function driveFetch(url, opts={}) {
   return res;
 }
 
-async function getOrCreateFileId() {
-  const q = encodeURIComponent(`name='${FILE_NAME}' and trashed=false`);
-  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
+async function searchDriveFileByName(name) {
+  const q = encodeURIComponent(`name='${name}' and trashed=false`);
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,createdTime)`);
+  if (!res.ok) throw new Error("Suche fehlgeschlagen (" + res.status + ")");
   const data = await res.json();
-  if (data.files && data.files.length > 0) return data.files[0].id;
+  return (data.files && data.files.length > 0) ? data.files[0] : null;
+}
 
+async function searchDriveFilesByPrefix(prefix) {
+  const q = encodeURIComponent(`name contains '${prefix}' and trashed=false`);
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&orderBy=createdTime desc&fields=files(id,name,createdTime)`);
+  if (!res.ok) throw new Error("Suche fehlgeschlagen (" + res.status + ")");
+  const data = await res.json();
+  return data.files || [];
+}
+
+async function createDriveFile(name, content) {
   const boundary = "beziehungstracker_boundary";
-  const metadata = { name: FILE_NAME, mimeType: "text/markdown" };
+  const metadata = { name, mimeType: "text/markdown" };
   const body =
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
-    `--${boundary}\r\nContent-Type: text/markdown\r\n\r\n\r\n--${boundary}--`;
-  const res2 = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`, {
+    `--${boundary}\r\nContent-Type: text/markdown\r\n\r\n${content}\r\n--${boundary}--`;
+  const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`, {
     method: "POST",
     headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
     body
   });
-  const data2 = await res2.json();
-  return data2.id;
+  if (!res.ok) throw new Error("Anlegen fehlgeschlagen (" + res.status + ")");
+  const data = await res.json();
+  return data.id;
 }
 
-async function loadFileContent(id) {
-  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
-  return await res.text();
-}
-
-async function persist() {
-  const content = serializeMarkdown(children);
-  await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+async function updateDriveFile(id, content) {
+  const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
     method: "PATCH",
     headers: { "Content-Type": "text/markdown" },
     body: content
   });
+  if (!res.ok) throw new Error("Speichern fehlgeschlagen (" + res.status + ")");
+  return true;
+}
+
+async function getOrCreateFileId() {
+  const existing = await searchDriveFileByName(FILE_NAME);
+  if (existing) return existing.id;
+  return await createDriveFile(FILE_NAME, "");
+}
+
+async function loadFileContent(id) {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
+  if (!res.ok) throw new Error("Laden fehlgeschlagen (" + res.status + ")");
+  return await res.text();
+}
+
+async function persist() {
+  try {
+    await updateDriveFile(fileId, serializeMarkdown(children));
+    return true;
+  } catch (e) {
+    if (e.message !== "401") { toast("Speichern fehlgeschlagen: " + e.message); console.error(e); }
+    return false;
+  }
+}
+
+/* ---------- Backup ---------- */
+function timeStamp() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2,"0") + String(d.getMinutes()).padStart(2,"0");
+}
+
+async function ensureAutoBackupToday() {
+  try {
+    const name = `${BACKUP_PREFIX}${todayISO()}.md`;
+    const existing = await searchDriveFileByName(name);
+    if (!existing) {
+      await createDriveFile(name, serializeMarkdown(children));
+    }
+  } catch (e) {
+    console.error("Automatisches Backup fehlgeschlagen", e);
+  }
+}
+
+async function createManualBackup() {
+  try {
+    const name = `${BACKUP_PREFIX}${todayISO()}_${timeStamp()}.md`;
+    await createDriveFile(name, serializeMarkdown(children));
+    toast("Backup erstellt: " + name);
+  } catch (e) {
+    if (e.message !== "401") toast("Backup fehlgeschlagen: " + e.message);
+    console.error(e);
+  }
+}
+
+async function loadBackupList() {
+  const host = document.getElementById("backupList");
+  host.innerHTML = `<div class="empty ui">lade...</div>`;
+  try {
+    const files = await searchDriveFilesByPrefix(BACKUP_PREFIX);
+    if (files.length === 0) { host.innerHTML = `<div class="empty ui">Noch keine Backups vorhanden.</div>`; return; }
+    host.innerHTML = files.map(f => `
+      <div class="entry-line">
+        <span class="r">${esc(f.name)}</span>
+        <a class="backlink ui" onclick="restoreBackup('${f.id}','${esc(f.name)}')">wiederherstellen</a>
+      </div>`).join("");
+  } catch (e) {
+    host.innerHTML = `<div class="empty ui">Fehler beim Laden der Backups: ${esc(e.message)}</div>`;
+  }
+}
+
+async function restoreBackup(id, name) {
+  const sure = confirm(`Backup "${name}" wiederherstellen? Das ersetzt alle aktuellen Daten in der Hauptdatei. Vorher lohnt sich ein eigenes Backup des jetzigen Stands.`);
+  if (!sure) return;
+  try {
+    const content = await loadFileContent(id);
+    const restored = parseMarkdown(content);
+    const ok = await updateDriveFile(fileId, content).then(()=>true).catch(()=>false);
+    if (!ok) { toast("Wiederherstellen fehlgeschlagen."); return; }
+    children = restored;
+    currentChildCode = null;
+    toast("Backup wiederhergestellt.");
+    renderApp();
+  } catch (e) {
+    toast("Wiederherstellen fehlgeschlagen: " + e.message);
+    console.error(e);
+  }
 }
 
 async function bootAfterAuth() {
@@ -337,8 +438,9 @@ async function bootAfterAuth() {
     const content = await loadFileContent(fileId);
     children = parseMarkdown(content);
     renderApp();
+    ensureAutoBackupToday();
   } catch (e) {
-    if (e.message !== "401") toast("Fehler beim Laden der Datei.");
+    if (e.message !== "401") toast("Fehler beim Laden der Datei: " + e.message);
     console.error(e);
   }
 }
@@ -352,9 +454,11 @@ async function addChild() {
     toast("Dieser Code existiert bereits.");
     return;
   }
-  children.push({ code, archived: false, catalog: [], entries: [] });
+  const newChild = { code, archived: false, catalog: [], entries: [] };
+  children.push(newChild);
+  const ok = await persist();
+  if (!ok) { children = children.filter(c => c !== newChild); renderApp(); return; }
   input.value = "";
-  await persist();
   renderApp();
   toast("Kind hinzugefügt.");
 }
@@ -362,7 +466,8 @@ async function addChild() {
 async function toggleChildArchive(code) {
   const child = getChild(code);
   child.archived = !child.archived;
-  await persist();
+  const ok = await persist();
+  if (!ok) { child.archived = !child.archived; renderApp(); return; }
   currentChildCode = child.archived ? null : currentChildCode;
   renderApp();
 }
@@ -385,6 +490,7 @@ async function importCatalogText(code) {
   const ta = document.getElementById("importArea");
   const text = ta.value;
   const child = getChild(code);
+  const snapshot = JSON.parse(JSON.stringify(child.catalog));
   const lines = text.split(/\r?\n/);
   let currentCat = null;
   let added = 0;
@@ -405,7 +511,8 @@ async function importCatalogText(code) {
     }
   }
   if (added === 0) { toast("Keine neuen Items erkannt. Format: # Kategorie, dann ## Item"); return; }
-  await persist();
+  const ok = await persist();
+  if (!ok) { child.catalog = snapshot; renderApp(); return; }
   ta.value = "";
   renderApp();
   toast(added + " Item(s) hinzugefügt.");
@@ -424,7 +531,8 @@ async function saveEntry(code) {
   });
   const entry = { id: uid(), date: dateVal, partner, archived: false, ratings };
   child.entries.push(entry);
-  await persist();
+  const ok = await persist();
+  if (!ok) { child.entries = child.entries.filter(e => e !== entry); renderApp(); return; }
   pendingPartner = null;
   currentTab = "eintraege";
   renderApp();
@@ -435,7 +543,8 @@ async function toggleEntryArchive(code, id) {
   const child = getChild(code);
   const entry = child.entries.find(e => e.id === id);
   entry.archived = !entry.archived;
-  await persist();
+  const ok = await persist();
+  if (!ok) { entry.archived = !entry.archived; renderApp(); return; }
   renderApp();
 }
 
@@ -527,6 +636,18 @@ function renderDashboard(app) {
     <div class="row" style="margin-top:8px;">
       <button onclick="exportGlobalReport()">Bericht exportieren (.txt)</button>
     </div>
+  </div>`;
+
+  html += `<div class="card ui">
+    <div class="row between">
+      <strong>Sicherung</strong>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:8px 0;">Bei jedem Verbinden wird automatisch einmal pro Tag eine Sicherungskopie in Drive angelegt. Ein echter zeitgesteuerter Hintergrund-Job ist mit dieser rein statisch gehosteten Seite nicht möglich, das Backup entsteht also nur, wenn das Tool tatsächlich geöffnet wird.</p>
+    <div class="row">
+      <button onclick="createManualBackup()">Backup jetzt erstellen</button>
+      <button onclick="loadBackupList()">Backups anzeigen</button>
+    </div>
+    <div id="backupList" style="margin-top:10px;"></div>
   </div>`;
 
   app.innerHTML = html;
@@ -699,6 +820,11 @@ function renderDiagrammTab(child) {
 }
 
 /* ---------- Start ---------- */
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("Unerwarteter Fehler:", e.reason);
+  const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+  if (msg !== "401") toast("Unerwarteter Fehler: " + msg);
+});
 window.addEventListener("load", () => {
   renderApp();
   const check = setInterval(() => {

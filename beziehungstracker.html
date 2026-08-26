@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CiAgPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiM0YTZiNjMiLz4KICA8Y2lyY2xlIGN4PSIyNCIgY3k9IjMwIiByPSIxMyIgZmlsbD0iI2Y2ZjRlZiIvPgogIDxjaXJjbGUgY3g9IjQxIiBjeT0iMzUiIHI9IjEzIiBmaWxsPSIjZjZmNGVmIiBvcGFjaXR5PSIwLjU1Ii8+Cjwvc3ZnPgo=">
+<link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CiAgPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiM0YTZiNjMiLz4KICA8Y2lyY2xlIGN4PSIyNCIgY3k9IjMwIiByPSIxMyIgZmlsbD0iI2Y2ZjRlZiIvPgogIDxjaXJjbGUgY3g9IjQxIiBjeT0iMzUiIHI9IjEzIiBmaWxsPSIjZjZmNGVmIiBvcGFjaXR5PSIwLjU1Ii8+Cjwvc3ZnPgo=">
 <title>Beziehungstracker</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -229,20 +231,22 @@ function parseMarkdown(text) {
   let current = null;
   let isGlobal = false;
   let section = null;
+  let catalogHeader = null;
+  let entriesHeader = null;
   for (const raw of lines) {
     const line = raw;
     if (line.startsWith("# Global")) {
       if (current && !isGlobal) children.push(current);
       current = { catalog: globalCatalog };
       isGlobal = true;
-      section = null;
+      section = null; catalogHeader = null; entriesHeader = null;
       continue;
     }
     if (line.startsWith("# Kind: ")) {
       if (current && !isGlobal) children.push(current);
       current = { code: line.slice(8).trim(), archived: false, catalog: [], entries: [] };
       isGlobal = false;
-      section = null;
+      section = null; catalogHeader = null; entriesHeader = null;
       continue;
     }
     if (!current) continue;
@@ -250,27 +254,36 @@ function parseMarkdown(text) {
       current.archived = line.slice(7).trim().toLowerCase() === "archiviert";
       continue;
     }
-    if (line.startsWith("## Itemkatalog")) { section = "catalog"; continue; }
-    if (line.startsWith("## Eintr")) { section = "entries"; continue; }
+    if (line.startsWith("## Itemkatalog")) { section = "catalog"; catalogHeader = null; continue; }
+    if (line.startsWith("## Eintr")) { section = "entries"; entriesHeader = null; continue; }
     const t = line.trim();
     if (t.startsWith("|")) {
       const cells = t.split("|").map(c=>c.trim()).slice(1,-1);
       if (cells.every(c => /^:?-+:?$/.test(c))) continue; // Trennzeile
       if (section === "catalog") {
-        if (cells[0] === "Kategorie") continue;
-        const [kategorie, item, seit, status, partnerStr] = cells;
+        if (cells[0] === "Kategorie") { catalogHeader = cells; continue; }
+        const h = catalogHeader || ["Kategorie","Item","Seit","Status","Partner"];
+        const get = (name) => { const i = h.indexOf(name); return i >= 0 ? cells[i] : undefined; };
+        const kategorie = get("Kategorie"), item = get("Item"), seit = get("Seit"), status = get("Status"), partnerStr = get("Partner");
         if (!kategorie || !item) continue;
         let cat = current.catalog.find(c => c.name === kategorie);
         if (!cat) { cat = { name: kategorie, items: [] }; current.catalog.push(cat); }
         const partners = partnerStr ? partnerStr.split(",").map(p=>p.trim()).filter(p=>ALL_PARTNERS.includes(p)) : ALL_PARTNERS.slice();
         cat.items.push({ name: item, since: seit || todayISO(), archived: (status||"aktiv").toLowerCase() === "archiviert", partners: partners.length ? partners : ALL_PARTNERS.slice() });
       } else if (section === "entries" && !isGlobal) {
-        if (cells[0] === "EintragID") continue;
-        const [id, datum, partner, status, item, bewertung] = cells;
+        if (cells[0] === "EintragID") { entriesHeader = cells; continue; }
+        const h = entriesHeader || ["EintragID","Datum","Partner","Status","Item","Bewertung"];
+        const get = (name) => { const i = h.indexOf(name); return i >= 0 ? cells[i] : undefined; };
+        const id = get("EintragID");
         if (!id) continue;
+        const datum = get("Datum"), partner = get("Partner"), status = get("Status");
+        const marking = get("Markierung") || "";
+        const keyword = get("Stichwort") || "";
+        const notes = get("Anmerkung") || "";
+        const item = get("Item"), bewertung = get("Bewertung");
         let entry = current.entries.find(e => e.id === id);
         if (!entry) {
-          entry = { id, date: datum, partner, archived: (status||"aktiv").toLowerCase() === "archiviert", ratings: {} };
+          entry = { id, date: datum, partner, archived: (status||"aktiv").toLowerCase() === "archiviert", marking, keyword, notes, ratings: {} };
           current.entries.push(entry);
         }
         if (item) entry.ratings[item] = Number(bewertung);
@@ -313,22 +326,29 @@ function serializeMarkdown(globalCat, list) {
     out.push("");
     out.push("## Einträge");
     out.push("");
-    out.push("| EintragID | Datum | Partner | Status | Item | Bewertung |");
-    out.push("|---|---|---|---|---|---|");
+    out.push("| EintragID | Datum | Partner | Status | Markierung | Stichwort | Anmerkung | Item | Bewertung |");
+    out.push("|---|---|---|---|---|---|---|---|---|");
     for (const entry of child.entries.slice().sort((a,b)=> a.id.localeCompare(b.id))) {
       const items = Object.keys(entry.ratings);
       const status = entry.archived ? "archiviert" : "aktiv";
+      const mk = entry.marking || "";
+      const kw = sanitizeCellText(entry.keyword);
+      const nt = sanitizeCellText(entry.notes);
       if (items.length === 0) {
-        out.push(`| ${entry.id} | ${entry.date} | ${entry.partner} | ${status} |  |  |`);
+        out.push(`| ${entry.id} | ${entry.date} | ${entry.partner} | ${status} | ${mk} | ${kw} | ${nt} |  |  |`);
       } else {
         for (const name of items) {
-          out.push(`| ${entry.id} | ${entry.date} | ${entry.partner} | ${status} | ${name} | ${entry.ratings[name]} |`);
+          out.push(`| ${entry.id} | ${entry.date} | ${entry.partner} | ${status} | ${mk} | ${kw} | ${nt} | ${name} | ${entry.ratings[name]} |`);
         }
       }
     }
     out.push("");
   }
   return out.join("\n");
+}
+
+function sanitizeCellText(s) {
+  return (s || "").replace(/\|/g, "/").replace(/\r?\n+/g, " ").trim();
 }
 
 function restoreArrayContents(arr, snapshot) {
@@ -585,6 +605,13 @@ function removeAdhocRating(idx) {
   renderApp();
 }
 
+function updateNotesCounter(el) {
+  const counter = document.getElementById("notesCounter");
+  if (!counter) return;
+  const words = el.value.trim() ? el.value.trim().split(/\s+/).length : 0;
+  counter.textContent = words + " Wörter";
+}
+
 async function importCatalogText(code) {
   const ta = document.getElementById("importArea");
   const scopeEl = document.querySelector('input[name="importScope"]:checked');
@@ -628,6 +655,8 @@ async function saveEntry(code) {
   const dateVal = document.getElementById("entryDate").value || todayISO();
   const partner = pendingPartner;
   if (!partner) { toast("Bitte zuerst auswählen, mit wem gesprochen wurde."); return; }
+  const keyword = sanitizeCellText(document.getElementById("entryKeyword")?.value || "");
+  const notes = sanitizeCellText(document.getElementById("entryNotes")?.value || "");
   const ratings = {};
   document.querySelectorAll(".item-row").forEach(row => {
     const chk = row.querySelector("input[type=checkbox]");
@@ -635,7 +664,7 @@ async function saveEntry(code) {
     if (chk && chk.checked && rng) ratings[row.dataset.item] = Number(rng.value);
   });
   adhocRatings.forEach(r => { ratings[r.name] = r.value; });
-  const entry = { id: uid(), date: dateVal, partner, archived: false, ratings };
+  const entry = { id: uid(), date: dateVal, partner, archived: false, keyword, notes, ratings };
   child.entries.push(entry);
   const ok = await persist();
   if (!ok) { child.entries = child.entries.filter(e => e !== entry); renderApp(); return; }
@@ -652,6 +681,16 @@ async function toggleEntryArchive(code, id) {
   entry.archived = !entry.archived;
   const ok = await persist();
   if (!ok) { entry.archived = !entry.archived; renderApp(); return; }
+  renderApp();
+}
+
+async function setEntryMarking(code, id, value) {
+  const child = getChild(code);
+  const entry = child.entries.find(e => e.id === id);
+  const old = entry.marking || "";
+  entry.marking = value;
+  const ok = await persist();
+  if (!ok) { entry.marking = old; renderApp(); return; }
   renderApp();
 }
 
@@ -796,7 +835,12 @@ function exportGlobalReport() {
     if (entries.length === 0) lines.push("  keine Einträge");
     for (const e of entries) {
       const ratingStr = Object.entries(e.ratings).map(([k,v]) => `${k}: ${v}`).join(", ");
-      lines.push(`  ${e.date} | ${e.partner} (${PARTNERS[e.partner]||e.partner})${e.archived ? " [archiviert]" : ""} | ${ratingStr || "keine Bewertung"}`);
+      const markLabel = e.marking === "unbeantwortet" ? "unbeantwortet" : e.marking === "nicht_relevant" ? "nicht relevant" : "";
+      let line = `  ${e.date} | ${e.partner} (${PARTNERS[e.partner]||e.partner})${e.archived ? " [archiviert]" : ""}${markLabel ? " [" + markLabel + "]" : ""}`;
+      if (e.keyword) line += ` | Stichwort: ${e.keyword}`;
+      line += ` | ${ratingStr || "keine Bewertung"}`;
+      if (e.notes) line += ` | Anmerkung: ${e.notes}`;
+      lines.push(line);
     }
     lines.push("");
   }
@@ -894,7 +938,8 @@ function renderAdmin(app) {
     if (sorted.length === 0) html += `<div class="empty">Keine Einträge.</div>`;
     for (const e of sorted) {
       const ratingStr = Object.entries(e.ratings).map(([k,v]) => `${esc(k)}: ${v}`).join(", ") || "keine Bewertung";
-      html += `<div class="entry-line"><span class="d">${e.date}</span><span class="pill ${e.partner}">${e.partner}</span><span class="r">${ratingStr}</span><a class="backlink" style="color:var(--danger);" onclick="adminDeleteEntry('${esc(c.code)}','${e.id}')">löschen</a></div>`;
+      const kwLabel = e.keyword ? `<strong style="font-weight:600;">${esc(e.keyword)}:</strong> ` : "";
+      html += `<div class="entry-line"><span class="d">${e.date}</span><span class="pill ${e.partner}">${e.partner}</span><span class="r">${kwLabel}${ratingStr}</span><a class="backlink" style="color:var(--danger);" onclick="adminDeleteEntry('${esc(c.code)}','${e.id}')">löschen</a></div>`;
     }
   }
   html += `</div>`;
@@ -993,6 +1038,8 @@ function itemAppliesToPartner(item, partner) {
 
 function renderNeuTab(child) {
   const dateVal = document.getElementById("entryDate")?.value || todayISO();
+  const keywordVal = document.getElementById("entryKeyword")?.value || "";
+  const notesVal = document.getElementById("entryNotes")?.value || "";
   const activeGlobal = globalCatalog.map(cat => ({
     name: cat.name,
     items: cat.items.filter(it => !it.archived && it.since <= dateVal && itemAppliesToPartner(it, pendingPartner))
@@ -1013,6 +1060,10 @@ function renderNeuTab(child) {
         ${["K","S","L","E"].map(p => `<button class="partner-btn ${pendingPartner===p?'active':''}" data-p="${p}" onclick="pendingPartner='${p}';renderApp();">${p} · ${PARTNERS[p]}</button>`).join("")}
       </div>
       ${!pendingPartner ? `<p style="font-size:0.78rem;color:var(--muted);margin:6px 0 0;">Ohne Auswahl werden nur Items gezeigt, die für alle Gesprächspartner gelten.</p>` : ""}
+    </div>
+    <div class="field" style="margin-bottom:0;">
+      <label>Zentrales Stichwort</label>
+      <input id="entryKeyword" value="${esc(keywordVal)}" placeholder="z. B. Konflikt Pausenhof">
     </div>
   </div>`;
 
@@ -1055,6 +1106,14 @@ function renderNeuTab(child) {
       <button onclick="addAdhocRating()">hinzufügen</button>
     </div>
     <p style="font-size:0.78rem;color:var(--muted);margin-top:6px;">Landet nur in diesem Eintrag, wird nicht Teil des wiederkehrenden Katalogs.</p>
+  </div>
+
+  <div class="card ui">
+    <div class="field" style="margin-bottom:4px;">
+      <label>Anmerkungen, ca. 30 Wörter</label>
+      <textarea id="entryNotes" rows="3" placeholder="Kurze Notiz zum Gespräch …" oninput="updateNotesCounter(this)">${esc(notesVal)}</textarea>
+    </div>
+    <p style="font-size:0.75rem;color:var(--muted);margin:2px 0 0;" id="notesCounter">${notesVal.trim() ? notesVal.trim().split(/\s+/).length : 0} Wörter</p>
   </div>`;
 
   if (activeGlobal.length > 0 || activeChild.length > 0 || adhocRatings.length > 0) {
@@ -1072,11 +1131,23 @@ function renderEintraegeTab(child) {
   if (entries.length === 0) html += `<div class="empty ui">Keine Einträge vorhanden.</div>`;
   for (const e of entries) {
     const ratingStr = Object.entries(e.ratings).map(([k,v]) => `${esc(k)}: ${v}`).join(", ") || "keine Bewertung";
-    html += `<div class="entry-line">
-      <span class="d">${e.date}</span>
-      <span class="pill ${e.partner}">${e.partner}</span>
-      <span class="r">${ratingStr}${e.archived ? " · archiviert" : ""}</span>
-      <a class="backlink ui" onclick="toggleEntryArchive('${esc(child.code)}','${e.id}')">${e.archived ? "reaktivieren" : "archivieren"}</a>
+    const meta = [e.keyword ? "Stichwort: " + esc(e.keyword) : "", e.notes ? esc(e.notes) : ""].filter(Boolean).join(" · ");
+    const markLabel = e.marking === "unbeantwortet" ? "Unbeantwortet" : e.marking === "nicht_relevant" ? "Nicht relevant" : "";
+    html += `<div class="entry-line" style="align-items:flex-start;flex-direction:column;gap:4px;">
+      <div class="row" style="width:100%;">
+        <span class="d">${e.date}</span>
+        <span class="pill ${e.partner}">${e.partner}</span>
+        <span class="r">${markLabel ? `<span style="color:var(--danger);font-weight:600;">[${markLabel}]</span> ` : ""}${ratingStr}${e.archived ? " · archiviert" : ""}</span>
+      </div>
+      <div class="row" style="width:100%;">
+        ${meta ? `<span class="ui" style="font-size:0.8rem;color:var(--muted);flex:1;">${meta}</span>` : `<span style="flex:1;"></span>`}
+        <select class="ui" style="width:auto;font-size:0.78rem;padding:5px 6px;" onchange="setEntryMarking('${esc(child.code)}','${e.id}', this.value)">
+          <option value="" ${!e.marking?"selected":""}>ohne Vermerk</option>
+          <option value="unbeantwortet" ${e.marking==='unbeantwortet'?"selected":""}>unbeantwortet</option>
+          <option value="nicht_relevant" ${e.marking==='nicht_relevant'?"selected":""}>nicht relevant</option>
+        </select>
+        <a class="backlink ui" onclick="toggleEntryArchive('${esc(child.code)}','${e.id}')">${e.archived ? "reaktivieren" : "archivieren"}</a>
+      </div>
     </div>`;
   }
   html += `</div>`;
@@ -1182,6 +1253,7 @@ function renderDiagrammTab(child) {
       <option value="__all__">Gesamte Story (alle Items)</option>
       ${allItems.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("")}
     </select>
+    <p style="font-size:0.75rem;color:var(--muted);margin-top:6px;">Als unbeantwortet oder nicht relevant markierte Einträge fließen hier nicht ein.</p>
   </div>
   <div class="card"><canvas id="chartCanvas" height="220"></canvas></div>`;
   host.innerHTML = selectHtml;
@@ -1189,7 +1261,7 @@ function renderDiagrammTab(child) {
   const select = document.getElementById("chartSelect");
   const mode = select.value;
 
-  const entries = child.entries.filter(e => !e.archived).slice().sort((a,b)=> a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const entries = child.entries.filter(e => !e.archived && !e.marking).slice().sort((a,b)=> a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const labels = [...new Set(entries.map(e => e.date))].sort();
 
   const palette = ["#4a6ba0","#4a8f7a","#b0793c","#8a5a8f","#a14c3f","#6b6b3a","#3a6b8a"];

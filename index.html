@@ -298,13 +298,16 @@ async function loadGTasks(){
     const doneItems=((resDone && resDone.items)||[]).filter(t=>t.status==="completed");
     // Grüne Sektion: offene, heute fällige oder überfällige (inkl. Ziele)
     gtasks=openItems.filter(t=>t.due && t.due.slice(0,10)<=today);
-    // Ziele heute: offene + heute erledigte, jeweils mit Marker und Fälligkeit heute
-    const openGoals=openItems.filter(t=>isGoalTask(t) && t.due && t.due.slice(0,10)===today)
-      .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false}));
-    const doneGoals=doneItems.filter(t=>isGoalTask(t) && t.due && t.due.slice(0,10)===today)
-      .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:true}));
-    goalTasks=[...openGoals, ...doneGoals];
-    console.log("  ✓ loadGTasks: grün",gtasks.length,"| Ziele",goalTasks.length,"(",doneGoals.length,"erledigt )");
+    // Ziele: ALLE mit Marker (offene + heute erledigte jeweils), aber filtern nur heute für Anzeige
+    const allOpenGoals=openItems.filter(t=>isGoalTask(t) && t.due)
+      .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false, due:t.due.slice(0,10)}));
+    const allDoneGoals=doneItems.filter(t=>isGoalTask(t) && t.due)
+      .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:true, due:t.due.slice(0,10)}));
+    // Für Heute-Ansicht und Ziele-Tab: nur heutige Ziele
+    const openGoalsToday=allOpenGoals.filter(t=>t.due===today);
+    const doneGoalsToday=allDoneGoals.filter(t=>t.due===today);
+    goalTasks=[...openGoalsToday, ...doneGoalsToday];
+    console.log("  ✓ loadGTasks: grün",gtasks.length,"| Ziele heute",goalTasks.length,"(",doneGoalsToday.length,"erledigt)");
   }catch(e){
     console.error("❌ loadGTasks Fehler:",e.message);
     gtasks=[]; goalTasks=[];
@@ -312,11 +315,12 @@ async function loadGTasks(){
 }
 
 /* ---- Ziel als Google Task anlegen (Standardliste, Fälligkeit heute, mit Marker) ---- */
-async function addGoalTask(title){
+async function addGoalTask(title, dueDate){
+  dueDate=dueDate||todayKey();
   setSync("busy");
   try{
     if(!defaultGTaskListId){ await loadGTasks(); }
-    const due=todayKey()+"T00:00:00.000Z";
+    const due=dueDate+"T00:00:00.000Z";
     await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks`, {
       method:"POST",
       body:JSON.stringify({title:title, notes:GOAL_MARKER, due:due})
@@ -902,17 +906,20 @@ function projectCard(p){
   const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
   const bgColor=colors[5-p.priority]||colors[2];
   const todos=tasks.filter(t=>t.projectId===p.id && !t.archived).length;
+  const tagBadges=(p.tags||[]).map(t=>`<span class="badge" style="background:rgba(255,255,255,0.3);color:${lum>0.5?'#000':'#fff'}">${esc(t)}</span>`).join("");
   
   // Luminanz berechnen für automatische Text-Farbe
   const hex=bgColor.replace('#','');
   const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
   const lum=(0.299*r + 0.587*g + 0.114*b)/255;
   const textColor=lum>0.5?'#000':'#fff';
+  const tagsStr=(p.tags||[]).join("|");
   
-  return `<div class="card" style="background-color:${bgColor};color:${textColor};opacity:${p.archived?0.6:1}">
+  return `<div class="card" style="background-color:${bgColor};color:${textColor};opacity:${p.archived?0.6:1}" data-projcard data-projtags="${tagsStr}">
     <div class="body">
       <div class="title">${esc(p.name)}</div>
-      <div class="sub"><span>Priorität: ${p.priority}</span>${todos>0?` • ${todos} Todos`:""}</div>
+      <div class="sub"><span>Priorität: ${p.priority}</span>${todos>0?` • ${todos} Aufgaben`:""}</div>
+      ${tagBadges?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">${tagBadges}</div>`:""}
     </div>
     <div class="row-actions">
       ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener" class="mini" style="color:${textColor};text-decoration:none;cursor:pointer">🔗</a>`:''}
@@ -926,10 +933,14 @@ function projectCard(p){
 
 function noteCard(n){
   const isArchived=n.archived||false;
+  const dueLabel=n.dueDate?new Date(n.dueDate).toLocaleDateString("de-DE",{day:"numeric",month:"short"}):"";
+  const dueInfo=n.dueDate?`📅 ${dueLabel}`:"";
   return `<div class="card" style="opacity:${isArchived?0.6:1}">
     <div class="body">
       <div class="title" style="color:#000">${esc(n.text).substring(0,60)}${n.text.length>60?'...':''}</div>
-      ${n.projectId?`<div class="sub" style="color:#000">📌 ${esc(projects.find(p=>p.id===n.projectId)?.name||'Projekt')}</div>`:''}
+      <div class="sub" style="color:#000">
+        ${n.projectId?`📌 ${esc(projects.find(p=>p.id===n.projectId)?.name||'Projekt')}${dueInfo?' • '+dueInfo:''}`:dueInfo}
+      </div>
     </div>
     <div class="row-actions">
       <button class="mini" data-done-note="${n.id}" title="${isArchived?'Wiederherstellen':'Erledigt'}">
@@ -1215,7 +1226,18 @@ function render(){
   else if(view==="projects"){
     const list=projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority);
     const archived=projects.filter(p=>p.archived).sort((a,b)=>b.priority-a.priority);
+    // Alle Tags sammeln
+    const allTags=new Set();
+    projects.forEach(p=>{ if(p.tags) p.tags.forEach(t=>allTags.add(t)); });
+    const uniqueTags=Array.from(allTags).sort();
     let h=`<div class="section-title">Prioritäts-Übersicht</div>`+priorityBoard();
+    if(uniqueTags.length){
+      h+=`<div class="section-title">Filter nach Tags</div>`;
+      h+=`<div class="seg" id="tagFilter" style="margin-bottom:12px">
+        <button data-tag="" class="sel">Alle</button>`;
+      uniqueTags.forEach(t=>h+=`<button data-tag="${esc(t)}">${esc(t)}</button>`);
+      h+=`</div>`;
+    }
     h+=`<div class="section-title">Alle Projekte</div>`;
     h+=list.length?list.map(projectCard).join(""):empty("Noch keine Projekte. Mit + anlegen.");
     if(archived.length){
@@ -1223,6 +1245,21 @@ function render(){
       h+=archived.map(projectCard).join("");
     }
     main.innerHTML=h;
+    if(uniqueTags.length){
+      $("tagFilter").querySelectorAll("button").forEach(b=>{
+        b.onclick=()=>{
+          $("tagFilter").querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
+          b.classList.add("sel");
+          const selectedTag=b.dataset.tag;
+          const cards=document.querySelectorAll("[data-projcard]");
+          cards.forEach(c=>{
+            const projTags=c.dataset.projtags?c.dataset.projtags.split("|"):[]; 
+            const show=!selectedTag || projTags.includes(selectedTag);
+            c.style.display=show?"block":"none";
+          });
+        };
+      });
+    }
   }
   else if(view==="projectDetail" && selectedProjectId){
     console.log("🎨 RENDER projectDetail, selectedProjectId:", selectedProjectId);
@@ -1247,6 +1284,7 @@ function render(){
       <div style="background-color:${bgColor};color:${textColor};padding:16px;border-radius:8px;margin-bottom:16px">
         <div style="font-size:20px;font-weight:bold">${esc(proj.name)}</div>
         <div style="font-size:13px;margin-top:4px">Priorität: ${proj.priority}${proj.url?` • <a href="${esc(proj.url)}" target="_blank" rel="noopener" style="color:${textColor};text-decoration:underline">🔗 Link</a>`:''}</div>
+        ${proj.tags && proj.tags.length?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${proj.tags.map(t=>`<span style="background:rgba(0,0,0,0.2);padding:2px 8px;border-radius:4px;font-size:12px">${esc(t)}</span>`).join("")}</div>`:''}
       </div>
       <div class="section-title">Aufgaben</div>`;
     if(!projTodos.length) h+=empty("Keine Aufgaben in diesem Projekt.");
@@ -1618,6 +1656,17 @@ function buildReport(days){
   out+= projKeys.length? projKeys.map(n=>`  ${n.padEnd(24)} ${byProj[n]}\n`).join("") : `  (keine Projektzuordnungen)\n`;
   out+=`\n`;
 
+  // Nach Tags
+  const byTag={};
+  rel.forEach(l=>{ const t=byId[l.itemId]; if(t && t.projectId){
+    const proj=projects.find(p=>p.id===t.projectId);
+    if(proj && proj.tags) proj.tags.forEach(tag=>{ byTag[tag]=(byTag[tag]||0)+1; });
+  } });
+  const tagKeys=Object.keys(byTag).sort((a,b)=>byTag[b]-byTag[a]);
+  out+=`NACH TAG\n`;
+  out+= tagKeys.length? tagKeys.map(n=>`  ${n.padEnd(24)} ${byTag[n]}\n`).join("") : `  (keine Tag-Zuordnungen)\n`;
+  out+=`\n`;
+
   // Chronologisch
   out+=`ERLEDIGT IM DETAIL\n`;
   const byDate={};
@@ -1626,10 +1675,19 @@ function buildReport(days){
     out+=`\n${fmt(d)}\n`;
     byDate[d].forEach(l=>{
       const t=byId[l.itemId];
-      const title=t?t.title:"(geloeschter Eintrag)";
-      const typ=t?(typeLabel[t.type]||t.type):"";
-      const proj=(t&&t.projectId&&projName[t.projectId])?` [${projName[t.projectId]}]`:"";
-      out+=`  - ${title}${proj}${typ?` (${typ})`:""}\n`;
+      const n=notes.find(x=>x.id===l.itemId);
+      if(n){ // Notiz
+        const title=n.text.split('\n')[0].substring(0,60);
+        const proj=(n.projectId && projName[n.projectId])?` [${projName[n.projectId]}]`:"";
+        out+=`  - ${title}${proj} (Notiz)\n`;
+      }else if(t){ // Aufgabe
+        const title=t.title;
+        const typ=typeLabel[t.type]||t.type;
+        const proj=(t.projectId&&projName[t.projectId])?` [${projName[t.projectId]}]`:"";
+        out+=`  - ${title}${proj} (${typ})\n`;
+      }else{
+        out+=`  - (geloeschter Eintrag)\n`;
+      }
     });
   });
   out+=`\n`;
@@ -1727,7 +1785,7 @@ function openSortForm(id){
     const cleanNotes=(t.notes||"").replace(INBOX_MARKER,"").trim();
     $("modalBg").remove();
     if(target==="goal"){
-      await addGoalTask(t.title);
+      await addGoalTask(t.title, todayKey());
       await deleteTask(id);
       return;
     }
@@ -1810,16 +1868,22 @@ function openForm(type, existing){
   }
   if(type==="goal"){
     typeFields=`<label>Ziel</label><input type="text" id="f_title" value="${esc(t.title||"")}" placeholder="z. B. 2 l Wasser trinken">
-      <p class="muted" style="font-size:12px;margin-top:8px">Wird täglich um Mitternacht geleert — morgens neu eintragen.</p>`;
+      <label style="margin-top:12px">Fällig am</label><input type="date" id="f_goaldate" value="${t.goalDate||todayKey()}" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px">
+      <p class="muted" style="font-size:12px;margin-top:8px">Wird am festgelegten Tag angezeigt — morgens neu eintragen.</p>`;
   }
   if(type==="duty"){
     const st=t.scheduleType||"daily";
+    const isOnce=st==="once";
     typeFields=`<label>Titel</label><input type="text" id="f_title" value="${esc(t.title||"")}" placeholder="z. B. Vokabeln wiederholen">
-      <label>Rhythmus</label>
-      <div class="seg" id="f_sched">
-        <button data-v="daily" class="${st==="daily"?"sel":""}">täglich</button>
-        <button data-v="every2days" class="${st==="every2days"?"sel":""}">alle 2 Tage</button>
-        <button data-v="weekly" class="${st==="weekly"?"sel":""}">wöchentlich</button>
+      <div class="toggle-row"><div><div style="font-size:14px">Einmalig (mit Termin)</div></div>
+        <button class="switch ${isOnce?"on":""}" id="f_once"></button></div>
+      <div id="f_repeatBox" style="display:${isOnce?"none":"block"}">
+        <label>Rhythmus</label>
+        <div class="seg" id="f_sched">
+          <button data-v="daily" class="${st==="daily"?"sel":""}">täglich</button>
+          <button data-v="every2days" class="${st==="every2days"?"sel":""}">alle 2 Tage</button>
+          <button data-v="weekly" class="${st==="weekly"?"sel":""}">wöchentlich</button>
+        </div>
       </div>
       <label>Startdatum</label><input type="date" id="f_start" value="${t.startDate||todayKey()}">
       <label>Uhrzeit (optional)</label><input type="time" id="f_time" value="${t.startTime||""}">`;
@@ -1872,6 +1936,12 @@ function openForm(type, existing){
     $("wdHint").textContent = weeklyBtn.classList.contains("on") && wd ? "jeden "+WEEKDAYS[wd.getDay()] : ""; }
   if(weeklyBtn){ weeklyBtn.onclick=()=>{ weeklyBtn.classList.toggle("on"); updWdHint(); };
     $("f_start").onchange=updWdHint; updWdHint(); }
+  const onceBtn=$("f_once");
+  if(onceBtn){ onceBtn.onclick=()=>{ 
+    onceBtn.classList.toggle("on");
+    const box=$("f_repeatBox");
+    if(box) box.style.display=onceBtn.classList.contains("on")?"none":"block";
+  }; }
   $("f_cancel").onclick=()=>$("modalBg").remove();
   $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
 
@@ -1879,10 +1949,20 @@ function openForm(type, existing){
     const title=$("f_title").value.trim();
     if(!title){ toast("Titel fehlt"); return; }
     // Ziele laufen über Google Tasks, nicht über das Sheet
-    if(type==="goal"){ $("modalBg").remove(); await addGoalTask(title); return; }
+    if(type==="goal"){ 
+      const goalDate=$("f_goaldate").value||todayKey();
+      $("modalBg").remove(); 
+      await addGoalTask(title, goalDate); 
+      return; 
+    }
     const data={type, title, syncCalendar: syncBtn ? syncBtn.classList.contains("on") : false};
     if(type==="habit"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); }
-    if(type==="duty"){ data.scheduleType=segSel.v; data.startDate=$("f_start").value; }
+    if(type==="duty"){ 
+      const onceBtn=$("f_once");
+      data.scheduleType=onceBtn && onceBtn.classList.contains("on")?"once":segSel.v; 
+      data.startDate=$("f_start").value; 
+      const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):""; 
+    }
     if(type==="todo"){ data.startDate=$("f_start").value;
       data.scheduleType=weeklyBtn.classList.contains("on")?"weekly":"once";
       const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):""; }
@@ -1910,6 +1990,7 @@ function openProjectForm(existing){
       <h2>${isEdit?"Projekt bearbeiten":"Neues Projekt"}</h2>
       <label>Name</label><input type="text" id="f_name" value="${esc(existing?.name||"")}" placeholder="z. B. Blogpost über AI">
       <label>Link (optional)</label><input type="text" id="f_url" value="${esc(existing?.url||"")}" placeholder="https://example.com" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px">
+      <label style="margin-top:12px">Tags (optional, komma-getrennt)</label><input type="text" id="f_tags" value="${esc((existing?.tags||[]).join(", "))}" placeholder="z. B. Arbeit, Q4, Website" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px">
       <label style="margin-top:12px">Priorität (1–5)</label>
       <div style="display:flex;gap:8px;margin-bottom:16px">
         ${[5,4,3,2,1].map(p=>`<button data-prio="${p}" style="flex:1;padding:8px;border:1px solid var(--line);border-radius:4px;cursor:pointer;${(existing?.priority||1)==p?'background-color:var(--text);color:#fff':'background-color:transparent'}">${p}</button>`).join("")}
@@ -1934,6 +2015,9 @@ function openProjectForm(existing){
     const data={name, priority:prioVal};
     const url=$("f_url").value.trim();
     if(url) data.url=url;
+    const tagsInput=$("f_tags").value.trim();
+    if(tagsInput) data.tags=tagsInput.split(",").map(t=>t.trim()).filter(t=>t);
+    else data.tags=[];
     $("modalBg").remove();
     if(isEdit) await updateProject(existing.id, data); else await addProject(data);
   };
@@ -1959,6 +2043,8 @@ function openNoteForm(existing){
     html+='<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+'>'+esc(p.name)+'</option>';
   });
   html+='</select>';
+  html+='<label style="margin-top:12px">Datum (optional, für Bericht)</label>';
+  html+='<input type="date" id="f_date" value="'+(existing?.dueDate||"")+'" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;margin-bottom:12px">';
   html+='<div class="modal-actions"><button class="btn-ghost" id="f_cancel">Abbrechen</button><button class="btn-primary" id="f_save">Speichern</button></div>';
   html+='</div></div>';
   
@@ -1971,6 +2057,8 @@ function openNoteForm(existing){
     const data={text:t};
     const u=$("f_url").value.trim();
     if(u) data.url=u;
+    const d=$("f_date").value;
+    if(d) data.dueDate=d;
     const pr=$("f_proj").value;
     if(pr) data.projectId=pr;
     $("modalBg").remove();
@@ -2054,10 +2142,15 @@ main.addEventListener("click",e=>{
   }
   const en=e.target.closest("[data-edit-note]"); if(en){ const n=notes.find(x=>x.id===en.dataset.editNote); if(n) openNoteForm(n); return; }
   const donn=e.target.closest("[data-done-note]"); if(donn){ 
-    console.log("🔵 done-note clicked:", donn.dataset.doneNote);
     const n=notes.find(x=>x.id===donn.dataset.doneNote); 
-    console.log("  Note gefunden:", n);
-    if(n) updateNote(n.id, {archived:!n.archived}); 
+    if(n){
+      // Wenn Notiz ein Datum hat und wird gerade erledigt, ins Log schreiben
+      if(n.dueDate && !n.archived){
+        logs.push({itemId:n.id, date:n.dueDate, doneAt:new Date().toISOString()});
+        saveLogs();
+      }
+      updateNote(n.id, {archived:!n.archived});
+    }
     return; 
   }
   const dn=e.target.closest("[data-del-note]"); if(dn){ deleteNote(dn.dataset.delNote); return; }

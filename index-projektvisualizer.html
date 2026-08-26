@@ -1066,16 +1066,31 @@ function showBackupModal(){
   document.getElementById("modalRoot").innerHTML = `
     <div class="modal-bg" id="modalBg">
       <div class="modal">
-        <h3>Backup</h3>
-        <p style="color:var(--muted);font-size:13px;">Sichert alle Projekte als eine Datei auf deinem Gerät, oder stellt aus einer solchen Datei wieder her. Bestehende Projekte werden dabei nicht überschrieben, nur fehlende ergänzt.</p>
+        <h3>Sichern und Importieren</h3>
+        <p style="color:var(--muted);font-size:13px;">Beim Import bleiben bestehende Projekte und bereits erledigte Punkte unverändert. Nur neue Projekte und neue Punkte werden ergänzt, nichts wird doppelt angelegt.</p>
+        <div class="row"><b style="font-size:13px;">Alle Projekte als eine Markdown-Datei</b></div>
         <div class="row">
-          <button class="primary" id="btnDoBackup">Backup herunterladen</button>
+          <button class="primary" id="btnMdExport">Sammel-Export</button>
+        </div>
+        <div class="row">
+          <input type="file" id="mdFile" accept=".md,.markdown,text/markdown,text/plain">
+        </div>
+        <div class="row">
+          <textarea id="mdText" placeholder="oder Markdown hier einfügen" style="width:100%;min-height:90px;box-sizing:border-box;"></textarea>
+        </div>
+        <div class="row">
+          <button id="btnMdImport">Sammel-Import</button>
+        </div>
+        <hr style="border:0;border-top:1px solid var(--border);opacity:.5;width:100%;margin:6px 0;">
+        <div class="row"><b style="font-size:13px;">Sicherung als JSON</b></div>
+        <div class="row">
+          <button id="btnDoBackup">JSON herunterladen</button>
         </div>
         <div class="row">
           <input type="file" id="restoreFile" accept="application/json">
         </div>
         <div class="row">
-          <button id="btnDoRestore">Wiederherstellen</button>
+          <button id="btnDoRestore">JSON wiederherstellen</button>
           <button class="ghost" id="btnCloseModal">Schließen</button>
         </div>
       </div>
@@ -1083,6 +1098,105 @@ function showBackupModal(){
   document.getElementById("btnCloseModal").onclick = ()=> document.getElementById("modalRoot").innerHTML="";
   document.getElementById("btnDoBackup").onclick = doBackup;
   document.getElementById("btnDoRestore").onclick = doRestore;
+  document.getElementById("btnMdExport").onclick = doMarkdownExport;
+  document.getElementById("btnMdImport").onclick = doMarkdownImport;
+  document.getElementById("mdFile").onchange = async ()=>{
+    const inp = document.getElementById("mdFile");
+    if(inp.files && inp.files[0]) document.getElementById("mdText").value = await inp.files[0].text();
+  };
+}
+
+function doMarkdownExport(){
+  if(!projects.length){ toast("Keine Projekte vorhanden"); return; }
+  const text = projects.map(p=>serializeMarkdown(p.root)).join("\n\n");
+  const blob = new Blob([text], {type:"text/markdown"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "projekte-gesamt-"+new Date().toISOString().slice(0,10)+".md";
+  a.click();
+  URL.revokeObjectURL(url);
+  toast("Markdown exportiert");
+}
+
+function splitMarkdownProjects(text){
+  const lines = (text||"").split(/\r?\n/);
+  const out = [];
+  let current = null;
+  for(const line of lines){
+    if(/^#(?!#)\s+/.test(line)){            // genau eine Raute = neues Projekt
+      if(current) out.push(current.join("\n"));
+      current = [line];
+    } else if(current){
+      current.push(line);
+    }
+  }
+  if(current) out.push(current.join("\n"));
+  return out.map(s=>s.replace(/\s+$/,"")).filter(s=>s.trim()!=="");
+}
+
+function findChildByTitle(node, title){
+  return node.children.find(c=>c.title===title);
+}
+function reparent(node, parent){
+  node.parent = parent;
+  node._id = node._id || uid();
+  node.children.forEach(c=>reparent(c, node));
+}
+function countNodes(node){
+  return 1 + node.children.reduce((s,c)=>s+countNodes(c),0);
+}
+// Neue Kinder aus imported an existing anhängen; bestehende Knoten bleiben unangetastet
+function mergeChildren(existing, imported){
+  let added = 0;
+  for(const impChild of imported.children){
+    const match = findChildByTitle(existing, impChild.title);
+    if(match){
+      added += mergeChildren(match, impChild);
+    } else {
+      reparent(impChild, existing);
+      existing.children.push(impChild);
+      added += countNodes(impChild);
+    }
+  }
+  return added;
+}
+
+async function doMarkdownImport(){
+  const text = document.getElementById("mdText").value;
+  if(!text || !text.trim()){ toast("Kein Markdown vorhanden"); return; }
+  const parts = splitMarkdownProjects(text);
+  if(!parts.length){ toast("Keine Projekt-Überschrift gefunden"); return; }
+  const usedNames = new Set(projects.map(p=>p.name));
+  let neu = 0, ergaenzt = 0, punkte = 0, uebersprungen = 0;
+  for(const md of parts){
+    const root = parseMarkdown(md);
+    const top = root.children[0];
+    if(!top){ uebersprungen++; continue; }
+    const title = top.title || "Unbenannt";
+    const existing = projects.find(p=>p.title===title);
+    if(existing){
+      const a = mergeChildren(existing.root.children[0], top);   // bestehende Punkte bleiben, nur neue kommen dazu
+      if(a>0){ punkte += a; ergaenzt++; try{ await saveProject(existing); }catch(e){} }
+    } else {
+      let name = slug(title)+".md";
+      let i = 2;
+      while(usedNames.has(name)){ name = slug(title)+"-"+(i++)+".md"; }
+      usedNames.add(name);
+      try{
+        const fileId = await driveCreateFile(name, md);
+        projects.push({fileId, name, title, root, archived: !!top.archived});
+        neu++;
+      }catch(e){ uebersprungen++; }
+    }
+  }
+  projects.sort((a,b)=>a.title.localeCompare(b.title,"de"));
+  document.getElementById("modalRoot").innerHTML = "";
+  renderOverview();
+  if(accessToken) syncTasks(true);   // neue datierte Punkte anlegen; Sync prüft vorhandene Verknüpfungen und vermeidet Duplikate
+  let msg = neu+" neu, "+ergaenzt+" ergänzt ("+punkte+" Punkte)";
+  if(uebersprungen) msg += ", "+uebersprungen+" übersprungen";
+  toast(msg);
 }
 
 function doBackup(){

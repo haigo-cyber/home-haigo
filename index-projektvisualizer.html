@@ -197,6 +197,7 @@
         <input type="number" id="bulkShiftDetail" class="bulk-num" value="7" title="Tage (auch negativ)">
         <button class="ghost" id="bulkShiftBtnDetail">Tage verschieben</button>
         <button class="ghost" id="bulkMoveDetail">In Projekt</button>
+        <button class="danger" id="bulkDeleteDetail">Löschen</button>
         <button class="ghost" id="bulkClearDetail">Auswahl aufheben</button>
       </div>
       <div id="treeView"></div>
@@ -1343,6 +1344,25 @@ document.getElementById("bulkMoveDetail").onclick = ()=>{
   const nodes = resolveMoveTargets();
   if(!nodes.length){ toast("Keine verschiebbaren Punkte markiert"); return; }
   showMoveTargets(nodes, currentProject);
+};
+document.getElementById("bulkDeleteDetail").onclick = ()=>{
+  const nodes = resolveMoveTargets();
+  if(!nodes.length){ toast("Keine löschbaren Punkte markiert"); return; }
+  const count = nodes.length;
+  const frage = count===1
+    ? '„'+nodes[0].title+'“ inklusive Unterpunkte löschen?'
+    : count+' Punkte inklusive aller Unterpunkte löschen?';
+  if(!confirm(frage)) return;
+  for(const n of nodes){
+    const ids = [];
+    (function collect(x){ if(x.gtId) ids.push(x.gtId); x.children.forEach(collect); })(n);
+    ids.forEach(id=> gtDelete(id).catch(()=>{}));
+    if(n.parent){ const idx = n.parent.children.indexOf(n); if(idx>=0) n.parent.children.splice(idx,1); }
+  }
+  selectedNids.clear();
+  renderDetail();
+  scheduleSave(currentProject);
+  toast(count===1 ? "1 Punkt gelöscht" : count+" Punkte gelöscht");
 };
 
 document.getElementById("bulkSetNext").onclick = ()=>{

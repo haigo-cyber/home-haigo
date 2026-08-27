@@ -141,6 +141,7 @@
       <div class="toolbar">
         <h2>Projekte</h2>
         <button class="ghost" id="btnSortOverview" title="Zwischen Sortierung nach letzter Aktualisierung und manueller Reihenfolge wechseln">Sortierung</button>
+        <button class="ghost" id="btnProgress" title="Fortschritt der letzten 10 Tage anzeigen">Fortschritt</button>
         <button class="ghost" id="btnSyncTasks" title="Erledigte aus der ToDo-App übernehmen und Termine nach Google Tasks schreiben">Google Tasks abgleichen</button>
         <button class="primary" id="btnNewProject">Neues Projekt</button>
       </div>
@@ -239,14 +240,14 @@ function nextStatus(s){ const i = STATUS_ORDER.indexOf(s); return STATUS_ORDER[(
 
 /* ============ Markdown Parsing / Serialisierung ============ */
 const HEAD_RE = /^(#{1,6})\s+(.*)$/;
-const META_RE = /<!--\s*(status|due|gt|archived|upd):([^>]*?)-->/g;
+const META_RE = /<!--\s*(status|due|gt|archived|upd|done):([^>]*?)-->/g;
 
 function parseHeadingLine(line){
   const m = line.match(HEAD_RE);
   if(!m) return null;
   const level = m[1].length;
   let rest = m[2];
-  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0};
+  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0, done:0};
   rest = rest.replace(META_RE, (whole, key, val)=>{
     val = (val||"").trim();
     if(key==="status"){ if(STATUS_ORDER.includes(val)) meta.status = val; }
@@ -254,9 +255,10 @@ function parseHeadingLine(line){
     else if(key==="gt"){ meta.gtId = val || null; }
     else if(key==="archived"){ meta.archived = (val==="1"||val==="true"); }
     else if(key==="upd"){ meta.upd = parseInt(val,10) || 0; }
+    else if(key==="done"){ meta.done = parseInt(val,10) || 0; }
     return "";
   });
-  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd};
+  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd, done: meta.done};
 }
 
 function parseMarkdown(text){
@@ -266,7 +268,7 @@ function parseMarkdown(text){
   for(const line of lines){
     const h = parseHeadingLine(line);
     if(h){
-      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, body:[], children:[], parent:null};
+      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, done:h.done||0, body:[], children:[], parent:null};
       while(stack.length && stack[stack.length-1].level >= node.level) stack.pop();
       const parent = stack[stack.length-1];
       node.parent = parent;
@@ -288,6 +290,7 @@ function serializeMarkdown(root){
       if(n.gtId) line += " <!--gt:"+n.gtId+"-->";
       if(n.archived) line += " <!--archived:1-->";
       if(n.upd) line += " <!--upd:"+n.upd+"-->";
+      if(n.done) line += " <!--done:"+n.done+"-->";
       out.push(line);
     }
     n.body.forEach(l=>out.push(l));
@@ -538,7 +541,7 @@ async function syncTasks(silent){
           if(t === null){
             node.gtId = null; changed.add(p);       // Task wurde gelöscht: Verknüpfung lösen
           } else if(t.status === "completed"){
-            if(node.status !== "fertig"){ node.status = "fertig"; pulled++; changed.add(p); }
+            if(node.status !== "fertig"){ node.status = "fertig"; if(!node.done) node.done = t.completed ? Date.parse(t.completed)||Date.now() : Date.now(); pulled++; changed.add(p); }
             continue;                                 // bereits erledigt: kein Push nötig
           }
         }
@@ -1159,7 +1162,10 @@ function bindNodeEvents(container){
     el.onclick = async (ev)=>{
       ev.stopPropagation();
       const n = nodeRegistry[el.dataset.nid];
+      const wasFertig = n.status==="fertig";
       n.status = nextStatus(n.status);
+      if(n.status==="fertig") n.done = Date.now();
+      else if(wasFertig) n.done = 0;
       touchNode(n);
       renderDetail();
       scheduleSave(currentProject);
@@ -1396,6 +1402,7 @@ document.getElementById("btnSortOverview").onclick = ()=>{
   renderOverview();
 };
 document.getElementById("searchInput").oninput = ()=> renderOverview();
+document.getElementById("btnProgress").onclick = ()=> showProgressModal();
 document.getElementById("btnSyncTasks").onclick = ()=> syncTasks(false);
 
 /* ============ Neues Projekt ============ */
@@ -1456,6 +1463,82 @@ document.getElementById("btnDeleteProject").onclick = async ()=>{
 
 /* ============ Backup ============ */
 document.getElementById("btnBackup").onclick = ()=> showBackupModal();
+
+/* ============ Fortschritts-Graph ============ */
+function dayKeyLocal(ms){
+  const d = new Date(ms);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function collectDoneSeries(days){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const keys = [];
+  for(let i=days-1; i>=0; i--){ const d = new Date(today); d.setDate(d.getDate()-i); keys.push(dayKeyLocal(d.getTime())); }
+  const counts = {}; keys.forEach(k=>counts[k]=0);
+  for(const p of projects){
+    const top = p.root.children[0];
+    if(!top) continue;
+    (function walk(node){
+      if(node.children.length===0){
+        if(node.status==="fertig"){
+          const t = node.done || node.upd || 0;         // Fallback für Altdaten
+          if(t){ const k = dayKeyLocal(t); if(k in counts) counts[k]++; }
+        }
+      } else node.children.forEach(walk);
+    })(top);
+  }
+  let cum = 0; const series = [];
+  for(const k of keys){ cum += counts[k]; series.push({key:k, daily:counts[k], cum}); }
+  return series;
+}
+function bergSvg(series){
+  const W=640, H=280, padL=40, padR=16, padT=24, padB=44;
+  const iw=W-padL-padR, ih=H-padT-padB;
+  const n=series.length;
+  const maxV=Math.max(1, series[n-1].cum);
+  const x=i=> padL + (n===1 ? iw/2 : iw*i/(n-1));
+  const y=v=> padT + ih - ih*v/maxV;
+  const pts=series.map((s,i)=>[x(i), y(s.cum)]);
+  const line=pts.map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
+  const area=`${padL.toFixed(1)},${(padT+ih).toFixed(1)} `+line+` ${x(n-1).toFixed(1)},${(padT+ih).toFixed(1)}`;
+  const xlabels=series.map((s,i)=>{
+    const d=new Date(s.key+"T00:00:00");
+    return `<text x="${x(i).toFixed(1)}" y="${(H-padB+16)}" font-size="9" fill="#8a90a2" text-anchor="middle">${d.getDate()}.${d.getMonth()+1}.</text>`;
+  }).join("");
+  const dots=pts.map((p,i)=>
+    `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#4ade80"/>`+
+    `<text x="${p[0].toFixed(1)}" y="${(p[1]-8).toFixed(1)}" font-size="9" fill="#e6e8ee" text-anchor="middle">${series[i].cum}</text>`
+  ).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin:6px 0;">
+    <defs><linearGradient id="bergGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4ade80" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#4ade80" stop-opacity="0.04"/>
+    </linearGradient></defs>
+    <line x1="${padL}" y1="${padT+ih}" x2="${W-padR}" y2="${padT+ih}" stroke="#2b3040"/>
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+ih}" stroke="#2b3040"/>
+    <polygon points="${area}" fill="url(#bergGrad)"/>
+    <polyline points="${line}" fill="none" stroke="#4ade80" stroke-width="2.5"/>
+    ${dots}${xlabels}
+    <text x="4" y="${(padT+4)}" font-size="9" fill="#8a90a2">${maxV}</text>
+    <text x="4" y="${(padT+ih)}" font-size="9" fill="#8a90a2">0</text>
+  </svg>`;
+}
+function showProgressModal(){
+  const series = collectDoneSeries(10);
+  const total = series[series.length-1].cum;
+  const body = total===0
+    ? `<div class="center" style="padding:20px 0;">In den letzten 10 Tagen wurden noch keine Aufgaben als erledigt erfasst.</div>`
+    : bergSvg(series);
+  document.getElementById("modalRoot").innerHTML = `
+    <div class="modal-bg" id="modalBg">
+      <div class="modal">
+        <h3>Fortschritt der letzten 10 Tage</h3>
+        <p style="color:var(--muted);font-size:13px;">Erledigte Aufgaben, von Tag zu Tag aufaddiert.${total? " Insgesamt "+total+" erledigt." : ""}</p>
+        ${body}
+        <div class="row"><button class="ghost" id="btnCloseProg">Schließen</button></div>
+      </div>
+    </div>`;
+  document.getElementById("btnCloseProg").onclick = ()=> document.getElementById("modalRoot").innerHTML="";
+}
 
 function showBackupModal(){
   document.getElementById("modalRoot").innerHTML = `

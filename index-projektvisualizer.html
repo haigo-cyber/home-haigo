@@ -1166,20 +1166,22 @@ function bindNodeEvents(container){
     };
   });
   container.querySelectorAll('.due-input').forEach(el=>{
-    el.onchange = async ()=>{
+    el.onchange = ()=>{
       const n = nodeRegistry[el.dataset.nid];
       const val = el.value; // "" oder "YYYY-MM-DD"
       touchNode(n);
       if(val){
         n.due = val;
+        renderDetail();                              // sofort neu sortieren
         scheduleSave(currentProject);
-        await syncOne(n, currentProject);
+        syncOne(n, currentProject).catch(()=>{});    // Google Tasks im Hintergrund
       } else {
         n.due = null;
-        if(n.gtId){ try{ await gtDelete(n.gtId); }catch(e){} n.gtId = null; }
+        const gid = n.gtId; n.gtId = null;
+        renderDetail();
         scheduleSave(currentProject);
+        if(gid) gtDelete(gid).catch(()=>{});
       }
-      renderDetail();
     };
   });
   container.querySelectorAll('[data-role="rename"]').forEach(el=>{

@@ -196,6 +196,7 @@
         <button class="ghost" id="bulkSetDetail">Auf Datum setzen</button>
         <input type="number" id="bulkShiftDetail" class="bulk-num" value="7" title="Tage (auch negativ)">
         <button class="ghost" id="bulkShiftBtnDetail">Tage verschieben</button>
+        <button class="ghost" id="bulkMoveDetail">In Projekt</button>
         <button class="ghost" id="bulkClearDetail">Auswahl aufheben</button>
       </div>
       <div id="treeView"></div>
@@ -1042,16 +1043,19 @@ function getNodeStatus(node){
   return "fertig";
 }
 
-function showMoveModal(node){
-  if(!node) return;
-  const targets = projects.filter(p=>p!==currentProject && !p.archived && p.root.children[0]);
+function showMoveTargets(nodes, source){
+  if(!nodes || !nodes.length) return;
+  const targets = projects.filter(p=>p!==source && !p.archived && p.root.children[0]);
   if(!targets.length){ toast("Kein anderes Projekt vorhanden"); return; }
   const list = targets.map((p,i)=>`<button class="move-target" data-i="${i}">${escapeHtml(p.title)}</button>`).join("");
+  const label = nodes.length===1
+    ? `„${escapeHtml(nodes[0].title)}“ wird mit allen Unterpunkten als oberster Punkt in das gewählte Projekt verschoben.`
+    : `${nodes.length} Punkte werden mit ihren Unterpunkten als oberste Punkte in das gewählte Projekt verschoben.`;
   document.getElementById("modalRoot").innerHTML = `
     <div class="modal-bg" id="modalBg">
       <div class="modal">
         <h3>Verschieben nach</h3>
-        <p style="color:var(--muted);font-size:13px;">„${escapeHtml(node.title)}“ wird mit allen Unterpunkten als oberster Punkt in das gewählte Projekt verschoben.</p>
+        <p style="color:var(--muted);font-size:13px;">${label}</p>
         <div class="move-list">${list}</div>
         <div class="row"><button class="ghost" id="btnCloseMove">Abbrechen</button></div>
       </div>
@@ -1061,13 +1065,14 @@ function showMoveModal(node){
     el.onclick = async ()=>{
       const target = targets[+el.dataset.i];
       document.getElementById("modalRoot").innerHTML="";
-      await moveNodeToProject(node, currentProject, target);
+      const n = await moveNodesToProject(nodes, source, target);
+      selectedNids.clear();
+      renderDetail();
+      toast(n===1 ? 'Nach „'+target.title+'“ verschoben' : n+' Punkte nach „'+target.title+'“ verschoben');
     };
   });
 }
-async function moveNodeToProject(node, source, target){
-  const targetTop = target.root.children[0];
-  if(!targetTop || !node.parent) return;
+function detachAndAttach(node, targetTop){
   const sibs = node.parent.children;
   const idx = sibs.indexOf(node);
   if(idx>=0) sibs.splice(idx,1);
@@ -1076,17 +1081,40 @@ async function moveNodeToProject(node, source, target){
   node.parent = targetTop;
   targetTop.children.push(node);
   touchNode(node);
-  try{ await saveProject(target); }catch(e){}
-  try{ await saveProject(source); }catch(e){}
-  renderDetail();
-  toast('Nach „'+target.title+'“ verschoben');
+}
+async function moveNodesToProject(nodes, source, target){
+  const targetTop = target.root.children[0];
+  if(!targetTop) return 0;
+  let count = 0;
+  for(const node of nodes.slice()){
+    if(!node.parent) continue;
+    detachAndAttach(node, targetTop);
+    count++;
+  }
+  if(count>0){
+    try{ await saveProject(target); }catch(e){}
+    try{ await saveProject(source); }catch(e){}
+  }
+  return count;
+}
+function resolveMoveTargets(){
+  const selected = [];
+  selectedNids.forEach(nid=>{ const n = nodeRegistry[nid]; if(n) selected.push(n); });
+  const selSet = new Set(selected);
+  return selected.filter(n=>{
+    if(n.level<=1) return false;                 // Projektwurzel bleibt
+    let p = n.parent;
+    while(p){ if(selSet.has(p)) return false; p = p.parent; }  // Vorfahre schon markiert
+    return true;
+  });
 }
 
 function bindNodeEvents(container){
   container.querySelectorAll('.btnMoveProj').forEach(el=>{
     el.onclick = (ev)=>{
       ev.stopPropagation();
-      showMoveModal(nodeRegistry[el.dataset.nid]);
+      const n = nodeRegistry[el.dataset.nid];
+      if(n) showMoveTargets([n], currentProject);
     };
   });
   container.querySelectorAll('.focus-btn').forEach(el=>{
@@ -1309,6 +1337,11 @@ document.getElementById("bulkShiftBtnDetail").onclick = ()=>{
   runBulkDetail({shift:n});
 };
 document.getElementById("bulkClearDetail").onclick = ()=>{ selectedNids.clear(); renderDetail(); };
+document.getElementById("bulkMoveDetail").onclick = ()=>{
+  const nodes = resolveMoveTargets();
+  if(!nodes.length){ toast("Keine verschiebbaren Punkte markiert"); return; }
+  showMoveTargets(nodes, currentProject);
+};
 
 document.getElementById("bulkSetNext").onclick = ()=>{
   const d = document.getElementById("bulkDateNext").value;

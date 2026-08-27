@@ -90,6 +90,9 @@
   .bc-sep{color:var(--muted);}
   .bc-cur{color:var(--muted);font-weight:600;}
   .focus-btn{cursor:pointer;border:0;}
+  .btnMoveUp,.btnMoveDown{font-size:10px;padding:2px 5px;line-height:1;}
+  .card-move{display:flex;flex-direction:column;gap:3px;margin-left:auto;padding-left:6px;}
+  .card-move button{font-size:11px;padding:2px 7px;line-height:1.1;cursor:pointer;}
   .login-box{max-width:340px;margin:60px auto;text-align:center;}
   .login-box p{color:var(--muted);font-size:13px;}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
@@ -125,6 +128,7 @@
     <div id="tabOverview">
       <div class="toolbar">
         <h2>Projekte</h2>
+        <button class="ghost" id="btnSortOverview" title="Zwischen Sortierung nach letzter Aktualisierung und manueller Reihenfolge wechseln">Sortierung</button>
         <button class="ghost" id="btnSyncTasks" title="Erledigte aus der ToDo-App übernehmen und Termine nach Google Tasks schreiben">Google Tasks abgleichen</button>
         <button class="primary" id="btnNewProject">Neues Projekt</button>
       </div>
@@ -157,6 +161,7 @@
         <button class="ghost" id="btnZoomOut" title="Verkleinern">A−</button>
         <button class="ghost" id="btnZoomIn" title="Vergrößern">A+</button>
         <button class="ghost" id="btnToggleRaw">Rohtext</button>
+        <button class="ghost" id="btnSortTree" title="Zwischen Sortierung nach letzter Aktualisierung und manueller Reihenfolge wechseln">Sortierung</button>
         <button class="ghost" id="btnToggleArchived">Erledigte einblenden</button>
         <button class="ghost" id="btnArchiveProject">Archivieren</button>
         <button class="danger" id="btnDeleteProject">Löschen</button>
@@ -216,23 +221,24 @@ function nextStatus(s){ const i = STATUS_ORDER.indexOf(s); return STATUS_ORDER[(
 
 /* ============ Markdown Parsing / Serialisierung ============ */
 const HEAD_RE = /^(#{1,6})\s+(.*)$/;
-const META_RE = /<!--\s*(status|due|gt|archived):([^>]*?)-->/g;
+const META_RE = /<!--\s*(status|due|gt|archived|upd):([^>]*?)-->/g;
 
 function parseHeadingLine(line){
   const m = line.match(HEAD_RE);
   if(!m) return null;
   const level = m[1].length;
   let rest = m[2];
-  const meta = {status:"offen", due:null, gtId:null, archived:false};
+  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0};
   rest = rest.replace(META_RE, (whole, key, val)=>{
     val = (val||"").trim();
     if(key==="status"){ if(STATUS_ORDER.includes(val)) meta.status = val; }
     else if(key==="due"){ meta.due = val || null; }
     else if(key==="gt"){ meta.gtId = val || null; }
     else if(key==="archived"){ meta.archived = (val==="1"||val==="true"); }
+    else if(key==="upd"){ meta.upd = parseInt(val,10) || 0; }
     return "";
   });
-  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived};
+  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd};
 }
 
 function parseMarkdown(text){
@@ -242,7 +248,7 @@ function parseMarkdown(text){
   for(const line of lines){
     const h = parseHeadingLine(line);
     if(h){
-      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, body:[], children:[], parent:null};
+      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, body:[], children:[], parent:null};
       while(stack.length && stack[stack.length-1].level >= node.level) stack.pop();
       const parent = stack[stack.length-1];
       node.parent = parent;
@@ -263,6 +269,7 @@ function serializeMarkdown(root){
       if(n.due) line += " <!--due:"+n.due+"-->";
       if(n.gtId) line += " <!--gt:"+n.gtId+"-->";
       if(n.archived) line += " <!--archived:1-->";
+      if(n.upd) line += " <!--upd:"+n.upd+"-->";
       out.push(line);
     }
     n.body.forEach(l=>out.push(l));
@@ -299,6 +306,8 @@ let nextItems = [];
 let selectedNext = new Set();
 let showArchived = lsGet("pf_showArchived","0")==="1";
 let focusNode = null;
+let sortTree = lsGet("pf_sortTree","updated");        // "updated" | "manual"
+let sortOverview = lsGet("pf_sortOverview","updated"); // "updated" | "manual"
 function lsGet(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 let treeScale = parseFloat(lsGet("pf_treeScale","1")) || 1;
@@ -420,7 +429,9 @@ function scheduleSave(project){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>saveProject(project), 600);
 }
+function touchNode(node){ if(node) node.upd = Date.now(); }
 async function saveProject(project){
+  if(project && project.root.children[0]) project.root.children[0].upd = Date.now();
   const content = serializeMarkdown(project.root);
   try{
     if(project.fileId){
@@ -545,28 +556,64 @@ function donutHtml(pct, size){
   </div>`;
 }
 
-function projectCardHtml(p, i, isArchived){
+function projectCardHtml(p, i, isArchived, movable){
   const pg = p.root.children[0] ? nodeProgress(p.root.children[0]) : 0;
   const leaves = [];
   collectLeaves(p.root, p.title, leaves);
   const open = leaves.filter(l=>l.status!=="fertig").length;
   const sub = isArchived ? `${leaves.length} Punkte, abgeschlossen` : `${leaves.length} Punkte, ${open} offen`;
+  const move = movable ? `<div class="card-move"><button class="btnProjUp" data-i="${i}" title="Nach oben">▲</button><button class="btnProjDown" data-i="${i}" title="Nach unten">▼</button></div>` : "";
   return `<div class="card${isArchived?' card-archived':''}" data-i="${i}">
     ${donutHtml(pg,"small")}
     <div class="info">
       <h3>${escapeHtml(p.title)}</h3>
       <div class="sub">${sub}</div>
     </div>
+    ${move}
   </div>`;
 }
 
+function getProjectOrder(){ try{ return JSON.parse(lsGet("pf_projOrder","[]"))||[]; }catch(e){ return []; } }
+function setProjectOrder(arr){ lsSet("pf_projOrder", JSON.stringify(arr)); }
+function sortActiveProjects(active){
+  if(sortOverview==="manual"){
+    const order = getProjectOrder();
+    return active.slice().sort((a,b)=>{
+      let ia=order.indexOf(a.fileId); if(ia<0) ia=Infinity;
+      let ib=order.indexOf(b.fileId); if(ib<0) ib=Infinity;
+      if(ia!==ib) return ia-ib;
+      return a.title.localeCompare(b.title,"de");
+    });
+  }
+  return active.slice().sort((a,b)=>{
+    const ua=(a.root.children[0]&&a.root.children[0].upd)||0;
+    const ub=(b.root.children[0]&&b.root.children[0].upd)||0;
+    if(ub!==ua) return ub-ua;
+    return a.title.localeCompare(b.title,"de");
+  });
+}
+function moveProject(sorted, i, dir){
+  const j = i+dir;
+  if(j<0 || j>=sorted.length) return;
+  const ids = sorted.map(p=>p.fileId).filter(Boolean);
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  setProjectOrder(ids);
+  renderOverview();
+}
+function updateSortOverviewBtn(){
+  const b = document.getElementById("btnSortOverview");
+  if(b) b.textContent = sortOverview==="updated" ? "Sortierung: aktuell" : "Sortierung: manuell";
+}
+
 function renderOverview(){
+  updateSortOverviewBtn();
   const grid = document.getElementById("projectGrid");
   const empty = document.getElementById("overviewEmpty");
   const archWrap = document.getElementById("archiveWrap");
   const archGrid = document.getElementById("archiveGrid");
-  const active = projects.filter(p=>!p.archived);
+  const active = sortActiveProjects(projects.filter(p=>!p.archived));
   const arch = projects.filter(p=>p.archived);
+  const movable = sortOverview==="manual";
 
   if(active.length===0){
     grid.innerHTML = "";
@@ -574,10 +621,16 @@ function renderOverview(){
     else empty.classList.add("hidden");
   } else {
     empty.classList.add("hidden");
-    grid.innerHTML = active.map((p,i)=>projectCardHtml(p,i,false)).join("");
+    grid.innerHTML = active.map((p,i)=>projectCardHtml(p,i,false,movable)).join("");
   }
   [...grid.querySelectorAll(".card")].forEach(el=>{
     el.onclick = ()=> openProject(active[+el.dataset.i]);
+  });
+  [...grid.querySelectorAll(".btnProjUp")].forEach(el=>{
+    el.onclick = (ev)=>{ ev.stopPropagation(); moveProject(active, +el.dataset.i, -1); };
+  });
+  [...grid.querySelectorAll(".btnProjDown")].forEach(el=>{
+    el.onclick = (ev)=>{ ev.stopPropagation(); moveProject(active, +el.dataset.i, +1); };
   });
 
   if(arch.length===0){
@@ -585,7 +638,7 @@ function renderOverview(){
     archGrid.innerHTML = "";
   } else {
     archWrap.classList.remove("hidden");
-    archGrid.innerHTML = arch.map((p,i)=>projectCardHtml(p,i,true)).join("");
+    archGrid.innerHTML = arch.map((p,i)=>projectCardHtml(p,i,true,false)).join("");
     [...archGrid.querySelectorAll(".card")].forEach(el=>{
       el.onclick = ()=> openProject(arch[+el.dataset.i]);
     });
@@ -752,6 +805,8 @@ function renderDetail(){
   if(ab && currentProject) ab.textContent = currentProject.archived ? "Reaktivieren" : "Archivieren";
   const tg = document.getElementById("btnToggleArchived");
   if(tg) tg.textContent = showArchived ? "Erledigte ausblenden" : "Erledigte einblenden";
+  const st = document.getElementById("btnSortTree");
+  if(st) st.textContent = sortTree==="updated" ? "Sortierung: aktuell" : "Sortierung: manuell";
   const root = currentProject.root;
   const top = root.children[0];
   if(!top){
@@ -782,7 +837,13 @@ function renderNode(node, isRoot){
   // Archivierter Punkt ausgeblendet, wenn nicht ausdrücklich eingeblendet
   if(!isRoot && isLeaf && node.archived && !showArchived) return "";
 
-  const inner = node.children.map(c=>renderNode(c,false)).join("");
+  const orderedChildren = sortTree==="updated"
+    ? node.children.slice().sort((a,b)=>(b.upd||0)-(a.upd||0))
+    : node.children;
+  const inner = orderedChildren.map(c=>renderNode(c,false)).join("");
+  const moveBtns = (!isRoot && sortTree==="manual")
+    ? `<button class="btnMoveUp" data-nid="${node._id}" title="Nach oben">▲</button><button class="btnMoveDown" data-nid="${node._id}" title="Nach unten">▼</button>`
+    : "";
   const addBtn = `<button class="btnAdd" data-nid="${node._id}">+</button>`;
   const delBtn = isRoot ? "" : `<button class="btnDel" data-nid="${node._id}">x</button>`;
   const pg = hasChildren ? nodeProgress(node) : 0;
@@ -819,7 +880,7 @@ function renderNode(node, isRoot){
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
-      <div class="node-actions">${arcLeafBtn}${addBtn}${delBtn}</div>
+      <div class="node-actions">${moveBtns}${arcLeafBtn}${addBtn}${delBtn}</div>
     </div>
     ${progressHtml}
     ${childrenHtml}
@@ -853,6 +914,7 @@ async function applyBulk(pairs, op){
       if(!node.due) continue;
       node.due = addDays(node.due, op.shift);
     }
+    touchNode(node);
     projSet.add(project);
     changed++;
     try{ await syncOne(node, project); }catch(e){}
@@ -883,6 +945,7 @@ function bindNodeEvents(container){
       const n = nodeRegistry[el.dataset.nid];
       if(!n) return;
       n.archived = true;              // Google Task bleibt unangetastet
+      touchNode(n);
       scheduleSave(currentProject);
       renderDetail();
     };
@@ -893,6 +956,7 @@ function bindNodeEvents(container){
       const n = nodeRegistry[el.dataset.nid];
       if(!n) return;
       n.archived = false;
+      touchNode(n);
       scheduleSave(currentProject);
       renderDetail();
     };
@@ -910,6 +974,7 @@ function bindNodeEvents(container){
       ev.stopPropagation();
       const n = nodeRegistry[el.dataset.nid];
       n.status = nextStatus(n.status);
+      touchNode(n);
       renderDetail();
       scheduleSave(currentProject);
       if(n.due || n.gtId){ await syncOne(n, currentProject); renderDetail(); }
@@ -919,6 +984,7 @@ function bindNodeEvents(container){
     el.onchange = async ()=>{
       const n = nodeRegistry[el.dataset.nid];
       const val = el.value; // "" oder "YYYY-MM-DD"
+      touchNode(n);
       if(val){
         n.due = val;
         scheduleSave(currentProject);
@@ -935,7 +1001,7 @@ function bindNodeEvents(container){
     el.onclick = ()=>{
       const n = nodeRegistry[el.dataset.nid];
       const val = prompt("Titel", n.title);
-      if(val!==null && val.trim()!==""){ n.title = val.trim(); renderDetail(); scheduleSave(currentProject); }
+      if(val!==null && val.trim()!==""){ n.title = val.trim(); touchNode(n); renderDetail(); scheduleSave(currentProject); }
     };
   });
   container.querySelectorAll(".btnAdd").forEach(el=>{
@@ -947,11 +1013,29 @@ function bindNodeEvents(container){
         // War n bisher ein Blatt mit Termin/Task, wird es jetzt Elternknoten: Task aufräumen
         if(n.children.length===0 && n.gtId){ gtDelete(n.gtId).catch(()=>{}); }
         if(n.children.length===0){ n.gtId=null; n.due=null; }
-        const child = {level:n.level+1, title:val.trim(), status:"offen", due:null, gtId:null, body:[], children:[], parent:n};
+        const child = {level:n.level+1, title:val.trim(), status:"offen", due:null, gtId:null, archived:false, upd:Date.now(), body:[], children:[], parent:n};
         n.children.push(child);
         renderDetail();
         scheduleSave(currentProject);
       }
+    };
+  });
+  container.querySelectorAll(".btnMoveUp").forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      const sib = n.parent.children;
+      const i = sib.indexOf(n);
+      if(i>0){ sib.splice(i,1); sib.splice(i-1,0,n); renderDetail(); scheduleSave(currentProject); }
+    };
+  });
+  container.querySelectorAll(".btnMoveDown").forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      const sib = n.parent.children;
+      const i = sib.indexOf(n);
+      if(i>=0 && i<sib.length-1){ sib.splice(i,1); sib.splice(i+1,0,n); renderDetail(); scheduleSave(currentProject); }
     };
   });
   container.querySelectorAll(".btnDel").forEach(el=>{
@@ -1053,6 +1137,16 @@ document.getElementById("btnToggleArchived").onclick = ()=>{
   lsSet("pf_showArchived", showArchived ? "1" : "0");
   document.getElementById("btnToggleArchived").textContent = showArchived ? "Erledigte ausblenden" : "Erledigte einblenden";
   renderDetail();
+};
+document.getElementById("btnSortTree").onclick = ()=>{
+  sortTree = sortTree==="updated" ? "manual" : "updated";
+  lsSet("pf_sortTree", sortTree);
+  renderDetail();
+};
+document.getElementById("btnSortOverview").onclick = ()=>{
+  sortOverview = sortOverview==="updated" ? "manual" : "updated";
+  lsSet("pf_sortOverview", sortOverview);
+  renderOverview();
 };
 document.getElementById("btnSyncTasks").onclick = ()=> syncTasks(false);
 

@@ -93,6 +93,14 @@
   .btnMoveUp,.btnMoveDown{font-size:10px;padding:2px 5px;line-height:1;}
   .card-move{display:flex;flex-direction:column;gap:3px;margin-left:auto;padding-left:6px;}
   .card-move button{font-size:11px;padding:2px 7px;line-height:1.1;cursor:pointer;}
+  #searchInput{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font:inherit;}
+  .search-hit{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;}
+  .search-hit:hover{border-color:var(--blau);}
+  .hit-title{font-size:14px;}
+  .hit-ctx{font-size:12px;color:var(--muted);margin-top:2px;}
+  mark{background:rgba(74,222,128,0.4);color:inherit;border-radius:3px;padding:0 1px;}
+  .node-hit > .node-row{animation:hitpulse 2s ease;border-radius:8px;}
+  @keyframes hitpulse{0%,100%{background:transparent;}25%{background:rgba(74,222,128,0.35);}}
   .login-box{max-width:340px;margin:60px auto;text-align:center;}
   .login-box p{color:var(--muted);font-size:13px;}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
@@ -132,6 +140,10 @@
         <button class="ghost" id="btnSyncTasks" title="Erledigte aus der ToDo-App übernehmen und Termine nach Google Tasks schreiben">Google Tasks abgleichen</button>
         <button class="primary" id="btnNewProject">Neues Projekt</button>
       </div>
+      <div class="row" style="margin:0 0 10px;">
+        <input type="search" id="searchInput" placeholder="Alle Projekte durchsuchen" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div id="searchResults" class="hidden"></div>
       <div id="projectGrid" class="grid"></div>
       <div id="overviewEmpty" class="center hidden">Noch keine Projekte. Lege dein erstes Projekt an.</div>
       <div id="archiveWrap" class="hidden">
@@ -307,7 +319,8 @@ let selectedNext = new Set();
 let showArchived = lsGet("pf_showArchived","0")==="1";
 let focusNode = null;
 let sortTree = lsGet("pf_sortTree","updated");        // "updated" | "manual"
-let sortOverview = lsGet("pf_sortOverview","updated"); // "updated" | "manual"
+let sortOverview = lsGet("pf_sortOverview","updated"); // "updated" | "due" | "manual"
+let searchHits = [];
 function lsGet(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 let treeScale = parseFloat(lsGet("pf_treeScale","1")) || 1;
@@ -630,8 +643,73 @@ function updateSortOverviewBtn(){
   if(b) b.textContent = sortLabel(sortOverview);
 }
 
+function escapeRegExp(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+function highlightMatch(text, q){
+  const esc = escapeHtml(text);
+  const escQ = escapeHtml(q);
+  try{
+    const re = new RegExp(escapeRegExp(escQ),"ig");
+    return esc.replace(re, m=>`<mark>${m}</mark>`);
+  }catch(e){ return esc; }
+}
+function searchProjects(query){
+  const q = query.trim().toLowerCase();
+  if(!q) return [];
+  const hits = [];
+  for(const p of projects){
+    if(p.archived) continue;
+    const top = p.root.children[0];
+    if(!top) continue;
+    (function walk(node, path){
+      if(!node.archived && node.title.toLowerCase().includes(q)){
+        hits.push({project:p, node, path:path.slice()});
+      }
+      node.children.forEach(c=>walk(c, path.concat(node.title)));
+    })(top, []);
+  }
+  return hits;
+}
+function openProjectAtNode(project, node){
+  openProject(project);
+  const nid = node._id;
+  setTimeout(()=>{
+    if(!nid) return;
+    const el = document.querySelector('#treeView [data-nid="'+nid+'"]');
+    if(el){
+      const row = el.closest('.node') || el;
+      row.scrollIntoView({behavior:"smooth", block:"center"});
+      row.classList.add("node-hit");
+      setTimeout(()=>row.classList.remove("node-hit"), 2000);
+    }
+  }, 80);
+}
+function renderSearchResults(q){
+  document.getElementById("projectGrid").innerHTML = "";
+  document.getElementById("overviewEmpty").classList.add("hidden");
+  document.getElementById("archiveWrap").classList.add("hidden");
+  const sr = document.getElementById("searchResults");
+  sr.classList.remove("hidden");
+  const hits = searchProjects(q);
+  searchHits = hits;
+  if(!hits.length){ sr.innerHTML = `<div class="center">Keine Treffer.</div>`; return; }
+  sr.innerHTML = hits.map((h,i)=>{
+    const ctx = escapeHtml(h.project.title) + (h.path.length ? " · "+escapeHtml(h.path.join(" / ")) : "");
+    return `<div class="search-hit" data-i="${i}">
+      <div class="hit-title">${highlightMatch(h.node.title,q)}</div>
+      <div class="hit-ctx">${ctx}</div>
+    </div>`;
+  }).join("");
+  [...sr.querySelectorAll(".search-hit")].forEach(el=>{
+    el.onclick = ()=>{ const h = searchHits[+el.dataset.i]; if(h) openProjectAtNode(h.project, h.node); };
+  });
+}
+
 function renderOverview(){
   updateSortOverviewBtn();
+  const si = document.getElementById("searchInput");
+  const q = si ? si.value.trim() : "";
+  if(q){ renderSearchResults(q); return; }
+  document.getElementById("searchResults").classList.add("hidden");
   const grid = document.getElementById("projectGrid");
   const empty = document.getElementById("overviewEmpty");
   const archWrap = document.getElementById("archiveWrap");
@@ -1175,6 +1253,7 @@ document.getElementById("btnSortOverview").onclick = ()=>{
   lsSet("pf_sortOverview", sortOverview);
   renderOverview();
 };
+document.getElementById("searchInput").oninput = ()=> renderOverview();
 document.getElementById("btnSyncTasks").onclick = ()=> syncTasks(false);
 
 /* ============ Neues Projekt ============ */

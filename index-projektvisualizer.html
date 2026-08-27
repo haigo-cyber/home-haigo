@@ -1175,16 +1175,51 @@ document.getElementById("btnToggleRaw").onclick = ()=>{
     donut.classList.remove("hidden");
   }
 };
-document.getElementById("btnSaveRaw").onclick = ()=>{
+document.getElementById("btnSaveRaw").onclick = async ()=>{
   const text = document.getElementById("rawText").value;
-  currentProject.root = parseMarkdown(text);
+  const parts = splitMarkdownProjects(text);
+  let extra = 0;
+  if(parts.length <= 1){
+    currentProject.root = parseMarkdown(parts.length ? parts[0] : text);
+  } else {
+    // Erster Block bleibt das aktuelle Projekt, weitere werden eigene Projekte
+    currentProject.root = parseMarkdown(parts[0]);
+    const usedNames = new Set(projects.map(p=>p.name));
+    for(let i=1; i<parts.length; i++){
+      const root = parseMarkdown(parts[i]);
+      const top = root.children[0];
+      if(!top) continue;
+      const title = top.title || "Unbenannt";
+      const existing = projects.find(p=>p.title===title && p!==currentProject);
+      if(existing){
+        mergeChildren(existing.root.children[0], top);
+        try{ await saveProject(existing); }catch(e){}
+        extra++;
+      } else {
+        let name = slug(title)+".md"; let k=2;
+        while(usedNames.has(name)){ name = slug(title)+"-"+(k++)+".md"; }
+        usedNames.add(name);
+        try{
+          const fileId = await driveCreateFile(name, parts[i]);
+          projects.push({fileId, name, title, root, archived: !!top.archived});
+          extra++;
+        }catch(e){}
+      }
+    }
+  }
   currentProject.title = (currentProject.root.children[0] && currentProject.root.children[0].title) || currentProject.title;
   document.getElementById("detailTitle").textContent = currentProject.title;
   saveProject(currentProject);
+  focusNode = null;
   document.getElementById("rawView").classList.add("hidden");
   document.getElementById("treeView").classList.remove("hidden");
   document.getElementById("donutWrap").classList.remove("hidden");
   renderDetail();
+  if(extra>0){
+    projects.sort((a,b)=>a.title.localeCompare(b.title,"de"));
+    toast(extra===1 ? "1 weiteres Projekt angelegt" : extra+" weitere Projekte angelegt");
+    if(accessToken) syncTasks(true);
+  }
 };
 
 /* ============ Navigation ============ */

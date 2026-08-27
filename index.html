@@ -130,7 +130,6 @@
   <button class="fab" id="fab" style="display:none">+</button>
   <nav id="nav" style="display:none">
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
-    <button data-view="projects"><span class="nico">🎯</span>Projekte</button>
     <button data-view="links"><span class="nico">🔗</span>Links</button>
     <button data-view="notes"><span class="nico">📝</span>Notizen</button>
     <button data-view="goals"><span class="nico">⭐</span>Ziele</button>
@@ -869,7 +868,7 @@ function goalTaskCard(g){
   </div>`;
 }
 function buildCumulativeGraph(data, maxCum){
-  const w=420, h=180, pad=40;
+  const w=630, h=270, pad=60;
   const graphW=w-2*pad, graphH=h-2*pad;
   const xs=data.map((d,i)=>pad + (i/(data.length-1))*graphW);
   const ys=data.map(d=>h-pad - (d.summ/maxCum)*graphH);
@@ -884,25 +883,25 @@ function buildCumulativeGraph(data, maxCum){
   let yLabels='';
   yTicks.forEach(v=>{
     const yy=h-pad - (v/maxCum)*graphH;
-    yLabels+=`<text x="${pad-8}" y="${yy+4}" font-size="11" text-anchor="end" fill="#888">${v}</text>`;
+    yLabels+=`<text x="${pad-12}" y="${yy+6}" font-size="13" text-anchor="end" fill="#888">${v}</text>`;
   });
   
   // X-Achsenlabel (nur Start und Ende)
   const fmt=(k)=>new Date(k).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
-  const xLabels=`<text x="${xs[0]}" y="${h-8}" font-size="10" text-anchor="middle" fill="#888">${fmt(data[0].k)}</text>
-    <text x="${xs[xs.length-1]}" y="${h-8}" font-size="10" text-anchor="middle" fill="#888">${fmt(data[data.length-1].k)}</text>`;
+  const xLabels=`<text x="${xs[0]}" y="${h-12}" font-size="11" text-anchor="middle" fill="#888">${fmt(data[0].k)}</text>
+    <text x="${xs[xs.length-1]}" y="${h-12}" font-size="11" text-anchor="middle" fill="#888">${fmt(data[data.length-1].k)}</text>`;
   
-  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:180px;margin-bottom:4px">
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:270px;margin-bottom:2px">
     <defs><linearGradient id="gradgreen" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:#22c55e;stop-opacity:0.5" />
       <stop offset="100%" style="stop-color:#22c55e;stop-opacity:0.1" /></linearGradient></defs>
     <!-- Gitterlinien -->
     ${yTicks.map(v=>`<line x1="${pad}" x2="${w-pad}" y1="${h-pad-(v/maxCum)*graphH}" y2="${h-pad-(v/maxCum)*graphH}" stroke="#333" stroke-width="0.5" opacity="0.2"/>`).join('')}
     <!-- Achsen -->
-    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" stroke="#555" stroke-width="1.5"/>
-    <line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="#555" stroke-width="1.5"/>
+    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" stroke="#555" stroke-width="2"/>
+    <line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="#555" stroke-width="2"/>
     <!-- Fläche -->
-    <path d="${pathD}" fill="url(#gradgreen)" stroke="#16a34a" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="${pathD}" fill="url(#gradgreen)" stroke="#16a34a" stroke-width="3" stroke-linejoin="round"/>
     <!-- Labels -->
     ${yLabels}
     ${xLabels}
@@ -963,7 +962,6 @@ function projectCard(p){
     </div>
     <div class="row-actions">
       ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener" class="mini" style="color:${textColor};text-decoration:none;cursor:pointer">🔗</a>`:''}
-      <button class="mini" data-view-proj="${p.id}" style="color:${textColor}">➜</button>
       <button class="mini" data-edit-proj="${p.id}" style="color:${textColor}">Bearb.</button>
       <button class="mini" data-done-proj="${p.id}" style="color:${textColor}" title="${p.archived?'Wiederherstellen':'Erledigt'}">${p.archived?'↩':'✓'}</button>
       <button class="mini" data-del-proj="${p.id}" style="color:${textColor}">🗑</button>
@@ -1081,7 +1079,6 @@ function render(){
           <span>${esc(p.name)} (Prio ${p.priority})</span>
           <div style="display:flex;gap:6px">
             ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:${textColor};text-decoration:none;cursor:pointer;font-size:16px">🔗</a>`:''}
-            <button class="mini" data-view-proj="${p.id}" style="color:${textColor};background:transparent;border:none;cursor:pointer;padding:0;font-size:16px">➜</button>
           </div>
         </div>`;
       });
@@ -1270,94 +1267,6 @@ function render(){
       </div>`;
 
     main.innerHTML=h;
-  }
-  else if(view==="projects"){
-    const list=projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority);
-    const archived=projects.filter(p=>p.archived).sort((a,b)=>b.priority-a.priority);
-    // Alle Tags sammeln
-    const allTags=new Set();
-    projects.forEach(p=>{ if(p.tags) p.tags.forEach(t=>allTags.add(t)); });
-    const uniqueTags=Array.from(allTags).sort();
-    let h=`<div class="section-title">Prioritäts-Übersicht</div>`+priorityBoard();
-    if(uniqueTags.length){
-      h+=`<div class="section-title">Filter nach Tags</div>`;
-      h+=`<div class="seg" id="tagFilter" style="margin-bottom:12px">
-        <button data-tag="" class="sel">Alle</button>`;
-      uniqueTags.forEach(t=>h+=`<button data-tag="${esc(t)}">${esc(t)}</button>`);
-      h+=`</div>`;
-    }
-    h+=`<div class="section-title">Alle Projekte</div>`;
-    h+=list.length?list.map(projectCard).join(""):empty("Noch keine Projekte. Mit + anlegen.");
-    if(archived.length){
-      h+=`<div class="section-title">Abgeschlossene Projekte</div>`;
-      h+=archived.map(projectCard).join("");
-    }
-    main.innerHTML=h;
-    if(uniqueTags.length){
-      $("tagFilter").querySelectorAll("button").forEach(b=>{
-        b.onclick=()=>{
-          $("tagFilter").querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
-          b.classList.add("sel");
-          const selectedTag=b.dataset.tag;
-          const cards=document.querySelectorAll("[data-projcard]");
-          cards.forEach(c=>{
-            const projTags=c.dataset.projtags?c.dataset.projtags.split("|"):[]; 
-            const show=!selectedTag || projTags.includes(selectedTag);
-            c.style.display=show?"block":"none";
-          });
-        };
-      });
-    }
-  }
-  else if(view==="projectDetail" && selectedProjectId){
-    console.log("🎨 RENDER projectDetail, selectedProjectId:", selectedProjectId);
-    const proj=projects.find(p=>p.id===selectedProjectId);
-    console.log("  Projekt gefunden:", proj);
-    if(!proj){ console.log("  ❌ Projekt nicht gefunden, zurück zu projects"); view="projects"; render(); return; }
-    const key=todayKey();
-    const projTodos=tasks.filter(t=>t.projectId===selectedProjectId && !t.archived);
-    console.log("  Aufgaben für dieses Projekt:", projTodos.length);
-    const isTaskDone=(t)=> t.type==="todo" ? isEverDone(t.id) : isDone(t.id,key);
-    const open=sortTasksByDateAndTime(projTodos.filter(t=>!isTaskDone(t)));
-    const done=sortTasksByDateAndTime(projTodos.filter(t=>isTaskDone(t)));
-    const projNotes=notes.filter(n=>n.projectId===selectedProjectId);
-    console.log("  Notizen:", projNotes.length);
-    const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
-    const bgColor=colors[5-proj.priority]||colors[2];
-    const hex=bgColor.replace('#','');
-    const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
-    const lum=(0.299*r + 0.587*g + 0.114*b)/255;
-    const textColor=lum>0.5?'#000':'#fff';
-    let h=`<button id="backBtn" style="padding:8px 12px;margin-bottom:12px;background:var(--line);border:none;border-radius:4px;cursor:pointer">← Zurück</button>
-      <div style="background-color:${bgColor};color:${textColor};padding:16px;border-radius:8px;margin-bottom:16px">
-        <div style="font-size:20px;font-weight:bold">${esc(proj.name)}</div>
-        <div style="font-size:13px;margin-top:4px">Priorität: ${proj.priority}${proj.url?` • <a href="${esc(proj.url)}" target="_blank" rel="noopener" style="color:${textColor};text-decoration:underline">🔗 Link</a>`:''}</div>
-        ${proj.tags && proj.tags.length?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${proj.tags.map(t=>`<span style="background:rgba(0,0,0,0.2);padding:2px 8px;border-radius:4px;font-size:12px">${esc(t)}</span>`).join("")}</div>`:''}
-      </div>
-      <div class="section-title">Aufgaben</div>`;
-    if(!projTodos.length) h+=empty("Keine Aufgaben in diesem Projekt.");
-    else{
-      h+=open.length?open.map(t=>taskCard(t,{showCheck:true,key,oneTime:t.type==="todo"})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
-      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{showCheck:true,key,oneTime:t.type==="todo"})).join("");
-    }
-    if(projNotes.length){
-      h+=`<div class="section-title">Notizen</div>`;
-      h+=projNotes.map(n=>`<div class="card">
-        <div class="body">
-          <div class="title">${esc(n.text.split('\n')[0].substring(0,50))}</div>
-          <div class="sub">${new Date(n.createdAt).toLocaleDateString("de-DE")}</div>
-          <div class="note-text" style="margin-top:8px;font-size:13px;color:var(--text)">${esc(n.text.substring(0,100))}</div>
-        </div>
-        <div class="row-actions">
-          ${n.url?`<a href="${esc(n.url)}" target="_blank" rel="noopener" class="mini" style="color:var(--accent);text-decoration:none;cursor:pointer">🔗</a>`:''}
-          <button class="mini" data-edit-note="${n.id}">Bearb.</button>
-          <button class="mini" data-del-note="${n.id}">🗑</button>
-        </div>
-      </div>`).join("");
-    }
-    main.innerHTML=h;
-    console.log("  ✅ HTML gerendert");
-    $("backBtn").onclick=()=>{ selectedProjectId=null; view="projects"; render(); };
   }
   else if(view==="notes"){
     const activeNotes=notes.filter(n=>!n.archived);
@@ -2202,13 +2111,6 @@ main.addEventListener("click",e=>{
     return; 
   }
   const dn=e.target.closest("[data-del-note]"); if(dn){ deleteNote(dn.dataset.delNote); return; }
-  const vp=e.target.closest("[data-view-proj]"); if(vp){ 
-    console.log("🎯 Projekt-Button geklickt! data-view-proj:", vp.dataset.viewProj);
-    selectedProjectId=vp.dataset.viewProj; 
-    view="projectDetail"; 
-    render(); 
-    return; 
-  }
   const dopp=e.target.closest("[data-done-proj]"); if(dopp){ 
     const p=projects.find(x=>x.id===dopp.dataset.doneProj); 
     if(p) updateProject(p.id, {archived:!p.archived}); 

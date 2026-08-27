@@ -575,6 +575,25 @@ function projectCardHtml(p, i, isArchived, movable){
 
 function getProjectOrder(){ try{ return JSON.parse(lsGet("pf_projOrder","[]"))||[]; }catch(e){ return []; } }
 function setProjectOrder(arr){ lsSet("pf_projOrder", JSON.stringify(arr)); }
+function earliestDue(node){
+  if(!node) return null;
+  if(node.children.length===0) return node.due || null;
+  let best = null;
+  for(const c of node.children){
+    const d = earliestDue(c);
+    if(d && (!best || d < best)) best = d;
+  }
+  return best;
+}
+function byDue(a,b){
+  const da = earliestDue(a), db = earliestDue(b);
+  if(da && db) return da.localeCompare(db);
+  if(da) return -1;
+  if(db) return 1;
+  return 0;
+}
+function cycleSort(mode){ return mode==="updated" ? "due" : (mode==="due" ? "manual" : "updated"); }
+function sortLabel(mode){ return mode==="updated" ? "Sortierung: aktuell" : (mode==="due" ? "Sortierung: Fälligkeit" : "Sortierung: manuell"); }
 function sortActiveProjects(active){
   if(sortOverview==="manual"){
     const order = getProjectOrder();
@@ -583,6 +602,12 @@ function sortActiveProjects(active){
       let ib=order.indexOf(b.fileId); if(ib<0) ib=Infinity;
       if(ia!==ib) return ia-ib;
       return a.title.localeCompare(b.title,"de");
+    });
+  }
+  if(sortOverview==="due"){
+    return active.slice().sort((a,b)=>{
+      const r = byDue(a.root.children[0], b.root.children[0]);
+      return r!==0 ? r : a.title.localeCompare(b.title,"de");
     });
   }
   return active.slice().sort((a,b)=>{
@@ -602,7 +627,7 @@ function moveProject(sorted, i, dir){
 }
 function updateSortOverviewBtn(){
   const b = document.getElementById("btnSortOverview");
-  if(b) b.textContent = sortOverview==="updated" ? "Sortierung: aktuell" : "Sortierung: manuell";
+  if(b) b.textContent = sortLabel(sortOverview);
 }
 
 function renderOverview(){
@@ -806,7 +831,7 @@ function renderDetail(){
   const tg = document.getElementById("btnToggleArchived");
   if(tg) tg.textContent = showArchived ? "Erledigte ausblenden" : "Erledigte einblenden";
   const st = document.getElementById("btnSortTree");
-  if(st) st.textContent = sortTree==="updated" ? "Sortierung: aktuell" : "Sortierung: manuell";
+  if(st) st.textContent = sortLabel(sortTree);
   const root = currentProject.root;
   const top = root.children[0];
   if(!top){
@@ -839,7 +864,9 @@ function renderNode(node, isRoot){
 
   const orderedChildren = sortTree==="updated"
     ? node.children.slice().sort((a,b)=>(b.upd||0)-(a.upd||0))
-    : node.children;
+    : (sortTree==="due"
+        ? node.children.slice().sort(byDue)
+        : node.children);
   const inner = orderedChildren.map(c=>renderNode(c,false)).join("");
   const moveBtns = (!isRoot && sortTree==="manual")
     ? `<button class="btnMoveUp" data-nid="${node._id}" title="Nach oben">▲</button><button class="btnMoveDown" data-nid="${node._id}" title="Nach unten">▼</button>`
@@ -1139,12 +1166,12 @@ document.getElementById("btnToggleArchived").onclick = ()=>{
   renderDetail();
 };
 document.getElementById("btnSortTree").onclick = ()=>{
-  sortTree = sortTree==="updated" ? "manual" : "updated";
+  sortTree = cycleSort(sortTree);
   lsSet("pf_sortTree", sortTree);
   renderDetail();
 };
 document.getElementById("btnSortOverview").onclick = ()=>{
-  sortOverview = sortOverview==="updated" ? "manual" : "updated";
+  sortOverview = cycleSort(sortOverview);
   lsSet("pf_sortOverview", sortOverview);
   renderOverview();
 };

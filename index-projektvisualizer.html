@@ -101,6 +101,10 @@
   mark{background:rgba(74,222,128,0.4);color:inherit;border-radius:3px;padding:0 1px;}
   .node-hit > .node-row{animation:hitpulse 2s ease;border-radius:8px;}
   @keyframes hitpulse{0%,100%{background:transparent;}25%{background:rgba(74,222,128,0.35);}}
+  .btnMoveProj{font-size:12px;padding:2px 7px;cursor:pointer;}
+  .move-list{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto;margin:6px 0 10px;}
+  .move-target{text-align:left;padding:10px 12px;cursor:pointer;}
+  .move-target:hover{border-color:var(--blau);}
   .login-box{max-width:340px;margin:60px auto;text-align:center;}
   .login-box p{color:var(--muted);font-size:13px;}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
@@ -977,6 +981,8 @@ function renderNode(node, isRoot){
     `<input type="date" class="due-input" data-nid="${node._id}" value="${node.due||''}" title="Fälligkeitsdatum">`;
   const arcLeafBtn = (isLeaf && node.status==="fertig" && !node.archived)
     ? `<button class="btnArcLeaf" data-nid="${node._id}" title="Erledigten Punkt archivieren">Archiv</button>` : "";
+  const moveProjBtn = !isRoot
+    ? `<button class="btnMoveProj" data-nid="${node._id}" title="In anderes Projekt verschieben">→</button>` : "";
   const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
   const childrenHtml = hasChildren ? `<div class="children">${inner}</div>` : "";
   return `<div class="node node-indent-${indent}">
@@ -985,7 +991,7 @@ function renderNode(node, isRoot){
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
-      <div class="node-actions">${moveBtns}${arcLeafBtn}${addBtn}${delBtn}</div>
+      <div class="node-actions">${moveBtns}${moveProjBtn}${arcLeafBtn}${addBtn}${delBtn}</div>
     </div>
     ${progressHtml}
     ${childrenHtml}
@@ -1036,7 +1042,53 @@ function getNodeStatus(node){
   return "fertig";
 }
 
+function showMoveModal(node){
+  if(!node) return;
+  const targets = projects.filter(p=>p!==currentProject && !p.archived && p.root.children[0]);
+  if(!targets.length){ toast("Kein anderes Projekt vorhanden"); return; }
+  const list = targets.map((p,i)=>`<button class="move-target" data-i="${i}">${escapeHtml(p.title)}</button>`).join("");
+  document.getElementById("modalRoot").innerHTML = `
+    <div class="modal-bg" id="modalBg">
+      <div class="modal">
+        <h3>Verschieben nach</h3>
+        <p style="color:var(--muted);font-size:13px;">„${escapeHtml(node.title)}“ wird mit allen Unterpunkten als oberster Punkt in das gewählte Projekt verschoben.</p>
+        <div class="move-list">${list}</div>
+        <div class="row"><button class="ghost" id="btnCloseMove">Abbrechen</button></div>
+      </div>
+    </div>`;
+  document.getElementById("btnCloseMove").onclick = ()=> document.getElementById("modalRoot").innerHTML="";
+  [...document.querySelectorAll(".move-target")].forEach(el=>{
+    el.onclick = async ()=>{
+      const target = targets[+el.dataset.i];
+      document.getElementById("modalRoot").innerHTML="";
+      await moveNodeToProject(node, currentProject, target);
+    };
+  });
+}
+async function moveNodeToProject(node, source, target){
+  const targetTop = target.root.children[0];
+  if(!targetTop || !node.parent) return;
+  const sibs = node.parent.children;
+  const idx = sibs.indexOf(node);
+  if(idx>=0) sibs.splice(idx,1);
+  const delta = (targetTop.level+1) - node.level;
+  (function shift(n){ n.level += delta; n.children.forEach(shift); })(node);
+  node.parent = targetTop;
+  targetTop.children.push(node);
+  touchNode(node);
+  try{ await saveProject(target); }catch(e){}
+  try{ await saveProject(source); }catch(e){}
+  renderDetail();
+  toast('Nach „'+target.title+'“ verschoben');
+}
+
 function bindNodeEvents(container){
+  container.querySelectorAll('.btnMoveProj').forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      showMoveModal(nodeRegistry[el.dataset.nid]);
+    };
+  });
   container.querySelectorAll('.focus-btn').forEach(el=>{
     el.onclick = (ev)=>{
       ev.stopPropagation();

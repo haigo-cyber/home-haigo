@@ -85,6 +85,11 @@
   .node-archived{opacity:.5;}
   .node-archived .node-title{text-decoration:line-through;}
   .btnArcLeaf,.btnUnarcLeaf{font-size:11px;padding:2px 7px;}
+  .breadcrumb{display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px;padding:6px 2px 0;}
+  .bc-seg{background:none;border:0;color:var(--blau);cursor:pointer;font:inherit;padding:2px 3px;text-decoration:underline;}
+  .bc-sep{color:var(--muted);}
+  .bc-cur{color:var(--muted);font-weight:600;}
+  .focus-btn{cursor:pointer;border:0;}
   .login-box{max-width:340px;margin:60px auto;text-align:center;}
   .login-box p{color:var(--muted);font-size:13px;}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
@@ -156,6 +161,7 @@
         <button class="ghost" id="btnArchiveProject">Archivieren</button>
         <button class="danger" id="btnDeleteProject">Löschen</button>
       </div>
+      <div id="breadcrumb" class="breadcrumb hidden"></div>
       <div id="donutWrap" style="text-align:center;padding:10px 0;"></div>
       <div class="legend">
         <span><i class="dot" style="background:var(--rot)"></i>nicht begonnen</span>
@@ -292,6 +298,7 @@ let selectedNids = new Set();
 let nextItems = [];
 let selectedNext = new Set();
 let showArchived = lsGet("pf_showArchived","0")==="1";
+let focusNode = null;
 function lsGet(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 let treeScale = parseFloat(lsGet("pf_treeScale","1")) || 1;
@@ -641,6 +648,7 @@ function renderNext(){
 function openProject(project){
   currentProject = project;
   selectedNids.clear();
+  focusNode = null;
   document.getElementById("tabOverview").classList.add("hidden");
   document.getElementById("tabNext").classList.add("hidden");
   document.getElementById("tabDetail").classList.remove("hidden");
@@ -712,6 +720,32 @@ function changeZoom(delta){
   applyTreeScale();
 }
 
+function isInTree(node, top){
+  let n = node;
+  while(n && n!==top){
+    if(!n.parent || n.parent.children.indexOf(n)===-1) return false;
+    n = n.parent;
+  }
+  return n===top;
+}
+function renderBreadcrumb(focus, top){
+  const bc = document.getElementById("breadcrumb");
+  if(!bc) return;
+  const chain = [];
+  let n = focus;
+  while(n && n.level>=1){ chain.unshift(n); n = n.parent; }
+  chain.forEach(registerNode);
+  if(chain.length<=1){ bc.innerHTML=""; bc.classList.add("hidden"); return; }
+  bc.classList.remove("hidden");
+  bc.innerHTML = chain.map((nd,i)=>{
+    if(i===chain.length-1) return `<span class="bc-cur">${escapeHtml(nd.title)}</span>`;
+    return `<button class="bc-seg" data-nid="${nd._id}">${escapeHtml(nd.title)}</button><span class="bc-sep">/</span>`;
+  }).join("");
+  [...bc.querySelectorAll(".bc-seg")].forEach(el=>{
+    el.onclick = ()=>{ focusNode = nodeRegistry[el.dataset.nid]; renderDetail(); };
+  });
+}
+
 function renderDetail(){
   if(!currentProject) return;
   const ab = document.getElementById("btnArchiveProject");
@@ -720,10 +754,20 @@ function renderDetail(){
   if(tg) tg.textContent = showArchived ? "Erledigte ausblenden" : "Erledigte einblenden";
   const root = currentProject.root;
   const top = root.children[0];
-  const pg = top ? nodeProgress(top) : 0;
+  if(!top){
+    focusNode = null;
+    document.getElementById("breadcrumb").classList.add("hidden");
+    document.getElementById("donutWrap").innerHTML = donutHtml(0,"big");
+    document.getElementById("treeView").innerHTML = `<div class="center">Kein Inhalt. Nutze Rohtext, um eine Überschrift anzulegen.</div>`;
+    return;
+  }
+  if(!focusNode || !isInTree(focusNode, top)) focusNode = top;
+  const focus = focusNode;
+  const pg = nodeProgress(focus);
+  renderBreadcrumb(focus, top);
   document.getElementById("donutWrap").innerHTML = donutHtml(pg,"big");
   const tree = document.getElementById("treeView");
-  tree.innerHTML = top ? renderNode(top, true) : `<div class="center">Kein Inhalt. Nutze Rohtext, um eine Überschrift anzulegen.</div>`;
+  tree.innerHTML = renderNode(focus, true);
   applyTreeScale();
   bindNodeEvents(tree);
   updateBulkBarDetail();
@@ -758,7 +802,9 @@ function renderNode(node, isRoot){
   }
 
   const statusDisplay = hasChildren 
-    ? `<span class="badge badge-${displayStatus}">${pct}%</span>`
+    ? (isRoot
+        ? `<span class="badge badge-${displayStatus}">${pct}%</span>`
+        : `<button class="badge badge-${displayStatus} focus-btn" data-nid="${node._id}" title="Als Unterprojekt öffnen">${pct}%</button>`)
     : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}">${STATUS_LABEL[displayStatus]}</button>`;
   const dueChip = hasChildren ? "" :
     `<span class="gt-dot ${node.gtId?'':'off'}" title="${node.gtId?'in Google Tasks':'nicht in Google Tasks'}"></span>`+
@@ -824,6 +870,13 @@ function getNodeStatus(node){
 }
 
 function bindNodeEvents(container){
+  container.querySelectorAll('.focus-btn').forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      if(n){ focusNode = n; renderDetail(); }
+    };
+  });
   container.querySelectorAll('.btnArcLeaf').forEach(el=>{
     el.onclick = (ev)=>{
       ev.stopPropagation();

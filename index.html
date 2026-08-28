@@ -1202,6 +1202,32 @@ function render(){
       h+=`<div class="section-title">Notizen</div>`;
       h+=activeNotes.map(noteCard).join("");
     }
+    
+    // Ausstehende Tasks (offene Tasks mit Zukunftsdatum, sortiert nach Deadline-Nähe)
+    const futureOpen=active.filter(t=>t.startDate && t.startDate>key && !isDone(t.id,key) && !isInboxTask(t))
+      .sort((a,b)=>(a.startDate||"").localeCompare(b.startDate||""));
+    if(futureOpen.length){
+      h+=`<div class="section-title">Ausstehende Tasks</div>`;
+      futureOpen.forEach(t=>{
+        const dueKey=t.startDate||"";
+        const daysAway=Math.ceil((new Date(dueKey)-new Date(key))/(1000*60*60*24));
+        let color="#3b82f6"; // hellblau default
+        if(daysAway<=1) color="#ef4444"; // rot
+        else if(daysAway<=7) color="#f97316"; // orange
+        else if(daysAway>7) color="#4ade80"; // grün
+        const label=daysAway===1?"morgen":`in ${daysAway}d`;
+        const dateStr=new Date(dueKey).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
+        h+=`<div class="card">
+          <div class="check" data-check="${t.id}" data-key="${dueKey}">${checkSvg()}</div>
+          <div class="body">
+            <div class="title" style="color:#000">${esc(t.title)}</div>
+            <div class="sub" style="color:#000">${dateStr}</div>
+            ${t.projectId?`<div class="sub" style="color:#666">🎯 ${esc(projects.find(p=>p.id===t.projectId)?.name||"")}</div>`:""}
+            <div style="font-size:12px;margin-top:6px;padding:4px 8px;background:${color}22;color:${color};border-radius:4px;display:inline-block">⏱ ${label}</div>
+          </div>
+        </div>`;
+      });
+    }
     main.innerHTML=h;
   }
   else if(view==="habits"){

@@ -635,20 +635,26 @@ function countLateTasks(root){
 }
 
 /* ============ Projekt-Verschieben ============ */
-function findAllLevelTwoProjects(){
+function findAllMovableNodes(){
+  // Sammelt alle Nodes die als Parent dienen können (alle außer Root Level 1)
   const result = [];
   projects.forEach(proj => {
-    proj.root.children.forEach(child => {
-      if(child.level === 2) {
+    const walk = (node, parentPath = []) => {
+      if(node.level > 1){
+        const path = [...parentPath, node.title];
         result.push({
           projectId: proj.fileId,
           projectName: proj.name,
-          nodeId: child._id,
-          nodeTitle: child.title,
-          node: child
+          nodeId: node._id,
+          nodeTitle: node.title,
+          level: node.level,
+          path: path.join(" > "),
+          node: node
         });
       }
-    });
+      node.children.forEach(child => walk(child, node.level > 1 ? [...parentPath, node.title] : []));
+    };
+    proj.root.children.forEach(child => walk(child, []));
   });
   return result;
 }
@@ -657,7 +663,7 @@ function moveProjectDialog(projectId, nodeId){
   const project = projects.find(p => p.fileId === projectId);
   if(!project) return;
   
-  const allLevel2 = findAllLevelTwoProjects();
+  const allNodes = findAllMovableNodes();
   const currentNode = findNode(project.root, nodeId);
   if(!currentNode) return;
   
@@ -670,8 +676,8 @@ function moveProjectDialog(projectId, nodeId){
   }
   
   const byProject = {};
-  allLevel2.forEach(item => {
-    if(item.nodeId === nodeId) return;
+  allNodes.forEach(item => {
+    if(item.nodeId === nodeId) return; // skip self
     if(!byProject[item.projectName]) byProject[item.projectName] = [];
     byProject[item.projectName].push(item);
   });
@@ -679,8 +685,9 @@ function moveProjectDialog(projectId, nodeId){
   Object.entries(byProject).forEach(([projName, items]) => {
     html += `<div style="padding:12px 8px;color:var(--muted);font-size:12px;font-weight:bold">${projName}</div>`;
     items.forEach(item => {
-      html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card);margin-left:12px" data-move-parent="${item.nodeId}">
-        <div>→ ${item.nodeTitle}</div>
+      const indent = (item.level - 2) * 12;
+      html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card);margin-left:${indent}px" data-move-parent="${item.nodeId}" title="${item.path}">
+        <div>${"·".repeat(item.level - 2)} ${item.nodeTitle}</div>
       </div>`;
     });
   });
@@ -1159,6 +1166,8 @@ function renderNode(node, isRoot){
     ? `<button class="btnArcLeaf" data-nid="${node._id}" title="Erledigten Punkt archivieren">Archiv</button>` : "";
   const moveProjBtn = !isRoot
     ? `<button class="btnMoveProj" data-nid="${node._id}" title="In anderes Projekt verschieben">→</button>` : "";
+  const moveToParentBtn = (!isRoot && hasChildren && node.level >= 2)
+    ? `<button class="btnMoveToParent" data-nid="${node._id}" title="Zu anderem Unterprojekt verschieben">↔</button>` : "";
   const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
   const childrenHtml = hasChildren ? `<div class="children">${inner}</div>` : "";
   return `<div class="node node-indent-${indent}">
@@ -1167,7 +1176,7 @@ function renderNode(node, isRoot){
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
-      <div class="node-actions">${moveBtns}${moveProjBtn}${arcLeafBtn}${addBtn}${delBtn}</div>
+      <div class="node-actions">${moveBtns}${moveProjBtn}${moveToParentBtn}${arcLeafBtn}${addBtn}${delBtn}</div>
     </div>
     ${progressHtml}
     ${childrenHtml}
@@ -1290,6 +1299,13 @@ function bindNodeEvents(container){
       ev.stopPropagation();
       const n = nodeRegistry[el.dataset.nid];
       if(n) showMoveTargets([n], currentProject);
+    };
+  });
+  container.querySelectorAll('.btnMoveToParent').forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      if(n && currentProject) moveProjectDialog(currentProject.fileId, n._id);
     };
   });
   container.querySelectorAll('.focus-btn').forEach(el=>{

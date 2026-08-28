@@ -1270,14 +1270,44 @@ function render(){
         const dueStr = new Date(d.due).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
         const dlStr = new Date(d.deadline).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
         const typeLabel = d.type === 'gtask' ? (d.isGoal ? '🎯 Ziel' : '⭐ Google Task') : `📋 ${d.taskType}`;
-        h+=`<div class="card" style="border-left:4px solid ${color}">
+        
+        // Stärker sichtbar machen basierend auf Dringlichkeit
+        let bgColor = color + '22'; // Hintergrund schwach gefärbt
+        let textColor = '#000';
+        let borderWidth = '2px';
+        let fontWeight = '400';
+        
+        if(d.daysLeft !== null && d.daysLeft < 0){
+          // Rot: ÜBERFÄLLIG - maximale Aufmerksamkeit
+          bgColor = '#ef4444';
+          textColor = '#fff';
+          borderWidth = '4px';
+          fontWeight = '700';
+        } else if(d.daysLeft !== null && d.daysLeft < 1){
+          // Rot: HEUTE/MORGEN - sehr deutlich
+          bgColor = '#ef4444';
+          textColor = '#fff';
+          borderWidth = '3px';
+          fontWeight = '600';
+        } else if(d.daysLeft !== null && d.daysLeft <= 7){
+          // Orange: 1-7 Tage - deutlich
+          bgColor = '#f97316' + '44';
+          borderWidth = '2px';
+          fontWeight = '500';
+        } else if(d.daysLeft !== null && d.daysLeft > 7){
+          // Grün: Weit weg
+          bgColor = '#4ade80' + '22';
+          borderWidth = '1px';
+        }
+        
+        h+=`<div class="card" style="border-left:${borderWidth} solid ${color};background:${bgColor};color:${textColor}">
           <div class="body">
-            <div class="title" style="color:#000">${esc(d.title)}</div>
-            <div class="sub" style="color:#000;font-size:12px">${typeLabel} · Fällig: ${dueStr}</div>
-            <div class="sub" style="color:#666;font-size:12px">Deadline: ${dlStr}</div>
-            ${d.projectId?`<div class="sub" style="color:#666;font-size:12px">🎯 ${esc(projects.find(p=>p.id===d.projectId)?.name||"")}</div>`:""}
-            <div style="font-size:12px;margin-top:6px;padding:4px 8px;background:${color}22;color:${color};border-radius:4px;display:inline-block">
-              ${d.daysLeft === null ? '–' : (d.daysLeft < 0 ? `⚠ überfällig ${Math.abs(d.daysLeft)}d` : `${label}`)}
+            <div class="title" style="color:${textColor};font-weight:${fontWeight};font-size:16px">${esc(d.title)}</div>
+            <div class="sub" style="color:${textColor};font-size:12px;margin-top:4px">${typeLabel} · Fällig: ${dueStr}</div>
+            <div class="sub" style="color:${textColor};font-size:12px;opacity:0.9">Deadline: ${dlStr}</div>
+            ${d.projectId?`<div class="sub" style="color:${textColor};font-size:12px">🎯 ${esc(projects.find(p=>p.id===d.projectId)?.name||"")}</div>`:""}
+            <div style="font-size:14px;margin-top:8px;padding:6px 10px;background:${color};color:#fff;border-radius:4px;font-weight:bold;display:inline-block">
+              ${d.daysLeft === null ? '–' : (d.daysLeft < 0 ? `⚠️ ÜBERFÄLLIG ${Math.abs(d.daysLeft)}d` : `${label}`)}
             </div>
           </div>
         </div>`;

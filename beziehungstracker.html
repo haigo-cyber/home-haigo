@@ -619,6 +619,7 @@ async function importCatalogText(code) {
   const partnerBoxes = document.querySelectorAll('.partnerScopeBox:checked');
   const partners = Array.from(partnerBoxes).map(b => b.value);
   if (partners.length === 0) { toast("Bitte mindestens einen Gesprächspartner-Typ auswählen."); return; }
+  const sinceVal = document.getElementById("importSince")?.value || todayISO();
   const text = ta.value;
   const child = getChild(code);
   const targetArr = scope === "global" ? globalCatalog : child.catalog;
@@ -626,7 +627,6 @@ async function importCatalogText(code) {
   const lines = text.split(/\r?\n/);
   let currentCat = null;
   let added = 0;
-  const today = todayISO();
   for (let line of lines) {
     line = line.trim();
     if (!line) continue;
@@ -636,7 +636,7 @@ async function importCatalogText(code) {
       let cat = targetArr.find(c => c.name === currentCat);
       if (!cat) { cat = { name: currentCat, items: [] }; targetArr.push(cat); }
       const exists = cat.items.some(it => it.name.toLowerCase() === itemName.toLowerCase());
-      if (!exists) { cat.items.push({ name: itemName, since: today, archived: false, partners: partners.slice() }); added++; }
+      if (!exists) { cat.items.push({ name: itemName, since: sinceVal, archived: false, partners: partners.slice() }); added++; }
     } else if (line.startsWith("# ")) {
       currentCat = line.slice(2).trim();
       if (!targetArr.some(c => c.name === currentCat)) targetArr.push({ name: currentCat, items: [] });
@@ -1052,7 +1052,7 @@ function renderNeuTab(child) {
   let html = `<div class="card ui">
     <div class="field">
       <label>Datum</label>
-      <input type="date" id="entryDate" value="${todayISO()}" onchange="renderApp()">
+      <input type="date" id="entryDate" value="${dateVal}" onchange="renderApp()">
     </div>
     <div class="field">
       <label>Gesprächspartner</label>
@@ -1236,6 +1236,10 @@ function renderKatalogTab(child) {
     <div class="row" style="margin-top:8px;">
       <label style="font-size:0.78rem;color:var(--muted);width:100%;">Gilt bei Gespräch mit:</label>
       ${ALL_PARTNERS.map(p => `<label style="display:flex;align-items:center;gap:5px;font-size:0.85rem;"><input type="checkbox" class="partnerScopeBox" value="${p}" checked style="width:auto;"> ${p} · ${PARTNERS[p]}</label>`).join("")}
+    </div>
+    <div class="field" style="margin-top:8px;">
+      <label>Gilt ab, Voreinstellung heute, für rückwirkende Nacherfassung anpassen</label>
+      <input type="date" id="importSince" value="${todayISO()}">
     </div>
     <button class="primary" style="margin-top:8px;" onclick="importCatalogText('${esc(child.code)}')">Items übernehmen</button>
   </div>`;

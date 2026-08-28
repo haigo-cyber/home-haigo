@@ -170,6 +170,7 @@ let view = "today";
 let selectedProjectId = null;
 let calendars = [];                                       // schreibbare Kalender des Nutzers
 let bilanz = 0;                                           // Tages-Bilanz (startet bei 0, -2 pro nicht erfülltes Ziel)
+let minTaskGoal = parseInt(localStorage.getItem("minTaskGoal"))||18;  // Mindest-Tasks pro Tag für Streak
 let gtasks = [];                                          // Google-Tasks-Einträge (Standardliste, grüne Sektion)
 let gtasksStatus = "";                                    // Diagnose-Text fürs UI
 let goalTasks = [];                                       // heutige Tagesziele (offen + heute erledigt) aus Google Tasks
@@ -216,6 +217,19 @@ function streakDays(itemId){
   while(isDone(itemId,dateKey(d))){ n++; d.setDate(d.getDate()-1); }
   return n;
 }
+
+function taskStreak(){
+  // Zählt die Tage hintereinander, an denen minTaskGoal Aufgaben erledigt wurden
+  let n=0; const d=new Date();
+  while(true){
+    const k=dateKey(d);
+    const count=logs.filter(l=>l.date===k).length;
+    if(count>=minTaskGoal){ n++; d.setDate(d.getDate()-1); }
+    else break;
+  }
+  return n;
+}
+
 function scheduleLabel(t){
   const timeStr=t.startTime?` · ${t.startTime} Uhr`:"";
   if(t.type==="habit") return "täglich";
@@ -1070,7 +1084,15 @@ function render(){
     // Bilanz-Anzeige
     const bilanzColor=bilanz>=0?'#22c55e':'#ef4444';
     const bilanzSymbol=bilanz>=0?'✓':'⚠';
-    h+=`<div style="background:${bilanzColor};color:#fff;padding:12px;border-radius:6px;margin-bottom:12px;font-weight:bold;text-align:center;font-size:16px">${bilanzSymbol} Bilanz: ${bilanz}</div>`;
+    const streak=taskStreak();
+    const todayCount=logs.filter(l=>l.date===key).length;
+    const streakReached=todayCount>=minTaskGoal;
+    const streakColor=streakReached?'#22c55e':'#94a3b8';
+    h+=`<div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="flex:1;background:${bilanzColor};color:#fff;padding:12px;border-radius:6px;font-weight:bold;text-align:center;font-size:16px">${bilanzSymbol} Bilanz: ${bilanz}</div>
+      <div style="flex:1;background:${streakColor};color:#fff;padding:12px;border-radius:6px;font-weight:bold;text-align:center;font-size:16px">🔥 ${streak} Tage</div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);text-align:center;margin-bottom:12px">${todayCount}/${minTaskGoal} Tasks heute ${streakReached?'✓':'–'}</div>`;
     if(topProjects.length){
       h+=`<div class="section-title">Wichtige Projekte</div>`;
       const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
@@ -1336,6 +1358,18 @@ function render(){
   }
   else if(view==="settings"){
     main.innerHTML=`
+      <div class="section-title">Ziele</div>
+      <div class="card">
+        <div class="body">
+          <div class="title">Mindest-Tasks pro Tag</div>
+          <div class="sub" style="margin-bottom:12px">Für den Tages-Streak</div>
+          <div style="display:flex;gap:12px;align-items:center">
+            <input type="number" id="minTaskGoalInput" value="${minTaskGoal}" min="1" max="100" style="width:60px;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--surface2);color:var(--text);font-size:14px">
+            <span style="color:var(--text)">Tasks</span>
+          </div>
+        </div>
+      </div>
+      
       <div class="section-title">Kalender</div>
       <div class="card">
         <div class="body">
@@ -1375,6 +1409,7 @@ function render(){
       <p class="muted" style="font-size:12px;margin-top:18px">Aufgaben, Projekte & Notizen liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an), der Zielkalender pro Eintrag wählbar.</p>
     `;
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
+    const mtg=$("minTaskGoalInput"); if(mtg) mtg.onchange=()=>{ minTaskGoal=parseInt(mtg.value)||18; localStorage.setItem("minTaskGoal",minTaskGoal); toast("Mindest-Ziel gesetzt: "+minTaskGoal); };
     $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); setSync("on"); render(); toast("Aktualisiert"); };
     $("signoutBtn").onclick=signOut;
     $("resetSheetBtn").onclick=async()=>{

@@ -205,6 +205,8 @@ let adhocRatings = [];          // einmalige Items nur für den aktuell erstellt
 let adminItemsChild = null;
 let adminEntriesChild = null;
 let editingItem = null; // { scope, childCode, catName, itemName }
+let editingEntryId = null;
+let editingOriginalAdhocNames = [];
 
 /* ---------- Hilfsfunktionen ---------- */
 function todayISO() {
@@ -574,6 +576,8 @@ function openChild(code, tab) {
   pendingPartner = null;
   adhocRatings = [];
   editingItem = null;
+  editingEntryId = null;
+  editingOriginalAdhocNames = [];
   renderApp();
 }
 
@@ -584,6 +588,34 @@ function startQuickEntry(code, partner) {
   pendingPartner = partner;
   adhocRatings = [];
   editingItem = null;
+  editingEntryId = null;
+  editingOriginalAdhocNames = [];
+  renderApp();
+}
+
+function startEditEntry(code, id) {
+  const child = getChild(code);
+  const entry = child.entries.find(e => e.id === id);
+  if (!entry) return;
+  const catalogNames = new Set();
+  globalCatalog.forEach(cat => cat.items.forEach(it => catalogNames.add(it.name)));
+  child.catalog.forEach(cat => cat.items.forEach(it => catalogNames.add(it.name)));
+  adhocRatings = Object.entries(entry.ratings)
+    .filter(([name]) => !catalogNames.has(name))
+    .map(([name, value]) => ({ name, value }));
+  editingOriginalAdhocNames = adhocRatings.map(r => r.name);
+  editingEntryId = id;
+  pendingPartner = entry.partner;
+  currentTab = "neu";
+  renderApp();
+}
+
+function cancelEditEntry() {
+  editingEntryId = null;
+  editingOriginalAdhocNames = [];
+  pendingPartner = null;
+  adhocRatings = [];
+  currentTab = "eintraege";
   renderApp();
 }
 
@@ -657,6 +689,41 @@ async function saveEntry(code) {
   if (!partner) { toast("Bitte zuerst auswählen, mit wem gesprochen wurde."); return; }
   const keyword = sanitizeCellText(document.getElementById("entryKeyword")?.value || "");
   const notes = sanitizeCellText(document.getElementById("entryNotes")?.value || "");
+
+  if (editingEntryId) {
+    const entry = child.entries.find(e => e.id === editingEntryId);
+    if (!entry) { toast("Eintrag nicht gefunden."); editingEntryId = null; renderApp(); return; }
+    const backup = JSON.parse(JSON.stringify(entry));
+    // Ausgangspunkt sind die bisherigen Bewertungen, damit Items, die aktuell nicht im Formular
+    // sichtbar sind (z. B. inzwischen archiviert oder gelöscht), unangetastet erhalten bleiben.
+    const ratings = Object.assign({}, entry.ratings);
+    document.querySelectorAll(".item-row").forEach(row => {
+      const chk = row.querySelector("input[type=checkbox]");
+      const rng = row.querySelector("input[type=range]");
+      const name = row.dataset.item;
+      if (chk && chk.checked && rng) ratings[name] = Number(rng.value);
+      else delete ratings[name];
+    });
+    editingOriginalAdhocNames.forEach(name => delete ratings[name]);
+    adhocRatings.forEach(r => { ratings[r.name] = r.value; });
+
+    entry.date = dateVal;
+    entry.partner = partner;
+    entry.keyword = keyword;
+    entry.notes = notes;
+    entry.ratings = ratings;
+    const ok = await persist();
+    if (!ok) { Object.assign(entry, backup); renderApp(); return; }
+    editingEntryId = null;
+    editingOriginalAdhocNames = [];
+    pendingPartner = null;
+    adhocRatings = [];
+    currentTab = "eintraege";
+    renderApp();
+    toast("Eintrag aktualisiert.");
+    return;
+  }
+
   const ratings = {};
   document.querySelectorAll(".item-row").forEach(row => {
     const chk = row.querySelector("input[type=checkbox]");
@@ -1037,19 +1104,31 @@ function itemAppliesToPartner(item, partner) {
 }
 
 function renderNeuTab(child) {
-  const dateVal = document.getElementById("entryDate")?.value || todayISO();
-  const keywordVal = document.getElementById("entryKeyword")?.value || "";
-  const notesVal = document.getElementById("entryNotes")?.value || "";
+  const editingEntry = editingEntryId ? child.entries.find(e => e.id === editingEntryId) : null;
+  const dateVal = document.getElementById("entryDate")?.value || (editingEntry ? editingEntry.date : todayISO());
+  const keywordVal = document.getElementById("entryKeyword")?.value ?? (editingEntry ? editingEntry.keyword : "");
+  const notesVal = document.getElementById("entryNotes")?.value ?? (editingEntry ? editingEntry.notes : "");
+  const existingRatings = editingEntry ? editingEntry.ratings : {};
   const activeGlobal = globalCatalog.map(cat => ({
     name: cat.name,
-    items: cat.items.filter(it => !it.archived && it.since <= dateVal && itemAppliesToPartner(it, pendingPartner))
+    items: cat.items.filter(it => !it.archived && it.since <= dateVal && (itemAppliesToPartner(it, pendingPartner) || existingRatings[it.name] !== undefined))
   })).filter(cat => cat.items.length > 0);
   const activeChild = child.catalog.map(cat => ({
     name: cat.name,
-    items: cat.items.filter(it => !it.archived && it.since <= dateVal && itemAppliesToPartner(it, pendingPartner))
+    items: cat.items.filter(it => !it.archived && it.since <= dateVal && (itemAppliesToPartner(it, pendingPartner) || existingRatings[it.name] !== undefined))
   })).filter(cat => cat.items.length > 0);
 
-  let html = `<div class="card ui">
+  let html = "";
+  if (editingEntry) {
+    html += `<div class="card ui" style="background:var(--accent-soft);">
+      <div class="row between">
+        <strong>Eintrag vom ${editingEntry.date} wird bearbeitet</strong>
+        <a class="backlink" onclick="cancelEditEntry()">Abbrechen</a>
+      </div>
+    </div>`;
+  }
+
+  html += `<div class="card ui">
     <div class="field">
       <label>Datum</label>
       <input type="date" id="entryDate" value="${dateVal}" onchange="renderApp()">
@@ -1070,11 +1149,14 @@ function renderNeuTab(child) {
   function renderItemRows(cat) {
     let h = `<div class="cat-title">${esc(cat.name)}</div>`;
     for (const item of cat.items) {
+      const existingVal = existingRatings[item.name];
+      const checked = existingVal !== undefined;
+      const val = checked ? existingVal : 5;
       h += `<div class="item-row" data-item="${esc(item.name)}">
         <span class="iname">${esc(item.name)}</span>
-        <input type="range" min="1" max="10" value="5" oninput="this.nextElementSibling.textContent=this.value">
-        <span class="val">5</span>
-        <label class="chk"><input type="checkbox"> bewerten</label>
+        <input type="range" min="1" max="10" value="${val}" oninput="this.nextElementSibling.textContent=this.value">
+        <span class="val">${val}</span>
+        <label class="chk"><input type="checkbox" ${checked ? "checked" : ""}> bewerten</label>
       </div>`;
     }
     return h;
@@ -1117,7 +1199,7 @@ function renderNeuTab(child) {
   </div>`;
 
   if (activeGlobal.length > 0 || activeChild.length > 0 || adhocRatings.length > 0) {
-    html += `<button class="primary ui" style="width:100%;" onclick="saveEntry('${esc(child.code)}')">Eintrag speichern</button>`;
+    html += `<button class="primary ui" style="width:100%;" onclick="saveEntry('${esc(child.code)}')">${editingEntry ? "Änderungen speichern" : "Eintrag speichern"}</button>`;
   }
   return html;
 }
@@ -1146,6 +1228,7 @@ function renderEintraegeTab(child) {
           <option value="unbeantwortet" ${e.marking==='unbeantwortet'?"selected":""}>unbeantwortet</option>
           <option value="nicht_relevant" ${e.marking==='nicht_relevant'?"selected":""}>nicht relevant</option>
         </select>
+        <a class="backlink ui" onclick="startEditEntry('${esc(child.code)}','${e.id}')">bearbeiten</a>
         <a class="backlink ui" onclick="toggleEntryArchive('${esc(child.code)}','${e.id}')">${e.archived ? "reaktivieren" : "archivieren"}</a>
       </div>
     </div>`;

@@ -1197,6 +1197,45 @@ function render(){
     const doneCount=goalTasks.filter(g=>g.completed).length;
     let h=goalTasks.length?goalTasks.map(goalTaskCard).join(""):empty("Noch keine Tages-Ziele. Bis zu 4 mit + anlegen.");
     if(goalTasks.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,goalTasks.length);
+    
+    // Vorschau kommender Tage (nächste 10 Tage)
+    const today=todayKey();
+    const upcomingGoals={};
+    for(let i=1; i<=10; i++){
+      const d=new Date();
+      d.setDate(d.getDate()+i);
+      const k=dateKey(d);
+      upcomingGoals[k]=[];
+    }
+    
+    // Alle zukünftigen Ziele laden
+    const allGoals=goalTasks.map(g=>({...g}));
+    // Aus Google Tasks: alle Ziele mit Datum in Zukunft
+    // goalTasks enthält nur heutige, daher müssen wir hier neu laden oder aus gtasks filtern
+    
+    const futureGoals=gtasks.filter(t=>isGoalTask(t) && t.due && t.due>today && t.status!=="completed")
+      .map(t=>({id:t.id, title:t.title, due:t.due.slice(0,10)}));
+    
+    futureGoals.forEach(g=>{
+      if(upcomingGoals[g.due]) upcomingGoals[g.due].push(g);
+    });
+    
+    const hasUpcoming=Object.values(upcomingGoals).some(arr=>arr.length>0);
+    if(hasUpcoming){
+      h+=`<div class="section-title">Kommende Tage</div>`;
+      const fmt=(k)=>new Date(k).toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"numeric"});
+      Object.entries(upcomingGoals).forEach(([k,goals])=>{
+        if(goals.length>0){
+          h+=`<div class="card">
+            <div class="body">
+              <div class="title" style="color:#000;font-weight:bold">${fmt(k)}</div>
+              <div class="sub" style="color:#000;margin-top:6px">`;
+          goals.forEach(g=>h+=`<div style="font-size:13px;margin:4px 0">• ${esc(g.title)}</div>`);
+          h+=`</div></div></div>`;
+        }
+      });
+    }
+    
     main.innerHTML=h;
   }
   else if(view==="migrate"){

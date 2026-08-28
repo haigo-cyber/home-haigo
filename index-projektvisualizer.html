@@ -600,6 +600,8 @@ function projectCardHtml(p, i, isArchived, movable){
   const open = leaves.filter(l=>l.status!=="fertig").length;
   const sub = isArchived ? `${leaves.length} Punkte, abgeschlossen` : `${leaves.length} Punkte, ${open} offen`;
   const move = movable ? `<div class="card-move"><button class="btnProjUp" data-i="${i}" title="Nach oben">▲</button><button class="btnProjDown" data-i="${i}" title="Nach unten">▼</button></div>` : "";
+  const topLevelNode = p.root.children[0];
+  const moveBtn = topLevelNode && topLevelNode.level === 2 ? `<button class="btnProjMove" data-projid="${p.fileId}" data-nodeid="${topLevelNode._id}" title="Verschieben">↔</button>` : "";
   return `<div class="card${isArchived?' card-archived':''}" data-i="${i}">
     ${donutHtml(pg,"small")}
     <div class="info">
@@ -607,6 +609,7 @@ function projectCardHtml(p, i, isArchived, movable){
       <div class="sub">${sub}</div>
     </div>
     ${move}
+    ${moveBtn}
   </div>`;
 }
 
@@ -630,6 +633,125 @@ function countLateTasks(root){
   })(root);
   return late;
 }
+
+/* ============ Projekt-Verschieben ============ */
+function findAllLevelTwoProjects(){
+  const result = [];
+  projects.forEach(proj => {
+    proj.root.children.forEach(child => {
+      if(child.level === 2) {
+        result.push({
+          projectId: proj.fileId,
+          projectName: proj.name,
+          nodeId: child._id,
+          nodeTitle: child.title,
+          node: child
+        });
+      }
+    });
+  });
+  return result;
+}
+
+function moveProjectDialog(projectId, nodeId){
+  const project = projects.find(p => p.fileId === projectId);
+  if(!project) return;
+  
+  const allLevel2 = findAllLevelTwoProjects();
+  const currentNode = findNode(project.root, nodeId);
+  if(!currentNode) return;
+  
+  let html = `<div style="max-height:400px;overflow-y:auto">`;
+  
+  if(currentNode.level > 2){
+    html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card)" data-move-parent="top-level">
+      <div style="font-weight:bold">↑ Zurück zu Top-Level (##)</div>
+    </div>`;
+  }
+  
+  const byProject = {};
+  allLevel2.forEach(item => {
+    if(item.nodeId === nodeId) return;
+    if(!byProject[item.projectName]) byProject[item.projectName] = [];
+    byProject[item.projectName].push(item);
+  });
+  
+  Object.entries(byProject).forEach(([projName, items]) => {
+    html += `<div style="padding:12px 8px;color:var(--muted);font-size:12px;font-weight:bold">${projName}</div>`;
+    items.forEach(item => {
+      html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card);margin-left:12px" data-move-parent="${item.nodeId}">
+        <div>→ ${item.nodeTitle}</div>
+      </div>`;
+    });
+  });
+  
+  html += `</div>`;
+  
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000';
+  modal.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;width:90%;max-width:400px">
+      <h3 style="margin:0 0 12px">Verschiebe "${currentNode.title}" zu:</h3>
+      ${html}
+      <button style="width:100%;margin-top:12px;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--text)" onclick="this.parentElement.parentElement.remove()">Abbrechen</button>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  modal.querySelectorAll('[data-move-parent]').forEach(el => {
+    el.addEventListener('click', () => {
+      const parentId = el.dataset.moveParent;
+      modal.remove();
+      if(parentId === 'top-level'){
+        moveProjectToParent(projectId, nodeId, null);
+      } else {
+        moveProjectToParent(projectId, nodeId, parentId);
+      }
+    });
+  });
+}
+
+function findNode(root, nodeId){
+  if(root._id === nodeId) return root;
+  for(let child of root.children){
+    const found = findNode(child, nodeId);
+    if(found) return found;
+  }
+  return null;
+}
+
+function moveProjectToParent(projectId, nodeId, newParentId){
+  const project = projects.find(p => p.fileId === projectId);
+  if(!project) return;
+  
+  const node = findNode(project.root, nodeId);
+  const newParent = newParentId ? findNode(project.root, newParentId) : null;
+  
+  if(!node) return;
+  
+  if(node.parent){
+    node.parent.children = node.parent.children.filter(c => c._id !== nodeId);
+  } else {
+    project.root.children = project.root.children.filter(c => c._id !== nodeId);
+  }
+  
+  if(newParent){
+    node.level = newParent.level + 1;
+    newParent.children.push(node);
+    node.parent = newParent;
+  } else {
+    node.level = 2;
+    project.root.children.push(node);
+    node.parent = null;
+  }
+  
+  project.dirty = true;
+  scheduleSave(project);
+  render();
+  toast("Projekt verschoben ✓");
+}
+
 function earliestDue(node){
   if(!node) return null;
   if(node.children.length===0) return node.due || null;
@@ -776,6 +898,9 @@ function renderOverview(){
   });
   [...grid.querySelectorAll(".btnProjDown")].forEach(el=>{
     el.onclick = (ev)=>{ ev.stopPropagation(); moveProject(active, +el.dataset.i, +1); };
+  });
+  [...grid.querySelectorAll(".btnProjMove")].forEach(el=>{
+    el.onclick = (ev)=>{ ev.stopPropagation(); moveProjectDialog(el.dataset.projid, el.dataset.nodeid); };
   });
 
   if(arch.length===0){

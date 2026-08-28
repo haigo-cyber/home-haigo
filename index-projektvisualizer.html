@@ -70,6 +70,12 @@
   .due-input{width:34px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:1px 3px;font-size:9px;flex:none;cursor:pointer;color-scheme:dark;}
   .due-input:focus{width:auto;color:var(--text);outline:1px solid var(--accent);}
   .due-input::-webkit-calendar-picker-indicator{filter:invert(0.6);cursor:pointer;}
+  .dl-input{width:34px;background:transparent;color:var(--orange);border:1px solid var(--orange);border-radius:5px;padding:1px 3px;font-size:9px;flex:none;cursor:pointer;color-scheme:dark;margin-left:4px;}
+  .dl-input:focus{width:auto;color:var(--text);outline:1px solid var(--orange);}
+  .dl-input::-webkit-calendar-picker-indicator{filter:invert(0.55) sepia(1) saturate(4) hue-rotate(-15deg);cursor:pointer;}
+  .due-late{border-color:var(--rot)!important;color:var(--rot)!important;}
+  .late-warn{color:var(--rot);font-size:11px;margin-left:2px;cursor:help;flex:none;}
+  .deadline-warn{background:rgba(239,68,68,0.14);border:1px solid var(--rot);color:var(--rot);border-radius:8px;padding:7px 10px;font-size:13px;margin:6px 0;}
   .gt-dot{width:6px;height:6px;border-radius:50%;background:var(--gruen);flex:none;}
   .gt-dot.off{background:var(--border);}
   .due-chip{font-size:10px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;white-space:nowrap;flex:none;}
@@ -184,6 +190,7 @@
         <button class="danger" id="btnDeleteProject">Löschen</button>
       </div>
       <div id="breadcrumb" class="breadcrumb hidden"></div>
+      <div id="deadlineWarn" class="deadline-warn hidden"></div>
       <div id="donutWrap" style="text-align:center;padding:10px 0;"></div>
       <div class="legend">
         <span><i class="dot" style="background:var(--rot)"></i>nicht begonnen</span>
@@ -240,14 +247,14 @@ function nextStatus(s){ const i = STATUS_ORDER.indexOf(s); return STATUS_ORDER[(
 
 /* ============ Markdown Parsing / Serialisierung ============ */
 const HEAD_RE = /^(#{1,6})\s+(.*)$/;
-const META_RE = /<!--\s*(status|due|gt|archived|upd|done):([^>]*?)-->/g;
+const META_RE = /<!--\s*(status|due|gt|archived|upd|done|dl):([^>]*?)-->/g;
 
 function parseHeadingLine(line){
   const m = line.match(HEAD_RE);
   if(!m) return null;
   const level = m[1].length;
   let rest = m[2];
-  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0, done:0};
+  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0, done:0, deadline:null};
   rest = rest.replace(META_RE, (whole, key, val)=>{
     val = (val||"").trim();
     if(key==="status"){ if(STATUS_ORDER.includes(val)) meta.status = val; }
@@ -256,9 +263,10 @@ function parseHeadingLine(line){
     else if(key==="archived"){ meta.archived = (val==="1"||val==="true"); }
     else if(key==="upd"){ meta.upd = parseInt(val,10) || 0; }
     else if(key==="done"){ meta.done = parseInt(val,10) || 0; }
+    else if(key==="dl"){ meta.deadline = val || null; }
     return "";
   });
-  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd, done: meta.done};
+  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd, done: meta.done, deadline: meta.deadline};
 }
 
 function parseMarkdown(text){
@@ -268,7 +276,7 @@ function parseMarkdown(text){
   for(const line of lines){
     const h = parseHeadingLine(line);
     if(h){
-      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, done:h.done||0, body:[], children:[], parent:null};
+      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, done:h.done||0, deadline:h.deadline||null, body:[], children:[], parent:null};
       while(stack.length && stack[stack.length-1].level >= node.level) stack.pop();
       const parent = stack[stack.length-1];
       node.parent = parent;
@@ -291,6 +299,7 @@ function serializeMarkdown(root){
       if(n.archived) line += " <!--archived:1-->";
       if(n.upd) line += " <!--upd:"+n.upd+"-->";
       if(n.done) line += " <!--done:"+n.done+"-->";
+      if(n.deadline) line += " <!--dl:"+n.deadline+"-->";
       out.push(line);
     }
     n.body.forEach(l=>out.push(l));
@@ -479,7 +488,10 @@ async function gtApi(path, opts={}, allow404=false){
 function dueToRfc(date){ return date ? new Date(date+"T00:00:00.000Z").toISOString() : undefined; }
 
 async function gtCreate(node, projectTitle){
-  const body = {title: node.title || "(ohne Titel)", notes: GT_MARKER+" "+projectTitle};
+  let notes = GT_MARKER+" "+projectTitle;
+  const deadline = effectiveDeadline(node);
+  if(deadline) notes += " | DL:"+deadline;
+  const body = {title: node.title || "(ohne Titel)", notes: notes};
   if(node.due) body.due = dueToRfc(node.due);
   const t = await gtApi("/lists/"+GT_LIST+"/tasks", {
     method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)
@@ -487,7 +499,10 @@ async function gtCreate(node, projectTitle){
   return t.id;
 }
 async function gtUpdate(node, projectTitle){
-  const body = {id: node.gtId, title: node.title || "(ohne Titel)", notes: GT_MARKER+" "+projectTitle};
+  let notes = GT_MARKER+" "+projectTitle;
+  const deadline = effectiveDeadline(node);
+  if(deadline) notes += " | DL:"+deadline;
+  const body = {id: node.gtId, title: node.title || "(ohne Titel)", notes: notes};
   if(node.due) body.due = dueToRfc(node.due);
   await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(node.gtId), {
     method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)
@@ -597,6 +612,24 @@ function projectCardHtml(p, i, isArchived, movable){
 
 function getProjectOrder(){ try{ return JSON.parse(lsGet("pf_projOrder","[]"))||[]; }catch(e){ return []; } }
 function setProjectOrder(arr){ lsSet("pf_projOrder", JSON.stringify(arr)); }
+function effectiveDeadline(node){
+  let best = null, n = node;
+  while(n){ if(n.deadline && (!best || n.deadline < best)) best = n.deadline; n = n.parent; }
+  return best;
+}
+function isLate(node){
+  if(node.children.length>0 || node.status==="fertig" || !node.due) return false;
+  const dl = effectiveDeadline(node);
+  return !!(dl && node.due > dl);
+}
+function countLateTasks(root){
+  let late = 0;
+  (function walk(node){
+    if(node.children.length===0){ if(isLate(node)) late++; }
+    else node.children.forEach(walk);
+  })(root);
+  return late;
+}
 function earliestDue(node){
   if(!node) return null;
   if(node.children.length===0) return node.due || null;
@@ -932,6 +965,16 @@ function renderDetail(){
   const focus = focusNode;
   const pg = nodeProgress(focus);
   renderBreadcrumb(focus, top);
+  const warnEl = document.getElementById("deadlineWarn");
+  const projDeadline = top.deadline;
+  const lateCount = countLateTasks(top);
+  if(lateCount>0){
+    warnEl.innerHTML = `⚠ ${lateCount===1?'1 Termin liegt':lateCount+' Termine liegen'} nach der Deadline${projDeadline?' ('+fmtDate(projDeadline)+')':''}.`;
+    warnEl.classList.remove("hidden");
+  } else {
+    warnEl.classList.add("hidden");
+    warnEl.innerHTML = "";
+  }
   document.getElementById("donutWrap").innerHTML = donutHtml(pg,"big");
   const tree = document.getElementById("treeView");
   tree.innerHTML = renderNode(focus, true);
@@ -981,9 +1024,12 @@ function renderNode(node, isRoot){
         ? `<span class="badge badge-${displayStatus}">${pct}%</span>`
         : `<button class="badge badge-${displayStatus} focus-btn" data-nid="${node._id}" title="Als Unterprojekt öffnen">${pct}%</button>`)
     : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}">${STATUS_LABEL[displayStatus]}</button>`;
-  const dueChip = hasChildren ? "" :
-    `<span class="gt-dot ${node.gtId?'':'off'}" title="${node.gtId?'in Google Tasks':'nicht in Google Tasks'}"></span>`+
-    `<input type="date" class="due-input" data-nid="${node._id}" value="${node.due||''}" title="Fälligkeitsdatum">`;
+  const late = isLate(node);
+  const dueChip = hasChildren
+    ? `<input type="date" class="dl-input" data-nid="${node._id}" value="${node.deadline||''}" title="Deadline (gilt auch für Unterpunkte)">`
+    : `<span class="gt-dot ${node.gtId?'':'off'}" title="${node.gtId?'in Google Tasks':'nicht in Google Tasks'}"></span>`+
+      `<input type="date" class="due-input ${late?'due-late':''}" data-nid="${node._id}" value="${node.due||''}" title="${late?'Termin liegt nach der Deadline '+effectiveDeadline(node):'Fälligkeitsdatum'}">`+
+      (late?`<span class="late-warn" title="Termin liegt nach der Deadline ${effectiveDeadline(node)}">⚠</span>`:"");
   const arcLeafBtn = (isLeaf && node.status==="fertig" && !node.archived)
     ? `<button class="btnArcLeaf" data-nid="${node._id}" title="Erledigten Punkt archivieren">Archiv</button>` : "";
   const moveProjBtn = !isRoot
@@ -1170,6 +1216,15 @@ function bindNodeEvents(container){
       renderDetail();
       scheduleSave(currentProject);
       if(n.due || n.gtId){ await syncOne(n, currentProject); renderDetail(); }
+    };
+  });
+  container.querySelectorAll('.dl-input').forEach(el=>{
+    el.onchange = ()=>{
+      const n = nodeRegistry[el.dataset.nid];
+      n.deadline = el.value || null;
+      touchNode(n);
+      renderDetail();
+      scheduleSave(currentProject);
     };
   });
   container.querySelectorAll('.due-input').forEach(el=>{

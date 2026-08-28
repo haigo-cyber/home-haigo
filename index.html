@@ -231,6 +231,36 @@ function taskStreak(){
   return n;
 }
 
+function parseDeadlineFromNotes(notes){
+  if(!notes) return null;
+  const match=(notes+"").match(/\| DL:(\d{4}-\d{2}-\d{2})/);
+  return match?match[1]:null;
+}
+
+function daysUntilDeadline(dueDate, deadline){
+  if(!dueDate || !deadline) return null;
+  const due=new Date(dueDate);
+  const dl=new Date(deadline);
+  const diff=Math.ceil((dl-due)/(1000*60*60*24));
+  return diff;
+}
+
+function deadlineColor(days){
+  if(days===null) return "#3b82f6"; // hellblau - keine deadline
+  if(days<0) return "#ef4444";      // rot - überfällig
+  if(days<1) return "#ef4444";      // rot - heute oder morgen
+  if(days<=7) return "#f97316";     // orange - 1-7 tage
+  return "#4ade80";                 // grün - >7 tage
+}
+
+function deadlineLabel(days){
+  if(days===null) return "–";
+  if(days<0) return `überfällig ${Math.abs(days)}d`;
+  if(days===0) return "heute";
+  if(days===1) return "morgen";
+  return `${days}d`;
+}
+
 function scheduleLabel(t){
   const timeStr=t.startTime?` · ${t.startTime} Uhr`:"";
   if(t.type==="habit") return "täglich";
@@ -312,7 +342,12 @@ async function loadGTasks(){
     const resDone=await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks?showCompleted=true&showHidden=true&completedMin=${encodeURIComponent(startISO)}&maxResults=100`);
     const doneItems=((resDone && resDone.items)||[]).filter(t=>t.status==="completed");
     // Grüne Sektion: offene, heute fällige oder überfällige (inkl. Ziele)
-    gtasks=openItems.filter(t=>t.due && t.due.slice(0,10)<=today);
+    gtasks=openItems.filter(t=>t.due && t.due.slice(0,10)<=today)
+      .map(t=>{
+        t.deadline=parseDeadlineFromNotes(t.notes);
+        t.deadlineDays=t.deadline?daysUntilDeadline(t.due.slice(0,10), t.deadline):null;
+        return t;
+      });
     // Ziele: ALLE mit Marker (offene + heute erledigte jeweils), aber filtern nur heute für Anzeige
     allOpenGoals=openItems.filter(t=>isGoalTask(t) && t.due)
       .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false, due:t.due.slice(0,10)}));
@@ -1141,13 +1176,16 @@ function render(){
         const goal=isGoalTask(t);
         const labelColor=overdue?"#E24B4A":"#000";
         const labelText=(goal?"🎯 Ziel · ":"")+(overdue?`überfällig · ${dueLabel}`:`heute`);
-        const cleanNotes=(t.notes||"").replace(GOAL_MARKER,"").trim();
+        const cleanNotes=(t.notes||"").replace(GOAL_MARKER,"").replace(/\| DL:.*$/,"").trim();
+        const dlColor=deadlineColor(t.deadlineDays);
+        const dlLabel=deadlineLabel(t.deadlineDays);
         h+=`<div class="card" style="background:#d4f1c5">
           <div class="check" data-gtask="${t.id}">${checkSvg()}</div>
           <div class="body">
             <div class="title" style="color:#000">${esc(t.title||"(ohne Titel)")}</div>
             <div class="sub" style="color:${labelColor}">${labelText}</div>
             ${cleanNotes?`<div class="note-text" style="color:#000">${esc(cleanNotes)}</div>`:""}
+            <div style="font-size:12px;margin-top:6px;padding:4px 8px;background:${dlColor}22;color:${dlColor};border-radius:4px;display:inline-block">⏱ ${dlLabel} bis Deadline</div>
           </div>
         </div>`;
       });

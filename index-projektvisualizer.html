@@ -663,7 +663,6 @@ function moveProjectDialog(projectId, nodeId){
   const project = projects.find(p => p.fileId === projectId);
   if(!project) return;
   
-  const allNodes = findAllMovableNodes();
   const currentNode = findNode(project.root, nodeId);
   if(!currentNode) return;
   
@@ -675,19 +674,40 @@ function moveProjectDialog(projectId, nodeId){
     </div>`;
   }
   
-  const byProject = {};
-  allNodes.forEach(item => {
-    if(item.nodeId === nodeId) return; // skip self
-    if(!byProject[item.projectName]) byProject[item.projectName] = [];
-    byProject[item.projectName].push(item);
+  // Sammle alle Nodes im gleichen Projekt, die als Parent dienen können
+  const possibleParents = [];
+  const walk = (node) => {
+    if(node._id !== nodeId && node.level >= 2){ // nicht self, und mindestens ##
+      possibleParents.push(node);
+    }
+    node.children.forEach(child => walk(child));
+  };
+  project.root.children.forEach(child => walk(child));
+  
+  // Gruppiere nach Top-Level (##)
+  const byTopLevel = {};
+  possibleParents.forEach(node => {
+    let topLevelNode = node;
+    while(topLevelNode.parent && topLevelNode.parent.level > 0){
+      topLevelNode = topLevelNode.parent;
+    }
+    const topKey = topLevelNode._id;
+    if(!byTopLevel[topKey]) byTopLevel[topKey] = {title: topLevelNode.title, nodes: []};
+    byTopLevel[topKey].nodes.push(node);
   });
   
-  Object.entries(byProject).forEach(([projName, items]) => {
-    html += `<div style="padding:12px 8px;color:var(--muted);font-size:12px;font-weight:bold">${projName}</div>`;
-    items.forEach(item => {
-      const indent = (item.level - 2) * 12;
-      html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card);margin-left:${indent}px" data-move-parent="${item.nodeId}" title="${item.path}">
-        <div>${"·".repeat(item.level - 2)} ${item.nodeTitle}</div>
+  Object.values(byTopLevel).forEach(group => {
+    html += `<div style="padding:12px 8px;color:var(--muted);font-size:12px;font-weight:bold">${escapeHtml(group.title)}</div>`;
+    group.nodes.forEach(node => {
+      const indent = (node.level - 2) * 12;
+      const path = [];
+      let n = node;
+      while(n && n.level > 0){
+        path.unshift(n.title);
+        n = n.parent;
+      }
+      html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card);margin-left:${indent}px" data-move-parent="${node._id}" title="${path.join(' > ')}">
+        <div>${"·".repeat(node.level - 2)} ${escapeHtml(node.title)}</div>
       </div>`;
     });
   });
@@ -698,7 +718,7 @@ function moveProjectDialog(projectId, nodeId){
   modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000';
   modal.innerHTML = `
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;width:90%;max-width:400px">
-      <h3 style="margin:0 0 12px">Verschiebe "${currentNode.title}" zu:</h3>
+      <h3 style="margin:0 0 12px">Verschiebe "${escapeHtml(currentNode.title)}" zu:</h3>
       ${html}
       <button style="width:100%;margin-top:12px;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--text)" onclick="this.parentElement.parentElement.remove()">Abbrechen</button>
     </div>
@@ -1314,6 +1334,16 @@ function bindNodeEvents(container){
       const n = nodeRegistry[el.dataset.nid];
       if(n){ focusNode = n; renderDetail(); }
     };
+  });
+  container.querySelectorAll('.node-row').forEach(el=>{
+    if(el.querySelector('.focus-btn')){
+      el.style.cursor = 'pointer';
+      el.onclick = (ev)=>{
+        if(ev.target.closest('button, input')) return; // Nicht triggern wenn auf Button geklickt
+        const btn = el.querySelector('.focus-btn');
+        if(btn) btn.click();
+      };
+    }
   });
   container.querySelectorAll('.btnArcLeaf').forEach(el=>{
     el.onclick = (ev)=>{

@@ -171,6 +171,7 @@ let selectedProjectId = null;
 let calendars = [];                                       // schreibbare Kalender des Nutzers
 let bilanz = 0;                                           // Tages-Bilanz (startet bei 0, -2 pro nicht erfülltes Ziel)
 let minTaskGoal = parseInt(localStorage.getItem("minTaskGoal"))||18;  // Mindest-Tasks pro Tag für Streak
+let allOpenGoals = [];                                    // Alle offenen Ziele (auch zukünftige)
 let gtasks = [];                                          // Google-Tasks-Einträge (Standardliste, grüne Sektion)
 let gtasksStatus = "";                                    // Diagnose-Text fürs UI
 let goalTasks = [];                                       // heutige Tagesziele (offen + heute erledigt) aus Google Tasks
@@ -300,7 +301,7 @@ async function loadGTasks(){
     const lists=await api(`${GTASKS}/users/@me/lists?maxResults=100`);
     const listItems=(lists && lists.items)||[];
     const defaultList=listItems[0]; // erste Liste = Standardliste "Meine Aufgaben"
-    if(!defaultList){ gtasks=[]; goalTasks=[]; return; }
+    if(!defaultList){ gtasks=[]; goalTasks=[]; allOpenGoals=[]; return; }
     defaultGTaskListId=defaultList.id;
     const today=todayKey();
     // 1) Offene Aufgaben
@@ -313,7 +314,7 @@ async function loadGTasks(){
     // Grüne Sektion: offene, heute fällige oder überfällige (inkl. Ziele)
     gtasks=openItems.filter(t=>t.due && t.due.slice(0,10)<=today);
     // Ziele: ALLE mit Marker (offene + heute erledigte jeweils), aber filtern nur heute für Anzeige
-    const allOpenGoals=openItems.filter(t=>isGoalTask(t) && t.due)
+    allOpenGoals=openItems.filter(t=>isGoalTask(t) && t.due)
       .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false, due:t.due.slice(0,10)}));
     const allDoneGoals=doneItems.filter(t=>isGoalTask(t) && t.due)
       .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:true, due:t.due.slice(0,10)}));
@@ -324,7 +325,7 @@ async function loadGTasks(){
     console.log("  ✓ loadGTasks: grün",gtasks.length,"| Ziele heute",goalTasks.length,"(",doneGoalsToday.length,"erledigt)");
   }catch(e){
     console.error("❌ loadGTasks Fehler:",e.message);
-    gtasks=[]; goalTasks=[];
+    gtasks=[]; goalTasks=[]; allOpenGoals=[];
   }
 }
 
@@ -1208,16 +1209,11 @@ function render(){
       upcomingGoals[k]=[];
     }
     
-    // Alle zukünftigen Ziele laden
-    const allGoals=goalTasks.map(g=>({...g}));
-    // Aus Google Tasks: alle Ziele mit Datum in Zukunft
-    // goalTasks enthält nur heutige, daher müssen wir hier neu laden oder aus gtasks filtern
-    
-    const futureGoals=gtasks.filter(t=>isGoalTask(t) && t.due && t.due>today && t.status!=="completed")
-      .map(t=>({id:t.id, title:t.title, due:t.due.slice(0,10)}));
-    
-    futureGoals.forEach(g=>{
-      if(upcomingGoals[g.due]) upcomingGoals[g.due].push(g);
+    // Zukünftige Ziele aus allOpenGoals
+    allOpenGoals.forEach(g=>{
+      if(g.due>today && upcomingGoals[g.due]){
+        upcomingGoals[g.due].push(g);
+      }
     });
     
     const hasUpcoming=Object.values(upcomingGoals).some(arr=>arr.length>0);
@@ -2329,7 +2325,7 @@ async function signIn(){
 }
 function signOut(){
   if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
-  accessToken=null; tasks=[]; logs=[];
+  accessToken=null; tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[];
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";
   $("acctBtn").textContent="Anmelden"; setSync("");

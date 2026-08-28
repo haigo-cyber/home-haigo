@@ -169,6 +169,7 @@ let tasks = [], logs = [], projects = [], notes = [], links = [];
 let view = "today";
 let selectedProjectId = null;
 let calendars = [];                                       // schreibbare Kalender des Nutzers
+let bilanz = 0;                                           // Tages-Bilanz (startet bei 0, -2 pro nicht erfülltes Ziel)
 let gtasks = [];                                          // Google-Tasks-Einträge (Standardliste, grüne Sektion)
 let gtasksStatus = "";                                    // Diagnose-Text fürs UI
 let goalTasks = [];                                       // heutige Tagesziele (offen + heute erledigt) aus Google Tasks
@@ -1066,6 +1067,10 @@ function render(){
     const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const sorted=sortTasksForToday(tasks, key);
     let h=`<div class="section-title">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div>`;
+    // Bilanz-Anzeige
+    const bilanzColor=bilanz>=0?'#22c55e':'#ef4444';
+    const bilanzSymbol=bilanz>=0?'✓':'⚠';
+    h+=`<div style="background:${bilanzColor};color:#fff;padding:12px;border-radius:6px;margin-bottom:12px;font-weight:bold;text-align:center;font-size:16px">${bilanzSymbol} Bilanz: ${bilanz}</div>`;
     if(topProjects.length){
       h+=`<div class="section-title">Wichtige Projekte</div>`;
       const colors=['#ff9800','#81d4fa','#2196f3','#ffab91','#f44336'];
@@ -1699,7 +1704,57 @@ function openReport(days){
   };
 }
 
-/* ---- Einsortieren: schnell erfassten Eintrag einem Ziel/Typ/Projekt zuordnen ---- */
+/* ---- Bilanz berechnen und bei Tagsübergang abziehen ---- */
+function checkGoalsPenalty(){
+  const today=todayKey();
+  const lastDay=localStorage.getItem("bilanzDay");
+  
+  // Wenn Tagsübergang: Ziele vom gestrigen Tag prüfen
+  if(lastDay && lastDay!==today){
+    const yesterdayGoalIdsStr=localStorage.getItem("openGoals-"+lastDay);
+    if(yesterdayGoalIdsStr){
+      try{
+        const yesterdayGoalIds=JSON.parse(yesterdayGoalIdsStr);
+        // Prüfe, welche dieser Ziele nicht in heute's completed sind
+        const todayCompletedStr=localStorage.getItem("completedGoals-"+today);
+        const todayCompleted=todayCompletedStr?JSON.parse(todayCompletedStr):[];
+        const unfinished=yesterdayGoalIds.filter(id=>!todayCompleted.includes(id)).length;
+        if(unfinished>0){
+          bilanz-=(unfinished*2);
+          console.log(`📉 ${unfinished} Ziele vom ${lastDay} nicht erfüllt → Bilanz: ${bilanz}`);
+        }
+      }catch(e){
+        console.error("Fehler beim Bilanz-Check:", e);
+      }
+    }
+  }
+  
+  // Speichere heutige offene Ziel-IDs für morgen
+  const openGoals=goalTasks.filter(g=>!g.completed).map(g=>g.id);
+  localStorage.setItem("openGoals-"+today, JSON.stringify(openGoals));
+  
+  // Speichere heutige erledigte Ziel-IDs
+  const completedGoals=goalTasks.filter(g=>g.completed).map(g=>g.id);
+  localStorage.setItem("completedGoals-"+today, JSON.stringify(completedGoals));
+  
+  localStorage.setItem("bilanzDay", today);
+  
+  // Bilanz für heute aus localStorage laden (falls schon was da ist)
+  const bilanzKey="bilanz-"+today;
+  const savedBilanz=localStorage.getItem(bilanzKey);
+  if(savedBilanz!==null) bilanz=parseInt(savedBilanz);
+  else bilanz=0;
+  
+  saveBilanz();
+}
+
+/* ---- Bilanz speichern ---- */
+function saveBilanz(){
+  const today=todayKey();
+  localStorage.setItem("bilanz-"+today, bilanz);
+}
+
+/* ---- Bilanz beim Ziel-Laden prüfen ---- */
 function openSortForm(id){
   const t=tasks.find(x=>x.id===id); if(!t){ toast("Eintrag nicht gefunden"); return; }
   const projOpts=projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority)
@@ -2147,6 +2202,8 @@ async function bootData(){
     
     console.log("5️⃣ loadGTasks...");
     await loadGTasks();
+    console.log("  ✓ checkGoalsPenalty...");
+    checkGoalsPenalty();
     
     setSync("on");
     $("acctBtn").textContent="Verbunden";

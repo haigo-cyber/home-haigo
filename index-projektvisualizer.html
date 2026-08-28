@@ -1539,17 +1539,28 @@ function bindNodeEvents(container){
     
     el.ondrop = (ev)=>{
       ev.preventDefault();
+      ev.stopPropagation();
       el.style.backgroundColor = '';
       
       const draggedNid = ev.dataTransfer.getData('text/plain');
+      console.log('Drop:', {draggedNid, targetNid: nid, draggedNode: nodeRegistry[draggedNid], targetNode: nodeRegistry[nid]});
+      
       const draggedNode = nodeRegistry[draggedNid];
       const targetNode = nodeRegistry[nid];
       
-      if(!draggedNode || !targetNode || draggedNode === targetNode) return;
+      if(!draggedNode || !targetNode || draggedNode === targetNode) {
+        console.log('Abgebrochen: draggedNode=', draggedNode, 'targetNode=', targetNode);
+        return;
+      }
+      
       // Verhindere: Kind zu sich selbst oder Vorfahre zu Kind verschieben
       let p = targetNode.parent;
-      while(p){ if(p === draggedNode) return; p = p.parent; }
+      while(p){ if(p === draggedNode) {
+        console.log('Abgebrochen: Vorfahre zu Kind verschieben');
+        return; 
+      } p = p.parent; }
       
+      console.log('Verschiebe', draggedNode.title, 'zu', targetNode.title);
       moveNodeUnderParent(draggedNode, targetNode, currentProject);
       renderDetail();
     };

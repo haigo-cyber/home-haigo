@@ -1203,27 +1203,75 @@ function render(){
       h+=activeNotes.map(noteCard).join("");
     }
     
-    // Ausstehende Tasks (offene Tasks mit Zukunftsdatum, sortiert nach Deadline-Nähe)
-    const futureOpen=active.filter(t=>t.startDate && t.startDate>key && !isDone(t.id,key) && !isInboxTask(t))
-      .sort((a,b)=>(a.startDate||"").localeCompare(b.startDate||""));
-    if(futureOpen.length){
-      h+=`<div class="section-title">Ausstehende Tasks</div>`;
-      futureOpen.forEach(t=>{
-        const dueKey=t.startDate||"";
-        const daysAway=Math.ceil((new Date(dueKey)-new Date(key))/(1000*60*60*24));
-        let color="#3b82f6"; // hellblau default
-        if(daysAway<=1) color="#ef4444"; // rot
-        else if(daysAway<=7) color="#f97316"; // orange
-        else if(daysAway>7) color="#4ade80"; // grün
-        const label=daysAway===1?"morgen":`in ${daysAway}d`;
-        const dateStr=new Date(dueKey).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
-        h+=`<div class="card">
-          <div class="check" data-check="${t.id}" data-key="${dueKey}">${checkSvg()}</div>
+    // Deadlines: Alle Tasks/gtasks mit Deadline, sortiert nach Dringlichkeit
+    const allDeadlines = [];
+    
+    // Google Tasks mit Deadline
+    gtasks.forEach(t => {
+      const deadline = parseDeadlineFromNotes(t.notes);
+      if(deadline){
+        const daysLeft = daysUntilDeadline(t.due.slice(0,10), deadline);
+        allDeadlines.push({
+          type: 'gtask',
+          id: t.id,
+          title: t.title,
+          due: t.due.slice(0,10),
+          deadline: deadline,
+          daysLeft: daysLeft,
+          notes: t.notes,
+          isGoal: isGoalTask(t)
+        });
+      }
+    });
+    
+    // Reguläre Tasks mit Termin (alle typen)
+    tasks.filter(t=>t.startDate).forEach(t => {
+      // Prüfe ob dieser Task eine Deadline hat (via Google Tasks oder lokal)
+      // Vorerst nur die aus gtasks verwenden, da reguläre Tasks keine Deadline-Info haben
+      const gtask = gtasks.find(gt => gt.id === t.id);
+      if(gtask){
+        const deadline = parseDeadlineFromNotes(gtask.notes);
+        if(deadline && !allDeadlines.find(d => d.id === t.id)){
+          const daysLeft = daysUntilDeadline(t.startDate, deadline);
+          allDeadlines.push({
+            type: 'task',
+            id: t.id,
+            title: t.title,
+            due: t.startDate,
+            deadline: deadline,
+            daysLeft: daysLeft,
+            taskType: t.type,
+            projectId: t.projectId
+          });
+        }
+      }
+    });
+    
+    // Sortiere nach daysLeft (dringende zuerst)
+    allDeadlines.sort((a,b) => {
+      if(a.daysLeft === null && b.daysLeft === null) return 0;
+      if(a.daysLeft === null) return 1;
+      if(b.daysLeft === null) return -1;
+      return a.daysLeft - b.daysLeft;
+    });
+    
+    if(allDeadlines.length){
+      h+=`<div class="section-title">⏱ Deadlines</div>`;
+      allDeadlines.forEach(d => {
+        const color = deadlineColor(d.daysLeft);
+        const label = deadlineLabel(d.daysLeft);
+        const dueStr = new Date(d.due).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
+        const dlStr = new Date(d.deadline).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
+        const typeLabel = d.type === 'gtask' ? (d.isGoal ? '🎯 Ziel' : '⭐ Google Task') : `📋 ${d.taskType}`;
+        h+=`<div class="card" style="border-left:4px solid ${color}">
           <div class="body">
-            <div class="title" style="color:#000">${esc(t.title)}</div>
-            <div class="sub" style="color:#000">${dateStr}</div>
-            ${t.projectId?`<div class="sub" style="color:#666">🎯 ${esc(projects.find(p=>p.id===t.projectId)?.name||"")}</div>`:""}
-            <div style="font-size:12px;margin-top:6px;padding:4px 8px;background:${color}22;color:${color};border-radius:4px;display:inline-block">⏱ ${label}</div>
+            <div class="title" style="color:#000">${esc(d.title)}</div>
+            <div class="sub" style="color:#000;font-size:12px">${typeLabel} · Fällig: ${dueStr}</div>
+            <div class="sub" style="color:#666;font-size:12px">Deadline: ${dlStr}</div>
+            ${d.projectId?`<div class="sub" style="color:#666;font-size:12px">🎯 ${esc(projects.find(p=>p.id===d.projectId)?.name||"")}</div>`:""}
+            <div style="font-size:12px;margin-top:6px;padding:4px 8px;background:${color}22;color:${color};border-radius:4px;display:inline-block">
+              ${d.daysLeft === null ? '–' : (d.daysLeft < 0 ? `⚠ überfällig ${Math.abs(d.daysLeft)}d` : `${label}`)}
+            </div>
           </div>
         </div>`;
       });

@@ -872,7 +872,7 @@ function buildCumulativeGraph(data, maxCum){
   const w=630, h=270, pad=60;
   const graphW=w-2*pad, graphH=h-2*pad;
   const xs=data.map((d,i)=>pad + (i/(data.length-1))*graphW);
-  const ys=data.map(d=>h-pad - (d.summ/maxCum)*graphH);
+  const ys=data.map(d=>h-pad - (d.total/maxCum)*graphH);
   
   // Polygon für die Fläche
   let pathD=`M ${xs[0]} ${h-pad}`;
@@ -1229,9 +1229,21 @@ function render(){
       <div style="font-size:22px;font-weight:700;color:var(--text)">${val}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px">${label}</div></div>`;
 
-    // Kumulativer Fortschritt: letzte 10 Tage
-    const cum=[]; let summ=0; for(let i=9;i>=0;i--){ const k=keyDaysAgo(i); const n=logs.filter(l=>l.date===k).length; summ+=n; cum.push({k, n, summ}); }
-    const maxCum=Math.max(1,...cum.map(c=>c.summ));
+    // Kumulativer Fortschritt: letzte 10 Tage (mit Bilanz)
+    const cum=[]; let summ=0; let bilanzSumm=0;
+    for(let i=9;i>=0;i--){ 
+      const k=keyDaysAgo(i); 
+      const n=logs.filter(l=>l.date===k).length; 
+      summ+=n;
+      // Bilanz für diesen Tag laden
+      const dayBilanzStr=localStorage.getItem("bilanz-"+k);
+      const dayBilanz=dayBilanzStr?parseInt(dayBilanzStr):0;
+      bilanzSumm+=dayBilanz;
+      // Gesamtwert = Erledigte + Bilanz-Effekt
+      const total=summ+bilanzSumm;
+      cum.push({k, n, summ, dayBilanz, total}); 
+    }
+    const maxCum=Math.max(1,...cum.map(c=>c.total));
     const graphSvg=buildCumulativeGraph(cum, maxCum);
 
     let h=`<div style="display:flex;gap:8px;margin-bottom:14px">

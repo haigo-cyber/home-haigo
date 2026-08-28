@@ -172,6 +172,7 @@ let calendars = [];                                       // schreibbare Kalende
 let bilanz = 0;                                           // Tages-Bilanz (startet bei 0, -2 pro nicht erfülltes Ziel)
 let minTaskGoal = parseInt(localStorage.getItem("minTaskGoal"))||18;  // Mindest-Tasks pro Tag für Streak
 let allOpenGoals = [];                                    // Alle offenen Ziele (auch zukünftige)
+let allGTasks = [];                                       // Alle offenen Google Tasks (mit oder ohne Deadline, beliebiges Datum)
 let gtasks = [];                                          // Google-Tasks-Einträge (Standardliste, grüne Sektion)
 let gtasksStatus = "";                                    // Diagnose-Text fürs UI
 let goalTasks = [];                                       // heutige Tagesziele (offen + heute erledigt) aus Google Tasks
@@ -331,7 +332,7 @@ async function loadGTasks(){
     const lists=await api(`${GTASKS}/users/@me/lists?maxResults=100`);
     const listItems=(lists && lists.items)||[];
     const defaultList=listItems[0]; // erste Liste = Standardliste "Meine Aufgaben"
-    if(!defaultList){ gtasks=[]; goalTasks=[]; allOpenGoals=[]; return; }
+    if(!defaultList){ gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[]; return; }
     defaultGTaskListId=defaultList.id;
     const today=todayKey();
     // 1) Offene Aufgaben
@@ -348,6 +349,13 @@ async function loadGTasks(){
         t.deadlineDays=t.deadline?daysUntilDeadline(t.due.slice(0,10), t.deadline):null;
         return t;
       });
+    
+    // Alle offenen Tasks (für Deadlines-Rubrik)
+    allGTasks=openItems.map(t=>{
+      t.deadline=parseDeadlineFromNotes(t.notes);
+      if(t.due) t.deadlineDays=t.deadline?daysUntilDeadline(t.due.slice(0,10), t.deadline):null;
+      return t;
+    });
     // Ziele: ALLE mit Marker (offene + heute erledigte jeweils), aber filtern nur heute für Anzeige
     allOpenGoals=openItems.filter(t=>isGoalTask(t) && t.due)
       .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false, due:t.due.slice(0,10)}));
@@ -360,7 +368,7 @@ async function loadGTasks(){
     console.log("  ✓ loadGTasks: grün",gtasks.length,"| Ziele heute",goalTasks.length,"(",doneGoalsToday.length,"erledigt)");
   }catch(e){
     console.error("❌ loadGTasks Fehler:",e.message);
-    gtasks=[]; goalTasks=[]; allOpenGoals=[];
+    gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[];
   }
 }
 
@@ -1206,17 +1214,16 @@ function render(){
     // Deadlines: Alle Tasks/gtasks mit Deadline, sortiert nach Dringlichkeit
     const allDeadlines = [];
     
-    // Google Tasks mit Deadline
-    gtasks.forEach(t => {
-      const deadline = parseDeadlineFromNotes(t.notes);
-      if(deadline){
-        const daysLeft = daysUntilDeadline(t.due.slice(0,10), deadline);
+    // Google Tasks mit Deadline (nutze allGTasks, nicht gtasks!)
+    allGTasks.forEach(t => {
+      if(t.deadline){
+        const daysLeft = daysUntilDeadline(t.due.slice(0,10), t.deadline);
         allDeadlines.push({
           type: 'gtask',
           id: t.id,
           title: t.title,
           due: t.due.slice(0,10),
-          deadline: deadline,
+          deadline: t.deadline,
           daysLeft: daysLeft,
           notes: t.notes,
           isGoal: isGoalTask(t)
@@ -2437,7 +2444,7 @@ async function signIn(){
 }
 function signOut(){
   if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
-  accessToken=null; tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[];
+  accessToken=null; tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[];
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";
   $("acctBtn").textContent="Anmelden"; setSync("");

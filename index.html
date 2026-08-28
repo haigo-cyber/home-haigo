@@ -584,6 +584,22 @@ async function saveLogs(){
     {method:"PUT",body:JSON.stringify({values})});
 }
 
+async function loadLogs(){
+  logs=[];
+  try{
+    const res=await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000`);
+    const rows=(res && res.values)||[];
+    rows.forEach(row=>{
+      const l={};
+      LOG_COLS.forEach((col,i)=>l[col]=row[i]||"");
+      if(l.itemId) logs.push(l);
+    });
+    console.log("  ✓ loadLogs:",logs.length,"Einträge");
+  }catch(e){
+    console.error("❌ loadLogs Fehler:",e.message);
+  }
+}
+
 /* ============ KALENDER-SYNC ============ */
 function rruleFor(t){
   if(t.type==="habit") return ["RRULE:FREQ=DAILY"];
@@ -2238,6 +2254,9 @@ async function bootData(){
     console.log("2️⃣ loadAll...");
     await loadAll();
     console.log("  ✓ loadAll ok, tasks:",tasks.length,"projects:",projects.length,"notes:",notes.length);
+    
+    console.log("2️⃣b loadLogs...");
+    await loadLogs();
     
     console.log("3️⃣ purgeStaleGoals...");
     await purgeStaleGoals();

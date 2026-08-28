@@ -196,7 +196,7 @@ let globalCatalog = [];         // Items, die für alle Kinder gelten
 let currentChildCode = null;
 let currentTab = "neu";
 let currentView = "dashboard";  // dashboard | admin
-let chartInstance = null;
+let chartInstances = [];
 let tokenClient = null;
 let pendingPartner = null;
 let showArchivedChildren = false;
@@ -1329,71 +1329,101 @@ function renderKatalogTab(child) {
   return html;
 }
 
+const PARTNER_COLORS = { K: "#4a6ba0", S: "#4a8f7a", L: "#b0793c", E: "#8a5a8f" };
+
 function renderDiagrammTab(child) {
   const host = document.getElementById("diagrammHost");
   if (typeof Chart === "undefined") {
     host.innerHTML = `<div class="card ui"><div class="empty">Die Diagramm-Bibliothek konnte nicht geladen werden, vermutlich fehlt gerade die Internetverbindung zum CDN oder es blockiert etwas den Zugriff. Bericht und Einträge funktionieren trotzdem normal weiter.</div></div>`;
     return;
   }
+  chartInstances.forEach(c => c.destroy());
+  chartInstances = [];
+
   const allItems = [];
   globalCatalog.forEach(cat => cat.items.forEach(it => { if (!allItems.includes(it.name)) allItems.push(it.name); }));
   child.catalog.forEach(cat => cat.items.forEach(it => { if (!allItems.includes(it.name)) allItems.push(it.name); }));
-  let selectHtml = `<div class="card ui">
-    <label style="font-size:0.85rem;color:var(--muted);">Ansicht</label>
-    <select id="chartSelect" onchange="renderDiagrammTab(getChild('${esc(child.code)}'))">
-      <option value="__all__">Gesamte Story (alle Items)</option>
-      ${allItems.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("")}
-    </select>
-    <p style="font-size:0.75rem;color:var(--muted);margin-top:6px;">Als unbeantwortet oder nicht relevant markierte Einträge fließen hier nicht ein.</p>
-  </div>
-  <div class="card"><canvas id="chartCanvas" height="220"></canvas></div>`;
-  host.innerHTML = selectHtml;
-
-  const select = document.getElementById("chartSelect");
-  const mode = select.value;
 
   const entries = child.entries.filter(e => !e.archived && !e.marking).slice().sort((a,b)=> a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-  const labels = [...new Set(entries.map(e => e.date))].sort();
 
+  let html = `<p class="ui" style="font-size:0.75rem;color:var(--muted);margin:0 0 10px;">Als unbeantwortet oder nicht relevant markierte Einträge fließen hier nirgends ein.</p>`;
+
+  html += `<div class="card ui"><strong>Gesamtübersicht, alle Items</strong></div>
+  <div class="card"><canvas id="chart_overview" height="220"></canvas></div>`;
+
+  const perItemCharts = allItems.filter(name => entries.some(e => e.ratings[name] !== undefined));
+  if (perItemCharts.length === 0) {
+    html += `<div class="empty ui">Noch keine bewerteten Einträge für ein einzelnes Item.</div>`;
+  }
+  perItemCharts.forEach((name, idx) => {
+    html += `<div class="card ui" style="margin-top:18px;"><strong>${esc(name)}</strong>
+      <p style="font-size:0.75rem;color:var(--muted);margin:4px 0 0;">Je Rolle eine eigene Linie, damit Abweichungen in der Einschätzung sichtbar werden.</p>
+    </div>
+    <div class="card"><canvas id="chart_item_${idx}" height="200"></canvas></div>`;
+  });
+
+  host.innerHTML = html;
+
+  // Gesamtübersicht: alle Items, über Rollen gemittelt
+  const overviewLabels = [...new Set(entries.map(e => e.date))].sort();
   const palette = ["#4a6ba0","#4a8f7a","#b0793c","#8a5a8f","#a14c3f","#6b6b3a","#3a6b8a"];
-  let datasets = [];
+  const overviewDatasets = [];
+  allItems.forEach((name, idx) => {
+    const data = overviewLabels.map(d => {
+      const dayEntries = entries.filter(e => e.date === d && e.ratings[name] !== undefined);
+      if (dayEntries.length === 0) return null;
+      const avg = dayEntries.reduce((s,e)=>s+e.ratings[name],0) / dayEntries.length;
+      return Math.round(avg*10)/10;
+    });
+    if (data.some(v => v !== null)) {
+      overviewDatasets.push({ label: name, data, borderColor: palette[idx % palette.length], spanGaps: true, tension: 0.25 });
+    }
+  });
+  const overviewCanvas = document.getElementById("chart_overview");
+  if (overviewDatasets.length === 0) {
+    overviewCanvas.parentElement.innerHTML = `<div class="empty ui">Noch keine bewerteten Einträge.</div>`;
+  } else {
+    chartInstances.push(new Chart(overviewCanvas.getContext("2d"), {
+      type: "line",
+      data: { labels: overviewLabels, datasets: overviewDatasets },
+      options: {
+        responsive: true,
+        scales: { y: { min: 1, max: 10, ticks: { stepSize: 1 } } },
+        plugins: { legend: { display: true } }
+      }
+    }));
+  }
 
-  if (mode === "__all__") {
-    allItems.forEach((name, idx) => {
+  // Je Item ein Diagramm, aufgeschlüsselt nach Gesprächspartner-Rolle
+  perItemCharts.forEach((name, idx) => {
+    const itemEntries = entries.filter(e => e.ratings[name] !== undefined);
+    const labels = [...new Set(itemEntries.map(e => e.date))].sort();
+    const datasets = [];
+    ALL_PARTNERS.forEach(p => {
       const data = labels.map(d => {
-        const dayEntries = entries.filter(e => e.date === d && e.ratings[name] !== undefined);
+        const dayEntries = itemEntries.filter(e => e.date === d && e.partner === p);
         if (dayEntries.length === 0) return null;
         const avg = dayEntries.reduce((s,e)=>s+e.ratings[name],0) / dayEntries.length;
         return Math.round(avg*10)/10;
       });
       if (data.some(v => v !== null)) {
-        datasets.push({ label: name, data, borderColor: palette[idx % palette.length], spanGaps: true, tension: 0.25 });
+        datasets.push({ label: `${p} · ${PARTNERS[p]}`, data, borderColor: PARTNER_COLORS[p], spanGaps: true, tension: 0.25 });
       }
     });
-  } else {
-    const data = labels.map(d => {
-      const dayEntries = entries.filter(e => e.date === d && e.ratings[mode] !== undefined);
-      if (dayEntries.length === 0) return null;
-      const avg = dayEntries.reduce((s,e)=>s+e.ratings[mode],0) / dayEntries.length;
-      return Math.round(avg*10)/10;
-    });
-    datasets.push({ label: mode, data, borderColor: palette[0], spanGaps: true, tension: 0.25 });
-  }
-
-  if (chartInstance) chartInstance.destroy();
-  const ctx = document.getElementById("chartCanvas").getContext("2d");
-  if (datasets.length === 0) {
-    document.getElementById("chartCanvas").parentElement.innerHTML = `<div class="empty ui">Noch keine bewerteten Einträge für diese Auswahl.</div>`;
-    return;
-  }
-  chartInstance = new Chart(ctx, {
-    type: "line",
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      scales: { y: { min: 1, max: 10, ticks: { stepSize: 1 } } },
-      plugins: { legend: { display: mode === "__all__" } }
+    const canvas = document.getElementById(`chart_item_${idx}`);
+    if (datasets.length === 0) {
+      canvas.parentElement.innerHTML = `<div class="empty ui">Keine Daten.</div>`;
+      return;
     }
+    chartInstances.push(new Chart(canvas.getContext("2d"), {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        scales: { y: { min: 1, max: 10, ticks: { stepSize: 1 } } },
+        plugins: { legend: { display: true } }
+      }
+    }));
   });
 }
 

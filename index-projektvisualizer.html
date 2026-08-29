@@ -186,7 +186,7 @@
         <button class="ghost" id="btnZoomIn" title="Vergrößern">A+</button>
         <button class="ghost" id="btnToggleRaw">Rohtext</button>
         <button class="ghost" id="btnSortTree" title="Zwischen Sortierung nach letzter Aktualisierung und manueller Reihenfolge wechseln">Sortierung</button>
-        <button class="ghost" id="btnToggleArchived">Erledigte einblenden</button>
+        <button class="ghost" id="btnToggleArchived">Archivierte einblenden</button>
         <button class="ghost" id="btnArchiveProject">Archivieren</button>
         <button class="danger" id="btnDeleteProject">Löschen</button>
       </div>
@@ -1097,7 +1097,7 @@ function renderDetail(){
   const ab = document.getElementById("btnArchiveProject");
   if(ab && currentProject) ab.textContent = currentProject.archived ? "Reaktivieren" : "Archivieren";
   const tg = document.getElementById("btnToggleArchived");
-  if(tg) tg.textContent = showArchived ? "Erledigte ausblenden" : "Erledigte einblenden";
+  if(tg) tg.textContent = showArchived ? "Archivierte ausblenden" : "Archivierte einblenden";
   const st = document.getElementById("btnSortTree");
   if(st) st.textContent = sortLabel(sortTree);
   const root = currentProject.root;
@@ -1137,8 +1137,8 @@ function renderNode(node, isRoot){
   const hasChildren = node.children.length > 0;
   const isLeaf = !hasChildren;
 
-  // Archivierter Punkt ausgeblendet, wenn nicht ausdrücklich eingeblendet
-  if(!isRoot && isLeaf && node.archived && !showArchived) return "";
+  // Archivierte Punkte ausgeblendet, wenn nicht ausdrücklich eingeblendet
+  if(!isRoot && node.archived && !showArchived) return "";
 
   const orderedChildren = sortTree==="updated"
     ? node.children.slice().sort((a,b)=>(b.upd||0)-(a.upd||0))
@@ -1150,7 +1150,12 @@ function renderNode(node, isRoot){
     ? `<button class="btnMoveUp" data-nid="${node._id}" title="Nach oben">▲</button><button class="btnMoveDown" data-nid="${node._id}" title="Nach unten">▼</button>`
     : "";
   const addBtn = `<button class="btnAdd" data-nid="${node._id}">+</button>`;
-  const delBtn = isRoot ? "" : `<button class="btnDel" data-nid="${node._id}">x</button>`;
+  const arcBtn = isRoot ? "" 
+    : node.archived 
+      ? `<button class="btnUnarcNode" data-nid="${node._id}" title="Projekt wieder aktiv setzen" style="background:#4ade80;color:#fff;padding:3px 8px;border-radius:3px;font-size:12px;font-weight:bold;border:none;cursor:pointer;">✓ Wiederherstellen</button>`
+      : `<button class="btnArcNode" data-nid="${node._id}" title="Projekt archivieren" style="background:#f59e0b;color:#fff;padding:3px 8px;border-radius:3px;font-size:12px;font-weight:bold;border:none;cursor:pointer;">📦 Archiv</button>`;
+  
+  const delBtn = isRoot || node.level === 1 ? "" : `<button class="btnDel" data-nid="${node._id}">x</button>`;
   const pg = hasChildren ? nodeProgress(node) : 0;
   const pct = Math.round(pg * 100);
   const displayStatus = getNodeStatus(node);
@@ -1192,7 +1197,7 @@ function renderNode(node, isRoot){
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
-      <div class="node-actions">${moveBtns}${moveProjBtn}${moveToParentBtn}${arcLeafBtn}${addBtn}${delBtn}</div>
+      <div class="node-actions">${moveBtns}${moveProjBtn}${moveToParentBtn}${arcLeafBtn}${arcBtn}${addBtn}${delBtn}</div>
     </div>
     ${progressHtml}
     ${childrenHtml}
@@ -1353,6 +1358,28 @@ function bindNodeEvents(container){
     };
   });
   container.querySelectorAll('.btnUnarcLeaf').forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      if(!n) return;
+      n.archived = false;
+      touchNode(n);
+      scheduleSave(currentProject);
+      renderDetail();
+    };
+  });
+  container.querySelectorAll('.btnArcNode').forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      if(!n) return;
+      n.archived = true;
+      touchNode(n);
+      scheduleSave(currentProject);
+      renderDetail();
+    };
+  });
+  container.querySelectorAll('.btnUnarcNode').forEach(el=>{
     el.onclick = (ev)=>{
       ev.stopPropagation();
       const n = nodeRegistry[el.dataset.nid];
@@ -1610,7 +1637,7 @@ document.getElementById("btnZoomOut").onclick = ()=> changeZoom(-0.1);
 document.getElementById("btnToggleArchived").onclick = ()=>{
   showArchived = !showArchived;
   lsSet("pf_showArchived", showArchived ? "1" : "0");
-  document.getElementById("btnToggleArchived").textContent = showArchived ? "Erledigte ausblenden" : "Erledigte einblenden";
+  document.getElementById("btnToggleArchived").textContent = showArchived ? "Archivierte ausblenden" : "Archivierte einblenden";
   renderDetail();
 };
 document.getElementById("btnSortTree").onclick = ()=>{

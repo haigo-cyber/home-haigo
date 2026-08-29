@@ -1174,6 +1174,24 @@ function render(){
       const gd=goalTasks.filter(g=>g.completed).length;
       h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goalTasks.length);
     }
+    // Dringende Deadlines (≤5 Tage)
+    const urgentDeadlines=allGTasks.filter(t => t.deadlineDays !== null && t.deadlineDays >= 0 && t.deadlineDays <= 5);
+    if(urgentDeadlines.length){
+      h+=`<div class="section-title">⏱️ DRINGENDE DEADLINES</div>`;
+      const sortedUD=[...urgentDeadlines].sort((a,b)=>a.deadlineDays - b.deadlineDays);
+      sortedUD.forEach(t=>{
+        const dlColor=deadlineColor(t.deadlineDays);
+        const dlLabel=deadlineLabel(t.deadlineDays);
+        const cleanNotes=(t.notes||"").replace(GOAL_MARKER,"").replace(/\| DL:.*$/,"").trim();
+        h+=`<div class="card" style="background:${dlColor}22;border-left:4px solid ${dlColor}">
+          <div class="body">
+            <div class="title" style="color:${dlColor};font-weight:bold">${esc(t.title||"(ohne Titel)")}</div>
+            ${cleanNotes?`<div class="note-text" style="color:#666;font-size:13px">${esc(cleanNotes)}</div>`:""}
+            <div style="font-size:12px;margin-top:6px;padding:4px 8px;background:${dlColor};color:#fff;border-radius:4px;display:inline-block;font-weight:bold">${dlLabel}</div>
+          </div>
+        </div>`;
+      });
+    }
     if(gtasks.length){
       h+=`<div class="section-title">⭐ Wichtige Termine (Google Tasks)</div>`;
       const sortedGT=[...gtasks].sort((a,b)=>(a.due||"").localeCompare(b.due||""));
@@ -2437,10 +2455,7 @@ async function bootData(){
     
     console.log("2️⃣ loadAll...");
     await loadAll();
-    console.log("  ✓ loadAll ok, tasks:",tasks.length,"projects:",projects.length,"notes:",notes.length);
-    
-    console.log("2️⃣b loadLogs...");
-    await loadLogs();
+    console.log("  ✓ loadAll ok, tasks:",tasks.length,"projects:",projects.length,"notes:",notes.length,"logs:",logs.length);
     
     console.log("3️⃣ purgeStaleGoals...");
     await purgeStaleGoals();

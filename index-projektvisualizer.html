@@ -667,50 +667,39 @@ function moveProjectDialog(projectId, nodeId){
   const currentNode = findNode(project.root, nodeId);
   if(!currentNode) return;
   
-  let html = `<div style="max-height:400px;overflow-y:auto">`;
-  
-  if(currentNode.level > 2){
-    html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card)" data-move-parent="top-level">
-      <div style="font-weight:bold">↑ Zurück zu Top-Level (##)</div>
-    </div>`;
-  }
-  
-  // Sammle alle Nodes im gleichen Projekt, die als Parent dienen können
+  // Sammle alle Nodes die als Parent dienen können
   const possibleParents = [];
+  const isChildOf = (parentId, childId) => {
+    const p = findNode(project.root, parentId);
+    const c = findNode(project.root, childId);
+    if(!p || !c) return false;
+    let n = c.parent;
+    while(n){
+      if(n._id === parentId) return true;
+      n = n.parent;
+    }
+    return false;
+  };
+  
   const walk = (node) => {
-    if(node._id !== nodeId){ // Nur nicht self
+    if(node._id !== nodeId && !isChildOf(nodeId, node._id)){ 
       possibleParents.push(node);
     }
     node.children.forEach(child => walk(child));
   };
-  project.root.children.forEach(child => walk(child));
+  walk(project.root);
   
-  // Gruppiere nach Top-Level (##)
-  const byTopLevel = {};
+  let html = `<div style="max-height:400px;overflow-y:auto">`;
+  
+  // Sortiere: erst ## (level 1), dann ### (level 2), etc.
+  possibleParents.sort((a,b) => a.level - b.level);
+  
   possibleParents.forEach(node => {
-    let topLevelNode = node;
-    while(topLevelNode.parent && topLevelNode.parent.level > 0){
-      topLevelNode = topLevelNode.parent;
-    }
-    const topKey = topLevelNode._id;
-    if(!byTopLevel[topKey]) byTopLevel[topKey] = {title: topLevelNode.title, nodes: []};
-    byTopLevel[topKey].nodes.push(node);
-  });
-  
-  Object.values(byTopLevel).forEach(group => {
-    html += `<div style="padding:12px 8px;color:var(--muted);font-size:12px;font-weight:bold">${escapeHtml(group.title)}</div>`;
-    group.nodes.forEach(node => {
-      const indent = (node.level - 2) * 12;
-      const path = [];
-      let n = node;
-      while(n && n.level > 0){
-        path.unshift(n.title);
-        n = n.parent;
-      }
-      html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card);margin-left:${indent}px" data-move-parent="${node._id}" title="${path.join(' > ')}">
-        <div>${"·".repeat(node.level - 2)} ${escapeHtml(node.title)}</div>
-      </div>`;
-    });
+    const indent = Math.max(0, node.level - 1) * 16;
+    const prefix = "·".repeat(Math.max(0, node.level - 1));
+    html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card);margin-left:${indent}px;font-weight:${node.level===1?'bold':'normal'}" data-move-parent="${node._id}">
+      ${prefix} ${escapeHtml(node.title)}
+    </div>`;
   });
   
   html += `</div>`;
@@ -749,6 +738,11 @@ function findNode(root, nodeId){
   return null;
 }
 
+function updateNodeLevelsRecursive(node, newLevel){
+  node.level = newLevel;
+  node.children.forEach(child => updateNodeLevelsRecursive(child, newLevel + 1));
+}
+
 function moveProjectToParent(projectId, nodeId, newParentId){
   const project = projects.find(p => p.fileId === projectId);
   if(!project) return;
@@ -765,11 +759,12 @@ function moveProjectToParent(projectId, nodeId, newParentId){
   }
   
   if(newParent){
-    node.level = newParent.level + 1;
+    const newLevel = newParent.level + 1;
+    updateNodeLevelsRecursive(node, newLevel);
     newParent.children.push(node);
     node.parent = newParent;
   } else {
-    node.level = 2;
+    updateNodeLevelsRecursive(node, 1);
     project.root.children.push(node);
     node.parent = null;
   }

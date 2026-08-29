@@ -1150,10 +1150,11 @@ function renderNode(node, isRoot){
     ? `<button class="btnMoveUp" data-nid="${node._id}" title="Nach oben">▲</button><button class="btnMoveDown" data-nid="${node._id}" title="Nach unten">▼</button>`
     : "";
   const addBtn = `<button class="btnAdd" data-nid="${node._id}">+</button>`;
-  const arcBtn = isRoot ? "" 
-    : node.archived 
-      ? `<button class="btnUnarcNode" data-nid="${node._id}" title="Projekt wieder aktiv setzen" style="background:#4ade80;color:#fff;padding:3px 8px;border-radius:3px;font-size:12px;font-weight:bold;border:none;cursor:pointer;">✓ Wiederherstellen</button>`
-      : `<button class="btnArcNode" data-nid="${node._id}" title="Projekt archivieren" style="background:#f59e0b;color:#fff;padding:3px 8px;border-radius:3px;font-size:12px;font-weight:bold;border:none;cursor:pointer;">📦 Archiv</button>`;
+  const arcBtn = (isRoot) ? "" 
+    : (hasChildren) ? (node.archived 
+      ? `<button class="btnUnarcNode" data-nid="${node._id}" title="Projekt wieder aktiv setzen">✓</button>`
+      : `<button class="btnArcNode" data-nid="${node._id}" title="Projekt archivieren">◯</button>`)
+    : "";  // Blätter: kein arcBtn (nutzen btnArcLeaf stattdessen)
   
   const delBtn = isRoot || node.level === 1 ? "" : `<button class="btnDel" data-nid="${node._id}">x</button>`;
   const pg = hasChildren ? nodeProgress(node) : 0;
@@ -1183,8 +1184,11 @@ function renderNode(node, isRoot){
     : `<span class="gt-dot ${node.gtId?'':'off'}" title="${node.gtId?'in Google Tasks':'nicht in Google Tasks'}"></span>`+
       `<input type="date" class="due-input ${late?'due-late':''}" data-nid="${node._id}" value="${node.due||''}" title="${late?'Termin liegt nach der Deadline '+effectiveDeadline(node):'Fälligkeitsdatum'}">`+
       (late?`<span class="late-warn" title="Termin liegt nach der Deadline ${effectiveDeadline(node)}">⚠</span>`:"");
-  const arcLeafBtn = (isLeaf && node.status==="fertig" && !node.archived)
-    ? `<button class="btnArcLeaf" data-nid="${node._id}" title="Erledigten Punkt archivieren">Archiv</button>` : "";
+  const arcLeafBtn = (isLeaf && !node.archived && node.status==="fertig")
+    ? `<button class="btnArcLeaf" data-nid="${node._id}" title="Erledigten Punkt archivieren">Archiv</button>` 
+    : (isLeaf && node.archived)
+    ? `<button class="btnUnarcLeaf" data-nid="${node._id}" title="Punkt wieder aktiv setzen">✓</button>` 
+    : "";
   const moveProjBtn = !isRoot
     ? `<button class="btnMoveProj" data-nid="${node._id}" title="In anderes Projekt verschieben">→</button>` : "";
   const moveToParentBtn = (!isRoot && hasChildren && node.level >= 2)

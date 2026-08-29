@@ -577,11 +577,12 @@ async function loadAll(){
   await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A1?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values:[TASK_COLS]})});
   const t=await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2:${colLetter(TASK_COLS.length)}`);
-  const l=await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C`);
-  tasks=rowsToObjs(t.values, TASK_COLS).filter(x=>x.id).map(x=>({
+  const l=await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000`);
+  tasks=rowsToObjs(t.values||[], TASK_COLS).filter(x=>x.id).map(x=>({
     ...x, syncCalendar:x.syncCalendar!=="false", archived:x.archived==="true"
   }));
-  logs=rowsToObjs(l.values, LOG_COLS).filter(x=>x.itemId&&x.date);
+  logs=rowsToObjs(l.values||[], LOG_COLS).filter(x=>x.itemId&&x.date);
+  console.log("✅ loadAll: tasks=",tasks.length, "logs=",logs.length);
   // Projekte: JSON von Projects!A1 laden
   try{
     console.log("📖 loadAll Projects START");

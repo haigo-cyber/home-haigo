@@ -238,11 +238,12 @@ function parseDeadlineFromNotes(notes){
   return match?match[1]:null;
 }
 
-function daysUntilDeadline(dueDate, deadline){
-  if(!dueDate || !deadline) return null;
-  const due=new Date(dueDate);
-  const dl=new Date(deadline);
-  const diff=Math.ceil((dl-due)/(1000*60*60*24));
+function daysUntilDeadline(deadline){
+  if(!deadline) return null;
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const dl = new Date(deadline);
+  const diff = Math.ceil((dl - today)/(1000*60*60*24));
   return diff;
 }
 
@@ -346,14 +347,14 @@ async function loadGTasks(){
     gtasks=openItems.filter(t=>t.due && t.due.slice(0,10)<=today)
       .map(t=>{
         t.deadline=parseDeadlineFromNotes(t.notes);
-        t.deadlineDays=t.deadline?daysUntilDeadline(t.due.slice(0,10), t.deadline):null;
+        t.deadlineDays=t.deadline?daysUntilDeadline(t.deadline):null;
         return t;
       });
     
     // Alle offenen Tasks (für Deadlines-Rubrik)
     allGTasks=openItems.map(t=>{
       t.deadline=parseDeadlineFromNotes(t.notes);
-      if(t.due) t.deadlineDays=t.deadline?daysUntilDeadline(t.due.slice(0,10), t.deadline):null;
+      if(t.due) t.deadlineDays=t.deadline?daysUntilDeadline(t.deadline):null;
       return t;
     });
     // Ziele: ALLE mit Marker (offene + heute erledigte jeweils), aber filtern nur heute für Anzeige
@@ -1184,6 +1185,7 @@ function render(){
         const dlLabel=deadlineLabel(t.deadlineDays);
         const cleanNotes=(t.notes||"").replace(GOAL_MARKER,"").replace(/\| DL:.*$/,"").trim();
         h+=`<div class="card" style="background:${dlColor}22;border-left:4px solid ${dlColor}">
+          <div class="check" data-gtask="${t.id}">${checkSvg()}</div>
           <div class="body">
             <div class="title" style="color:${dlColor};font-weight:bold">${esc(t.title||"(ohne Titel)")}</div>
             ${cleanNotes?`<div class="note-text" style="color:#666;font-size:13px">${esc(cleanNotes)}</div>`:""}
@@ -1235,7 +1237,7 @@ function render(){
     // Google Tasks mit Deadline (nutze allGTasks, nicht gtasks!)
     allGTasks.forEach(t => {
       if(t.deadline){
-        const daysLeft = daysUntilDeadline(t.due.slice(0,10), t.deadline);
+        const daysLeft = daysUntilDeadline(t.deadline);
         allDeadlines.push({
           type: 'gtask',
           id: t.id,
@@ -1257,7 +1259,7 @@ function render(){
       if(gtask){
         const deadline = parseDeadlineFromNotes(gtask.notes);
         if(deadline && !allDeadlines.find(d => d.id === t.id)){
-          const daysLeft = daysUntilDeadline(t.startDate, deadline);
+          const daysLeft = daysUntilDeadline(deadline);
           allDeadlines.push({
             type: 'task',
             id: t.id,

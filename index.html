@@ -577,12 +577,28 @@ async function loadAll(){
   await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A1?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values:[TASK_COLS]})});
   const t=await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2:${colLetter(TASK_COLS.length)}`);
-  const l=await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000`);
+  
+  let l={};
+  try {
+    l=await api(`${SHEETS}/${spreadsheetId}/values/Log!A1:C`);
+    if(!l.values || l.values.length < 2) {
+      console.warn("⚠️ Log Tab leer oder keine Daten. Versuche breite Range...");
+      l=await api(`${SHEETS}/${spreadsheetId}/values/Log`);
+    }
+  } catch(e) {
+    console.error("❌ Log-Abruf fehlgeschlagen:", e);
+    l={values:[]};
+  }
+  
   tasks=rowsToObjs(t.values||[], TASK_COLS).filter(x=>x.id).map(x=>({
     ...x, syncCalendar:x.syncCalendar!=="false", archived:x.archived==="true"
   }));
-  logs=rowsToObjs(l.values||[], LOG_COLS).filter(x=>x.itemId&&x.date);
+  
+  // Überspringe Header-Zeile wenn vorhanden
+  let logValues = (l.values||[]).slice(1);
+  logs=rowsToObjs(logValues, LOG_COLS).filter(x=>x.itemId&&x.date);
   console.log("✅ loadAll: tasks=",tasks.length, "logs=",logs.length);
+  
   // Projekte: JSON von Projects!A1 laden
   try{
     console.log("📖 loadAll Projects START");

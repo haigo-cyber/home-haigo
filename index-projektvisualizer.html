@@ -146,6 +146,7 @@
       <button id="tabOverviewBtn" class="active">Übersicht</button>
       <button id="tabNextBtn">Nächste Schritte</button>
       <button id="tabGanttBtn">Gantt</button>
+      <button id="tabRoadmapBtn">Roadmap</button>
     </div>
 
     <div id="tabOverview">
@@ -186,6 +187,12 @@
       <div class="toolbar"><h2>Gantt Timeline</h2></div>
       <div id="ganttView"></div>
       <div id="ganttEmpty" class="center hidden">Keine Projekte mit Start- und Endatum. Setze Start- und Enddatum in den Projektdetails.</div>
+    </div>
+
+    <div id="tabRoadmap" class="hidden">
+      <div class="toolbar"><h2>Roadmap</h2></div>
+      <div id="roadmapView"></div>
+      <div id="roadmapEmpty" class="center hidden">Keine Aufgaben mit Deadline vorhanden.</div>
     </div>
 
     <div id="tabDetail" class="hidden">
@@ -1594,9 +1601,11 @@ document.getElementById("tabOverviewBtn").onclick = ()=>{
   document.getElementById("tabOverviewBtn").classList.add("active");
   document.getElementById("tabNextBtn").classList.remove("active");
   document.getElementById("tabGanttBtn").classList.remove("active");
+  document.getElementById("tabRoadmapBtn").classList.remove("active");
   document.getElementById("tabOverview").classList.remove("hidden");
   document.getElementById("tabNext").classList.add("hidden");
   document.getElementById("tabGantt").classList.add("hidden");
+  document.getElementById("tabRoadmap").classList.add("hidden");
   document.getElementById("tabDetail").classList.add("hidden");
   renderOverview();
 };
@@ -1604,9 +1613,11 @@ document.getElementById("tabNextBtn").onclick = ()=>{
   document.getElementById("tabNextBtn").classList.add("active");
   document.getElementById("tabOverviewBtn").classList.remove("active");
   document.getElementById("tabGanttBtn").classList.remove("active");
+  document.getElementById("tabRoadmapBtn").classList.remove("active");
   document.getElementById("tabNext").classList.remove("hidden");
   document.getElementById("tabOverview").classList.add("hidden");
   document.getElementById("tabGantt").classList.add("hidden");
+  document.getElementById("tabRoadmap").classList.add("hidden");
   document.getElementById("tabDetail").classList.add("hidden");
   selectedNext.clear();
   renderNext();
@@ -1615,11 +1626,25 @@ document.getElementById("tabGanttBtn").onclick = ()=>{
   document.getElementById("tabGanttBtn").classList.add("active");
   document.getElementById("tabOverviewBtn").classList.remove("active");
   document.getElementById("tabNextBtn").classList.remove("active");
+  document.getElementById("tabRoadmapBtn").classList.remove("active");
   document.getElementById("tabGantt").classList.remove("hidden");
   document.getElementById("tabOverview").classList.add("hidden");
   document.getElementById("tabNext").classList.add("hidden");
+  document.getElementById("tabRoadmap").classList.add("hidden");
   document.getElementById("tabDetail").classList.add("hidden");
   renderGantt();
+};
+document.getElementById("tabRoadmapBtn").onclick = ()=>{
+  document.getElementById("tabRoadmapBtn").classList.add("active");
+  document.getElementById("tabOverviewBtn").classList.remove("active");
+  document.getElementById("tabNextBtn").classList.remove("active");
+  document.getElementById("tabGanttBtn").classList.remove("active");
+  document.getElementById("tabRoadmap").classList.remove("hidden");
+  document.getElementById("tabOverview").classList.add("hidden");
+  document.getElementById("tabNext").classList.add("hidden");
+  document.getElementById("tabGantt").classList.add("hidden");
+  document.getElementById("tabDetail").classList.add("hidden");
+  renderRoadmap();
 };
 document.getElementById("btnBack").onclick = ()=>{
   document.getElementById("tabDetail").classList.add("hidden");
@@ -2108,6 +2133,114 @@ function renderGantt(){
   
   html += `</div>`;
   ganttView.innerHTML = html;
+}
+
+function renderRoadmap(){
+  const roadmapView = document.getElementById("roadmapView");
+  const roadmapEmpty = document.getElementById("roadmapEmpty");
+  
+  // Sammle alle Nodes mit Deadline
+  const roadmapItems = [];
+  projects.forEach(proj => {
+    const walk = (node) => {
+      if(node.level > 0 && node.deadline){
+        roadmapItems.push({
+          title: node.title,
+          project: proj.title,
+          deadline: new Date(node.deadline),
+          status: node.status,
+          level: node.level
+        });
+      }
+      node.children.forEach(walk);
+    };
+    walk(proj.root);
+  });
+  
+  if(roadmapItems.length === 0){
+    roadmapView.innerHTML = "";
+    roadmapEmpty.classList.remove("hidden");
+    return;
+  }
+  roadmapEmpty.classList.add("hidden");
+  
+  // Gruppiere nach Monat
+  const byMonth = {};
+  roadmapItems.forEach(item => {
+    const year = item.deadline.getFullYear();
+    const month = item.deadline.getMonth();
+    const key = year + "-" + String(month).padStart(2, "0");
+    if(!byMonth[key]) byMonth[key] = [];
+    byMonth[key].push(item);
+  });
+  
+  // Sortiere Monate
+  const monthKeys = Object.keys(byMonth).sort();
+  
+  // Render
+  let html = `<div style="padding:16px;font-family:system-ui">`;
+  
+  monthKeys.forEach(monthKey => {
+    const [year, month] = monthKey.split("-");
+    const d = new Date(year, parseInt(month), 1);
+    const monthName = d.toLocaleDateString("de-DE", {month:"long", year:"numeric"});
+    
+    const items = byMonth[monthKey];
+    
+    // Sortiere nach Projekt, dann nach Deadline
+    items.sort((a,b) => {
+      const projCompare = a.project.localeCompare(b.project);
+      if(projCompare !== 0) return projCompare;
+      return a.deadline - b.deadline;
+    });
+    
+    // Gruppiere nach Projekt
+    const byProject = {};
+    items.forEach(item => {
+      if(!byProject[item.project]) byProject[item.project] = [];
+      byProject[item.project].push(item);
+    });
+    
+    html += `<div style="margin-bottom:24px">`;
+    html += `<h3 style="color:#333;margin:0 0 12px 0;font-size:16px;font-weight:bold">📅 ${escapeHtml(monthName)}</h3>`;
+    
+    Object.keys(byProject).sort().forEach(projName => {
+      const projItems = byProject[projName];
+      html += `<div style="margin-bottom:16px;padding-left:16px">`;
+      html += `<div style="color:#666;font-size:13px;font-weight:500;margin-bottom:8px">🟠 ${escapeHtml(projName)}</div>`;
+      
+      projItems.forEach(item => {
+        const statusColor = STATUS_COLOR[item.status] || "#999";
+        const statusLabel = STATUS_LABEL[item.status] || item.status;
+        
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const daysLeft = Math.ceil((item.deadline - today) / (24*60*60*1000));
+        
+        let dlColor = "#4ade80"; // grün
+        if(daysLeft < 0) dlColor = "#ef4444"; // rot - überfällig
+        else if(daysLeft <= 3) dlColor = "#ef4444"; // rot
+        else if(daysLeft <= 7) dlColor = "#f97316"; // orange
+        
+        const dlLabel = daysLeft < 0 ? "überfällig" : daysLeft + "d";
+        
+        html += `<div style="display:flex;align-items:center;padding:8px 12px;margin-bottom:6px;background:#f9fafb;border-left:3px solid ${statusColor};border-radius:4px">`;
+        html += `<div style="flex:1;min-width:0">`;
+        html += `<div style="font-size:13px;font-weight:500;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(item.title)}</div>`;
+        html += `<div style="font-size:11px;color:#666;margin-top:2px">${item.deadline.toLocaleDateString("de-DE")} · ${statusLabel}</div>`;
+        html += `</div>`;
+        html += `<div style="padding:2px 8px;background:${dlColor};color:#fff;border-radius:3px;font-size:11px;font-weight:bold;flex-shrink:0">${dlLabel}</div>`;
+        html += `</div>`;
+      });
+      
+      html += `</div>`;
+    });
+    
+    html += `</div>`;
+  });
+  
+  html += `</div>`;
+  roadmapView.innerHTML = html;
 }
 
 /* ============ Hilfsfunktionen ============ */

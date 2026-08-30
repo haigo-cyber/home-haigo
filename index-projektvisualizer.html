@@ -74,6 +74,9 @@
   .dl-input{width:34px;background:transparent;color:var(--orange);border:1px solid var(--orange);border-radius:5px;padding:1px 3px;font-size:9px;flex:none;cursor:pointer;color-scheme:dark;margin-left:4px;}
   .dl-input:focus{width:auto;color:var(--text);outline:1px solid var(--orange);}
   .dl-input::-webkit-calendar-picker-indicator{filter:invert(0.55) sepia(1) saturate(4) hue-rotate(-15deg);cursor:pointer;}
+  .sd-input{width:34px;background:transparent;color:var(--blue);border:1px solid var(--blue);border-radius:5px;padding:1px 3px;font-size:9px;flex:none;cursor:pointer;color-scheme:dark;margin-left:2px;}
+  .sd-input:focus{width:auto;color:var(--text);outline:1px solid var(--blue);}
+  .sd-input::-webkit-calendar-picker-indicator{filter:invert(0.3) sepia(1) saturate(4) hue-rotate(200deg);cursor:pointer;}
   .due-late{border-color:var(--rot)!important;color:var(--rot)!important;}
   .late-warn{color:var(--rot);font-size:11px;margin-left:2px;cursor:help;flex:none;}
   .deadline-warn{background:rgba(239,68,68,0.14);border:1px solid var(--rot);color:var(--rot);border-radius:8px;padding:7px 10px;font-size:13px;margin:6px 0;}
@@ -142,6 +145,7 @@
     <div class="tabs">
       <button id="tabOverviewBtn" class="active">Übersicht</button>
       <button id="tabNextBtn">Nächste Schritte</button>
+      <button id="tabGanttBtn">Gantt</button>
     </div>
 
     <div id="tabOverview">
@@ -176,6 +180,12 @@
       </div>
       <div id="nextList"></div>
       <div id="nextEmpty" class="center hidden">Alles erledigt oder keine offenen Schritte.</div>
+    </div>
+
+    <div id="tabGantt" class="hidden">
+      <div class="toolbar"><h2>Gantt Timeline</h2></div>
+      <div id="ganttView"></div>
+      <div id="ganttEmpty" class="center hidden">Keine Projekte mit Start- und Endatum. Setze Start- und Enddatum in den Projektdetails.</div>
     </div>
 
     <div id="tabDetail" class="hidden">
@@ -255,7 +265,7 @@ function parseHeadingLine(line){
   if(!m) return null;
   const level = m[1].length;
   let rest = m[2];
-  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0, done:0, deadline:null};
+  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0, done:0, deadline:null, startDate:null};
   rest = rest.replace(META_RE, (whole, key, val)=>{
     val = (val||"").trim();
     if(key==="status"){ if(STATUS_ORDER.includes(val)) meta.status = val; }
@@ -265,9 +275,10 @@ function parseHeadingLine(line){
     else if(key==="upd"){ meta.upd = parseInt(val,10) || 0; }
     else if(key==="done"){ meta.done = parseInt(val,10) || 0; }
     else if(key==="dl"){ meta.deadline = val || null; }
+    else if(key==="sd"){ meta.startDate = val || null; }
     return "";
   });
-  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd, done: meta.done, deadline: meta.deadline};
+  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd, done: meta.done, deadline: meta.deadline, startDate: meta.startDate};
 }
 
 function parseMarkdown(text){
@@ -277,7 +288,7 @@ function parseMarkdown(text){
   for(const line of lines){
     const h = parseHeadingLine(line);
     if(h){
-      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, done:h.done||0, deadline:h.deadline||null, body:[], children:[], parent:null};
+      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, done:h.done||0, deadline:h.deadline||null, startDate:h.startDate||null, body:[], children:[], parent:null};
       while(stack.length && stack[stack.length-1].level >= node.level) stack.pop();
       const parent = stack[stack.length-1];
       node.parent = parent;
@@ -301,6 +312,7 @@ function serializeMarkdown(root){
       if(n.upd) line += " <!--upd:"+n.upd+"-->";
       if(n.done) line += " <!--done:"+n.done+"-->";
       if(n.deadline) line += " <!--dl:"+n.deadline+"-->";
+      if(n.startDate) line += " <!--sd:"+n.startDate+"-->";
       out.push(line);
     }
     n.body.forEach(l=>out.push(l));
@@ -493,6 +505,7 @@ async function gtCreate(node, projectTitle){
   let notes = GT_MARKER+" "+projectTitle;
   const deadline = effectiveDeadline(node);
   if(deadline) notes += " | DL:"+deadline;
+  if(node.startDate) notes += " | SD:"+node.startDate;
   const body = {title: node.title || "(ohne Titel)", notes: notes};
   if(node.due) body.due = dueToRfc(node.due);
   const t = await gtApi("/lists/"+GT_LIST+"/tasks", {
@@ -504,6 +517,7 @@ async function gtUpdate(node, projectTitle){
   let notes = GT_MARKER+" "+projectTitle;
   const deadline = effectiveDeadline(node);
   if(deadline) notes += " | DL:"+deadline;
+  if(node.startDate) notes += " | SD:"+node.startDate;
   const body = {id: node.gtId, title: node.title || "(ohne Titel)", notes: notes};
   if(node.due) body.due = dueToRfc(node.due);
   await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(node.gtId), {
@@ -1181,7 +1195,8 @@ function renderNode(node, isRoot){
     : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}">${STATUS_LABEL[displayStatus]}</button>`;
   const late = isLate(node);
   const dueChip = hasChildren
-    ? `<input type="date" class="dl-input" data-nid="${node._id}" value="${node.deadline||''}" title="Deadline (gilt auch für Unterpunkte)">`
+    ? `<input type="date" class="dl-input" data-nid="${node._id}" value="${node.deadline||''}" title="Deadline (gilt auch für Unterpunkte)">` +
+      `<input type="date" class="sd-input" data-nid="${node._id}" value="${node.startDate||''}" title="Start-Datum">`
     : `<span class="gt-dot ${node.gtId?'':'off'}" title="${node.gtId?'in Google Tasks':'nicht in Google Tasks'}"></span>`+
       `<input type="date" class="due-input ${late?'due-late':''}" data-nid="${node._id}" value="${node.due||''}" title="${late?'Termin liegt nach der Deadline '+effectiveDeadline(node):'Fälligkeitsdatum'}">`+
       (late?`<span class="late-warn" title="Termin liegt nach der Deadline ${effectiveDeadline(node)}">⚠</span>`:"");
@@ -1426,6 +1441,15 @@ function bindNodeEvents(container){
       scheduleSave(currentProject);
     };
   });
+  container.querySelectorAll('.sd-input').forEach(el=>{
+    el.onchange = ()=>{
+      const n = nodeRegistry[el.dataset.nid];
+      n.startDate = el.value || null;
+      touchNode(n);
+      renderDetail();
+      scheduleSave(currentProject);
+    };
+  });
   container.querySelectorAll('.due-input').forEach(el=>{
     el.onchange = ()=>{
       const n = nodeRegistry[el.dataset.nid];
@@ -1569,19 +1593,33 @@ document.getElementById("btnSaveRaw").onclick = async ()=>{
 document.getElementById("tabOverviewBtn").onclick = ()=>{
   document.getElementById("tabOverviewBtn").classList.add("active");
   document.getElementById("tabNextBtn").classList.remove("active");
+  document.getElementById("tabGanttBtn").classList.remove("active");
   document.getElementById("tabOverview").classList.remove("hidden");
   document.getElementById("tabNext").classList.add("hidden");
+  document.getElementById("tabGantt").classList.add("hidden");
   document.getElementById("tabDetail").classList.add("hidden");
   renderOverview();
 };
 document.getElementById("tabNextBtn").onclick = ()=>{
   document.getElementById("tabNextBtn").classList.add("active");
   document.getElementById("tabOverviewBtn").classList.remove("active");
+  document.getElementById("tabGanttBtn").classList.remove("active");
   document.getElementById("tabNext").classList.remove("hidden");
   document.getElementById("tabOverview").classList.add("hidden");
+  document.getElementById("tabGantt").classList.add("hidden");
   document.getElementById("tabDetail").classList.add("hidden");
   selectedNext.clear();
   renderNext();
+};
+document.getElementById("tabGanttBtn").onclick = ()=>{
+  document.getElementById("tabGanttBtn").classList.add("active");
+  document.getElementById("tabOverviewBtn").classList.remove("active");
+  document.getElementById("tabNextBtn").classList.remove("active");
+  document.getElementById("tabGantt").classList.remove("hidden");
+  document.getElementById("tabOverview").classList.add("hidden");
+  document.getElementById("tabNext").classList.add("hidden");
+  document.getElementById("tabDetail").classList.add("hidden");
+  renderGantt();
 };
 document.getElementById("btnBack").onclick = ()=>{
   document.getElementById("tabDetail").classList.add("hidden");
@@ -1987,6 +2025,84 @@ async function doRestore(){
   document.getElementById("modalRoot").innerHTML = "";
   renderOverview();
   toast(added+" Projekt(e) wiederhergestellt");
+}
+
+function renderGantt(){
+  const ganttView = document.getElementById("ganttView");
+  const ganttEmpty = document.getElementById("ganttEmpty");
+  
+  // Sammle alle Nodes mit Start-Datum und Deadline
+  const ganttItems = [];
+  projects.forEach(proj => {
+    const walk = (node) => {
+      if(node.level > 0 && node.startDate && node.deadline){
+        ganttItems.push({
+          title: node.title,
+          project: proj.title,
+          startDate: new Date(node.startDate),
+          deadline: new Date(node.deadline),
+          level: node.level
+        });
+      }
+      node.children.forEach(walk);
+    };
+    walk(proj.root);
+  });
+  
+  if(ganttItems.length === 0){
+    ganttView.innerHTML = "";
+    ganttEmpty.classList.remove("hidden");
+    return;
+  }
+  ganttEmpty.classList.add("hidden");
+  
+  // Sortiere nach Start-Datum
+  ganttItems.sort((a,b) => a.startDate - b.startDate);
+  
+  // Finde Min/Max Daten
+  const minDate = Math.min(...ganttItems.map(i => i.startDate.getTime()));
+  const maxDate = Math.max(...ganttItems.map(i => i.deadline.getTime()));
+  const range = maxDate - minDate;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const rangeDays = Math.ceil(range / dayMs) + 1;
+  
+  // Berechne Skala (Pixel pro Tag)
+  const containerWidth = ganttView.offsetWidth || 800;
+  const pxPerDay = Math.max(2, Math.min(20, (containerWidth - 250) / rangeDays));
+  
+  // Render
+  let html = `<div style="display:flex;overflow-x:auto;font-size:12px">`;
+  
+  // Header mit Daten
+  html += `<div style="width:250px;flex-shrink:0"></div>`;
+  html += `<div style="display:flex;border-bottom:1px solid #ccc">`;
+  for(let i = 0; i < rangeDays; i++){
+    const d = new Date(minDate + i * dayMs);
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    const bg = isWeekend ? "rgba(0,0,0,0.05)" : "transparent";
+    html += `<div style="width:${pxPerDay}px;padding:4px 0;text-align:center;background:${bg};font-size:9px;flex-shrink:0">${d.getDate()}</div>`;
+  }
+  html += `</div>`;
+  
+  // Items
+  ganttItems.forEach(item => {
+    const startOffset = (item.startDate.getTime() - minDate) / dayMs;
+    const duration = (item.deadline.getTime() - item.startDate.getTime()) / dayMs + 1;
+    const barWidth = Math.max(1, duration * pxPerDay);
+    const barLeft = startOffset * pxPerDay;
+    
+    const color = item.level === 2 ? "#f97316" : "#3b82f6";
+    
+    html += `<div style="display:flex;align-items:center;border-bottom:1px solid #eee;padding:6px 0">`;
+    html += `<div style="width:250px;flex-shrink:0;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">${escapeHtml(item.title)}</div>`;
+    html += `<div style="position:relative;height:24px;width:${containerWidth - 250}px">`;
+    html += `<div style="position:absolute;left:${barLeft}px;top:2px;height:20px;width:${barWidth}px;background:${color};border-radius:3px;opacity:0.7" title="${escapeHtml(item.title)} · ${item.startDate.toLocaleDateString('de-DE')} bis ${item.deadline.toLocaleDateString('de-DE')}"></div>`;
+    html += `</div>`;
+    html += `</div>`;
+  });
+  
+  html += `</div>`;
+  ganttView.innerHTML = html;
 }
 
 /* ============ Hilfsfunktionen ============ */

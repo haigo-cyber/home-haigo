@@ -2067,36 +2067,41 @@ function renderGantt(){
   const rangeDays = Math.ceil(range / dayMs) + 1;
   
   // Berechne Skala (Pixel pro Tag)
-  const containerWidth = ganttView.offsetWidth || 800;
-  const pxPerDay = Math.max(2, Math.min(20, (containerWidth - 250) / rangeDays));
+  const containerWidth = ganttView.offsetWidth || 1000;
+  const pxPerDay = Math.max(3, (containerWidth - 280) / rangeDays);
   
   // Render
-  let html = `<div style="display:flex;overflow-x:auto;font-size:12px">`;
+  let html = `<div style="overflow-x:auto;font-family:system-ui;font-size:13px;color:#333">`;
   
   // Header mit Daten
-  html += `<div style="width:250px;flex-shrink:0"></div>`;
-  html += `<div style="display:flex;border-bottom:1px solid #ccc">`;
+  html += `<div style="display:flex;border-bottom:2px solid #999">`;
+  html += `<div style="width:280px;flex-shrink:0;padding:8px;font-weight:bold">Projekt / Task</div>`;
+  html += `<div style="display:flex">`;
   for(let i = 0; i < rangeDays; i++){
     const d = new Date(minDate + i * dayMs);
     const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-    const bg = isWeekend ? "rgba(0,0,0,0.05)" : "transparent";
-    html += `<div style="width:${pxPerDay}px;padding:4px 0;text-align:center;background:${bg};font-size:9px;flex-shrink:0">${d.getDate()}</div>`;
+    const bg = isWeekend ? "#f5f5f5" : "#fff";
+    const isSunday = d.getDay() === 0;
+    const border = isSunday ? "1px solid #999" : "1px solid #ddd";
+    html += `<div style="width:${pxPerDay}px;padding:6px 2px;text-align:center;background:${bg};border-right:${border};font-size:11px;flex-shrink:0;min-height:30px">${d.getDate()}</div>`;
   }
+  html += `</div>`;
   html += `</div>`;
   
   // Items
   ganttItems.forEach(item => {
     const startOffset = (item.startDate.getTime() - minDate) / dayMs;
     const duration = (item.deadline.getTime() - item.startDate.getTime()) / dayMs + 1;
-    const barWidth = Math.max(1, duration * pxPerDay);
+    const barWidth = Math.max(8, duration * pxPerDay);
     const barLeft = startOffset * pxPerDay;
     
     const color = item.level === 2 ? "#f97316" : "#3b82f6";
+    const textColor = item.level === 2 ? "#fff" : "#fff";
     
-    html += `<div style="display:flex;align-items:center;border-bottom:1px solid #eee;padding:6px 0">`;
-    html += `<div style="width:250px;flex-shrink:0;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">${escapeHtml(item.title)}</div>`;
-    html += `<div style="position:relative;height:24px;width:${containerWidth - 250}px">`;
-    html += `<div style="position:absolute;left:${barLeft}px;top:2px;height:20px;width:${barWidth}px;background:${color};border-radius:3px;opacity:0.7" title="${escapeHtml(item.title)} · ${item.startDate.toLocaleDateString('de-DE')} bis ${item.deadline.toLocaleDateString('de-DE')}"></div>`;
+    html += `<div style="display:flex;align-items:center;border-bottom:1px solid #eee;padding:0;min-height:40px">`;
+    html += `<div style="width:280px;flex-shrink:0;padding:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500">${escapeHtml(item.title)}</div>`;
+    html += `<div style="position:relative;height:32px;width:${containerWidth - 280}px;margin:0">`;
+    html += `<div style="position:absolute;left:${barLeft}px;top:4px;height:24px;min-width:${barWidth}px;background:${color};border-radius:4px;padding:0 4px;display:flex;align-items:center;color:${textColor};font-size:11px;font-weight:bold;box-shadow:0 1px 3px rgba(0,0,0,0.2)" title="${escapeHtml(item.title)} · ${item.startDate.toLocaleDateString('de-DE')} bis ${item.deadline.toLocaleDateString('de-DE')}">${barWidth > 50 ? escapeHtml(item.title).substring(0, Math.floor(barWidth / 7)) : ""}</div>`;
     html += `</div>`;
     html += `</div>`;
   });

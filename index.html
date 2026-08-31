@@ -173,6 +173,7 @@ let bilanz = 0;                                           // Tages-Bilanz (start
 let minTaskGoal = parseInt(localStorage.getItem("minTaskGoal"))||18;  // Mindest-Tasks pro Tag für Streak
 let allOpenGoals = [];                                    // Alle offenen Ziele (auch zukünftige)
 let allGTasks = [];                                       // Alle offenen Google Tasks (mit oder ohne Deadline, beliebiges Datum)
+let todayCalendarEvents = [];                             // Heutige Kalender-Events
 let gtasks = [];                                          // Google-Tasks-Einträge (Standardliste, grüne Sektion)
 let gtasksStatus = "";                                    // Diagnose-Text fürs UI
 let goalTasks = [];                                       // heutige Tagesziele (offen + heute erledigt) aus Google Tasks
@@ -331,6 +332,32 @@ const GTASKS="https://tasks.googleapis.com/tasks/v1";
 /* ---- Google Tasks laden: grüne Sektion + heutige Ziele (offen + heute erledigt) ---- */
 function isGoalTask(t){ return (t.notes||"").includes(GOAL_MARKER); }
 
+async function loadTodayCalendarEvents(){
+  try{
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const calId = defaultCalId || "primary";
+    const timeMin = today.toISOString();
+    const timeMax = tomorrow.toISOString();
+    
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime`;
+    const res = await api(url);
+    
+    todayCalendarEvents = (res.items || []).map(e => ({
+      id: e.id,
+      title: e.summary || "(ohne Titel)",
+      start: new Date(e.start.dateTime || e.start.date),
+      end: new Date(e.end.dateTime || e.end.date),
+      allDay: !e.start.dateTime
+    }));
+  }catch(e){
+    console.error("Kalender-Events laden:", e);
+    todayCalendarEvents = [];
+  }
+}
 async function loadGTasks(){
   try{
     const lists=await api(`${GTASKS}/users/@me/lists?maxResults=100`);
@@ -1193,6 +1220,18 @@ function render(){
             <div class="title" style="color:#000;font-weight:bold">${esc(t.title||"(ohne Titel)")}</div>
             ${cleanNotes?`<div class="note-text" style="color:#666;font-size:13px">${esc(cleanNotes)}</div>`:""}
             <div style="font-size:12px;margin-top:6px;padding:4px 8px;background:${dlColor};color:#fff;border-radius:4px;display:inline-block;font-weight:bold">${dlLabel}</div>
+          </div>
+        </div>`;
+      });
+    }
+    if(todayCalendarEvents.length){
+      h+=`<div class="section-title">📅 Kalender Heute</div>`;
+      todayCalendarEvents.sort((a,b)=>a.start - b.start).forEach(e=>{
+        const timeStr = e.allDay ? "Ganztägig" : e.start.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
+        h+=`<div class="card" style="background:#e0f2fe;border-left:4px solid #0284c7">
+          <div style="flex:1">
+            <div class="title" style="color:#000">${esc(e.title)}</div>
+            <div class="sub" style="color:#0284c7">${timeStr}</div>
           </div>
         </div>`;
       });
@@ -2473,6 +2512,12 @@ async function bootData(){
     
     console.log("5️⃣ loadGTasks...");
     await loadGTasks();
+    console.log("  ✓ loadGTasks ok");
+    
+    console.log("6️⃣ loadTodayCalendarEvents...");
+    await loadTodayCalendarEvents();
+    console.log("  ✓ loadTodayCalendarEvents ok, events:",todayCalendarEvents.length);
+    
     console.log("  ✓ checkGoalsPenalty...");
     checkGoalsPenalty();
     
@@ -2495,7 +2540,7 @@ async function signIn(){
 }
 function signOut(){
   if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
-  accessToken=null; tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[];
+  accessToken=null; tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[]; todayCalendarEvents=[];
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";
   $("acctBtn").textContent="Anmelden"; setSync("");

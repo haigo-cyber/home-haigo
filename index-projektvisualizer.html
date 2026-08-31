@@ -1203,10 +1203,12 @@ function renderNode(node, isRoot){
   const late = isLate(node);
   const dueChip = hasChildren
     ? `<input type="date" class="dl-input" data-nid="${node._id}" value="${node.deadline||''}" title="Deadline (gilt auch für Unterpunkte)">` +
-      `<input type="date" class="sd-input" data-nid="${node._id}" value="${node.startDate||''}" title="Start-Datum">`
-    : `<span class="gt-dot ${node.gtId?'':'off'}" title="${node.gtId?'in Google Tasks':'nicht in Google Tasks'}"></span>`+
+      `<input type="date" class="sd-input" data-nid="${node._id}" value="${node.startDate||''}" title="Start-Datum">` +
+      `<span class="gt-dot ${node.gtId?'':'off'}" title="${node.gtId?'in Google Tasks':'nicht in Google Tasks'}"></span>`+
       `<input type="date" class="due-input ${late?'due-late':''}" data-nid="${node._id}" value="${node.due||''}" title="${late?'Termin liegt nach der Deadline '+effectiveDeadline(node):'Fälligkeitsdatum'}">`+
-      (late?`<span class="late-warn" title="Termin liegt nach der Deadline ${effectiveDeadline(node)}">⚠</span>`:"");
+      (late?`<span class="late-warn" title="Termin liegt nach der Deadline ${effectiveDeadline(node)}">⚠</span>`:"")
+    : `<input type="date" class="dl-input" data-nid="${node._id}" value="${node.deadline||''}" title="Deadline">` +
+      `<input type="date" class="sd-input" data-nid="${node._id}" value="${node.startDate||''}" title="Start-Datum">`;
   const arcLeafBtn = (isLeaf && !node.archived && node.status==="fertig")
     ? `<button class="btnArcLeaf" data-nid="${node._id}" title="Erledigten Punkt archivieren">Archiv</button>` 
     : (isLeaf && node.archived)
@@ -1216,6 +1218,8 @@ function renderNode(node, isRoot){
     ? `<button class="btnMoveProj" data-nid="${node._id}" title="In anderes Projekt verschieben">→</button>` : "";
   const moveToParentBtn = (!isRoot && hasChildren && node.level >= 2)
     ? `<button class="btnMoveToParent" data-nid="${node._id}" title="Zu anderem Unterprojekt verschieben">↔</button>` : "";
+  const moveToAnyParentBtn = (!isRoot && node.level >= 2)
+    ? `<button class="btnMoveToAnyParent" data-nid="${node._id}" title="Zu beliebigem Oberprojekt verschieben">⤴</button>` : "";
   const progressHtml = hasChildren ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
   const childrenHtml = hasChildren ? `<div class="children">${inner}</div>` : "";
   return `<div class="node node-indent-${indent}">
@@ -1224,7 +1228,7 @@ function renderNode(node, isRoot){
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
-      <div class="node-actions">${moveBtns}${moveProjBtn}${moveToParentBtn}${arcLeafBtn}${arcBtn}${addBtn}${delBtn}</div>
+      <div class="node-actions">${moveBtns}${moveProjBtn}${moveToParentBtn}${moveToAnyParentBtn}${arcLeafBtn}${arcBtn}${addBtn}${delBtn}</div>
     </div>
     ${progressHtml}
     ${childrenHtml}
@@ -1354,6 +1358,13 @@ function bindNodeEvents(container){
       ev.stopPropagation();
       const n = nodeRegistry[el.dataset.nid];
       if(n && currentProject) moveProjectDialog(currentProject.fileId, n._id);
+    };
+  });
+  container.querySelectorAll('.btnMoveToAnyParent').forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      if(n) moveToAnyParentDialog(n);
     };
   });
   container.querySelectorAll('.focus-btn').forEach(el=>{
@@ -2096,7 +2107,7 @@ function renderGantt(){
   const pxPerDay = Math.max(3, (containerWidth - 280) / rangeDays);
   
   // Render
-  let html = `<div style="overflow-x:auto;font-family:system-ui;font-size:13px;color:#333">`;
+  let html = `<div style="overflow-x:auto;font-family:system-ui;font-size:15px;color:#ddd">`;
   
   // Header mit Daten
   html += `<div style="display:flex;border-bottom:2px solid #999">`;
@@ -2108,7 +2119,7 @@ function renderGantt(){
     const bg = isWeekend ? "#f5f5f5" : "#fff";
     const isSunday = d.getDay() === 0;
     const border = isSunday ? "1px solid #999" : "1px solid #ddd";
-    html += `<div style="width:${pxPerDay}px;padding:6px 2px;text-align:center;background:${bg};border-right:${border};font-size:11px;flex-shrink:0;min-height:30px">${d.getDate()}</div>`;
+    html += `<div style="width:${pxPerDay}px;padding:6px 2px;text-align:center;background:${bg};border-right:${border};font-size:13px;flex-shrink:0;min-height:30px">${d.getDate()}</div>`;
   }
   html += `</div>`;
   html += `</div>`;
@@ -2124,9 +2135,9 @@ function renderGantt(){
     const textColor = item.level === 2 ? "#fff" : "#fff";
     
     html += `<div style="display:flex;align-items:center;border-bottom:1px solid #eee;padding:0;min-height:40px">`;
-    html += `<div style="width:280px;flex-shrink:0;padding:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500">${escapeHtml(item.title)}</div>`;
+    html += `<div style="width:280px;flex-shrink:0;padding:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500">${escapeHtml(item.title)}</div>`;
     html += `<div style="position:relative;height:32px;width:${containerWidth - 280}px;margin:0">`;
-    html += `<div style="position:absolute;left:${barLeft}px;top:4px;height:24px;min-width:${barWidth}px;background:${color};border-radius:4px;padding:0 4px;display:flex;align-items:center;color:${textColor};font-size:11px;font-weight:bold;box-shadow:0 1px 3px rgba(0,0,0,0.2)" title="${escapeHtml(item.title)} · ${item.startDate.toLocaleDateString('de-DE')} bis ${item.deadline.toLocaleDateString('de-DE')}">${barWidth > 50 ? escapeHtml(item.title).substring(0, Math.floor(barWidth / 7)) : ""}</div>`;
+    html += `<div style="position:absolute;left:${barLeft}px;top:4px;height:24px;min-width:${barWidth}px;background:${color};border-radius:4px;padding:0 4px;display:flex;align-items:center;color:${textColor};font-size:13px;font-weight:bold;box-shadow:0 1px 3px rgba(0,0,0,0.2)" title="${escapeHtml(item.title)} · ${item.startDate.toLocaleDateString('de-DE')} bis ${item.deadline.toLocaleDateString('de-DE')}">${barWidth > 50 ? escapeHtml(item.title).substring(0, Math.floor(barWidth / 7)) : ""}</div>`;
     html += `</div>`;
     html += `</div>`;
   });
@@ -2243,7 +2254,90 @@ function renderRoadmap(){
   roadmapView.innerHTML = html;
 }
 
-/* ============ Hilfsfunktionen ============ */
+function moveToAnyParentDialog(nodeToMove){
+  // Sammle alle möglichen Parent-Nodes (##) aus allen Projekten
+  const possibleParents = [];
+  
+  projects.forEach(proj => {
+    const walk = (node) => {
+      if(node.level === 2 && node._id !== nodeToMove._id && !isAncestorOf(nodeToMove, node)){
+        possibleParents.push({node, project: proj, projectName: proj.title});
+      }
+      node.children.forEach(walk);
+    };
+    walk(proj.root);
+  });
+  
+  if(possibleParents.length === 0){
+    toast("Keine Ziel-Oberprojekte vorhanden");
+    return;
+  }
+  
+  let html = `<div style="max-height:400px;overflow-y:auto">`;
+  
+  // Gruppiere nach Projekt
+  const byProject = {};
+  possibleParents.forEach(item => {
+    if(!byProject[item.projectName]) byProject[item.projectName] = [];
+    byProject[item.projectName].push(item);
+  });
+  
+  Object.keys(byProject).sort().forEach(projName => {
+    html += `<div style="padding:8px;font-weight:bold;background:var(--border);color:var(--text)">${escapeHtml(projName)}</div>`;
+    byProject[projName].forEach(item => {
+      html += `<div style="padding:8px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--card);padding-left:24px" data-move-to-parent="${item.node._id}" data-move-to-project="${item.project.fileId}">\n        ${escapeHtml(item.node.title)}\n      </div>`;
+    });
+  });
+  
+  html += `</div>`;
+  
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000';
+  modal.innerHTML = `\n    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;width:90%;max-width:450px">\n      <h3 style="margin:0 0 12px">Verschiebe \"${escapeHtml(nodeToMove.title)}\" zu:</h3>\n      ${html}\n      <button style="width:100%;margin-top:12px;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--text)" onclick="this.parentElement.parentElement.remove()">Abbrechen</button>\n    </div>\n  `;
+  document.body.appendChild(modal);
+  
+  modal.querySelectorAll('[data-move-to-parent]').forEach(el => {
+    el.onclick = () => {
+      const newParentId = el.dataset.moveToParent;
+      const targetProjFileId = el.dataset.moveToProject;
+      const targetProj = projects.find(p => p.fileId === targetProjFileId);
+      
+      if(!targetProj) return;
+      
+      // Entferne Node aus aktuellem Parent
+      if(nodeToMove.parent){
+        const idx = nodeToMove.parent.children.indexOf(nodeToMove);
+        if(idx >= 0) nodeToMove.parent.children.splice(idx, 1);
+      }
+      
+      // Finde neuen Parent
+      const newParent = findNode(targetProj.root, newParentId);
+      if(newParent){
+        newParent.children.push(nodeToMove);
+        nodeToMove.parent = newParent;
+        updateNodeLevelsRecursive(nodeToMove, newParent.level + 1);
+        touchNode(nodeToMove);
+        scheduleSave(targetProj);
+        if(currentProject && currentProject.fileId !== targetProjFileId){
+          // Auch altes Projekt speichern falls geändert
+          scheduleSave(currentProject);
+        }
+        renderOverview();
+        toast("Verschoben");
+      }
+      modal.remove();
+    };
+  });
+}
+
+function isAncestorOf(child, potentialAncestor){
+  let p = child.parent;
+  while(p){
+    if(p._id === potentialAncestor._id) return true;
+    p = p.parent;
+  }
+  return false;
+}
 function escapeHtml(s){
   return (s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }

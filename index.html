@@ -343,7 +343,7 @@ async function loadTodayCalendarEvents(){
     const timeMin = today.toISOString();
     const timeMax = tomorrow.toISOString();
     
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&showDeleted=false`;
     const res = await api(url);
     
     todayCalendarEvents = (res.items || []).map(e => ({
@@ -354,7 +354,7 @@ async function loadTodayCalendarEvents(){
       allDay: !e.start.dateTime
     }));
   }catch(e){
-    console.error("Kalender-Events laden:", e);
+    console.error("❌ Kalender-Events laden:", e.message);
     todayCalendarEvents = [];
   }
 }
@@ -1228,9 +1228,10 @@ function render(){
       h+=`<div class="section-title">📅 Kalender Heute</div>`;
       todayCalendarEvents.sort((a,b)=>a.start - b.start).forEach(e=>{
         const timeStr = e.allDay ? "Ganztägig" : e.start.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
+        const title = (e.title||"(ohne Titel)").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
         h+=`<div class="card" style="background:#e0f2fe;border-left:4px solid #0284c7">
           <div style="flex:1">
-            <div class="title" style="color:#000">${esc(e.title)}</div>
+            <div class="title" style="color:#000">${title}</div>
             <div class="sub" style="color:#0284c7">${timeStr}</div>
           </div>
         </div>`;

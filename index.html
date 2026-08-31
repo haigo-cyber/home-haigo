@@ -340,19 +340,25 @@ async function loadTodayCalendarEvents(){
     tomorrow.setDate(tomorrow.getDate() + 1);
     
     const calId = defaultCalId || "primary";
-    const timeMin = today.toISOString();
     const timeMax = tomorrow.toISOString();
     
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&showDeleted=false`;
+    // Abfrage OHNE timeMin - gibt alle Events bis timeMax zurück
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMax=${encodeURIComponent(timeMax)}&maxResults=50&singleEvents=true&showDeleted=false`;
     const res = await api(url);
     
-    todayCalendarEvents = (res.items || []).map(e => ({
-      id: e.id,
-      title: e.summary || "(ohne Titel)",
-      start: new Date(e.start.dateTime || e.start.date),
-      end: new Date(e.end.dateTime || e.end.date),
-      allDay: !e.start.dateTime
-    }));
+    // Filtere nur heute
+    todayCalendarEvents = (res.items || [])
+      .filter(e => {
+        const eventStart = new Date(e.start.dateTime || e.start.date);
+        return eventStart >= today && eventStart < tomorrow;
+      })
+      .map(e => ({
+        id: e.id,
+        title: e.summary || "(ohne Titel)",
+        start: new Date(e.start.dateTime || e.start.date),
+        end: new Date(e.end.dateTime || e.end.date),
+        allDay: !e.start.dateTime
+      }));
   }catch(e){
     console.error("❌ Kalender-Events laden:", e.message);
     todayCalendarEvents = [];

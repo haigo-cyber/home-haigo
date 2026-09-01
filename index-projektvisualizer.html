@@ -351,7 +351,8 @@ function collectLeaves(node, projName, out){
 let accessToken = null;
 let tokenClient = null;
 let folderId = null;
-let projects = []; // {fileId, name, root, dirty}
+let projects = [];
+let currentFilterProjectId = null; // Für Gantt/Roadmap Projekt-Filter // {fileId, name, root, dirty}
 let currentProject = null;
 let nodeRegistry = {};
 let selectedNids = new Set();
@@ -628,11 +629,17 @@ function projectCardHtml(p, i, isArchived, movable){
   const move = movable ? `<div class="card-move"><button class="btnProjUp" data-i="${i}" title="Nach oben">▲</button><button class="btnProjDown" data-i="${i}" title="Nach unten">▼</button></div>` : "";
   const topLevelNode = p.root.children[0];
   const moveBtn = topLevelNode && topLevelNode.level === 2 ? `<button class="btnProjMove" data-projid="${p.fileId}" data-nodeid="${topLevelNode._id}" title="Verschieben">↔</button>` : "";
+  const ganttBtn = `<button class="btnProjGantt" data-projid="${p.fileId}" title="Gantt-Ansicht">📊</button>`;
+  const roadmapBtn = `<button class="btnProjRoadmap" data-projid="${p.fileId}" title="Roadmap-Ansicht">📅</button>`;
   return `<div class="card${isArchived?' card-archived':''}" data-i="${i}">
     ${donutHtml(pg,"small")}
     <div class="info">
       <h3>${escapeHtml(p.title)}</h3>
       <div class="sub">${sub}</div>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:8px">
+      ${ganttBtn}
+      ${roadmapBtn}
     </div>
     ${move}
     ${moveBtn}
@@ -949,6 +956,12 @@ function renderOverview(){
   });
   [...grid.querySelectorAll(".btnProjMove")].forEach(el=>{
     el.onclick = (ev)=>{ ev.stopPropagation(); moveProjectDialog(el.dataset.projid, el.dataset.nodeid); };
+  });
+  [...grid.querySelectorAll(".btnProjGantt")].forEach(el=>{
+    el.onclick = (ev)=>{ ev.stopPropagation(); renderGanttForProject(el.dataset.projid); };
+  });
+  [...grid.querySelectorAll(".btnProjRoadmap")].forEach(el=>{
+    el.onclick = (ev)=>{ ev.stopPropagation(); renderRoadmapForProject(el.dataset.projid); };
   });
 
   if(arch.length===0){
@@ -1609,6 +1622,7 @@ document.getElementById("btnSaveRaw").onclick = async ()=>{
 
 /* ============ Navigation ============ */
 document.getElementById("tabOverviewBtn").onclick = ()=>{
+  currentFilterProjectId = null;
   document.getElementById("tabOverviewBtn").classList.add("active");
   document.getElementById("tabNextBtn").classList.remove("active");
   document.getElementById("tabGanttBtn").classList.remove("active");
@@ -1621,6 +1635,7 @@ document.getElementById("tabOverviewBtn").onclick = ()=>{
   renderOverview();
 };
 document.getElementById("tabNextBtn").onclick = ()=>{
+  currentFilterProjectId = null;
   document.getElementById("tabNextBtn").classList.add("active");
   document.getElementById("tabOverviewBtn").classList.remove("active");
   document.getElementById("tabGanttBtn").classList.remove("active");
@@ -2063,13 +2078,27 @@ async function doRestore(){
   toast(added+" Projekt(e) wiederhergestellt");
 }
 
+function renderGanttForProject(projectId){
+  currentFilterProjectId = projectId;
+  document.getElementById("tabGanttBtn").click();
+}
+
+function renderRoadmapForProject(projectId){
+  currentFilterProjectId = projectId;
+  document.getElementById("tabRoadmapBtn").click();
+}
+
 function renderGantt(){
   const ganttView = document.getElementById("ganttView");
   const ganttEmpty = document.getElementById("ganttEmpty");
   
   // Sammle alle Nodes mit Start-Datum und Deadline
   const ganttItems = [];
-  projects.forEach(proj => {
+  const filteredProjects = currentFilterProjectId 
+    ? projects.filter(p => p.fileId === currentFilterProjectId)
+    : projects;
+    
+  filteredProjects.forEach(proj => {
     const walk = (node) => {
       if(node.level > 0 && node.startDate && node.deadline && node.status !== "fertig"){
         ganttItems.push({
@@ -2152,7 +2181,11 @@ function renderRoadmap(){
   
   // Sammle alle Nodes mit Deadline
   const roadmapItems = [];
-  projects.forEach(proj => {
+  const filteredProjects = currentFilterProjectId 
+    ? projects.filter(p => p.fileId === currentFilterProjectId)
+    : projects;
+    
+  filteredProjects.forEach(proj => {
     const walk = (node) => {
       if(node.level > 0 && node.deadline && node.status !== "fertig"){
         roadmapItems.push({

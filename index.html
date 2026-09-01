@@ -132,6 +132,7 @@
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
     <button data-view="links"><span class="nico">🔗</span>Links</button>
     <button data-view="notes"><span class="nico">📝</span>Notizen</button>
+    <button data-view="projects"><span class="nico">📋</span>Projekte</button>
     <button data-view="goals"><span class="nico">⭐</span>Ziele</button>
     <button data-view="habits"><span class="nico">🔥</span>Gewohn.</button>
     <button data-view="duties"><span class="nico">🔁</span>Pflicht</button>
@@ -342,14 +343,21 @@ async function loadTodayCalendarEvents(){
     const timeMin = today.toISOString();
     const timeMax = tomorrow.toISOString();
     
+    // Exakte Calendar-Namen
+    const allowedNames = ["mein Hauptkalender", "Elterngespräch", "Eudämonie - Mensa", "Wichtiges und Genealogie", "Familie", "Gen", "Job"];
+    
     todayCalendarEvents = [];
     
-    // Abfrage für ALLE Calendars des Users
     if(!calendars || calendars.length === 0){
       return;
     }
     
     for(const cal of calendars){
+      // Nur primary + exakte Namensübereinstimmung
+      const isAllowed = cal.primary || allowedNames.includes(cal.summary);
+      
+      if(!isAllowed) continue;
+      
       try{
         const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&maxResults=100`;
         const res = await api(url);
@@ -367,15 +375,14 @@ async function loadTodayCalendarEvents(){
           });
         }
       }catch(err){
-        console.warn("Event von Calendar", cal.id, "nicht abrufbar:", err.message);
+        console.warn("Event von Calendar", cal.summary, "nicht abrufbar");
       }
     }
     
-    // Sortiere nach Start-Zeit
     todayCalendarEvents.sort((a,b) => a.start - b.start);
     
   }catch(e){
-    console.error("❌ Kalender laden fehlgeschlagen:", e);
+    console.error("❌ Kalender laden:", e);
     todayCalendarEvents = [];
   }
 }
@@ -442,6 +449,21 @@ async function addGoalTask(title, dueDate){
     alert("Ziel speichern fehlgeschlagen:\n"+e.message);
     setSync("on");
   }
+}
+
+/* ---- Kalender Event abhaken ---- */
+function completeCalEvent(eventId){
+  const completed = JSON.parse(localStorage.getItem("completedCalEvents") || "[]");
+  if(!completed.includes(eventId)){
+    completed.push(eventId);
+    localStorage.setItem("completedCalEvents", JSON.stringify(completed));
+    
+    // Schreibe in Logs für Statistik
+    const today = todayKey();
+    logs.push({itemId: "cal:"+eventId, date: today, doneAt: new Date().toISOString()});
+    saveLogs();
+  }
+  render();
 }
 
 /* ---- Google Task abhaken ---- */
@@ -1182,7 +1204,7 @@ function render(){
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",settings:"Konto"};
   $("hTitle").textContent=titles[view]||"ToDo";
-  $("fab").style.display=(view==="today"||view==="settings"||view==="stats"||view==="migrate")?"none":"block";
+  $("fab").style.display=(view==="today"||view==="settings"||view==="stats"||view==="migrate"||view==="projects")?"none":"block";
   $("fabQuick").style.display=(view==="settings")?"none":"block";
   const active=tasks.filter(t=>!t.archived);
 
@@ -1246,13 +1268,16 @@ function render(){
       });
     }
     if(todayCalendarEvents.length){
-      const eventsOnly = todayCalendarEvents.filter(e => !e.allDay);
-      if(eventsOnly.length){
-        h+=`<div class="section-title">📅 Kalender Heute (${eventsOnly.length})</div>`;
-        eventsOnly.forEach(e=>{
+      const completedCalEvents = JSON.parse(localStorage.getItem("completedCalEvents") || "[]");
+      const visibleEvents = todayCalendarEvents.filter(e => !completedCalEvents.includes(e.id));
+      
+      if(visibleEvents.length){
+        h+=`<div class="section-title">📅 Kalender Heute (${visibleEvents.length})</div>`;
+        visibleEvents.forEach(e=>{
           const timeStr = e.start.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
           const title = (e.title||"(ohne Titel)").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
           h+=`<div class="card" style="background:#e0f2fe;border-left:4px solid #0284c7">
+            <div class="check" data-calevent="${e.id}">${checkSvg()}</div>
             <div style="flex:1">
               <div class="title" style="color:#000">${title}</div>
               <div class="sub" style="color:#0284c7">${timeStr}</div>
@@ -1430,6 +1455,9 @@ function render(){
     });
     const list=[...withDate,...noDate,...done];
     main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:true, key:key, oneTime:true})).join(""):empty("Noch keine ToDos. Mit + anlegen.");
+  }
+  else if(view==="projects"){
+    main.innerHTML=`<div style="padding:40px 20px;text-align:center"><h2 style="margin-top:0">Projekt-Verwaltung</h2><p style="color:#999;margin-bottom:20px">Öffne den Projekt-Visualizer um Projekte zu verwalten, Gantt- und Roadmap-Ansichten zu sehen.</p><button class="primary" onclick="window.open('index-projektvisualizer.html','_blank')" style="padding:12px 24px;font-size:16px">📋 Projekt-Visualizer öffnen</button></div>`;
   }
   else if(view==="goals"){
     const doneCount=goalTasks.filter(g=>g.completed).length;
@@ -2479,6 +2507,7 @@ main.addEventListener("click",e=>{
   const mDone=e.target.closest("[data-mig-done]"); if(mDone){ toggleDone(mDone.dataset.migDone,"once"); return; }
   const mDrop=e.target.closest("[data-mig-drop]"); if(mDrop){ if(confirm("Diesen Punkt verwerfen?")) deleteTask(mDrop.dataset.migDrop); return; }
   const gt=e.target.closest("[data-gtask]"); if(gt){ completeGTask(gt.dataset.gtask); return; }
+  const ce=e.target.closest("[data-calevent]"); if(ce){ completeCalEvent(ce.dataset.calevent); return; }
   const guc=e.target.closest("[data-guncheck]"); if(guc){ uncompleteGTask(guc.dataset.guncheck); return; }
   const gdl=e.target.closest("[data-gdel]"); if(gdl){ if(confirm("Ziel wirklich löschen?")) deleteGTask(gdl.dataset.gdel); return; }
   const ed=e.target.closest("[data-edit]"); if(ed){ const t=tasks.find(x=>x.id===ed.dataset.edit); if(t) openForm(t.type,t); return; }

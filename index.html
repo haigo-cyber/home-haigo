@@ -170,6 +170,7 @@ let tasks = [], logs = [], projects = [], notes = [], links = [];
 let view = "today";
 let selectedProjectId = null;
 let calendars = [];                                       // schreibbare Kalender des Nutzers
+let allCalendars = [];                                    // ALLE Kalender (auch nur lesbar) für Kalender-Anzeige
 let bilanz = 0;                                           // Tages-Bilanz (startet bei 0, -2 pro nicht erfülltes Ziel)
 let minTaskGoal = parseInt(localStorage.getItem("minTaskGoal"))||18;  // Mindest-Tasks pro Tag für Streak
 let allOpenGoals = [];                                    // Alle offenen Ziele (auch zukünftige)
@@ -343,18 +344,25 @@ async function loadTodayCalendarEvents(){
     const timeMin = today.toISOString();
     const timeMax = tomorrow.toISOString();
     
-    // Exakte Calendar-Namen
-    const allowedNames = ["mein Hauptkalender", "Elterngespräch", "Eudämonie - Mensa", "Wichtiges und Genealogie", "Familie", "Gen", "Job"];
+    // Erlaubte Kalender per ID (stabil, unabhängig vom angezeigten Namen)
+    const allowedIds = [
+      "cd33d06513693be448a1d219fb1741ae39574045eddcedb86291166ef6f2fff0@group.calendar.google.com", // Elterngespräch
+      "c6f7a3cfdd2f04455c496ffb4cd461c881d469f46c616c32607e9912325d3e4f@group.calendar.google.com", // Eudämonie - Mensa / Wichtiges und Genealogie
+      "egh6tb0v59vpfaobbt62j67fmk@group.calendar.google.com",                                       // Sil Koordination
+      "family16012978373033205725@group.calendar.google.com"                                        // Familie
+    ];
+    // Zusätzlich: alte Namensliste als Fallback (falls IDs sich mal ändern)
+    const allowedNames = ["mein Hauptkalender", "Elterngespräch", "Eudämonie - Mensa", "Wichtiges und Genealogie", "Familie", "Gen", "Job", "Sil Koordination"];
     
     todayCalendarEvents = [];
     
-    if(!calendars || calendars.length === 0){
+    const sourceCalendars = (allCalendars && allCalendars.length) ? allCalendars : calendars;
+    if(!sourceCalendars || sourceCalendars.length === 0){
       return;
     }
     
-    for(const cal of calendars){
-      // Nur primary + exakte Namensübereinstimmung
-      const isAllowed = cal.primary || allowedNames.includes(cal.summary);
+    for(const cal of sourceCalendars){
+      const isAllowed = cal.primary || allowedIds.includes(cal.id) || allowedNames.includes(cal.summary);
       
       if(!isAllowed) continue;
       
@@ -375,7 +383,7 @@ async function loadTodayCalendarEvents(){
           });
         }
       }catch(err){
-        console.warn("Event von Calendar", cal.summary, "nicht abrufbar");
+        console.warn("Event von Calendar", cal.summary, "nicht abrufbar", err);
       }
     }
     
@@ -681,6 +689,14 @@ async function loadCalendars(){
     console.warn("Kalenderliste nicht ladbar:",e);
     calendars=[{id:"primary",summary:"Hauptkalender",primary:true}];
     toast("Für die Kalenderauswahl bitte ab- und neu anmelden");
+  }
+  // Zusätzlich: ALLE Kalender laden (auch nur lesbar geteilte), für die Kalender-Anzeige in Heute
+  try{
+    const resAll=await api("https://www.googleapis.com/calendar/v3/users/me/calendarList?fields=items(id,summary,primary)");
+    allCalendars=(resAll.items||[]).map(c=>({id:c.id, summary:c.summary, primary:!!c.primary}));
+  }catch(e){
+    console.warn("Vollständige Kalenderliste nicht ladbar:",e);
+    allCalendars=calendars.slice();
   }
 }
 function colLetter(n){ let s=""; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
@@ -1737,7 +1753,7 @@ function render(){
         const oldId=spreadsheetId;
         localStorage.removeItem("ssid");
         spreadsheetId=null;
-        tasks=[]; logs=[]; projects=[]; notes=[]; calendars=[];
+        tasks=[]; logs=[]; projects=[]; notes=[]; calendars=[]; allCalendars=[];
         // Lösche die alte Tabelle in Google Drive
         if(oldId) await deleteSheet(oldId);
         console.log("✅ Alte Tabelle gelöscht, neue wird erstellt...");

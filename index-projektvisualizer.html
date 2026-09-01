@@ -629,8 +629,8 @@ function projectCardHtml(p, i, isArchived, movable){
   const move = movable ? `<div class="card-move"><button class="btnProjUp" data-i="${i}" title="Nach oben">▲</button><button class="btnProjDown" data-i="${i}" title="Nach unten">▼</button></div>` : "";
   const topLevelNode = p.root.children[0];
   const moveBtn = topLevelNode && topLevelNode.level === 2 ? `<button class="btnProjMove" data-projid="${p.fileId}" data-nodeid="${topLevelNode._id}" title="Verschieben">↔</button>` : "";
-  const ganttBtn = `<button class="btnProjGantt" data-projid="${p.fileId}" title="Gantt-Ansicht">📊</button>`;
-  const roadmapBtn = `<button class="btnProjRoadmap" data-projid="${p.fileId}" title="Roadmap-Ansicht">📅</button>`;
+  const ganttBtn = `<button class="btnProjGantt" onclick="event.stopPropagation(); renderGanttForProject('${p.fileId}')" title="Gantt-Ansicht">📊</button>`;
+  const roadmapBtn = `<button class="btnProjRoadmap" onclick="event.stopPropagation(); renderRoadmapForProject('${p.fileId}')" title="Roadmap-Ansicht">📅</button>`;
   return `<div class="card${isArchived?' card-archived':''}" data-i="${i}">
     ${donutHtml(pg,"small")}
     <div class="info">
@@ -2098,12 +2098,14 @@ function renderGantt(){
   const ganttView = document.getElementById("ganttView");
   const ganttEmpty = document.getElementById("ganttEmpty");
   
+  
   // Sammle alle Nodes mit Start-Datum und Deadline
   const ganttItems = [];
   const filteredProjects = currentFilterProjectId 
     ? projects.filter(p => p.fileId === currentFilterProjectId)
     : projects;
     
+  
   filteredProjects.forEach(proj => {
     const walk = (node) => {
       if(node.level > 0 && node.startDate && node.deadline && node.status !== "fertig"){

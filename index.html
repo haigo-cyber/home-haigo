@@ -342,18 +342,40 @@ async function loadTodayCalendarEvents(){
     const timeMin = today.toISOString();
     const timeMax = tomorrow.toISOString();
     
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&maxResults=100`;
-    const res = await api(url);
+    todayCalendarEvents = [];
     
-    todayCalendarEvents = (res.items || []).map(e => ({
-      id: e.id,
-      title: e.summary || "(ohne Titel)",
-      start: new Date(e.start.dateTime || e.start.date),
-      end: new Date(e.end.dateTime || e.end.date),
-      allDay: !e.start.dateTime
-    })).sort((a,b) => a.start - b.start);
+    // Abfrage für ALLE Calendars des Users
+    if(!calendars || calendars.length === 0){
+      return;
+    }
+    
+    for(const cal of calendars){
+      try{
+        const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&maxResults=100`;
+        const res = await api(url);
+        
+        if(res.items){
+          res.items.forEach(e => {
+            todayCalendarEvents.push({
+              id: e.id,
+              title: e.summary || "(ohne Titel)",
+              start: new Date(e.start.dateTime || e.start.date),
+              end: new Date(e.end.dateTime || e.end.date),
+              allDay: !e.start.dateTime,
+              calendarName: cal.summary
+            });
+          });
+        }
+      }catch(err){
+        console.warn("Event von Calendar", cal.id, "nicht abrufbar:", err.message);
+      }
+    }
+    
+    // Sortiere nach Start-Zeit
+    todayCalendarEvents.sort((a,b) => a.start - b.start);
+    
   }catch(e){
-    console.error("❌ Kalender laden:", e);
+    console.error("❌ Kalender laden fehlgeschlagen:", e);
     todayCalendarEvents = [];
   }
 }

@@ -2098,33 +2098,36 @@ function renderGantt(){
   const ganttView = document.getElementById("ganttView");
   const ganttEmpty = document.getElementById("ganttEmpty");
   
-  // Sammle alle Nodes mit Start-Datum und Deadline
-  const ganttItems = [];
-  
-  // Wenn currentFilterProjectId gesetzt, NUR dieses Projekt verwenden
-  let projectsToRender = [];
-  if(currentFilterProjectId){
-    const proj = projects.find(p => p.fileId === currentFilterProjectId);
-    if(proj) projectsToRender = [proj];
-  } else {
-    projectsToRender = projects;
+  // Wenn kein Projekt selected, nicht zeigen
+  if(!currentFilterProjectId){
+    ganttView.innerHTML = "";
+    ganttEmpty.classList.remove("hidden");
+    ganttEmpty.textContent = "Wähle ein Projekt aus, um die Gantt-Ansicht zu sehen.";
+    return;
   }
   
-  projectsToRender.forEach(proj => {
-    const walk = (node) => {
-      if(node.level > 0 && node.startDate && node.deadline && node.status !== "fertig"){
-        ganttItems.push({
-          title: node.title,
-          project: proj.title,
-          startDate: new Date(node.startDate),
-          deadline: new Date(node.deadline),
-          level: node.level
-        });
-      }
-      node.children.forEach(walk);
-    };
-    walk(proj.root);
-  });
+  // NUR das ausgewählte Projekt
+  const proj = projects.find(p => p.fileId === currentFilterProjectId);
+  if(!proj){
+    ganttView.innerHTML = "";
+    ganttEmpty.classList.remove("hidden");
+    return;
+  }
+  
+  const ganttItems = [];
+  const walk = (node) => {
+    if(node.level > 0 && node.startDate && node.deadline && node.status !== "fertig"){
+      ganttItems.push({
+        title: node.title,
+        project: proj.title,
+        startDate: new Date(node.startDate),
+        deadline: new Date(node.deadline),
+        level: node.level
+      });
+    }
+    node.children.forEach(walk);
+  };
+  walk(proj.root);
   
   if(ganttItems.length === 0){
     ganttView.innerHTML = "";
@@ -2191,33 +2194,36 @@ function renderRoadmap(){
   const roadmapView = document.getElementById("roadmapView");
   const roadmapEmpty = document.getElementById("roadmapEmpty");
   
-  // Sammle alle Nodes mit Deadline
-  const roadmapItems = [];
-  
-  // Wenn currentFilterProjectId gesetzt, NUR dieses Projekt verwenden
-  let projectsToRender = [];
-  if(currentFilterProjectId){
-    const proj = projects.find(p => p.fileId === currentFilterProjectId);
-    if(proj) projectsToRender = [proj];
-  } else {
-    projectsToRender = projects;
+  // Wenn kein Projekt selected, nicht zeigen
+  if(!currentFilterProjectId){
+    roadmapView.innerHTML = "";
+    roadmapEmpty.classList.remove("hidden");
+    roadmapEmpty.textContent = "Wähle ein Projekt aus, um die Roadmap-Ansicht zu sehen.";
+    return;
   }
-    
-  projectsToRender.forEach(proj => {
-    const walk = (node) => {
-      if(node.level > 0 && node.deadline && node.status !== "fertig"){
-        roadmapItems.push({
-          title: node.title,
-          project: proj.title,
-          deadline: new Date(node.deadline),
-          status: node.status,
-          level: node.level
-        });
-      }
-      node.children.forEach(walk);
-    };
-    walk(proj.root);
-  });
+  
+  // NUR das ausgewählte Projekt
+  const proj = projects.find(p => p.fileId === currentFilterProjectId);
+  if(!proj){
+    roadmapView.innerHTML = "";
+    roadmapEmpty.classList.remove("hidden");
+    return;
+  }
+  
+  const roadmapItems = [];
+  const walk = (node) => {
+    if(node.level > 0 && node.deadline && node.status !== "fertig"){
+      roadmapItems.push({
+        title: node.title,
+        project: proj.title,
+        deadline: new Date(node.deadline),
+        status: node.status,
+        level: node.level
+      });
+    }
+    node.children.forEach(walk);
+  };
+  walk(proj.root);
   
   if(roadmapItems.length === 0){
     roadmapView.innerHTML = "";

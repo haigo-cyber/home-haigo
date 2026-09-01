@@ -183,6 +183,20 @@ let defaultGTaskListId = "";                              // ID der Standard-Auf
 const GOAL_MARKER = "[Tagesziel]";                        // Kennzeichnung von Zielen in den Notizen
 const INBOX_MARKER = "[Posteingang]";                     // Kennzeichnung schnell erfasster, noch nicht einsortierter Einträge
 let defaultCalId = localStorage.getItem("defcal") || "primary";
+const DEFAULT_VISIBLE_CAL_IDS = [
+  "cd33d06513693be448a1d219fb1741ae39574045eddcedb86291166ef6f2fff0@group.calendar.google.com", // Elterngespräch
+  "c6f7a3cfdd2f04455c496ffb4cd461c881d469f46c616c32607e9912325d3e4f@group.calendar.google.com", // Eudämonie - Mensa / Wichtiges und Genealogie
+  "egh6tb0v59vpfaobbt62j67fmk@group.calendar.google.com",                                       // Sil Koordination
+  "family16012978373033205725@group.calendar.google.com"                                        // Familie
+];
+function getVisibleCalendarIds(){
+  const raw = localStorage.getItem("visibleCalIds");
+  if(raw===null) return DEFAULT_VISIBLE_CAL_IDS.slice();
+  try{ return JSON.parse(raw); }catch(e){ return DEFAULT_VISIBLE_CAL_IDS.slice(); }
+}
+function setVisibleCalendarIds(ids){
+  localStorage.setItem("visibleCalIds", JSON.stringify(ids));
+}
 
 /* ============ HILFEN ============ */
 const $ = (id) => document.getElementById(id);
@@ -344,15 +358,7 @@ async function loadTodayCalendarEvents(){
     const timeMin = today.toISOString();
     const timeMax = tomorrow.toISOString();
     
-    // Erlaubte Kalender per ID (stabil, unabhängig vom angezeigten Namen)
-    const allowedIds = [
-      "cd33d06513693be448a1d219fb1741ae39574045eddcedb86291166ef6f2fff0@group.calendar.google.com", // Elterngespräch
-      "c6f7a3cfdd2f04455c496ffb4cd461c881d469f46c616c32607e9912325d3e4f@group.calendar.google.com", // Eudämonie - Mensa / Wichtiges und Genealogie
-      "egh6tb0v59vpfaobbt62j67fmk@group.calendar.google.com",                                       // Sil Koordination
-      "family16012978373033205725@group.calendar.google.com"                                        // Familie
-    ];
-    // Zusätzlich: alte Namensliste als Fallback (falls IDs sich mal ändern)
-    const allowedNames = ["mein Hauptkalender", "Elterngespräch", "Eudämonie - Mensa", "Wichtiges und Genealogie", "Familie", "Gen", "Job", "Sil Koordination"];
+    const visibleIds = getVisibleCalendarIds();
     
     todayCalendarEvents = [];
     
@@ -362,7 +368,7 @@ async function loadTodayCalendarEvents(){
     }
     
     for(const cal of sourceCalendars){
-      const isAllowed = cal.primary || allowedIds.includes(cal.id) || allowedNames.includes(cal.summary);
+      const isAllowed = cal.primary || visibleIds.includes(cal.id);
       
       if(!isAllowed) continue;
       
@@ -1710,6 +1716,24 @@ function render(){
           <select id="defCalSel">${calendars.map(c=>`<option value="${esc(c.id)}" ${c.id===defaultCalId?"selected":""}>${esc(c.summary)}</option>`).join("")}</select>
         </div>
       </div>
+      <div class="card">
+        <div class="body">
+          <div class="title">Kalender anzeigen</div>
+          <div class="sub" style="margin-bottom:8px">Diese Kalender erscheinen in der Heute-Ansicht unter Kalender Heute</div>
+          ${(()=>{
+            const visIds = getVisibleCalendarIds();
+            const list = (allCalendars && allCalendars.length) ? allCalendars : calendars;
+            if(!list.length) return `<div class="muted">Kalenderliste wird geladen…</div>`;
+            return list.map(c=>{
+              const on = c.primary || visIds.includes(c.id);
+              return `<div class="toggle-row" style="margin-top:10px">
+                <div style="font-size:14px">${esc(c.summary)}${c.primary?" (Haupt)":""}</div>
+                <button class="switch ${on?"on":""}" data-calvis="${esc(c.id)}" ${c.primary?"disabled":""}></button>
+              </div>`;
+            }).join("");
+          })()}
+        </div>
+      </div>
       
       <div class="section-title">Daten</div>
       <div class="card">
@@ -1741,6 +1765,18 @@ function render(){
       <p class="muted" style="font-size:12px;margin-top:18px">Aufgaben, Projekte & Notizen liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an), der Zielkalender pro Eintrag wählbar.</p>
     `;
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
+    [...document.querySelectorAll("[data-calvis]")].forEach(btn=>{
+      btn.onclick=async ()=>{
+        const id=btn.dataset.calvis;
+        const ids=getVisibleCalendarIds();
+        const idx=ids.indexOf(id);
+        if(idx>=0){ ids.splice(idx,1); } else { ids.push(id); }
+        setVisibleCalendarIds(ids);
+        btn.classList.toggle("on");
+        await loadTodayCalendarEvents();
+        render();
+      };
+    });
     const mtg=$("minTaskGoalInput"); if(mtg) mtg.onchange=()=>{ minTaskGoal=parseInt(mtg.value)||18; localStorage.setItem("minTaskGoal",minTaskGoal); toast("Mindest-Ziel gesetzt: "+minTaskGoal); };
     $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); setSync("on"); render(); toast("Aktualisiert"); };
     $("signoutBtn").onclick=signOut;

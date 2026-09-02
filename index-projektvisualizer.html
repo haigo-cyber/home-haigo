@@ -209,6 +209,7 @@
         <button class="ghost" id="btnToggleRaw">Rohtext</button>
         <button class="ghost" id="btnSortTree" title="Zwischen Sortierung nach letzter Aktualisierung und manueller Reihenfolge wechseln">Sortierung</button>
         <button class="ghost" id="btnToggleArchived">Archivierte einblenden</button>
+        <button class="ghost" id="btnPurgeArchived" title="Archivierte Punkte endgültig aus der Datei entfernen, verkleinert die Datei dauerhaft">🗑 Archivierte endgültig löschen</button>
         <button class="ghost" id="btnArchiveProject">Archivieren</button>
         <button class="danger" id="btnDeleteProject">Löschen</button>
       </div>
@@ -439,14 +440,13 @@ async function loadAllProjects(){
   const q = encodeURIComponent(`'${folderId}' in parents and trashed=false and mimeType='text/markdown'`);
   const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`);
   const data = await r.json();
-  projects = [];
-  for(const f of (data.files||[])){
+  projects = await Promise.all((data.files||[]).map(async f => {
     const content = await driveGetContent(f.id);
     const root = parseMarkdown(content);
     const title = (root.children[0] && root.children[0].title) || f.name.replace(/\.md$/,"");
     const archived = !!(root.children[0] && root.children[0].archived);
-    projects.push({fileId:f.id, name:f.name, title, root, archived});
-  }
+    return {fileId:f.id, name:f.name, title, root, archived};
+  }));
   projects.sort((a,b)=>a.title.localeCompare(b.title,"de"));
 }
 
@@ -612,6 +612,40 @@ async function syncTasks(silent){
   if(nextTab && !nextTab.classList.contains("hidden")) renderNext();
   const ovTab = document.getElementById("tabOverview");
   if(ovTab && !ovTab.classList.contains("hidden")) renderOverview();
+}
+
+/* Archivierte Punkte endgültig aus einem Projekt entfernen (inkl. verknüpfter Google Tasks) */
+async function purgeArchived(project){
+  const gtIdsToDelete = [];
+  let purgedCount = 0;
+
+  const collectGtIds = (node) => {
+    if(node.gtId) gtIdsToDelete.push(node.gtId);
+    node.children.forEach(collectGtIds);
+  };
+
+  const walk = (node) => {
+    node.children = node.children.filter(child => {
+      if(child.archived){
+        purgedCount += countNodes(child);
+        collectGtIds(child);
+        return false; // entfernen
+      }
+      walk(child);
+      return true;
+    });
+  };
+  walk(project.root);
+
+  if(purgedCount === 0){ toast("Keine archivierten Punkte gefunden"); return; }
+
+  for(const gtId of gtIdsToDelete){
+    try{ await gtDelete(gtId); }catch(e){ /* Task evtl. schon nicht mehr vorhanden, ignorieren */ }
+  }
+
+  await saveProject(project);
+  toast(purgedCount + " archivierte Punkte endgültig gelöscht");
+  if(currentProject === project) renderDetail();
 }
 
 /* ============ Rendering: Übersicht ============ */
@@ -1708,6 +1742,11 @@ document.getElementById("btnToggleArchived").onclick = ()=>{
   lsSet("pf_showArchived", showArchived ? "1" : "0");
   document.getElementById("btnToggleArchived").textContent = showArchived ? "Archivierte ausblenden" : "Archivierte einblenden";
   renderDetail();
+};
+document.getElementById("btnPurgeArchived").onclick = async ()=>{
+  if(!currentProject) return;
+  if(!confirm("Alle archivierten Punkte in diesem Projekt endgültig löschen? Das kann nicht rückgängig gemacht werden.")) return;
+  await purgeArchived(currentProject);
 };
 document.getElementById("btnSortTree").onclick = ()=>{
   sortTree = cycleSort(sortTree);

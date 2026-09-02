@@ -13,6 +13,10 @@
     --accent:#6d8dfc;
   }
   *{box-sizing:border-box;}
+  .fab-quick{position:fixed;right:20px;bottom:24px;width:54px;height:54px;border-radius:50%;
+    background:var(--gruen);color:#0c1120;border:none;font-size:24px;cursor:pointer;
+    box-shadow:0 6px 18px rgba(0,0,0,.5);z-index:50;display:flex;align-items:center;justify-content:center;}
+  .fab-quick:active{transform:scale(0.95);}
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
   header{position:sticky;top:0;z-index:10;background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   header h1{font-size:17px;margin:0;flex:1;min-width:120px;}
@@ -240,6 +244,7 @@
 
 </main>
 
+<button class="fab-quick" id="fabQuick" title="Schnell erfassen">⚡</button>
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 
@@ -1031,6 +1036,8 @@ function openProject(project){
   focusNode = null;
   document.getElementById("tabOverview").classList.add("hidden");
   document.getElementById("tabNext").classList.add("hidden");
+  document.getElementById("tabGantt").classList.add("hidden");
+  document.getElementById("tabRoadmap").classList.add("hidden");
   document.getElementById("tabDetail").classList.remove("hidden");
   document.getElementById("rawView").classList.add("hidden");
   document.getElementById("treeView").classList.remove("hidden");
@@ -2101,7 +2108,8 @@ function renderGantt(){
         project: proj.title,
         startDate: new Date(node.startDate),
         deadline: new Date(node.deadline),
-        level: node.level
+        level: node.level,
+        node: node
       });
     }
     node.children.forEach(walk);
@@ -2148,7 +2156,7 @@ function renderGantt(){
   html += `</div>`;
   
   // Items
-  ganttItems.forEach(item => {
+  ganttItems.forEach((item, idx) => {
     const startOffset = (item.startDate.getTime() - minDate) / dayMs;
     const duration = (item.deadline.getTime() - item.startDate.getTime()) / dayMs + 1;
     const barWidth = Math.max(8, duration * pxPerDay);
@@ -2158,7 +2166,7 @@ function renderGantt(){
     const textColor = item.level === 2 ? "#fff" : "#fff";
     
     html += `<div style="display:flex;align-items:center;border-bottom:1px solid #eee;padding:0;min-height:40px">`;
-    html += `<div style="width:280px;flex-shrink:0;padding:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500">${escapeHtml(item.title)}</div>`;
+    html += `<div class="gantt-item-title" data-idx="${idx}" style="width:280px;flex-shrink:0;padding:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;cursor:pointer;text-decoration:underline;text-decoration-color:transparent" title="Klicken zum Bearbeiten">${escapeHtml(item.title)}</div>`;
     html += `<div style="position:relative;height:32px;width:${containerWidth - 280}px;margin:0">`;
     html += `<div style="position:absolute;left:${barLeft}px;top:4px;height:24px;min-width:${barWidth}px;background:${color};border-radius:4px;padding:0 4px;display:flex;align-items:center;color:${textColor};font-size:13px;font-weight:bold;box-shadow:0 1px 3px rgba(0,0,0,0.2)" title="${escapeHtml(item.title)} · ${item.startDate.toLocaleDateString('de-DE')} bis ${item.deadline.toLocaleDateString('de-DE')}">${barWidth > 50 ? escapeHtml(item.title).substring(0, Math.floor(barWidth / 7)) : ""}</div>`;
     html += `</div>`;
@@ -2167,6 +2175,13 @@ function renderGantt(){
   
   html += `</div>`;
   ganttView.innerHTML = html;
+  
+  [...ganttView.querySelectorAll(".gantt-item-title")].forEach(el=>{
+    el.onclick = ()=>{
+      const item = ganttItems[+el.dataset.idx];
+      if(item) openProjectAtNode(proj, item.node);
+    };
+  });
 }
 
 function renderRoadmap(){
@@ -2197,7 +2212,8 @@ function renderRoadmap(){
         project: proj.title,
         deadline: new Date(node.deadline),
         status: node.status,
-        level: node.level
+        level: node.level,
+        node: node
       });
     }
     node.children.forEach(walk);
@@ -2226,6 +2242,7 @@ function renderRoadmap(){
   
   // Render
   let html = `<div style="padding:16px;font-family:system-ui">`;
+  const clickableItems = [];
   
   monthKeys.forEach(monthKey => {
     const [year, month] = monthKey.split("-");
@@ -2271,9 +2288,12 @@ function renderRoadmap(){
         
         const dlLabel = daysLeft < 0 ? "überfällig" : daysLeft + "d";
         
+        const idx = clickableItems.length;
+        clickableItems.push(item);
+        
         html += `<div style="display:flex;align-items:center;padding:8px 12px;margin-bottom:6px;background:#f9fafb;border-left:3px solid ${statusColor};border-radius:4px">`;
-        html += `<div style="flex:1;min-width:0">`;
-        html += `<div style="font-size:13px;font-weight:500;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(item.title)}</div>`;
+        html += `<div class="roadmap-item-title" data-idx="${idx}" style="flex:1;min-width:0;cursor:pointer" title="Klicken zum Bearbeiten">`;
+        html += `<div style="font-size:13px;font-weight:500;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:underline;text-decoration-color:transparent">${escapeHtml(item.title)}</div>`;
         html += `<div style="font-size:11px;color:#666;margin-top:2px">${item.deadline.toLocaleDateString("de-DE")} · ${statusLabel}</div>`;
         html += `</div>`;
         html += `<div style="padding:2px 8px;background:${dlColor};color:#fff;border-radius:3px;font-size:11px;font-weight:bold;flex-shrink:0">${dlLabel}</div>`;
@@ -2288,6 +2308,13 @@ function renderRoadmap(){
   
   html += `</div>`;
   roadmapView.innerHTML = html;
+  
+  [...roadmapView.querySelectorAll(".roadmap-item-title")].forEach(el=>{
+    el.onclick = ()=>{
+      const item = clickableItems[+el.dataset.idx];
+      if(item) openProjectAtNode(proj, item.node);
+    };
+  });
 }
 
 function moveToAnyParentDialog(nodeToMove){
@@ -2389,6 +2416,60 @@ function toast(msg){
   document.getElementById("toastRoot").appendChild(el);
   setTimeout(()=>el.remove(), 2500);
 }
+
+/* ---- Schnellerfassung (analog ToDo-App) ---- */
+function findOrCreateInbox(project){
+  let inbox = project.root.children.find(n => n.title === "📥 Posteingang");
+  if(!inbox){
+    inbox = {level:1, title:"📥 Posteingang", status:"offen", due:null, deadline:null, startDate:null, gtId:null, archived:false, upd:Date.now(), done:null, body:[], children:[], parent:project.root};
+    project.root.children.unshift(inbox);
+  }
+  return inbox;
+}
+
+function openQuickAdd(){
+  const activeProjects = projects.filter(p=>!p.archived);
+  if(activeProjects.length===0){ toast("Erst ein Projekt anlegen"); return; }
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-bg" id="qModalBg"><div class="modal">
+      <h2>⚡ Schnell erfassen</h2>
+      <input type="text" id="q_text" placeholder="Was ist zu tun?" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-family:inherit;font-size:15px;box-sizing:border-box">
+      <p class="muted" style="font-size:12px;margin-top:8px;color:var(--muted)">Landet im Posteingang des Projekts. Später einsortieren und mit Daten versehen.</p>
+      <label style="display:block;margin-top:10px;font-size:13px;color:var(--muted)">Projekt</label>
+      <select id="q_proj" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);margin-top:4px">
+        ${activeProjects.map(p=>`<option value="${escapeHtml(p.fileId)}">${escapeHtml(p.title)}</option>`).join("")}
+      </select>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button id="q_cancel">Abbrechen</button>
+        <button class="primary" id="q_save">Speichern</button>
+      </div>
+    </div></div>`;
+
+  const bg = document.getElementById("qModalBg");
+  document.getElementById("q_cancel").onclick = ()=> bg.remove();
+  bg.onclick = (e)=>{ if(e.target.id==="qModalBg") bg.remove(); };
+
+  const quickSave = async ()=>{
+    const title = document.getElementById("q_text").value.trim();
+    if(!title){ toast("Text fehlt"); return; }
+    const projId = document.getElementById("q_proj").value;
+    const project = projects.find(p=>p.fileId===projId);
+    if(!project){ toast("Kein Projekt gewählt"); return; }
+    const inbox = findOrCreateInbox(project);
+    const child = {level:inbox.level+1, title, status:"offen", due:null, deadline:null, startDate:null, gtId:null, archived:false, upd:Date.now(), done:null, body:[], children:[], parent:inbox};
+    inbox.children.push(child);
+    bg.remove();
+    scheduleSave(project);
+    toast("Im Posteingang gespeichert: " + project.title);
+  };
+  document.getElementById("q_save").onclick = quickSave;
+  bg.addEventListener("keydown",(e)=>{
+    if(e.key==="Enter"){ e.preventDefault(); quickSave(); }
+  });
+  setTimeout(()=>{ const q=document.getElementById("q_text"); if(q) q.focus(); }, 50);
+}
+
+document.getElementById("fabQuick").onclick = openQuickAdd;
 </script>
 </body>
 </html>

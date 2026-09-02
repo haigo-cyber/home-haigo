@@ -130,7 +130,7 @@
   <button class="fab" id="fab" style="display:none">+</button>
   <nav id="nav" style="display:none">
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
-    <button data-view="links"><span class="nico">🔗</span>Links</button>
+    <button data-view="deadlines"><span class="nico">⏱</span>Deadlines</button>
     <button data-view="notes"><span class="nico">📝</span>Notizen</button>
     <button data-view="projects"><span class="nico">📋</span>Projekte</button>
     <button data-view="goals"><span class="nico">⭐</span>Ziele</button>
@@ -1226,7 +1226,7 @@ function render(){
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",settings:"Konto"};
   $("hTitle").textContent=titles[view]||"ToDo";
-  $("fab").style.display=(view==="today"||view==="settings"||view==="stats"||view==="migrate"||view==="projects")?"none":"block";
+  $("fab").style.display=(view==="today"||view==="settings"||view==="stats"||view==="migrate"||view==="projects"||view==="deadlines")?"none":"block";
   $("fabQuick").style.display=(view==="settings")?"none":"block";
   const active=tasks.filter(t=>!t.archived);
 
@@ -1343,110 +1343,6 @@ function render(){
     if(activeNotes.length){
       h+=`<div class="section-title">Notizen</div>`;
       h+=activeNotes.map(noteCard).join("");
-    }
-    
-    // Deadlines: Alle Tasks/gtasks mit Deadline, sortiert nach Dringlichkeit
-    const allDeadlines = [];
-    
-    // Google Tasks mit Deadline (nutze allGTasks, nicht gtasks!)
-    allGTasks.forEach(t => {
-      if(t.deadline){
-        const daysLeft = daysUntilDeadline(t.deadline);
-        allDeadlines.push({
-          type: 'gtask',
-          id: t.id,
-          title: t.title,
-          due: t.due.slice(0,10),
-          deadline: t.deadline,
-          daysLeft: daysLeft,
-          notes: t.notes,
-          isGoal: isGoalTask(t)
-        });
-      }
-    });
-    
-    // Reguläre Tasks mit Termin (alle typen)
-    tasks.filter(t=>t.startDate).forEach(t => {
-      // Prüfe ob dieser Task eine Deadline hat (via Google Tasks oder lokal)
-      // Vorerst nur die aus gtasks verwenden, da reguläre Tasks keine Deadline-Info haben
-      const gtask = gtasks.find(gt => gt.id === t.id);
-      if(gtask){
-        const deadline = parseDeadlineFromNotes(gtask.notes);
-        if(deadline && !allDeadlines.find(d => d.id === t.id)){
-          const daysLeft = daysUntilDeadline(deadline);
-          allDeadlines.push({
-            type: 'task',
-            id: t.id,
-            title: t.title,
-            due: t.startDate,
-            deadline: deadline,
-            daysLeft: daysLeft,
-            taskType: t.type,
-            projectId: t.projectId
-          });
-        }
-      }
-    });
-    
-    // Sortiere nach daysLeft (dringende zuerst)
-    allDeadlines.sort((a,b) => {
-      if(a.daysLeft === null && b.daysLeft === null) return 0;
-      if(a.daysLeft === null) return 1;
-      if(b.daysLeft === null) return -1;
-      return a.daysLeft - b.daysLeft;
-    });
-    
-    if(allDeadlines.length){
-      h+=`<div class="section-title">⏱ Deadlines</div>`;
-      allDeadlines.forEach(d => {
-        const color = deadlineColor(d.daysLeft);
-        const label = deadlineLabel(d.daysLeft);
-        const dueStr = new Date(d.due).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
-        const dlStr = new Date(d.deadline).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
-        const typeLabel = d.type === 'gtask' ? (d.isGoal ? '🎯 Ziel' : '⭐ Google Task') : `📋 ${d.taskType}`;
-        
-        // Stärker sichtbar machen basierend auf Dringlichkeit
-        let bgColor = color + '22'; // Hintergrund schwach gefärbt
-        let textColor = '#000';
-        let borderWidth = '2px';
-        let fontWeight = '400';
-        
-        if(d.daysLeft !== null && d.daysLeft < 0){
-          // Rot: ÜBERFÄLLIG - maximale Aufmerksamkeit
-          bgColor = '#ef4444';
-          textColor = '#fff';
-          borderWidth = '4px';
-          fontWeight = '700';
-        } else if(d.daysLeft !== null && d.daysLeft <= 3){
-          // Rot: AB 3 TAGE VOR DEADLINE - sehr deutlich
-          bgColor = '#ef4444';
-          textColor = '#fff';
-          borderWidth = '3px';
-          fontWeight = '600';
-        } else if(d.daysLeft !== null && d.daysLeft <= 7){
-          // Orange: 4-7 Tage - deutlich
-          bgColor = '#fff';
-          textColor = '#000';
-          borderWidth = '2px';
-          fontWeight = '500';
-        } else if(d.daysLeft !== null && d.daysLeft > 7){
-          // Grün: Weit weg
-          bgColor = '#4ade80' + '22';
-          borderWidth = '1px';
-        }
-        
-        h+=`<div class="card" style="border-left:${borderWidth} solid ${color};background:${bgColor};color:${textColor}">
-          <div class="body">
-            <div class="title" style="color:${textColor};font-weight:${fontWeight};font-size:16px">${esc(d.title)}</div>
-            <div class="sub" style="color:${textColor};font-size:12px;margin-top:4px">${typeLabel} · Fällig: ${dueStr}</div>
-            <div class="sub" style="color:${textColor};font-size:12px;opacity:0.9">Deadline: ${dlStr}</div>
-            ${d.projectId?`<div class="sub" style="color:${textColor};font-size:12px">🎯 ${esc(projects.find(p=>p.id===d.projectId)?.name||"")}</div>`:""}
-            <div style="font-size:14px;margin-top:8px;padding:6px 10px;background:${color};color:#fff;border-radius:4px;font-weight:bold;display:inline-block">
-              ${d.daysLeft === null ? '–' : (d.daysLeft < 0 ? `⚠️ ÜBERFÄLLIG ${Math.abs(d.daysLeft)}d` : `${label}`)}
-            </div>
-          </div>
-        </div>`;
-      });
     }
     main.innerHTML=h;
   }
@@ -1676,22 +1572,113 @@ function render(){
     }
     main.innerHTML=h;
   }
-  else if(view==="links"){
-    let h=`<div class="section-title">Links</div>`;
-    h+=links.length?links.map(l=>{
-      const proj=projects.find(p=>p.id===l.projectId);
-      return `<div class="card">
-      <div class="body">
-        <div class="title"><a href="${esc(l.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${esc(l.title||l.url.substring(0,40))}</a></div>
-        <div class="sub">${proj?'🎯 '+esc(proj.name):'—'}</div>
-        <div class="muted" style="margin-top:4px;font-size:12px">${esc(l.url.substring(0,60))}</div>
-      </div>
-      <div class="row-actions">
-        <button class="mini" data-edit-link="${l.id}">Bearb.</button>
-        <button class="mini" data-del-link="${l.id}">🗑</button>
-      </div>
-    </div>`;
-    }).join(""):empty("Keine Links. Mit + anlegen.");
+  else if(view==="deadlines"){
+    let h=`<div class="section-title">⏱ Deadlines</div>`;
+
+    // Deadlines: Alle Tasks/gtasks mit Deadline, sortiert nach Dringlichkeit
+    const allDeadlines = [];
+
+    // Google Tasks mit Deadline (nutze allGTasks, nicht gtasks!)
+    allGTasks.forEach(t => {
+      if(t.deadline){
+        const daysLeft = daysUntilDeadline(t.deadline);
+        allDeadlines.push({
+          type: 'gtask',
+          id: t.id,
+          title: t.title,
+          due: t.due.slice(0,10),
+          deadline: t.deadline,
+          daysLeft: daysLeft,
+          notes: t.notes,
+          isGoal: isGoalTask(t)
+        });
+      }
+    });
+
+    // Reguläre Tasks mit Termin (alle typen)
+    tasks.filter(t=>t.startDate).forEach(t => {
+      // Prüfe ob dieser Task eine Deadline hat (via Google Tasks oder lokal)
+      // Vorerst nur die aus gtasks verwenden, da reguläre Tasks keine Deadline-Info haben
+      const gtask = gtasks.find(gt => gt.id === t.id);
+      if(gtask){
+        const deadline = parseDeadlineFromNotes(gtask.notes);
+        if(deadline && !allDeadlines.find(d => d.id === t.id)){
+          const daysLeft = daysUntilDeadline(deadline);
+          allDeadlines.push({
+            type: 'task',
+            id: t.id,
+            title: t.title,
+            due: t.startDate,
+            deadline: deadline,
+            daysLeft: daysLeft,
+            taskType: t.type,
+            projectId: t.projectId
+          });
+        }
+      }
+    });
+
+    // Sortiere nach daysLeft (dringende zuerst)
+    allDeadlines.sort((a,b) => {
+      if(a.daysLeft === null && b.daysLeft === null) return 0;
+      if(a.daysLeft === null) return 1;
+      if(b.daysLeft === null) return -1;
+      return a.daysLeft - b.daysLeft;
+    });
+
+    if(!allDeadlines.length){
+      h+=`<div class="muted center" style="padding:8px">Keine Deadlines vorhanden</div>`;
+    } else {
+      allDeadlines.forEach(d => {
+        const color = deadlineColor(d.daysLeft);
+        const label = deadlineLabel(d.daysLeft);
+        const dueStr = new Date(d.due).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
+        const dlStr = new Date(d.deadline).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
+        const typeLabel = d.type === 'gtask' ? (d.isGoal ? '🎯 Ziel' : '⭐ Google Task') : `📋 ${d.taskType}`;
+
+        // Stärker sichtbar machen basierend auf Dringlichkeit
+        let bgColor = color + '22'; // Hintergrund schwach gefärbt
+        let textColor = '#000';
+        let borderWidth = '2px';
+        let fontWeight = '400';
+
+        if(d.daysLeft !== null && d.daysLeft < 0){
+          // Rot: ÜBERFÄLLIG - maximale Aufmerksamkeit
+          bgColor = '#ef4444';
+          textColor = '#fff';
+          borderWidth = '4px';
+          fontWeight = '700';
+        } else if(d.daysLeft !== null && d.daysLeft <= 3){
+          // Rot: AB 3 TAGE VOR DEADLINE - sehr deutlich
+          bgColor = '#ef4444';
+          textColor = '#fff';
+          borderWidth = '3px';
+          fontWeight = '600';
+        } else if(d.daysLeft !== null && d.daysLeft <= 7){
+          // Orange: 4-7 Tage - deutlich
+          bgColor = '#fff';
+          textColor = '#000';
+          borderWidth = '2px';
+          fontWeight = '500';
+        } else if(d.daysLeft !== null && d.daysLeft > 7){
+          // Grün: Weit weg
+          bgColor = '#4ade80' + '22';
+          borderWidth = '1px';
+        }
+
+        h+=`<div class="card" style="border-left:${borderWidth} solid ${color};background:${bgColor};color:${textColor}">
+          <div class="body">
+            <div class="title" style="color:${textColor};font-weight:${fontWeight};font-size:16px">${esc(d.title)}</div>
+            <div class="sub" style="color:${textColor};font-size:12px;margin-top:4px">${typeLabel} · Fällig: ${dueStr}</div>
+            <div class="sub" style="color:${textColor};font-size:12px;opacity:0.9">Deadline: ${dlStr}</div>
+            ${d.projectId?`<div class="sub" style="color:${textColor};font-size:12px">🎯 ${esc(projects.find(p=>p.id===d.projectId)?.name||"")}</div>`:""}
+            <div style="font-size:14px;margin-top:8px;padding:6px 10px;background:${color};color:#fff;border-radius:4px;font-weight:bold;display:inline-block">
+              ${d.daysLeft === null ? '–' : (d.daysLeft < 0 ? `⚠️ ÜBERFÄLLIG ${Math.abs(d.daysLeft)}d` : `${label}`)}
+            </div>
+          </div>
+        </div>`;
+      });
+    }
     main.innerHTML=h;
   }
   else if(view==="settings"){
@@ -2546,7 +2533,6 @@ $("fab").addEventListener("click",()=>{
     return openForm("goal");
   }
   if(view==="projects") return openProjectForm();
-  if(view==="links") return openLinkForm();
   if(view==="notes") return openNoteForm();
   openForm(view==="habits"?"habit":view==="duties"?"duty":"todo");
 });

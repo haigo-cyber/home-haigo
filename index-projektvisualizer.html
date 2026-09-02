@@ -32,6 +32,11 @@
   .hidden{display:none !important;}
   .center{text-align:center;color:var(--muted);padding:40px 10px;}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;}
+  .grid.list-view{display:flex;flex-direction:column;gap:6px;}
+  .list-view .card{border-radius:10px;padding:8px 12px;gap:10px;}
+  .list-view .card .info h3{font-size:14px;margin:0;}
+  .list-view .card .sub{font-size:11px;}
+  .list-view .card .donut{width:28px;height:28px;}
   .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;cursor:pointer;display:flex;align-items:center;gap:14px;}
   .card:active{transform:scale(0.98);}
   .card .info{flex:1;min-width:0;}
@@ -158,6 +163,7 @@
       <div class="toolbar">
         <h2>Projekte</h2>
         <button class="ghost" id="btnSortOverview" title="Zwischen Sortierung nach letzter Aktualisierung und manueller Reihenfolge wechseln">Sortierung</button>
+        <button class="ghost" id="btnViewMode" title="Zwischen Kachel- und Listenansicht wechseln">🔲 Kacheln</button>
         <button class="ghost" id="btnProgress" title="Fortschritt der letzten 10 Tage anzeigen">Fortschritt</button>
         <button class="ghost" id="btnSyncTasks" title="Erledigte aus der ToDo-App übernehmen und Termine nach Google Tasks schreiben">Google Tasks abgleichen</button>
         <button class="primary" id="btnNewProject">Neues Projekt</button>
@@ -366,6 +372,7 @@ let showArchived = lsGet("pf_showArchived","0")==="1";
 let focusNode = null;
 let sortTree = lsGet("pf_sortTree","updated");        // "updated" | "manual"
 let sortOverview = lsGet("pf_sortOverview","updated"); // "updated" | "due" | "manual"
+let overviewViewMode = lsGet("pf_overviewView","grid"); // "grid" | "list"
 let searchHits = [];
 function lsGet(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
@@ -899,6 +906,11 @@ function updateSortOverviewBtn(){
   if(b) b.textContent = sortLabel(sortOverview);
 }
 
+function updateViewModeBtn(){
+  const b = document.getElementById("btnViewMode");
+  if(b) b.textContent = overviewViewMode==="list" ? "☰ Liste" : "🔲 Kacheln";
+}
+
 function escapeRegExp(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
 function highlightMatch(text, q){
   const esc = escapeHtml(text);
@@ -962,6 +974,7 @@ function renderSearchResults(q){
 
 function renderOverview(){
   updateSortOverviewBtn();
+  updateViewModeBtn();
   const si = document.getElementById("searchInput");
   const q = si ? si.value.trim() : "";
   if(q){ renderSearchResults(q); return; }
@@ -973,6 +986,9 @@ function renderOverview(){
   const active = sortActiveProjects(projects.filter(p=>!p.archived));
   const arch = projects.filter(p=>p.archived);
   const movable = sortOverview==="manual";
+
+  grid.classList.toggle("list-view", overviewViewMode==="list");
+  archGrid.classList.toggle("list-view", overviewViewMode==="list");
 
   if(active.length===0){
     grid.innerHTML = "";
@@ -1756,6 +1772,11 @@ document.getElementById("btnSortTree").onclick = ()=>{
 document.getElementById("btnSortOverview").onclick = ()=>{
   sortOverview = cycleSort(sortOverview);
   lsSet("pf_sortOverview", sortOverview);
+  renderOverview();
+};
+document.getElementById("btnViewMode").onclick = ()=>{
+  overviewViewMode = overviewViewMode==="list" ? "grid" : "list";
+  lsSet("pf_overviewView", overviewViewMode);
   renderOverview();
 };
 document.getElementById("searchInput").oninput = ()=> renderOverview();

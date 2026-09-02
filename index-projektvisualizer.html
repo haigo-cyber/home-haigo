@@ -1520,6 +1520,10 @@ function bindNodeEvents(container){
     el.onchange = ()=>{
       const n = nodeRegistry[el.dataset.nid];
       n.deadline = el.value || null;
+      if(n.deadline){
+        if(!n.due) n.due = n.deadline;
+        if(!n.startDate) n.startDate = addDays(n.deadline, -4);
+      }
       touchNode(n);
       renderDetail();
       scheduleSave(currentProject);
@@ -2529,9 +2533,13 @@ function openQuickAdd(){
     const projId = document.getElementById("q_proj").value;
     const project = projects.find(p=>p.fileId===projId);
     if(!project){ toast("Kein Projekt gewählt"); return; }
-    const sd = document.getElementById("q_sd").value || null;
-    const due = document.getElementById("q_due").value || null;
+    let sd = document.getElementById("q_sd").value || null;
+    let due = document.getElementById("q_due").value || null;
     const dl = document.getElementById("q_dl").value || null;
+    if(dl){
+      if(!due) due = dl;
+      if(!sd) sd = addDays(dl, -4);
+    }
     const inbox = findOrCreateInbox(project);
     const child = {level:inbox.level+1, title, status:"offen", due, deadline:dl, startDate:sd, gtId:null, archived:false, upd:Date.now(), done:null, body:[], children:[], parent:inbox};
     inbox.children.push(child);

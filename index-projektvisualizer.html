@@ -2574,17 +2574,6 @@ function toast(msg){
 }
 
 /* ---- Schnellerfassung (analog ToDo-App) ---- */
-function findOrCreateInbox(project){
-  const titleNode = project.root.children[0];
-  if(!titleNode) return null;
-  let inbox = titleNode.children.find(n => n.title === "📥 Posteingang");
-  if(!inbox){
-    inbox = {level:titleNode.level+1, title:"📥 Posteingang", status:"offen", due:null, deadline:null, startDate:null, gtId:null, archived:false, upd:Date.now(), done:null, body:[], children:[], parent:titleNode};
-    titleNode.children.unshift(inbox);
-  }
-  return inbox;
-}
-
 function openQuickAdd(){
   const activeProjects = projects.filter(p=>!p.archived);
   if(activeProjects.length===0){ toast("Erst ein Projekt anlegen"); return; }
@@ -2593,7 +2582,7 @@ function openQuickAdd(){
     `<div class="modal-bg" id="qModalBg"><div class="modal">
       <h2>⚡ Schnell erfassen</h2>
       <input type="text" id="q_text" placeholder="Was ist zu tun?" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-family:inherit;font-size:15px;box-sizing:border-box">
-      <p class="muted" style="font-size:12px;margin-top:8px;color:var(--muted)">Landet im Posteingang des Projekts. Später einsortieren und mit Daten versehen.</p>
+      <p class="muted" style="font-size:12px;margin-top:8px;color:var(--muted)">Wird direkt oben im gewählten Projekt angelegt. Später bei Bedarf verschieben oder einsortieren.</p>
       <label style="display:block;margin-top:10px;font-size:13px;color:var(--muted)">Projekt${defaultProj?"":" (kein Projekt \"default\" gefunden, bitte manuell wählen)"}</label>
       <select id="q_proj" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);margin-top:4px">
         ${activeProjects.map(p=>`<option value="${escapeHtml(p.fileId)}" ${defaultProj && p.fileId===defaultProj.fileId?"selected":""}>${escapeHtml(p.title)}</option>`).join("")}
@@ -2635,13 +2624,13 @@ function openQuickAdd(){
       if(!due) due = dl;
       if(!sd) sd = addDays(dl, -4);
     }
-    const inbox = findOrCreateInbox(project);
-    if(!inbox){ toast("Projektdatei beschädigt, kein Titel-Knoten gefunden"); return; }
-    const child = {level:inbox.level+1, title, status:"offen", due, deadline:dl, startDate:sd, gtId:null, archived:false, upd:Date.now(), done:null, body:[], children:[], parent:inbox};
-    inbox.children.push(child);
+    const titleNode = project.root.children[0];
+    if(!titleNode){ toast("Projektdatei beschädigt, kein Titel-Knoten gefunden"); return; }
+    const child = {level:titleNode.level+1, title, status:"offen", due, deadline:dl, startDate:sd, gtId:null, archived:false, upd:Date.now(), done:null, body:[], children:[], parent:titleNode};
+    titleNode.children.unshift(child);
     bg.remove();
     scheduleSave(project);
-    toast("Im Posteingang gespeichert: " + project.title);
+    toast("Gespeichert in: " + project.title);
   };
   document.getElementById("q_save").onclick = quickSave;
   bg.addEventListener("keydown",(e)=>{

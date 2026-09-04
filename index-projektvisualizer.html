@@ -1042,7 +1042,7 @@ function renderNext(){
     if(p.archived) return;
     const leaves = [];
     collectLeaves(p.root, p.title, leaves);
-    leaves.forEach(l=>{ if(l.status!=="fertig") all.push({...l, project:p}); });
+    leaves.forEach(l=>{ if(l.status!=="fertig" && !l.node.archived) all.push({...l, project:p}); });
   });
   const todayStr = new Date().toISOString().slice(0,10);
   const isOverdue = n => (n.due && n.due < todayStr) || (n.deadline && n.deadline < todayStr);
@@ -1069,19 +1069,81 @@ function renderNext(){
   if(untimedFiltered.length===0){ list.innerHTML=""; empty.textContent = emptyLabels[nextFilter]; empty.classList.remove("hidden"); updateBulkBarNext(); return; }
   empty.classList.add("hidden");
   list.innerHTML = untimedFiltered.map((item,i)=>{
-    const due = dueOf(item);
-    const overdue = due && due < today;
-    const dueHtml = due ? `<span class="due-chip ${overdue?'overdue':''}">${fmtDate(due)}</span>` : "";
+    const n = item.node;
     return `<div class="next-item" data-i="${i}">
       <input type="checkbox" class="next-sel" data-i="${i}" ${selectedNext.has(i)?'checked':''} title="Für Sammelaktion markieren">
       <span class="badge badge-${item.status}">${STATUS_LABEL[item.status]}</span>
-      <div style="flex:1">
+      <div style="flex:1;min-width:0">
         <div>${escapeHtml(item.title)}</div>
         <div class="proj">${escapeHtml(item.project.title)}</div>
       </div>
-      ${dueHtml}
+      <input type="date" class="sd-input next-sd" data-i="${i}" value="${n.startDate||''}" title="Start-Datum">
+      <input type="date" class="due-input next-due" data-i="${i}" value="${n.due||''}" title="Fälligkeitsdatum">
+      <input type="date" class="dl-input next-dl" data-i="${i}" value="${n.deadline||''}" title="Deadline">
+      <button class="mini next-archive" data-i="${i}" title="Archivieren">📦</button>
+      <button class="mini next-del" data-i="${i}" title="Löschen">🗑</button>
     </div>`;
   }).join("");
+  [...list.querySelectorAll(".next-sd")].forEach(el=>{
+    el.onclick = ev=>ev.stopPropagation();
+    el.onchange = ()=>{
+      const item = untimedFiltered[+el.dataset.i];
+      item.node.startDate = el.value || null;
+      touchNode(item.node);
+      scheduleSave(item.project);
+      renderNext();
+    };
+  });
+  [...list.querySelectorAll(".next-due")].forEach(el=>{
+    el.onclick = ev=>ev.stopPropagation();
+    el.onchange = ()=>{
+      const item = untimedFiltered[+el.dataset.i];
+      item.node.due = el.value || null;
+      touchNode(item.node);
+      scheduleSave(item.project);
+      renderNext();
+    };
+  });
+  [...list.querySelectorAll(".next-dl")].forEach(el=>{
+    el.onclick = ev=>ev.stopPropagation();
+    el.onchange = ()=>{
+      const item = untimedFiltered[+el.dataset.i];
+      const n = item.node;
+      n.deadline = el.value || null;
+      if(n.deadline){
+        if(!n.due) n.due = n.deadline;
+        if(!n.startDate) n.startDate = addDays(n.deadline, -4);
+      }
+      touchNode(n);
+      scheduleSave(item.project);
+      renderNext();
+    };
+  });
+  [...list.querySelectorAll(".next-archive")].forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const item = untimedFiltered[+el.dataset.i];
+      item.node.archived = true;
+      touchNode(item.node);
+      scheduleSave(item.project);
+      renderNext();
+    };
+  });
+  [...list.querySelectorAll(".next-del")].forEach(el=>{
+    el.onclick = (ev)=>{
+      ev.stopPropagation();
+      const item = untimedFiltered[+el.dataset.i];
+      const n = item.node;
+      if(!confirm('"'+n.title+'" inklusive Unterpunkte löschen?')) return;
+      const ids = [];
+      (function collect(x){ if(x.gtId) ids.push(x.gtId); x.children.forEach(collect); })(n);
+      ids.forEach(id=> gtDelete(id).catch(()=>{}));
+      const idx = n.parent.children.indexOf(n);
+      n.parent.children.splice(idx,1);
+      scheduleSave(item.project);
+      renderNext();
+    };
+  });
   [...list.querySelectorAll(".next-sel")].forEach(el=>{
     el.onclick = (ev)=> ev.stopPropagation();
     el.onchange = ()=>{

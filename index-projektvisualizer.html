@@ -29,6 +29,7 @@
   .tabs{display:flex;gap:8px;margin-bottom:16px;}
   .tabs button{flex:1;}
   .tabs button.active{background:var(--accent);color:#0c1120;border-color:var(--accent);font-weight:600;}
+  button.ghost.active{background:var(--accent);color:#0c1120;border-color:var(--accent);font-weight:600;}
   .hidden{display:none !important;}
   .center{text-align:center;color:var(--muted);padding:40px 10px;}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;}
@@ -185,7 +186,9 @@
     </div>
 
     <div id="tabNext" class="hidden">
-      <div class="toolbar"><h2>Nächste Schritte</h2></div>
+      <div class="toolbar"><h2>Nächste Schritte</h2>
+        <button class="ghost" id="btnOnlyUntimed" title="Nur Aufgaben ohne Start-, Fälligkeits- und Deadline-Datum anzeigen">🗓️ Nur unterminierte</button>
+      </div>
       <div id="bulkBarNext" class="bulk-bar hidden">
         <span class="bulk-count" id="bulkCountNext">0 markiert</span>
         <input type="date" id="bulkDateNext" class="bulk-date" title="Neues Fälligkeitsdatum">
@@ -377,6 +380,7 @@ let focusNode = null;
 let sortTree = lsGet("pf_sortTree","updated");        // "updated" | "manual"
 let sortOverview = lsGet("pf_sortOverview","updated"); // "updated" | "due" | "manual"
 let overviewViewMode = lsGet("pf_overviewView","grid"); // "grid" | "list"
+let onlyUntimed = lsGet("pf_onlyUntimed","0")==="1";
 let searchHits = [];
 function lsGet(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
@@ -1040,9 +1044,12 @@ function renderNext(){
     collectLeaves(p.root, p.title, leaves);
     leaves.forEach(l=>{ if(l.status!=="fertig") all.push({...l, project:p}); });
   });
+  const untimedFiltered = onlyUntimed ? all.filter(item => !item.node.startDate && !item.node.due && !item.node.deadline) : all;
+  const btnUt = document.getElementById("btnOnlyUntimed");
+  if(btnUt) btnUt.classList.toggle("active", onlyUntimed);
   const prio = {begonnen:0, weit:1, offen:2};
   const dueOf = x => (x.node && x.node.due) ? x.node.due : null;
-  all.sort((a,b)=>{
+  untimedFiltered.sort((a,b)=>{
     const da=dueOf(a), db=dueOf(b);
     if(da && db) return da.localeCompare(db);
     if(da) return -1;
@@ -1052,10 +1059,10 @@ function renderNext(){
   const today = new Date().toISOString().slice(0,10);
   const list = document.getElementById("nextList");
   const empty = document.getElementById("nextEmpty");
-  nextItems = all;
-  if(all.length===0){ list.innerHTML=""; empty.classList.remove("hidden"); updateBulkBarNext(); return; }
+  nextItems = untimedFiltered;
+  if(untimedFiltered.length===0){ list.innerHTML=""; empty.textContent = onlyUntimed ? "Keine unterminierten Aufgaben. Alle offenen Punkte haben bereits ein Datum." : "Alles erledigt oder keine offenen Schritte."; empty.classList.remove("hidden"); updateBulkBarNext(); return; }
   empty.classList.add("hidden");
-  list.innerHTML = all.map((item,i)=>{
+  list.innerHTML = untimedFiltered.map((item,i)=>{
     const due = dueOf(item);
     const overdue = due && due < today;
     const dueHtml = due ? `<span class="due-chip ${overdue?'overdue':''}">${fmtDate(due)}</span>` : "";
@@ -1078,7 +1085,7 @@ function renderNext(){
     };
   });
   [...list.querySelectorAll(".next-item")].forEach(el=>{
-    el.onclick = ()=> openProject(all[+el.dataset.i].project);
+    el.onclick = ()=> openProject(untimedFiltered[+el.dataset.i].project);
   });
   updateBulkBarNext();
 }
@@ -1790,6 +1797,11 @@ document.getElementById("btnViewMode").onclick = ()=>{
   overviewViewMode = overviewViewMode==="list" ? "grid" : "list";
   lsSet("pf_overviewView", overviewViewMode);
   renderOverview();
+};
+document.getElementById("btnOnlyUntimed").onclick = ()=>{
+  onlyUntimed = !onlyUntimed;
+  lsSet("pf_onlyUntimed", onlyUntimed ? "1" : "0");
+  renderNext();
 };
 document.getElementById("searchInput").oninput = ()=> renderOverview();
 document.getElementById("btnProgress").onclick = ()=> showProgressModal();

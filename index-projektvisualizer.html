@@ -57,11 +57,11 @@
   .node-indent-1 .node-row{padding-left:20px;}
   .node-indent-2 .node-row{padding-left:40px;}
   .node-indent-3 .node-row{padding-left:60px;}
-  .node-row{display:flex;align-items:center;gap:6px;position:relative;height:24px;}
+  .node-row{display:flex;align-items:center;gap:6px;position:relative;height:24px;overflow-x:auto;}
 
   .node-row::before{content:"▪";color:var(--muted);position:absolute;left:6px;font-size:10px;}
   .node-indent-0 .node-row::before{display:none;}
-  .node-title{flex:1;font-size:12px;cursor:pointer;padding:0 0 0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .node-title{flex:1;min-width:2.5cm;flex-shrink:0;font-size:12px;cursor:pointer;padding:0 0 0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .has-deadline .node-title{color:#ea580c;font-weight:600;}
   .has-deadline{background:rgba(234,88,12,0.08);border-radius:6px;}
   .has-deadline-late .node-title{color:#ef4444;}
@@ -80,7 +80,7 @@
   .children{display:flex;flex-direction:column;gap:0;margin-top:2px;border-left:1px solid var(--border);padding-left:0;margin-left:8px;}
   textarea{width:100%;min-height:400px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.5;}
   .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
-  .next-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;}
+  .next-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;overflow-x:auto;}
   .next-item .proj{color:var(--muted);font-size:11px;}
   .due-input{width:34px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:1px 3px;font-size:9px;flex:none;cursor:pointer;color-scheme:dark;}
   .due-input:focus{width:auto;color:var(--text);outline:1px solid var(--accent);}
@@ -1077,7 +1077,7 @@ function renderNext(){
     return `<div class="next-item" data-i="${i}">
       <input type="checkbox" class="next-sel" data-i="${i}" ${selectedNext.has(i)?'checked':''} title="Für Sammelaktion markieren">
       <span class="badge badge-${item.status}">${STATUS_LABEL[item.status]}</span>
-      <div style="flex:1;min-width:0">
+      <div style="flex:1;min-width:2.5cm;flex-shrink:0">
         <div>${escapeHtml(item.title)}</div>
         <div class="proj">${escapeHtml(item.project.title)}</div>
       </div>
@@ -1115,7 +1115,7 @@ function renderNext(){
       const n = item.node;
       n.deadline = el.value || null;
       if(n.deadline){
-        if(!n.due) n.due = n.deadline;
+        if(!n.due) n.due = addDays(n.deadline, -2);
         if(!n.startDate) n.startDate = addDays(n.deadline, -4);
       }
       touchNode(n);
@@ -1609,7 +1609,7 @@ function bindNodeEvents(container){
       const n = nodeRegistry[el.dataset.nid];
       n.deadline = el.value || null;
       if(n.deadline){
-        if(!n.due) n.due = n.deadline;
+        if(!n.due) n.due = addDays(n.deadline, -2);
         if(!n.startDate) n.startDate = addDays(n.deadline, -4);
       }
       touchNode(n);
@@ -2622,7 +2622,7 @@ function openQuickAdd(){
     let due = document.getElementById("q_due").value || null;
     const dl = document.getElementById("q_dl").value || null;
     if(dl){
-      if(!due) due = dl;
+      if(!due) due = addDays(dl, -2);
       if(!sd) sd = addDays(dl, -4);
     }
     const titleNode = project.root.children[0];

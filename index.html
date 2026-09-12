@@ -719,7 +719,15 @@ async function saveTasks(){
   if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values})});
 }
-async function saveLogs(){
+let _saveLogsQueue = Promise.resolve();
+function saveLogs(){
+  // Alle Aufrufe strikt nacheinander ausführen, nie gleichzeitig, sonst können sich
+  // parallele Speichervorgänge gegenseitig überschreiben (siehe Vorfall vom 12.09.2026).
+  const run = _saveLogsQueue.then(()=>_saveLogsInner());
+  _saveLogsQueue = run.catch(e=>{ console.error("❌ saveLogs (Warteschlange):",e.message); });
+  return run;
+}
+async function _saveLogsInner(){
   const logKey = l => l.itemId+"|"+l.date;
 
   // 1) Aktuellen Serverstand holen, NICHT blind vom lokalen Speicher ausgehen

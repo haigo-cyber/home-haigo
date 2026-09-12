@@ -508,7 +508,7 @@ function scheduleSave(project){
   saveTimer = setTimeout(()=>saveProject(project), 600);
 }
 function touchNode(node){ if(node) node.upd = Date.now(); }
-async function saveProject(project){
+async function saveProject(project, silent){
   if(project && project.root.children[0]) project.root.children[0].upd = Date.now();
   const content = serializeMarkdown(project.root);
   try{
@@ -517,9 +517,10 @@ async function saveProject(project){
     } else {
       project.fileId = await driveCreateFile(project.name, content);
     }
-    toast("Gespeichert");
+    if(!silent) toast("Gespeichert");
   }catch(e){
-    toast("Speichern fehlgeschlagen");
+    if(!silent) toast("Speichern fehlgeschlagen");
+    throw e;
   }
 }
 
@@ -612,14 +613,18 @@ async function syncTasks(silent){
         // 2) Offene Schritte mit Datum nach Google Tasks schieben
         const isDone = node.status === "fertig";
         if(node.due && !isDone){
-          if(!node.gtId){ node.gtId = await gtCreate(node, p.title); pushed++; changed.add(p); }
+          if(!node.gtId){
+            node.gtId = await gtCreate(node, p.title);
+            pushed++;
+            await saveProject(p, true);   // sofort und still sichern, damit die Verknüpfung bei Abbruch nicht verloren geht und der Punkt erneut angelegt wird
+          }
           else { await gtUpdate(node, p.title); }
         } else if(isDone && node.gtId){
           await gtComplete(node.gtId);                // im Visualizer erledigt: Task abschließen
         }
       }
     }
-    for(const p of changed){ await saveProject(p); }
+    for(const p of changed){ await saveProject(p, true); }
     if(!silent) toast("Sync: "+pushed+" neu, "+pulled+" erledigt übernommen");
   }catch(e){
     if(!silent) toast("Sync fehlgeschlagen");
@@ -2263,8 +2268,8 @@ function renderGantt(){
       ganttItems.push({
         title: node.title,
         project: proj.title,
-        startDate: new Date(node.startDate),
-        deadline: new Date(node.deadline),
+        startDate: new Date(node.startDate+"T00:00:00"),
+        deadline: new Date(node.deadline+"T00:00:00"),
         level: node.level,
         node: node
       });
@@ -2367,7 +2372,7 @@ function renderRoadmap(){
       roadmapItems.push({
         title: node.title,
         project: proj.title,
-        deadline: new Date(node.deadline),
+        deadline: new Date(node.deadline+"T00:00:00"),
         status: node.status,
         level: node.level,
         node: node

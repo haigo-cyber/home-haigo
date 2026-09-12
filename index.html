@@ -167,6 +167,7 @@ const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freita
 let accessToken = null, tokenClient = null, tokenResolve = null, tokenReject = null;
 let spreadsheetId = localStorage.getItem("ssid") || null;
 let tasks = [], logs = [], projects = [], notes = [], links = [];
+let logsSnapshotAtLoad = [];   // Stand der Logs direkt nach dem letzten Laden, für den Abgleich beim Speichern
 let view = "today";
 let selectedProjectId = null;
 let calendars = [];                                       // schreibbare Kalender des Nutzers
@@ -669,6 +670,7 @@ async function loadAll(){
     ...x, syncCalendar:x.syncCalendar!=="false", archived:x.archived==="true"
   }));
   logs=rowsToObjs(l.values, LOG_COLS).filter(x=>x.itemId&&x.date);
+  logsSnapshotAtLoad = logs.map(l=>({...l}));   // Kopie für spätere Abgleich-Erkennung beim Speichern
   // Projekte: JSON von Projects!A1 laden
   try{
     console.log("📖 loadAll Projects START");
@@ -718,10 +720,43 @@ async function saveTasks(){
     {method:"PUT",body:JSON.stringify({values})});
 }
 async function saveLogs(){
+  const logKey = l => l.itemId+"|"+l.date;
+
+  // 1) Aktuellen Serverstand holen, NICHT blind vom lokalen Speicher ausgehen
+  let serverLogs = [];
+  try{
+    const res = await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000`);
+    const rows = (res && res.values) || [];
+    rows.forEach(row=>{
+      const l={};
+      LOG_COLS.forEach((col,i)=>l[col]=row[i]||"");
+      if(l.itemId && l.date) serverLogs.push(l);
+    });
+  }catch(e){
+    console.error("❌ saveLogs: Serverstand konnte nicht gelesen werden, breche ab um nichts zu überschreiben:",e.message);
+    throw e;
+  }
+
+  // 2) Was hat sich seit dem letzten Laden LOKAL geändert?
+  const snapshotKeys = new Set(logsSnapshotAtLoad.map(logKey));
+  const currentKeys = new Set(logs.map(logKey));
+  const addedLocally = logs.filter(l=>!snapshotKeys.has(logKey(l)));
+  const removedLocally = logsSnapshotAtLoad.filter(l=>!currentKeys.has(logKey(l)));
+  const removedKeys = new Set(removedLocally.map(logKey));
+
+  // 3) Serverstand als Basis nehmen, lokale Änderungen darauf anwenden
+  const merged = serverLogs.filter(l=>!removedKeys.has(logKey(l)));
+  const mergedKeys = new Set(merged.map(logKey));
+  addedLocally.forEach(l=>{ if(!mergedKeys.has(logKey(l))){ merged.push(l); mergedKeys.add(logKey(l)); } });
+
+  // 4) Ergebnis schreiben und als neuen lokalen Stand übernehmen
   await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000:clear`,{method:"POST",body:"{}"});
-  const values=logs.map(l=>LOG_COLS.map(c=>l[c]||""));
+  const values=merged.map(l=>LOG_COLS.map(c=>l[c]||""));
   if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Log!A2?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values})});
+
+  logs = merged;
+  logsSnapshotAtLoad = merged.map(l=>({...l}));
 }
 
 async function loadLogs(){
@@ -735,6 +770,7 @@ async function loadLogs(){
       if(l.itemId) logs.push(l);
     });
     console.log("  ✓ loadLogs:",logs.length,"Einträge");
+    logsSnapshotAtLoad = logs.map(l=>({...l}));
   }catch(e){
     console.error("❌ loadLogs Fehler:",e.message);
   }
@@ -1679,7 +1715,14 @@ function render(){
           borderWidth = '1px';
         }
 
-        h+=`<div class="card" style="border-left:${borderWidth} solid ${color};background:${bgColor};color:${textColor}">
+        const isTaskType = d.type === 'task';
+        const doneAlready = isTaskType ? isDone(d.id, d.due) : false;
+        const checkHtml = isTaskType
+          ? `<div class="check${doneAlready?' on':''}" data-toggle="${d.id}" data-key="${d.due}">${checkSvg()}</div>`
+          : `<div class="check" data-gtask="${d.id}">${checkSvg()}</div>`;
+
+        h+=`<div class="card${doneAlready?' done':''}" style="border-left:${borderWidth} solid ${color};background:${bgColor};color:${textColor}">
+          ${checkHtml}
           <div class="body">
             <div class="title" style="color:${textColor};font-weight:${fontWeight};font-size:16px">${esc(d.title)}</div>
             <div class="sub" style="color:${textColor};font-size:12px;margin-top:4px">${typeLabel} · Fällig: ${dueStr}</div>
@@ -1745,6 +1788,23 @@ function render(){
       </div>
       
       <div class="section-title">Verwaltung</div>
+      <div class="section-title">Sicherung</div>
+      <div class="card">
+        <div class="body">
+          <div class="title">Backup als JSON</div>
+          <div class="sub">Sichert Aufgaben, Erledigungen, Projekte und Notizen als Datei auf diesem Gerät</div>
+        </div>
+        <button id="btnDoBackupTodo" style="padding:12px 16px;background:var(--accent2);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;width:100%;margin-top:8px">⬇️ JSON herunterladen</button>
+      </div>
+      <div class="card">
+        <div class="body">
+          <div class="title">Backup wiederherstellen</div>
+          <div class="sub">Ergänzt nur fehlende Einträge, nichts wird überschrieben oder doppelt angelegt</div>
+          <input type="file" id="restoreFileTodo" accept="application/json" style="margin-top:8px;width:100%">
+        </div>
+        <button id="btnDoRestoreTodo" style="padding:12px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--line);border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;width:100%;margin-top:8px">⬆️ Wiederherstellen</button>
+      </div>
+
       <div class="card">
         <div class="body">
           <div class="title">Tabelle zurücksetzen</div>
@@ -1780,6 +1840,8 @@ function render(){
     const mtg=$("minTaskGoalInput"); if(mtg) mtg.onchange=()=>{ minTaskGoal=parseInt(mtg.value)||18; localStorage.setItem("minTaskGoal",minTaskGoal); toast("Mindest-Ziel gesetzt: "+minTaskGoal); };
     $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); setSync("on"); render(); toast("Aktualisiert"); };
     $("signoutBtn").onclick=signOut;
+    $("btnDoBackupTodo").onclick=doBackupTodo;
+    $("btnDoRestoreTodo").onclick=doRestoreTodo;
     $("resetSheetBtn").onclick=async()=>{
       if(!confirm("⚠️ ACHTUNG:\nDies wird die aktuelle Tabelle LÖSCHEN und eine neue erstellen!\nAlle Daten gehen verloren!\n\nWirklich fortfahren?")) return;
       if(!confirm("Bist du dir WIRKLICH sicher?")) return;
@@ -2595,6 +2657,78 @@ main.addEventListener("click",e=>{
 });
 
 /* ============ ANMELDUNG / START ============ */
+/* ============ Backup (analog Projekt-Visualizer) ============ */
+function doBackupSilentTodo(){
+  const data = {
+    type: "todo-app-backup",
+    version: 1,
+    created: new Date().toISOString(),
+    tasks, logs, projects, notes, links
+  };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "todo-app-backup-"+new Date().toISOString().slice(0,10)+".json";
+  a.click();
+  URL.revokeObjectURL(url);
+  console.log("✅ ToDo-App Auto-Backup heruntergeladen");
+}
+function doBackupTodo(){
+  doBackupSilentTodo();
+  toast("Backup heruntergeladen");
+}
+function autoBackupTodo(){
+  const lastBackup = localStorage.getItem("todoLastAutoBackup");
+  const now = Date.now();
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  if(!lastBackup || (now - parseInt(lastBackup)) > sevenDaysMs){
+    console.log("🔄 ToDo-App Auto-Backup läuft...");
+    doBackupSilentTodo();
+    localStorage.setItem("todoLastAutoBackup", now.toString());
+  }
+}
+async function doRestoreTodo(){
+  const input = document.getElementById("restoreFileTodo");
+  if(!input.files || !input.files[0]){ toast("Keine Datei gewählt"); return; }
+  const text = await input.files[0].text();
+  let data;
+  try{ data = JSON.parse(text); }catch(e){ toast("Ungültige Datei"); return; }
+  if(!data || (!data.tasks && !data.logs && !data.projects && !data.notes)){ toast("Ungültiges Format"); return; }
+
+  let addedTasks=0, addedLogs=0, addedProjects=0, addedNotes=0, addedLinks=0;
+
+  if(Array.isArray(data.tasks)){
+    const existingIds = new Set(tasks.map(t=>t.id));
+    data.tasks.forEach(t=>{ if(t.id && !existingIds.has(t.id)){ tasks.push(t); existingIds.add(t.id); addedTasks++; } });
+  }
+  if(Array.isArray(data.logs)){
+    const existingKeys = new Set(logs.map(l=>l.itemId+"|"+l.date));
+    data.logs.forEach(l=>{ const k=l.itemId+"|"+l.date; if(l.itemId && l.date && !existingKeys.has(k)){ logs.push(l); existingKeys.add(k); addedLogs++; } });
+  }
+  if(Array.isArray(data.projects)){
+    const existingIds = new Set(projects.map(p=>p.id));
+    data.projects.forEach(p=>{ if(p.id && !existingIds.has(p.id)){ projects.push(p); existingIds.add(p.id); addedProjects++; } });
+  }
+  if(Array.isArray(data.notes)){
+    const existingIds = new Set(notes.map(n=>n.id));
+    data.notes.forEach(n=>{ if(n.id && !existingIds.has(n.id)){ notes.push(n); existingIds.add(n.id); addedNotes++; } });
+  }
+  if(Array.isArray(data.links)){
+    const existingIds = new Set(links.map(l=>l.id));
+    data.links.forEach(l=>{ if(l.id && !existingIds.has(l.id)){ links.push(l); existingIds.add(l.id); addedLinks++; } });
+  }
+
+  if(addedTasks) await saveTasks();
+  if(addedLogs) await saveLogs();
+  if(addedProjects) await saveProjects();
+  if(addedNotes) await saveNotes();
+  if(addedLinks) await saveLinks();
+
+  render();
+  toast(`Wiederhergestellt: ${addedTasks} Aufgaben, ${addedLogs} Log-Einträge, ${addedProjects} Projekte, ${addedNotes} Notizen`);
+}
+
 async function bootData(){
   console.log("🚀 bootData START");
   setSync("busy");
@@ -2630,6 +2764,7 @@ async function bootData(){
     $("acctBtn").textContent="Verbunden";
     $("nav").style.display="flex";
     render();
+    autoBackupTodo();
     console.log("✅ bootData FERTIG");
   }catch(e){
     console.error("❌ bootData FEHLER:",e.message);

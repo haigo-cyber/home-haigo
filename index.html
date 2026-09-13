@@ -452,7 +452,7 @@ async function addGoalTask(title, dueDate){
   setSync("busy");
   try{
     if(!defaultGTaskListId){ await loadGTasks(); }
-    const due=dueDate+"T00:00:00.000Z";
+    const due=dueDate+"T12:00:00.000Z";
     await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks`, {
       method:"POST",
       body:JSON.stringify({title:title, notes:GOAL_MARKER, due:due})
@@ -1400,6 +1400,19 @@ function render(){
     if(activeNotes.length){
       h+=`<div class="section-title">Notizen</div>`;
       h+=activeNotes.map(noteCard).join("");
+    }
+    const doneDistractionsToday = distractions.filter(d=>logs.some(l=>l.itemId===d.id && l.date===key));
+    if(doneDistractionsToday.length){
+      h+=`<div class="section-title">🧹 Heute erledigte Ablenkungen</div>`;
+      h+=doneDistractionsToday.map(d=>{
+        const timesToday=logs.filter(l=>l.itemId===d.id && l.date===key).length;
+        return `<div class="card" style="background:#e9e9e9">
+          <div class="body">
+            <div class="title" style="color:#000">${esc(d.title)}</div>
+            <div class="sub" style="color:#555">${timesToday>1?timesToday+"× heute":"heute erledigt"} ✓</div>
+          </div>
+        </div>`;
+      }).join("");
     }
     main.innerHTML=h;
   }

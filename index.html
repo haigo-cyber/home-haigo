@@ -132,7 +132,7 @@
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
     <button data-view="deadlines"><span class="nico">⏱</span>Deadlines</button>
     <button data-view="notes"><span class="nico">📝</span>Notizen</button>
-    <button data-view="projects"><span class="nico">📋</span>Projekte</button>
+    <button data-view="distractions"><span class="nico">🧹</span>Ablenkungen</button>
     <button data-view="goals"><span class="nico">⭐</span>Ziele</button>
     <button data-view="habits"><span class="nico">🔥</span>Gewohn.</button>
     <button data-view="duties"><span class="nico">🔁</span>Pflicht</button>
@@ -166,7 +166,7 @@ const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freita
 /* ============ ZUSTAND ============ */
 let accessToken = null, tokenClient = null, tokenResolve = null, tokenReject = null;
 let spreadsheetId = localStorage.getItem("ssid") || null;
-let tasks = [], logs = [], projects = [], notes = [], links = [];
+let tasks = [], logs = [], projects = [], notes = [], links = [], distractions = [];
 let logsSnapshotAtLoad = [];   // Stand der Logs direkt nach dem letzten Laden, für den Abgleich beim Speichern
 let view = "today";
 let selectedProjectId = null;
@@ -685,6 +685,7 @@ async function loadAll(){
   // Notizen: JSON von Notes!A1 laden
   await loadNotes();
   await loadLinks();
+  await loadDistractions();
 }
 async function loadCalendars(){
   try{
@@ -1288,9 +1289,9 @@ function sortTasksByDateAndTime(tasks){
 
 function render(){
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  const titles={today:"Heute",projects:"Projekte",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",settings:"Konto"};
+  const titles={today:"Heute",distractions:"Ablenkungen",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",settings:"Konto"};
   $("hTitle").textContent=titles[view]||"ToDo";
-  $("fab").style.display=(view==="today"||view==="settings"||view==="stats"||view==="migrate"||view==="projects"||view==="deadlines")?"none":"block";
+  $("fab").style.display=(view==="today"||view==="settings"||view==="stats"||view==="migrate"||view==="deadlines")?"none":"block";
   $("fabQuick").style.display=(view==="settings")?"none":"block";
   const active=tasks.filter(t=>!t.archived);
 
@@ -1430,8 +1431,37 @@ function render(){
     const list=[...withDate,...noDate,...done];
     main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:true, key:key, oneTime:true})).join(""):empty("Noch keine ToDos. Mit + anlegen.");
   }
-  else if(view==="projects"){
-    main.innerHTML=`<div style="padding:40px 20px;text-align:center"><h2 style="margin-top:0">Projekt-Verwaltung</h2><p style="color:#999;margin-bottom:20px">Öffne den Projekt-Visualizer um Projekte zu verwalten, Gantt- und Roadmap-Ansichten zu sehen.</p><button class="primary" onclick="window.open('index-projektvisualizer.html','_blank')" style="padding:12px 24px;font-size:16px">📋 Projekt-Visualizer öffnen</button></div>`;
+  else if(view==="distractions"){
+    let h=`<div class="section-title">🧹 Erlaubte Ablenkungen</div>`;
+    h+=`<div class="muted" style="padding:0 4px 10px;font-size:13px">Dinge, die du tun darfst, wenn du gerade etwas Wichtiges vermeidest. Kein Datum, kein Zwang, einfach drücken wann immer du willst.</div>`;
+    if(!distractions.length){
+      h+=empty("Noch nichts hier. Mit + eine Aktivität anlegen.");
+    } else {
+      h+=distractions.map(d=>{
+        const doneLogs=logs.filter(l=>l.itemId===d.id);
+        const count=doneLogs.length;
+        let lastLabel="noch nie";
+        if(count){
+          const lastDate=doneLogs.map(l=>l.date).sort().slice(-1)[0];
+          const days=Math.round((new Date(todayKey())-new Date(lastDate))/(1000*60*60*24));
+          lastLabel=days<=0?"heute":days===1?"gestern":`vor ${days} Tagen`;
+        }
+        return `<div class="card">
+          <div class="body">
+            <div class="title" style="color:#000">${esc(d.title)}</div>
+            <div class="sub" style="color:#555;margin-top:4px">${count}× gemacht · zuletzt ${lastLabel}</div>
+          </div>
+          <div class="row-actions" style="display:flex;flex-direction:column;gap:6px;align-items:stretch">
+            <button class="mini" data-do-distraction="${d.id}" style="background:var(--accent2);color:#fff;font-weight:bold">Jetzt erledigt</button>
+            <div style="display:flex;gap:6px">
+              <button class="mini" data-edit-distraction="${d.id}">Bearb.</button>
+              <button class="mini" data-del-distraction="${d.id}">🗑</button>
+            </div>
+          </div>
+        </div>`;
+      }).join("");
+    }
+    main.innerHTML=h;
   }
   else if(view==="goals"){
     const doneCount=goalTasks.filter(g=>g.completed).length;
@@ -1859,7 +1889,7 @@ function render(){
         const oldId=spreadsheetId;
         localStorage.removeItem("ssid");
         spreadsheetId=null;
-        tasks=[]; logs=[]; projects=[]; notes=[]; calendars=[]; allCalendars=[];
+        tasks=[]; logs=[]; projects=[]; notes=[]; distractions=[]; calendars=[]; allCalendars=[];
         // Lösche die alte Tabelle in Google Drive
         if(oldId) await deleteSheet(oldId);
         console.log("✅ Alte Tabelle gelöscht, neue wird erstellt...");
@@ -1926,6 +1956,107 @@ async function loadNotes(){
     notes=[];
   }
 }
+async function saveDistractions(){
+  try{
+    const json=JSON.stringify(distractions);
+    const url=`${SHEETS}/${spreadsheetId}/values/Distractions!A1?valueInputOption=RAW`;
+    try{
+      await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+      return;
+    }catch(err){
+      if(err.message.includes("Unable to parse range")){
+        try{
+          await api(`${SHEETS}/${spreadsheetId}:batchUpdate`,{
+            method:"POST",
+            body:JSON.stringify({requests:[{addSheet:{properties:{title:"Distractions"}}}]})
+          });
+        }catch(e){ console.warn("Distractions-Tab evtl. schon vorhanden:",e.message); }
+        await new Promise(r=>setTimeout(r,1000));
+        await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+        return;
+      }
+      throw err;
+    }
+  }catch(e){
+    console.error("❌ saveDistractions FEHLER:",e.message);
+    toast("Ablenkungen speichern fehlgeschlagen");
+    throw e;
+  }
+}
+async function loadDistractions(){
+  try{
+    const res=await api(`${SHEETS}/${spreadsheetId}/values/Distractions!A1`);
+    const cell=res.values?.[0]?.[0]||"[]";
+    distractions=JSON.parse(cell);
+  }catch(e){
+    distractions=[];
+  }
+}
+async function addDistraction(data){
+  setSync("busy");
+  try{
+    const d=Object.assign({id:uid(), createdAt:new Date().toISOString()}, data);
+    distractions.push(d);
+    await saveDistractions();
+    setSync("on"); render();
+  }catch(e){
+    setSync("on");
+  }
+}
+async function updateDistraction(id, data){
+  setSync("busy");
+  try{
+    const d=distractions.find(x=>x.id===id);
+    if(!d){ toast("Nicht gefunden"); return; }
+    Object.assign(d, data);
+    await saveDistractions();
+    setSync("on"); render();
+  }catch(e){
+    setSync("on");
+  }
+}
+async function deleteDistraction(id){
+  if(!confirm("Diese Ablenkung wirklich löschen? Die bisherige Häufigkeit geht dabei nicht verloren, bleibt aber ohne Namen im Verlauf.")) return;
+  setSync("busy");
+  try{
+    distractions=distractions.filter(d=>d.id!==id);
+    await saveDistractions();
+    setSync("on"); render(); toast("Gelöscht");
+  }catch(e){
+    setSync("on");
+  }
+}
+async function doDistraction(id){
+  const d=distractions.find(x=>x.id===id);
+  if(!d) return;
+  setSync("busy");
+  logs.push({itemId:id, date:todayKey(), doneAt:new Date().toISOString()});
+  render();
+  await saveLogs();
+  setSync("on");
+  toast(esc(d.title)+" ✓");
+}
+function openDistractionForm(existing){
+  const isEdit=!!existing;
+  const title=existing?.title||"";
+  let html='<div class="modal-bg" id="modalBg"><div class="modal">';
+  html+='<h2>'+(isEdit?'Ablenkung bearbeiten':'Neue Ablenkung')+'</h2>';
+  html+='<label>Was darfst du tun?</label>';
+  html+='<input type="text" id="f_dtitle" placeholder="z. B. Fensterputzen" value="'+esc(title)+'" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px;margin-bottom:12px">';
+  html+='<div class="modal-actions"><button class="btn-ghost" id="f_cancel">Abbrechen</button><button class="btn-primary" id="f_save">Speichern</button></div>';
+  html+='</div></div>';
+  document.body.insertAdjacentHTML("beforeend", html);
+  $("f_cancel").onclick=()=>$("modalBg").remove();
+  $("f_save").onclick=async()=>{
+    const t=$("f_dtitle").value.trim();
+    if(!t){ toast("Titel erforderlich"); return; }
+    $("modalBg").remove();
+    if(isEdit) await updateDistraction(existing.id,{title:t});
+    else await addDistraction({title:t});
+  };
+  $("modalBg").onclick=e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+}
+
 async function saveLinks(){
   console.log("💾 saveLinks START, Anzahl:",links.length);
   try{
@@ -2615,7 +2746,7 @@ $("fab").addEventListener("click",()=>{
     if(goalTasks.length>=4){ toast("Maximal 4 Tages-Ziele"); return; }
     return openForm("goal");
   }
-  if(view==="projects") return openProjectForm();
+  if(view==="distractions") return openDistractionForm();
   if(view==="notes") return openNoteForm();
   openForm(view==="habits"?"habit":view==="duties"?"duty":"todo");
 });
@@ -2662,6 +2793,9 @@ main.addEventListener("click",e=>{
   }
   const el=e.target.closest("[data-edit-link]"); if(el){ const l=links.find(x=>x.id===el.dataset.editLink); if(l) openLinkForm(l); return; }
   const dl2=e.target.closest("[data-del-link]"); if(dl2){ deleteLink(dl2.dataset.delLink); return; }
+  const dd=e.target.closest("[data-do-distraction]"); if(dd){ doDistraction(dd.dataset.doDistraction); return; }
+  const edd=e.target.closest("[data-edit-distraction]"); if(edd){ const d=distractions.find(x=>x.id===edd.dataset.editDistraction); if(d) openDistractionForm(d); return; }
+  const del=e.target.closest("[data-del-distraction]"); if(del){ deleteDistraction(del.dataset.delDistraction); return; }
 });
 
 /* ============ ANMELDUNG / START ============ */
@@ -2671,7 +2805,7 @@ function doBackupSilentTodo(){
     type: "todo-app-backup",
     version: 1,
     created: new Date().toISOString(),
-    tasks, logs, projects, notes, links
+    tasks, logs, projects, notes, links, distractions
   };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
   const url = URL.createObjectURL(blob);
@@ -2704,7 +2838,7 @@ async function doRestoreTodo(){
   try{ data = JSON.parse(text); }catch(e){ toast("Ungültige Datei"); return; }
   if(!data || (!data.tasks && !data.logs && !data.projects && !data.notes)){ toast("Ungültiges Format"); return; }
 
-  let addedTasks=0, addedLogs=0, addedProjects=0, addedNotes=0, addedLinks=0;
+  let addedTasks=0, addedLogs=0, addedProjects=0, addedNotes=0, addedLinks=0, addedDistractions=0;
 
   if(Array.isArray(data.tasks)){
     const existingIds = new Set(tasks.map(t=>t.id));
@@ -2726,12 +2860,17 @@ async function doRestoreTodo(){
     const existingIds = new Set(links.map(l=>l.id));
     data.links.forEach(l=>{ if(l.id && !existingIds.has(l.id)){ links.push(l); existingIds.add(l.id); addedLinks++; } });
   }
+  if(Array.isArray(data.distractions)){
+    const existingIds = new Set(distractions.map(d=>d.id));
+    data.distractions.forEach(d=>{ if(d.id && !existingIds.has(d.id)){ distractions.push(d); existingIds.add(d.id); addedDistractions++; } });
+  }
 
   if(addedTasks) await saveTasks();
   if(addedLogs) await saveLogs();
   if(addedProjects) await saveProjects();
   if(addedNotes) await saveNotes();
   if(addedLinks) await saveLinks();
+  if(addedDistractions) await saveDistractions();
 
   render();
   toast(`Wiederhergestellt: ${addedTasks} Aufgaben, ${addedLogs} Log-Einträge, ${addedProjects} Projekte, ${addedNotes} Notizen`);

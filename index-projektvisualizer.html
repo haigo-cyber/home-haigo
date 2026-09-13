@@ -71,6 +71,9 @@
   .progress-bar{width:100%;height:3px;background:var(--bg2);border-radius:1px;overflow:hidden;margin-left:12px;margin-right:60px;}
   .progress-fill{height:100%;background:linear-gradient(90deg,var(--rot) 0%,var(--orange) 33%,var(--blau) 66%,var(--gruen) 100%);transition:width 0.2s;}
   .status-btn{cursor:pointer !important;font-size:8px;padding:1px 4px;}
+  .leaf-toggle{cursor:pointer;flex:none;font-size:10px;font-weight:600;padding:3px 10px;border-radius:12px;border:none;margin-left:auto;}
+  .leaf-open{background:var(--rot);color:#fff;}
+  .leaf-done{background:var(--gruen);color:#0c1120;}
   .status-btn:hover{opacity:0.8;}
   .badge{font-size:8px;padding:1px 4px;border-radius:6px;font-weight:600;white-space:nowrap;}
   .badge-offen{background:rgba(239,68,68,0.3);color:var(--rot);}
@@ -1120,7 +1123,7 @@ function renderNext(){
       const n = item.node;
       n.deadline = el.value || null;
       if(n.deadline){
-        if(!n.due) n.due = addDays(n.deadline, -2);
+        if(!n.due) n.due = n.deadline;
         if(!n.startDate) n.startDate = addDays(n.deadline, -4);
       }
       touchNode(n);
@@ -1360,7 +1363,10 @@ function renderNode(node, isRoot){
     ? (isRoot
         ? `<span class="badge badge-${displayStatus}">${pct}%</span>`
         : `<button class="badge badge-${displayStatus} focus-btn" data-nid="${node._id}" title="Als Unterprojekt öffnen">${pct}%</button>`)
-    : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}">${STATUS_LABEL[displayStatus]}</button>`;
+    : "";
+  const leafToggle = (!isRoot && isLeaf)
+    ? `<button class="leaf-toggle ${node.status==='fertig'?'leaf-done':'leaf-open'}" data-nid="${node._id}" title="${node.status==='fertig'?'Als offen markieren':'Als erledigt markieren'}">${node.status==='fertig'?'erledigt':'offen'}</button>`
+    : "";
   const late = isLate(node);
   const dueChip = isRoot ? "" : (
     `<input type="date" class="sd-input" data-nid="${node._id}" value="${node.startDate||''}" title="Start-Datum">` +
@@ -1388,6 +1394,7 @@ function renderNode(node, isRoot){
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
       <div class="node-actions">${moveBtns}${moveProjBtn}${moveToParentBtn}${moveToAnyParentBtn}${arcLeafBtn}${arcBtn}${addBtn}${delBtn}</div>
+      ${leafToggle}
     </div>
     ${progressHtml}
     ${childrenHtml}
@@ -1595,14 +1602,14 @@ function bindNodeEvents(container){
       updateBulkBarDetail();
     };
   });
-  container.querySelectorAll('.status-btn').forEach(el=>{
+  container.querySelectorAll('.leaf-toggle').forEach(el=>{
     el.onclick = async (ev)=>{
       ev.stopPropagation();
       const n = nodeRegistry[el.dataset.nid];
       const wasFertig = n.status==="fertig";
-      n.status = nextStatus(n.status);
+      n.status = wasFertig ? "offen" : "fertig";
       if(n.status==="fertig") n.done = Date.now();
-      else if(wasFertig) n.done = 0;
+      else n.done = 0;
       touchNode(n);
       renderDetail();
       scheduleSave(currentProject);
@@ -1614,7 +1621,7 @@ function bindNodeEvents(container){
       const n = nodeRegistry[el.dataset.nid];
       n.deadline = el.value || null;
       if(n.deadline){
-        if(!n.due) n.due = addDays(n.deadline, -2);
+        if(!n.due) n.due = n.deadline;
         if(!n.startDate) n.startDate = addDays(n.deadline, -4);
       }
       touchNode(n);
@@ -2627,7 +2634,7 @@ function openQuickAdd(){
     let due = document.getElementById("q_due").value || null;
     const dl = document.getElementById("q_dl").value || null;
     if(dl){
-      if(!due) due = addDays(dl, -2);
+      if(!due) due = dl;
       if(!sd) sd = addDays(dl, -4);
     }
     const titleNode = project.root.children[0];

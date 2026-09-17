@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notizen</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card-bg: #ffffff;
+    --text: #1f2430;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --danger: #dc2626;
+    --border: #e2e4e9;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  header h1 {
+    font-size: 1.25rem;
+    margin: 0;
+  }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 16px;
+    background: var(--accent);
+    color: #fff;
+    transition: background 0.15s;
+  }
+  button:hover { background: var(--accent-dark); }
+  button.secondary {
+    background: #fff;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { background: #f0f1f4; }
+  button.danger {
+    background: #fff;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+  }
+  button.danger:hover { background: #fef2f2; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 18px;
+  }
+  #loginScreen {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--muted);
+  }
+  .hidden { display: none !important; }
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    align-items: center;
+  }
+  .toolbar input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+  }
+  .tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .tag-chip {
+    background: #eef2ff;
+    color: var(--accent-dark);
+    border: 1px solid #c7d2fe;
+    border-radius: 999px;
+    padding: 4px 11px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .tag-chip.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .note-list { display: flex; flex-direction: column; gap: 10px; }
+  .note-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .note-card:hover { border-color: var(--accent); }
+  .note-card h3 { margin: 0 0 4px; font-size: 1.02rem; }
+  .note-card .meta { color: var(--muted); font-size: 0.82rem; margin-bottom: 6px; }
+  .note-card .excerpt { color: var(--text); font-size: 0.9rem; opacity: 0.85; }
+  .note-card .tags { margin-top: 6px; }
+  .note-card .tags span {
+    display: inline-block;
+    background: #f1f3f8;
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 0.75rem;
+    margin-right: 4px;
+    color: var(--muted);
+  }
+  .empty-state {
+    text-align: center;
+    color: var(--muted);
+    padding: 40px 0;
+  }
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 22, 30, 0.45);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 30px 14px;
+    overflow-y: auto;
+    z-index: 50;
+  }
+  .modal {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 22px;
+    max-width: 640px;
+    width: 100%;
+  }
+  .modal h2 { margin-top: 0; }
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .field input[type="text"],
+  .field input[type="date"],
+  .field textarea {
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+  }
+  .field textarea {
+    min-height: 220px;
+    resize: vertical;
+    font-family: inherit;
+  }
+  .tag-input-wrap { position: relative; }
+  .tag-input-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .tag-input-chips .chip {
+    background: #eef2ff;
+    color: var(--accent-dark);
+    border-radius: 999px;
+    padding: 3px 8px 3px 11px;
+    font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tag-input-chips .chip button {
+    background: none;
+    border: none;
+    color: var(--accent-dark);
+    padding: 0;
+    font-size: 0.9rem;
+    line-height: 1;
+  }
+  .suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    max-height: 160px;
+    overflow-y: auto;
+    z-index: 10;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+  }
+  .suggestions div {
+    padding: 7px 11px;
+    cursor: pointer;
+    font-size: 0.88rem;
+  }
+  .suggestions div:hover { background: #f0f1f4; }
+  .modal-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+  .modal-actions .left, .modal-actions .right { display: flex; gap: 8px; }
+  .checkbox-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .checkbox-list label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #f4f5f7;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .checkbox-list input:disabled + span { opacity: 0.4; }
+  .daterange { display: flex; gap: 10px; }
+  .daterange .field { flex: 1; }
+  #status {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2430;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 100;
+  }
+  #status.show { opacity: 1; }
+  #status.error { background: var(--danger); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Notizen</h1>
+  <div>
+    <button id="btnLogin" class="secondary">Mit Google anmelden</button>
+    <button id="btnLogout" class="secondary hidden">Abmelden</button>
+  </div>
+</header>
+
+<main>
+
+  <div id="loginScreen">
+    <p>Bitte melde dich mit deinem Google-Konto an, um auf deine Notizen zuzugreifen.</p>
+  </div>
+
+  <div id="app" class="hidden">
+
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="Suche in Titel, Text und Hashtags …">
+      <button id="btnRefresh" class="secondary">Aktualisieren</button>
+      <button id="btnReport" class="secondary">Report erstellen</button>
+      <button id="btnNew">Neue Notiz</button>
+    </div>
+
+    <div class="tag-chips" id="filterChips"></div>
+
+    <div class="note-list" id="noteList"></div>
+    <div class="empty-state hidden" id="emptyState">Keine Notizen gefunden.</div>
+
+  </div>
+
+</main>
+
+<div id="status"></div>
+
+<!-- Notiz bearbeiten -->
+<div class="modal-overlay hidden" id="noteModalOverlay">
+  <div class="modal">
+    <h2 id="noteModalTitle">Neue Notiz</h2>
+
+    <div class="field">
+      <label for="noteTitleInput">Titel</label>
+      <input type="text" id="noteTitleInput" placeholder="Titel der Notiz">
+    </div>
+
+    <div class="field">
+      <label for="noteDateInput">Datum</label>
+      <input type="date" id="noteDateInput">
+    </div>
+
+    <div class="field">
+      <label>Hashtags</label>
+      <div class="tag-input-wrap">
+        <div class="tag-input-chips" id="noteTagChips"></div>
+        <input type="text" id="noteTagInput" placeholder="Hashtag eingeben und mit Enter bestätigen">
+        <div class="suggestions hidden" id="noteTagSuggestions"></div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="noteBodyInput">Text</label>
+      <textarea id="noteBodyInput" placeholder="Notiztext …"></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <div class="left">
+        <button id="btnDeleteNote" class="danger hidden">Löschen</button>
+      </div>
+      <div class="right">
+        <button id="btnCancelNote" class="secondary">Abbrechen</button>
+        <button id="btnSaveNote">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Report erstellen -->
+<div class="modal-overlay hidden" id="reportModalOverlay">
+  <div class="modal">
+    <h2>Report erstellen</h2>
+    <p style="color:var(--muted); font-size:0.88rem; margin-top:-6px;">
+      Wähle bis zu drei Hashtags aus (Notizen müssen alle ausgewählten Hashtags enthalten) und optional einen Zeitraum.
+      Alle passenden Notizen werden chronologisch in einer Markdown-Datei zusammengefasst und im selben Drive-Ordner gespeichert.
+    </p>
+
+    <div class="field">
+      <label>Hashtags (max. 3)</label>
+      <div class="checkbox-list" id="reportTagList"></div>
+    </div>
+
+    <div class="daterange">
+      <div class="field">
+        <label for="reportDateFrom">Von</label>
+        <input type="date" id="reportDateFrom">
+      </div>
+      <div class="field">
+        <label for="reportDateTo">Bis</label>
+        <input type="date" id="reportDateTo">
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <div class="left"></div>
+      <div class="right">
+        <button id="btnCancelReport" class="secondary">Abbrechen</button>
+        <button id="btnGenerateReport">Report erstellen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Konfiguration ----------
+  var CLIENT_ID = "22658520266-72537b3ef6bi63gmfaavt4r5snnjv0ln.apps.googleusercontent.com";
+  var SCOPES = "https://www.googleapis.com/auth/drive.file";
+  var FOLDER_NAME = "Notizen";
+
+  // ---------- Zustand ----------
+  var state = {
+    accessToken: null,
+    tokenClient: null,
+    folderId: null,
+    notes: [],       // {id, fileName, title, date, tags:[], body}
+    activeTagFilters: [],
+    searchText: "",
+    editingId: null  // null = neue Notiz
+  };
+
+  // ---------- DOM-Referenzen ----------
+  var el = {
+    loginScreen: document.getElementById("loginScreen"),
+    app: document.getElementById("app"),
+    btnLogin: document.getElementById("btnLogin"),
+    btnLogout: document.getElementById("btnLogout"),
+    searchInput: document.getElementById("searchInput"),
+    btnRefresh: document.getElementById("btnRefresh"),
+    btnReport: document.getElementById("btnReport"),
+    btnNew: document.getElementById("btnNew"),
+    filterChips: document.getElementById("filterChips"),
+    noteList: document.getElementById("noteList"),
+    emptyState: document.getElementById("emptyState"),
+    status: document.getElementById("status"),
+
+    noteModalOverlay: document.getElementById("noteModalOverlay"),
+    noteModalTitle: document.getElementById("noteModalTitle"),
+    noteTitleInput: document.getElementById("noteTitleInput"),
+    noteDateInput: document.getElementById("noteDateInput"),
+    noteTagChips: document.getElementById("noteTagChips"),
+    noteTagInput: document.getElementById("noteTagInput"),
+    noteTagSuggestions: document.getElementById("noteTagSuggestions"),
+    noteBodyInput: document.getElementById("noteBodyInput"),
+    btnDeleteNote: document.getElementById("btnDeleteNote"),
+    btnCancelNote: document.getElementById("btnCancelNote"),
+    btnSaveNote: document.getElementById("btnSaveNote"),
+
+    reportModalOverlay: document.getElementById("reportModalOverlay"),
+    reportTagList: document.getElementById("reportTagList"),
+    reportDateFrom: document.getElementById("reportDateFrom"),
+    reportDateTo: document.getElementById("reportDateTo"),
+    btnCancelReport: document.getElementById("btnCancelReport"),
+    btnGenerateReport: document.getElementById("btnGenerateReport")
+  };
+
+  var currentNoteTags = []; // während der Notiz-Bearbeitung
+
+  // ---------- Status-Meldungen ----------
+  var statusTimer = null;
+  function showStatus(msg, isError) {
+    el.status.textContent = msg;
+    el.status.className = isError ? "show error" : "show";
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(function () {
+      el.status.className = "";
+    }, 3200);
+  }
+
+  // ---------- Google Identity Services ----------
+  function initGis() {
+    if (!window.google || !google.accounts || !google.accounts.oauth2) {
+      setTimeout(initGis, 200);
+      return;
+    }
+    state.tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: function (resp) {
+        if (resp && resp.access_token) {
+          state.accessToken = resp.access_token;
+          localStorage.setItem("notizAppSignedIn", "1");
+          onSignedIn();
+        } else {
+          showStatus("Anmeldung fehlgeschlagen.", true);
+        }
+      }
+    });
+
+    if (localStorage.getItem("notizAppSignedIn") === "1") {
+      state.tokenClient.requestAccessToken({ prompt: "" });
+    }
+  }
+
+  function signIn() {
+    state.tokenClient.requestAccessToken({ prompt: "consent" });
+  }
+
+  function signOut() {
+    if (state.accessToken) {
+      google.accounts.oauth2.revoke(state.accessToken, function () {});
+    }
+    state.accessToken = null;
+    localStorage.removeItem("notizAppSignedIn");
+    el.app.classList.add("hidden");
+    el.loginScreen.classList.remove("hidden");
+    el.btnLogin.classList.remove("hidden");
+    el.btnLogout.classList.add("hidden");
+  }
+
+  function onSignedIn() {
+    el.loginScreen.classList.add("hidden");
+    el.app.classList.remove("hidden");
+    el.btnLogin.classList.add("hidden");
+    el.btnLogout.classList.remove("hidden");
+    loadEverything();
+  }
+
+  // ---------- Drive-API-Hilfsfunktionen ----------
+  function authHeader() {
+    return { Authorization: "Bearer " + state.accessToken };
+  }
+
+  function buildMultipart(metadata, content, mimeType) {
+    var boundary = "notizapp-boundary-3141592653589793";
+    var delimiter = "\r\n--" + boundary + "\r\n";
+    var closeDelim = "\r\n--" + boundary + "--";
+    var body =
+      delimiter +
+      "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+      JSON.stringify(metadata) +
+      delimiter +
+      "Content-Type: " + mimeType + "\r\n\r\n" +
+      content +
+      closeDelim;
+    return { body: body, boundary: boundary };
+  }
+
+  function driveCreateFile(name, parents, content) {
+    var metadata = { name: name, parents: parents, mimeType: "text/markdown" };
+    var mp = buildMultipart(metadata, content, "text/markdown; charset=UTF-8");
+    return fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", {
+      method: "POST",
+      headers: Object.assign({}, authHeader(), { "Content-Type": "multipart/related; boundary=" + mp.boundary }),
+      body: mp.body
+    }).then(function (res) {
+      if (!res.ok) throw new Error("Fehler beim Erstellen der Datei (" + res.status + ")");
+      return res.json();
+    });
+  }
+
+  function driveUpdateFile(fileId, name, content) {
+    var metadata = { name: name };
+    var mp = buildMultipart(metadata, content, "text/markdown; charset=UTF-8");
+    return fetch("https://www.googleapis.com/upload/drive/v3/files/" + fileId + "?uploadType=multipart&fields=id,name,webViewLink", {
+      method: "PATCH",
+      headers: Object.assign({}, authHeader(), { "Content-Type": "multipart/related; boundary=" + mp.boundary }),
+      body: mp.body
+    }).then(function (res) {
+      if (!res.ok) throw new Error("Fehler beim Aktualisieren der Datei (" + res.status + ")");
+      return res.json();
+    });
+  }
+
+  function driveDeleteFile(fileId) {
+    return fetch("https://www.googleapis.com/drive/v3/files/" + fileId, {
+      method: "DELETE",
+      headers: authHeader()
+    }).then(function (res) {
+      if (!res.ok && res.status !== 204) throw new Error("Fehler beim Löschen (" + res.status + ")");
+    });
+  }
+
+  function driveGetFileContent(fileId) {
+    return fetch("https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media", {
+      headers: authHeader()
+    }).then(function (res) {
+      if (!res.ok) throw new Error("Fehler beim Laden (" + res.status + ")");
+      return res.text();
+    });
+  }
+
+  function driveListFiles(folderId) {
+    var allFiles = [];
+    function fetchPage(pageToken) {
+      var url = new URL("https://www.googleapis.com/drive/v3/files");
+      url.searchParams.set("q", "'" + folderId + "' in parents and trashed = false and mimeType = 'text/markdown'");
+      url.searchParams.set("fields", "nextPageToken, files(id, name, modifiedTime)");
+      url.searchParams.set("pageSize", "100");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      return fetch(url.toString(), { headers: authHeader() }).then(function (res) {
+        if (!res.ok) throw new Error("Fehler beim Auflisten (" + res.status + ")");
+        return res.json();
+      }).then(function (data) {
+        allFiles = allFiles.concat(data.files || []);
+        if (data.nextPageToken) return fetchPage(data.nextPageToken);
+        return allFiles;
+      });
+    }
+    return fetchPage(null);
+  }
+
+  function ensureFolder() {
+    var cachedId = localStorage.getItem("notizAppFolderId");
+    var checkCached = cachedId
+      ? fetch("https://www.googleapis.com/drive/v3/files/" + cachedId + "?fields=id,trashed", { headers: authHeader() })
+          .then(function (res) { return res.ok ? res.json() : null; })
+          .catch(function () { return null; })
+      : Promise.resolve(null);
+
+    return checkCached.then(function (data) {
+      if (data && !data.trashed) return cachedId;
+
+      var url = new URL("https://www.googleapis.com/drive/v3/files");
+      url.searchParams.set("q", "name = '" + FOLDER_NAME + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+      url.searchParams.set("fields", "files(id,name)");
+      return fetch(url.toString(), { headers: authHeader() })
+        .then(function (res) { return res.json(); })
+        .then(function (searchData) {
+          if (searchData.files && searchData.files.length > 0) {
+            localStorage.setItem("notizAppFolderId", searchData.files[0].id);
+            return searchData.files[0].id;
+          }
+          return fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+            method: "POST",
+            headers: Object.assign({}, authHeader(), { "Content-Type": "application/json" }),
+            body: JSON.stringify({ name: FOLDER_NAME, mimeType: "application/vnd.google-apps.folder" })
+          }).then(function (res) { return res.json(); })
+            .then(function (createData) {
+              localStorage.setItem("notizAppFolderId", createData.id);
+              return createData.id;
+            });
+        });
+    });
+  }
+
+  // ---------- Notiz-Parsing ----------
+  function parseNote(raw) {
+    var lines = raw.split(/\r?\n/);
+    var title = "", date = "", tags = [];
+    var i = 0;
+    while (i < lines.length) {
+      var line = lines[i];
+      if (/^titel\s*:/i.test(line)) {
+        title = line.replace(/^titel\s*:/i, "").trim();
+        i++;
+        continue;
+      }
+      if (/^datum\s*:/i.test(line)) {
+        date = line.replace(/^datum\s*:/i, "").trim();
+        i++;
+        continue;
+      }
+      if (/^tags\s*:/i.test(line)) {
+        tags = line.replace(/^tags\s*:/i, "").trim().split(/\s+/).filter(Boolean).map(function (t) {
+          return t.replace(/^#/, "").toLowerCase();
+        });
+        i++;
+        continue;
+      }
+      if (line.trim() === "") { i++; break; }
+      break;
+    }
+    var body = lines.slice(i).join("\n").trim();
+    return { title: title, date: date, tags: tags, body: body };
+  }
+
+  function serializeNote(note) {
+    var tagLine = note.tags.map(function (t) { return "#" + t; }).join(" ");
+    return "Titel: " + note.title + "\nDatum: " + note.date + "\nTags: " + tagLine + "\n\n" + note.body.trim() + "\n";
+  }
+
+  function slugify(str) {
+    var s = (str || "").toLowerCase();
+    s = s.replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+    s = s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+    s = s.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return s.slice(0, 60) || "notiz";
+  }
+
+  function uniqueFileName(baseName, excludeId) {
+    var existing = {};
+    state.notes.forEach(function (n) {
+      if (n.id !== excludeId) existing[n.fileName] = true;
+    });
+    if (!existing[baseName]) return baseName;
+    var stem = baseName.replace(/\.md$/, "");
+    var counter = 2;
+    var candidate;
+    do {
+      candidate = stem + "-" + counter + ".md";
+      counter++;
+    } while (existing[candidate]);
+    return candidate;
+  }
+
+  // ---------- Laden aller Notizen ----------
+  function loadEverything() {
+    showStatus("Lade Notizen …");
+    ensureFolder().then(function (folderId) {
+      state.folderId = folderId;
+      return driveListFiles(folderId);
+    }).then(function (files) {
+      var limit = 8; // Begrenzung gleichzeitiger Downloads
+      var results = new Array(files.length);
+      var idx = 0;
+      function next() {
+        if (idx >= files.length) return Promise.resolve();
+        var current = idx++;
+        var f = files[current];
+        return driveGetFileContent(f.id).then(function (content) {
+          var parsed = parseNote(content);
+          results[current] = {
+            id: f.id,
+            fileName: f.name,
+            title: parsed.title || f.name,
+            date: parsed.date,
+            tags: parsed.tags,
+            body: parsed.body
+          };
+        }).catch(function () {
+          results[current] = null;
+        }).then(next);
+      }
+      var workers = [];
+      for (var w = 0; w < limit; w++) workers.push(next());
+      return Promise.all(workers).then(function () { return results.filter(Boolean); });
+    }).then(function (notes) {
+      state.notes = notes;
+      renderFilterChips();
+      renderList();
+      showStatus("Notizen geladen.");
+    }).catch(function (err) {
+      showStatus(err.message || "Fehler beim Laden der Notizen.", true);
+    });
+  }
+
+  // ---------- Filter & Anzeige ----------
+  function allKnownTags() {
+    var set = {};
+    state.notes.forEach(function (n) { n.tags.forEach(function (t) { set[t] = true; }); });
+    return Object.keys(set).sort();
+  }
+
+  function renderFilterChips() {
+    var tags = allKnownTags();
+    el.filterChips.innerHTML = "";
+    tags.forEach(function (tag) {
+      var chip = document.createElement("div");
+      chip.className = "tag-chip" + (state.activeTagFilters.indexOf(tag) !== -1 ? " active" : "");
+      chip.textContent = "#" + tag;
+      chip.addEventListener("click", function () {
+        var pos = state.activeTagFilters.indexOf(tag);
+        if (pos === -1) state.activeTagFilters.push(tag);
+        else state.activeTagFilters.splice(pos, 1);
+        renderFilterChips();
+        renderList();
+      });
+      el.filterChips.appendChild(chip);
+    });
+  }
+
+  function matchesFilters(note) {
+    if (state.activeTagFilters.length > 0) {
+      var hasAll = state.activeTagFilters.every(function (t) { return note.tags.indexOf(t) !== -1; });
+      if (!hasAll) return false;
+    }
+    if (state.searchText) {
+      var q = state.searchText.toLowerCase();
+      var haystack = (note.title + " " + note.body + " " + note.tags.join(" ")).toLowerCase();
+      if (haystack.indexOf(q) === -1) return false;
+    }
+    return true;
+  }
+
+  function renderList() {
+    var filtered = state.notes.filter(matchesFilters).sort(function (a, b) {
+      return (b.date || "").localeCompare(a.date || "");
+    });
+    el.noteList.innerHTML = "";
+    el.emptyState.classList.toggle("hidden", filtered.length > 0);
+    filtered.forEach(function (note) {
+      var card = document.createElement("div");
+      card.className = "note-card";
+      var excerpt = note.body.trim().slice(0, 140);
+      card.innerHTML =
+        "<h3></h3><div class='meta'></div><div class='excerpt'></div><div class='tags'></div>";
+      card.querySelector("h3").textContent = note.title || "(ohne Titel)";
+      card.querySelector(".meta").textContent = note.date || "";
+      card.querySelector(".excerpt").textContent = excerpt + (note.body.length > 140 ? " …" : "");
+      var tagsEl = card.querySelector(".tags");
+      note.tags.forEach(function (t) {
+        var span = document.createElement("span");
+        span.textContent = "#" + t;
+        tagsEl.appendChild(span);
+      });
+      card.addEventListener("click", function () { openNoteModal(note.id); });
+      el.noteList.appendChild(card);
+    });
+  }
+
+  // ---------- Tag-Eingabe (Chips + Vorschläge) ----------
+  function renderNoteTagChips() {
+    el.noteTagChips.innerHTML = "";
+    currentNoteTags.forEach(function (tag, i) {
+      var chip = document.createElement("div");
+      chip.className = "chip";
+      var span = document.createElement("span");
+      span.textContent = "#" + tag;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "✕";
+      btn.addEventListener("click", function () {
+        currentNoteTags.splice(i, 1);
+        renderNoteTagChips();
+      });
+      chip.appendChild(span);
+      chip.appendChild(btn);
+      el.noteTagChips.appendChild(chip);
+    });
+  }
+
+  function addCurrentTag(rawValue) {
+    var tag = rawValue.trim().replace(/^#/, "").toLowerCase();
+    if (tag && currentNoteTags.indexOf(tag) === -1) {
+      currentNoteTags.push(tag);
+      renderNoteTagChips();
+    }
+    el.noteTagInput.value = "";
+    el.noteTagSuggestions.classList.add("hidden");
+  }
+
+  el.noteTagInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addCurrentTag(el.noteTagInput.value);
+    } else if (e.key === "Backspace" && el.noteTagInput.value === "" && currentNoteTags.length > 0) {
+      currentNoteTags.pop();
+      renderNoteTagChips();
+    }
+  });
+
+  el.noteTagInput.addEventListener("input", function () {
+    var val = el.noteTagInput.value.trim().replace(/^#/, "").toLowerCase();
+    if (!val) { el.noteTagSuggestions.classList.add("hidden"); return; }
+    var matches = allKnownTags().filter(function (t) {
+      return t.indexOf(val) === 0 && currentNoteTags.indexOf(t) === -1;
+    }).slice(0, 8);
+    if (matches.length === 0) { el.noteTagSuggestions.classList.add("hidden"); return; }
+    el.noteTagSuggestions.innerHTML = "";
+    matches.forEach(function (t) {
+      var div = document.createElement("div");
+      div.textContent = "#" + t;
+      div.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        addCurrentTag(t);
+      });
+      el.noteTagSuggestions.appendChild(div);
+    });
+    el.noteTagSuggestions.classList.remove("hidden");
+  });
+
+  document.addEventListener("click", function (e) {
+    if (!el.noteTagInput.contains(e.target)) {
+      el.noteTagSuggestions.classList.add("hidden");
+    }
+  });
+
+  // ---------- Notiz-Modal ----------
+  function todayISO() {
+    var d = new Date();
+    var m = ("0" + (d.getMonth() + 1)).slice(-2);
+    var day = ("0" + d.getDate()).slice(-2);
+    return d.getFullYear() + "-" + m + "-" + day;
+  }
+
+  function openNoteModal(noteId) {
+    state.editingId = noteId || null;
+    if (noteId) {
+      var note = state.notes.filter(function (n) { return n.id === noteId; })[0];
+      el.noteModalTitle.textContent = "Notiz bearbeiten";
+      el.noteTitleInput.value = note.title;
+      el.noteDateInput.value = note.date;
+      el.noteBodyInput.value = note.body;
+      currentNoteTags = note.tags.slice();
+      el.btnDeleteNote.classList.remove("hidden");
+    } else {
+      el.noteModalTitle.textContent = "Neue Notiz";
+      el.noteTitleInput.value = "";
+      el.noteDateInput.value = todayISO();
+      el.noteBodyInput.value = "";
+      currentNoteTags = [];
+      el.btnDeleteNote.classList.add("hidden");
+    }
+    renderNoteTagChips();
+    el.noteTagInput.value = "";
+    el.noteModalOverlay.classList.remove("hidden");
+    el.noteTitleInput.focus();
+  }
+
+  function closeNoteModal() {
+    el.noteModalOverlay.classList.add("hidden");
+  }
+
+  function saveNote() {
+    var title = el.noteTitleInput.value.trim();
+    var date = el.noteDateInput.value;
+    var body = el.noteBodyInput.value;
+    if (!title) { showStatus("Bitte einen Titel eingeben.", true); return; }
+    if (!date) { showStatus("Bitte ein Datum angeben.", true); return; }
+
+    var noteObj = { title: title, date: date, tags: currentNoteTags.slice(), body: body };
+    var content = serializeNote(noteObj);
+    var baseFileName = date + "_" + slugify(title) + ".md";
+
+    el.btnSaveNote.disabled = true;
+    showStatus("Speichere …");
+
+    if (state.editingId) {
+      var existing = state.notes.filter(function (n) { return n.id === state.editingId; })[0];
+      var fileName = existing.fileName;
+      // Dateiname nur erneuern, wenn Titel oder Datum sich geändert haben
+      var newBase = baseFileName;
+      if (newBase !== existing.fileName) {
+        fileName = uniqueFileName(newBase, state.editingId);
+      }
+      driveUpdateFile(state.editingId, fileName, content).then(function () {
+        existing.fileName = fileName;
+        existing.title = title;
+        existing.date = date;
+        existing.tags = noteObj.tags;
+        existing.body = body;
+        el.btnSaveNote.disabled = false;
+        closeNoteModal();
+        renderFilterChips();
+        renderList();
+        showStatus("Notiz gespeichert.");
+      }).catch(function (err) {
+        el.btnSaveNote.disabled = false;
+        showStatus(err.message || "Fehler beim Speichern.", true);
+      });
+    } else {
+      var fName = uniqueFileName(baseFileName, null);
+      driveCreateFile(fName, [state.folderId], content).then(function (created) {
+        state.notes.push({
+          id: created.id,
+          fileName: fName,
+          title: title,
+          date: date,
+          tags: noteObj.tags,
+          body: body
+        });
+        el.btnSaveNote.disabled = false;
+        closeNoteModal();
+        renderFilterChips();
+        renderList();
+        showStatus("Notiz gespeichert.");
+      }).catch(function (err) {
+        el.btnSaveNote.disabled = false;
+        showStatus(err.message || "Fehler beim Speichern.", true);
+      });
+    }
+  }
+
+  function deleteNote() {
+    if (!state.editingId) return;
+    if (!confirm("Diese Notiz wirklich löschen? Das kann nicht rückgängig gemacht werden.")) return;
+    var id = state.editingId;
+    driveDeleteFile(id).then(function () {
+      state.notes = state.notes.filter(function (n) { return n.id !== id; });
+      closeNoteModal();
+      renderFilterChips();
+      renderList();
+      showStatus("Notiz gelöscht.");
+    }).catch(function (err) {
+      showStatus(err.message || "Fehler beim Löschen.", true);
+    });
+  }
+
+  // ---------- Report ----------
+  var reportSelectedTags = [];
+
+  function openReportModal() {
+    reportSelectedTags = [];
+    el.reportDateFrom.value = "";
+    el.reportDateTo.value = "";
+    renderReportTagList();
+    el.reportModalOverlay.classList.remove("hidden");
+  }
+
+  function closeReportModal() {
+    el.reportModalOverlay.classList.add("hidden");
+  }
+
+  function renderReportTagList() {
+    var tags = allKnownTags();
+    el.reportTagList.innerHTML = "";
+    tags.forEach(function (tag) {
+      var label = document.createElement("label");
+      var input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = reportSelectedTags.indexOf(tag) !== -1;
+      input.disabled = !input.checked && reportSelectedTags.length >= 3;
+      input.addEventListener("change", function () {
+        if (input.checked) {
+          if (reportSelectedTags.length < 3) reportSelectedTags.push(tag);
+          else input.checked = false;
+        } else {
+          reportSelectedTags = reportSelectedTags.filter(function (t) { return t !== tag; });
+        }
+        renderReportTagList();
+      });
+      var span = document.createElement("span");
+      span.textContent = "#" + tag;
+      label.appendChild(input);
+      label.appendChild(span);
+      el.reportTagList.appendChild(label);
+    });
+  }
+
+  function generateReport() {
+    var from = el.reportDateFrom.value;
+    var to = el.reportDateTo.value;
+
+    var matched = state.notes.filter(function (n) {
+      if (reportSelectedTags.length > 0) {
+        var hasAll = reportSelectedTags.every(function (t) { return n.tags.indexOf(t) !== -1; });
+        if (!hasAll) return false;
+      }
+      if (from && n.date < from) return false;
+      if (to && n.date > to) return false;
+      return true;
+    }).sort(function (a, b) { return (a.date || "").localeCompare(b.date || ""); });
+
+    if (matched.length === 0) {
+      showStatus("Keine Notizen für diese Auswahl gefunden.", true);
+      return;
+    }
+
+    var now = new Date();
+    var stamp = now.toISOString().slice(0, 16).replace("T", "_").replace(":", "");
+    var headerBits = [];
+    if (reportSelectedTags.length > 0) headerBits.push(reportSelectedTags.map(function (t) { return "#" + t; }).join(" "));
+    if (from || to) headerBits.push((from || "…") + " bis " + (to || "…"));
+    var headerLine = headerBits.length ? " (" + headerBits.join(", ") + ")" : "";
+
+    var parts = [];
+    parts.push("# Report" + headerLine);
+    parts.push("Erstellt am: " + now.toLocaleString("de-DE"));
+    parts.push("Anzahl Notizen: " + matched.length);
+    parts.push("");
+    matched.forEach(function (n) {
+      parts.push("## " + n.title + " (" + n.date + ")");
+      if (n.tags.length) parts.push("Tags: " + n.tags.map(function (t) { return "#" + t; }).join(" "));
+      parts.push("");
+      parts.push(n.body.trim());
+      parts.push("");
+      parts.push("---");
+      parts.push("");
+    });
+    var reportContent = parts.join("\n");
+    var reportFileName = uniqueFileName("Report_" + stamp + ".md", null);
+
+    showStatus("Erstelle Report …");
+    driveCreateFile(reportFileName, [state.folderId], reportContent).then(function (created) {
+      // zusätzlich lokal herunterladen
+      var blob = new Blob([reportContent], { type: "text/markdown;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = reportFileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      closeReportModal();
+      showStatus("Report mit " + matched.length + " Notizen erstellt und im Drive-Ordner gespeichert.");
+    }).catch(function (err) {
+      showStatus(err.message || "Fehler beim Erstellen des Reports.", true);
+    });
+  }
+
+  // ---------- Event-Bindings ----------
+  el.btnLogin.addEventListener("click", signIn);
+  el.btnLogout.addEventListener("click", signOut);
+  el.btnRefresh.addEventListener("click", loadEverything);
+  el.btnNew.addEventListener("click", function () { openNoteModal(null); });
+  el.btnCancelNote.addEventListener("click", closeNoteModal);
+  el.btnSaveNote.addEventListener("click", saveNote);
+  el.btnDeleteNote.addEventListener("click", deleteNote);
+
+  el.btnReport.addEventListener("click", openReportModal);
+  el.btnCancelReport.addEventListener("click", closeReportModal);
+  el.btnGenerateReport.addEventListener("click", generateReport);
+
+  el.searchInput.addEventListener("input", function () {
+    state.searchText = el.searchInput.value.trim();
+    renderList();
+  });
+
+  el.noteModalOverlay.addEventListener("click", function (e) {
+    if (e.target === el.noteModalOverlay) closeNoteModal();
+  });
+  el.reportModalOverlay.addEventListener("click", function (e) {
+    if (e.target === el.reportModalOverlay) closeReportModal();
+  });
+
+  // ---------- Start ----------
+  initGis();
+
+})();
+</script>
+
+</body>
+</html>

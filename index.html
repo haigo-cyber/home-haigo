@@ -1304,17 +1304,23 @@ function render(){
     const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const sorted=sortTasksForToday(tasks, key);
     let h="";
-    const metaTasks = [...allGTasks.filter(isMetaTask)].sort((a,b)=>{
+    const metaTasksAll = [...allGTasks.filter(isMetaTask)].sort((a,b)=>{
       if(a.deadlineDays===null && b.deadlineDays===null) return 0;
       if(a.deadlineDays===null) return 1;
       if(b.deadlineDays===null) return -1;
       return a.deadlineDays - b.deadlineDays;
     });
+    const metaTasks = metaTasksAll.slice(0,4);
+    const RANK_COLORS = [
+      {bg:"#4ade80", fg:"#000"}, // 1. dringendster: Grün = machen
+      {bg:"#facc15", fg:"#000"}, // 2.: Gelb
+      {bg:"#f97316", fg:"#fff"}, // 3.: Orange
+      {bg:"#ef4444", fg:"#fff"}  // 4.: Rot
+    ];
     if(metaTasks.length){
       h+=`<div class="section-title">🏛️ Dienstliche Metaprojekte</div>`;
-      h+=metaTasks.map(t=>{
-        const bg=deadlineColor(t.deadlineDays);
-        const fg=bg==="#4ade80"?"#000":"#fff";
+      h+=metaTasks.map((t,i)=>{
+        const {bg,fg}=RANK_COLORS[i];
         return `<div class="card" style="background:${bg}">
           <div class="check" data-gtask="${t.id}">${checkSvg()}</div>
           <div class="body"><div class="title" style="color:${fg}">${esc(t.title||"(ohne Titel)")}</div></div>

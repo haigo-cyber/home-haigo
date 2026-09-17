@@ -74,6 +74,8 @@
   .leaf-toggle{cursor:pointer;flex:none;font-size:10px;font-weight:600;padding:3px 10px;border-radius:12px;border:none;margin-left:auto;}
   .leaf-open{background:var(--rot);color:#fff;}
   .leaf-done{background:var(--gruen);color:#0c1120;}
+  .btnMeta{opacity:0.35;}
+  .btnMeta-on{opacity:1;filter:drop-shadow(0 0 2px #fbbf24);}
   .status-btn:hover{opacity:0.8;}
   .badge{font-size:8px;padding:1px 4px;border-radius:6px;font-weight:600;white-space:nowrap;}
   .badge-offen{background:rgba(239,68,68,0.3);color:var(--rot);}
@@ -174,6 +176,7 @@
         <button class="ghost" id="btnViewMode" title="Zwischen Kachel- und Listenansicht wechseln">🔲 Kacheln</button>
         <button class="ghost" id="btnProgress" title="Fortschritt der letzten 10 Tage anzeigen">Fortschritt</button>
         <button class="ghost" id="btnSyncTasks" title="Erledigte aus der ToDo-App übernehmen und Termine nach Google Tasks schreiben">Google Tasks abgleichen</button>
+        <button class="ghost" id="btnMetaGantt" title="Gantt-Ansicht aller dienstlichen Metaprojekte über alle Projekte hinweg">🏛️ Metaprojekte</button>
         <button class="primary" id="btnNewProject">Neues Projekt</button>
       </div>
       <div class="row" style="margin:0 0 10px;">
@@ -205,7 +208,7 @@
     </div>
 
     <div id="tabGantt" class="hidden">
-      <div class="toolbar"><button class="ghost" onclick="backToOverviewFromGR()">Zurück</button><h2>Gantt Timeline</h2></div>
+      <div class="toolbar"><button class="ghost" onclick="backToOverviewFromGR()">Zurück</button><h2 id="ganttTitle">Gantt Timeline</h2></div>
       <div id="ganttView"></div>
       <div id="ganttEmpty" class="center hidden">Keine Projekte mit Start- und Endatum. Setze Start- und Enddatum in den Projektdetails.</div>
     </div>
@@ -277,6 +280,7 @@ const APP_TAG = "projekt-fortschritt";
 const GTASKS = "https://tasks.googleapis.com/tasks/v1";
 const GT_LIST = "@default";
 const GT_MARKER = "[Projekt-Visualizer]";
+const META_MARKER = "[Metaprojekt]";
 
 /* ============ Status-Modell ============ */
 const STATUS_ORDER = ["offen","begonnen","weit","fertig"];
@@ -288,14 +292,14 @@ function nextStatus(s){ const i = STATUS_ORDER.indexOf(s); return STATUS_ORDER[(
 
 /* ============ Markdown Parsing / Serialisierung ============ */
 const HEAD_RE = /^(#{1,6})\s+(.*)$/;
-const META_RE = /<!--\s*(status|due|gt|archived|upd|done|dl|sd):([^>]*?)-->/g;
+const META_RE = /<!--\s*(status|due|gt|archived|upd|done|dl|sd|meta):([^>]*?)-->/g;
 
 function parseHeadingLine(line){
   const m = line.match(HEAD_RE);
   if(!m) return null;
   const level = m[1].length;
   let rest = m[2];
-  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0, done:0, deadline:null, startDate:null};
+  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0, done:0, deadline:null, startDate:null, isMeta:false};
   rest = rest.replace(META_RE, (whole, key, val)=>{
     val = (val||"").trim();
     if(key==="status"){ if(STATUS_ORDER.includes(val)) meta.status = val; }
@@ -306,9 +310,10 @@ function parseHeadingLine(line){
     else if(key==="done"){ meta.done = parseInt(val,10) || 0; }
     else if(key==="dl"){ meta.deadline = val || null; }
     else if(key==="sd"){ meta.startDate = val || null; }
+    else if(key==="meta"){ meta.isMeta = (val==="1"||val==="true"); }
     return "";
   });
-  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd, done: meta.done, deadline: meta.deadline, startDate: meta.startDate};
+  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd, done: meta.done, deadline: meta.deadline, startDate: meta.startDate, isMeta: meta.isMeta};
 }
 
 function parseMarkdown(text){
@@ -318,7 +323,7 @@ function parseMarkdown(text){
   for(const line of lines){
     const h = parseHeadingLine(line);
     if(h){
-      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, done:h.done||0, deadline:h.deadline||null, startDate:h.startDate||null, body:[], children:[], parent:null};
+      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, done:h.done||0, deadline:h.deadline||null, startDate:h.startDate||null, isMeta:h.isMeta||false, body:[], children:[], parent:null};
       while(stack.length && stack[stack.length-1].level >= node.level) stack.pop();
       const parent = stack[stack.length-1];
       node.parent = parent;
@@ -343,6 +348,7 @@ function serializeMarkdown(root){
       if(n.done) line += " <!--done:"+n.done+"-->";
       if(n.deadline) line += " <!--dl:"+n.deadline+"-->";
       if(n.startDate) line += " <!--sd:"+n.startDate+"-->";
+      if(n.isMeta) line += " <!--meta:1-->";
       out.push(line);
     }
     n.body.forEach(l=>out.push(l));
@@ -540,6 +546,7 @@ function dueToRfc(date){ return date ? new Date(date+"T12:00:00.000Z").toISOStri
 
 async function gtCreate(node, projectTitle){
   let notes = GT_MARKER+" "+projectTitle;
+  if(node.isMeta) notes += " "+META_MARKER;
   const deadline = effectiveDeadline(node);
   if(deadline) notes += " | DL:"+deadline;
   if(node.startDate) notes += " | SD:"+node.startDate;
@@ -552,6 +559,7 @@ async function gtCreate(node, projectTitle){
 }
 async function gtUpdate(node, projectTitle){
   let notes = GT_MARKER+" "+projectTitle;
+  if(node.isMeta) notes += " "+META_MARKER;
   const deadline = effectiveDeadline(node);
   if(deadline) notes += " | DL:"+deadline;
   if(node.startDate) notes += " | SD:"+node.startDate;
@@ -1339,6 +1347,7 @@ function renderNode(node, isRoot){
     : "";  // Blätter: kein arcBtn (nutzen btnArcLeaf stattdessen)
   
   const delBtn = isRoot || node.level === 1 ? "" : `<button class="btnDel" data-nid="${node._id}">x</button>`;
+  const metaBtn = isRoot ? "" : `<button class="btnMeta ${node.isMeta?'btnMeta-on':''}" data-nid="${node._id}" title="${node.isMeta?'Ist dienstliches Metaprojekt (klicken zum Entfernen)':'Als dienstliches Metaprojekt markieren'}">🏛️</button>`;
   const pg = hasChildren ? nodeProgress(node) : 0;
   const pct = Math.round(pg * 100);
   const displayStatus = getNodeStatus(node);
@@ -1393,7 +1402,7 @@ function renderNode(node, isRoot){
       ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
-      <div class="node-actions">${moveBtns}${moveProjBtn}${moveToParentBtn}${moveToAnyParentBtn}${arcLeafBtn}${arcBtn}${addBtn}${delBtn}</div>
+      <div class="node-actions">${moveBtns}${moveProjBtn}${moveToParentBtn}${moveToAnyParentBtn}${arcLeafBtn}${arcBtn}${metaBtn}${addBtn}${delBtn}</div>
       ${leafToggle}
     </div>
     ${progressHtml}
@@ -1600,6 +1609,17 @@ function bindNodeEvents(container){
       if(el.checked) selectedNids.add(el.dataset.nid);
       else selectedNids.delete(el.dataset.nid);
       updateBulkBarDetail();
+    };
+  });
+  container.querySelectorAll('.btnMeta').forEach(el=>{
+    el.onclick = async (ev)=>{
+      ev.stopPropagation();
+      const n = nodeRegistry[el.dataset.nid];
+      n.isMeta = !n.isMeta;
+      touchNode(n);
+      renderDetail();
+      scheduleSave(currentProject);
+      if(n.due || n.gtId){ await syncOne(n, currentProject); renderDetail(); }
     };
   });
   container.querySelectorAll('.leaf-toggle').forEach(el=>{
@@ -1891,6 +1911,7 @@ document.getElementById("btnOnlyUntimed").onclick = ()=>{
 document.getElementById("searchInput").oninput = ()=> renderOverview();
 document.getElementById("btnProgress").onclick = ()=> showProgressModal();
 document.getElementById("btnSyncTasks").onclick = ()=> syncTasks(false);
+document.getElementById("btnMetaGantt").onclick = ()=> renderMetaGantt();
 
 /* ============ Neues Projekt ============ */
 document.getElementById("btnNewProject").onclick = async ()=>{
@@ -2239,6 +2260,10 @@ function renderGanttForProject(projectId){
   renderGantt();
 }
 
+function renderMetaGantt(){
+  renderGanttForProject("__META__");
+}
+
 function renderRoadmapForProject(projectId){
   currentFilterProjectId = projectId;
   document.getElementById("tabOverview").classList.add("hidden");
@@ -2252,6 +2277,9 @@ function renderRoadmapForProject(projectId){
 function renderGantt(){
   const ganttView = document.getElementById("ganttView");
   const ganttEmpty = document.getElementById("ganttEmpty");
+  const isMetaMode = currentFilterProjectId === "__META__";
+  const ganttTitleEl = document.getElementById("ganttTitle");
+  if(ganttTitleEl) ganttTitleEl.textContent = isMetaMode ? "🏛️ Dienstliche Metaprojekte" : "Gantt Timeline";
   
   // Wenn kein Projekt selected, nicht zeigen
   if(!currentFilterProjectId){
@@ -2261,33 +2289,40 @@ function renderGantt(){
     return;
   }
   
-  // NUR das ausgewählte Projekt
-  const proj = projects.find(p => p.fileId === currentFilterProjectId);
-  if(!proj){
-    ganttView.innerHTML = "";
-    ganttEmpty.classList.remove("hidden");
-    return;
-  }
-  
+  let proj = null;
   const ganttItems = [];
-  const walk = (node) => {
-    if(node.level > 0 && node.startDate && node.deadline && node.status !== "fertig"){
+  const walk = (proj, node) => {
+    const matches = isMetaMode ? node.isMeta : true;
+    if(node.level > 0 && matches && node.startDate && node.deadline && node.status !== "fertig"){
       ganttItems.push({
         title: node.title,
-        project: proj.title,
+        project: proj,
         startDate: new Date(node.startDate+"T00:00:00"),
         deadline: new Date(node.deadline+"T00:00:00"),
         level: node.level,
         node: node
       });
     }
-    node.children.forEach(walk);
+    node.children.forEach(c=>walk(proj, c));
   };
-  walk(proj.root);
+  
+  if(isMetaMode){
+    projects.filter(p=>!p.archived).forEach(p=>walk(p, p.root));
+  } else {
+    // NUR das ausgewählte Projekt
+    proj = projects.find(p => p.fileId === currentFilterProjectId);
+    if(!proj){
+      ganttView.innerHTML = "";
+      ganttEmpty.classList.remove("hidden");
+      return;
+    }
+    walk(proj, proj.root);
+  }
   
   if(ganttItems.length === 0){
     ganttView.innerHTML = "";
     ganttEmpty.classList.remove("hidden");
+    ganttEmpty.textContent = isMetaMode ? "Keine dienstlichen Metaprojekte mit Start- und Enddatum vorhanden." : "Keine Projekte mit Start- und Endatum. Setze Start- und Enddatum in den Projektdetails.";
     return;
   }
   ganttEmpty.classList.add("hidden");
@@ -2311,7 +2346,7 @@ function renderGantt(){
   
   // Header mit Daten
   html += `<div style="display:flex;border-bottom:2px solid #999">`;
-  html += `<div style="width:280px;flex-shrink:0;padding:8px;font-weight:bold">Projekt / Task</div>`;
+  html += `<div style="width:280px;flex-shrink:0;padding:8px;font-weight:bold">${isMetaMode?"Projekt / Metaprojekt":"Projekt / Task"}</div>`;
   html += `<div style="display:flex">`;
   for(let i = 0; i < rangeDays; i++){
     const d = new Date(minDate + i * dayMs);
@@ -2331,13 +2366,14 @@ function renderGantt(){
     const barWidth = Math.max(8, duration * pxPerDay);
     const barLeft = startOffset * pxPerDay;
     
-    const color = item.level === 2 ? "#f97316" : "#3b82f6";
-    const textColor = item.level === 2 ? "#fff" : "#fff";
+    const color = isMetaMode ? "#a855f7" : (item.level === 2 ? "#f97316" : "#3b82f6");
+    const textColor = "#fff";
+    const label = isMetaMode ? (item.project.title+" · "+item.title) : item.title;
     
     html += `<div style="display:flex;align-items:center;border-bottom:1px solid #eee;padding:0;min-height:40px">`;
-    html += `<div class="gantt-item-title" data-idx="${idx}" style="width:280px;flex-shrink:0;padding:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;cursor:pointer;text-decoration:underline;text-decoration-color:transparent" title="Klicken zum Bearbeiten">${escapeHtml(item.title)}</div>`;
+    html += `<div class="gantt-item-title" data-idx="${idx}" style="width:280px;flex-shrink:0;padding:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;cursor:pointer;text-decoration:underline;text-decoration-color:transparent" title="Klicken zum Bearbeiten">${escapeHtml(label)}</div>`;
     html += `<div style="position:relative;height:32px;width:${containerWidth - 280}px;margin:0">`;
-    html += `<div style="position:absolute;left:${barLeft}px;top:4px;height:24px;min-width:${barWidth}px;background:${color};border-radius:4px;padding:0 4px;display:flex;align-items:center;color:${textColor};font-size:13px;font-weight:bold;box-shadow:0 1px 3px rgba(0,0,0,0.2)" title="${escapeHtml(item.title)} · ${item.startDate.toLocaleDateString('de-DE')} bis ${item.deadline.toLocaleDateString('de-DE')}">${barWidth > 50 ? escapeHtml(item.title).substring(0, Math.floor(barWidth / 7)) : ""}</div>`;
+    html += `<div style="position:absolute;left:${barLeft}px;top:4px;height:24px;min-width:${barWidth}px;background:${color};border-radius:4px;padding:0 4px;display:flex;align-items:center;color:${textColor};font-size:13px;font-weight:bold;box-shadow:0 1px 3px rgba(0,0,0,0.2)" title="${escapeHtml(label)} · ${item.startDate.toLocaleDateString('de-DE')} bis ${item.deadline.toLocaleDateString('de-DE')}">${barWidth > 50 ? escapeHtml(item.title).substring(0, Math.floor(barWidth / 7)) : ""}</div>`;
     html += `</div>`;
     html += `</div>`;
   });
@@ -2348,7 +2384,7 @@ function renderGantt(){
   [...ganttView.querySelectorAll(".gantt-item-title")].forEach(el=>{
     el.onclick = ()=>{
       const item = ganttItems[+el.dataset.idx];
-      if(item) openProjectAtNode(proj, item.node);
+      if(item) openProjectAtNode(item.project, item.node);
     };
   });
 }

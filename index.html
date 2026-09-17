@@ -348,6 +348,8 @@ const GTASKS="https://tasks.googleapis.com/tasks/v1";
 
 /* ---- Google Tasks laden: grüne Sektion + heutige Ziele (offen + heute erledigt) ---- */
 function isGoalTask(t){ return (t.notes||"").includes(GOAL_MARKER); }
+const META_MARKER = "[Metaprojekt]";
+function isMetaTask(t){ return (t.notes||"").includes(META_MARKER); }
 
 async function loadTodayCalendarEvents(){
   try{
@@ -1302,6 +1304,16 @@ function render(){
     const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const sorted=sortTasksForToday(tasks, key);
     let h="";
+    const metaTasks = [...allGTasks.filter(isMetaTask)].sort((a,b)=>{
+      if(a.deadlineDays===null && b.deadlineDays===null) return 0;
+      if(a.deadlineDays===null) return 1;
+      if(b.deadlineDays===null) return -1;
+      return a.deadlineDays - b.deadlineDays;
+    });
+    if(metaTasks.length){
+      h+=`<div class="section-title">🏛️ Dienstliche Metaprojekte</div>`;
+      h+=metaTasks.map(t=>gTaskCardHtml(t,key,"#fff")).join("");
+    }
     if(goalTasks.length){
       const gd=goalTasks.filter(g=>g.completed).length;
       h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goalTasks.length);
@@ -1338,7 +1350,7 @@ function render(){
       });
     }
     // Dringende Deadlines (≤5 Tage)
-    const urgentDeadlines=allGTasks.filter(t => t.deadlineDays !== null && t.deadlineDays >= 0 && t.deadlineDays <= 5);
+    const urgentDeadlines=allGTasks.filter(t => t.deadlineDays !== null && t.deadlineDays >= 0 && t.deadlineDays <= 5 && !isMetaTask(t));
     if(urgentDeadlines.length){
       h+=`<div class="section-title">⏱️ DRINGENDE DEADLINES</div>`;
       const sortedUD=[...urgentDeadlines].sort((a,b)=>a.deadlineDays - b.deadlineDays);
@@ -1379,7 +1391,7 @@ function render(){
         });
       }
     }
-    const otherGtasks = gtasks.filter(t=>!isGoalTask(t));
+    const otherGtasks = gtasks.filter(t=>!isGoalTask(t) && !isMetaTask(t));
     if(otherGtasks.length){
       h+=`<div class="section-title">⭐ Wichtige Termine (Google Tasks)</div>`;
       const sortedGT=[...otherGtasks].sort((a,b)=>(a.due||"").localeCompare(b.due||""));
@@ -1679,7 +1691,7 @@ function render(){
 
     // Google Tasks mit Deadline (nutze allGTasks, nicht gtasks!)
     allGTasks.forEach(t => {
-      if(t.deadline){
+      if(t.deadline && !isMetaTask(t)){
         const daysLeft = daysUntilDeadline(t.deadline);
         allDeadlines.push({
           type: 'gtask',

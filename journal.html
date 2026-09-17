@@ -177,6 +177,27 @@
     resize: vertical;
     font-family: inherit;
   }
+  .input-with-mic { display: flex; gap: 8px; align-items: flex-start; }
+  .input-with-mic input, .input-with-mic textarea { flex: 1; }
+  button.mic-btn {
+    background: #fff;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 12px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    font-size: 1rem;
+    line-height: 1;
+  }
+  button.mic-btn:hover { background: #f0f1f4; }
+  button.mic-btn.recording {
+    background: var(--danger);
+    color: #fff;
+    border-color: var(--danger);
+    animation: micPulse 1.2s infinite;
+  }
+  @keyframes micPulse { 0% { opacity: 1; } 50% { opacity: 0.55; } 100% { opacity: 1; } }
+  button.mic-btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .tag-input-wrap { position: relative; }
   .tag-input-chips {
     display: flex;
@@ -311,7 +332,10 @@
 
     <div class="field">
       <label for="noteTitleInput">Titel</label>
-      <input type="text" id="noteTitleInput" placeholder="Titel der Notiz">
+      <div class="input-with-mic">
+        <input type="text" id="noteTitleInput" placeholder="Titel der Notiz">
+        <button type="button" class="mic-btn" id="micTitle" title="Diktieren">🎤</button>
+      </div>
     </div>
 
     <div class="field">
@@ -323,14 +347,20 @@
       <label>Hashtags</label>
       <div class="tag-input-wrap">
         <div class="tag-input-chips" id="noteTagChips"></div>
-        <input type="text" id="noteTagInput" placeholder="Hashtag eingeben und mit Enter bestätigen">
+        <div class="input-with-mic">
+          <input type="text" id="noteTagInput" placeholder="Hashtag eingeben und mit Enter bestätigen">
+          <button type="button" class="mic-btn" id="micTag" title="Diktieren">🎤</button>
+        </div>
         <div class="suggestions hidden" id="noteTagSuggestions"></div>
       </div>
     </div>
 
     <div class="field">
       <label for="noteBodyInput">Text</label>
-      <textarea id="noteBodyInput" placeholder="Notiztext …"></textarea>
+      <div class="input-with-mic">
+        <textarea id="noteBodyInput" placeholder="Notiztext …"></textarea>
+        <button type="button" class="mic-btn" id="micBody" title="Diktieren">🎤</button>
+      </div>
     </div>
 
     <div class="modal-actions">
@@ -394,6 +424,7 @@
     accessToken: null,
     tokenClient: null,
     folderId: null,
+    folderReadyPromise: null,
     notes: [],       // {id, fileName, title, date, tags:[], body}
     activeTagFilters: [],
     searchText: "",
@@ -423,6 +454,9 @@
     noteTagInput: document.getElementById("noteTagInput"),
     noteTagSuggestions: document.getElementById("noteTagSuggestions"),
     noteBodyInput: document.getElementById("noteBodyInput"),
+    micTitle: document.getElementById("micTitle"),
+    micTag: document.getElementById("micTag"),
+    micBody: document.getElementById("micBody"),
     btnDeleteNote: document.getElementById("btnDeleteNote"),
     btnCancelNote: document.getElementById("btnCancelNote"),
     btnSaveNote: document.getElementById("btnSaveNote"),
@@ -482,6 +516,8 @@
       google.accounts.oauth2.revoke(state.accessToken, function () {});
     }
     state.accessToken = null;
+    state.folderId = null;
+    state.folderReadyPromise = null;
     localStorage.removeItem("notizAppSignedIn");
     el.app.classList.add("hidden");
     el.loginScreen.classList.remove("hidden");
@@ -615,6 +651,20 @@
     });
   }
 
+  // Liefert die Ordner-ID als Promise. Wird gecacht, damit egal wann
+  // saveNote()/generateReport() aufgerufen werden — auch bevor der erste
+  // Ladevorgang fertig ist — immer dieselbe, korrekt aufgelöste Ordner-ID
+  // verwendet wird und nie versehentlich in "parents" ein leerer Wert landet.
+  function getFolderId() {
+    if (!state.folderReadyPromise) {
+      state.folderReadyPromise = ensureFolder().then(function (id) {
+        state.folderId = id;
+        return id;
+      });
+    }
+    return state.folderReadyPromise;
+  }
+
   // ---------- Notiz-Parsing ----------
   function parseNote(raw) {
     var lines = raw.split(/\r?\n/);
@@ -678,8 +728,7 @@
   // ---------- Laden aller Notizen ----------
   function loadEverything() {
     showStatus("Lade Notizen …");
-    ensureFolder().then(function (folderId) {
-      state.folderId = folderId;
+    getFolderId().then(function (folderId) {
       return driveListFiles(folderId);
     }).then(function (files) {
       var limit = 8; // Begrenzung gleichzeitiger Downloads
@@ -922,7 +971,9 @@
       });
     } else {
       var fName = uniqueFileName(baseFileName, null);
-      driveCreateFile(fName, [state.folderId], content).then(function (created) {
+      getFolderId().then(function (folderId) {
+        return driveCreateFile(fName, [folderId], content);
+      }).then(function (created) {
         state.notes.push({
           id: created.id,
           fileName: fName,
@@ -1043,7 +1094,9 @@
     var reportFileName = uniqueFileName("Report_" + stamp + ".md", null);
 
     showStatus("Erstelle Report …");
-    driveCreateFile(reportFileName, [state.folderId], reportContent).then(function (created) {
+    getFolderId().then(function (folderId) {
+      return driveCreateFile(reportFileName, [folderId], reportContent);
+    }).then(function (created) {
       // zusätzlich lokal herunterladen
       var blob = new Blob([reportContent], { type: "text/markdown;charset=utf-8" });
       var url = URL.createObjectURL(blob);
@@ -1062,6 +1115,77 @@
     });
   }
 
+  // ---------- Diktierfunktion (Web Speech API, Google-Spracherkennung) ----------
+  // Funktioniert in Chrome/Chromium (Desktop und Android), da diese die
+  // Spracherkennung über Googles Server abwickeln. In Firefox ist die
+  // Web Speech API grundsätzlich nicht verfügbar; der Button wird dort
+  // deaktiviert und macht das per Titel-Tooltip deutlich.
+  function supportsSpeech() {
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  }
+
+  function insertAtCursor(inputEl, text) {
+    var start = inputEl.selectionStart != null ? inputEl.selectionStart : inputEl.value.length;
+    var end = inputEl.selectionEnd != null ? inputEl.selectionEnd : inputEl.value.length;
+    var before = inputEl.value.slice(0, start);
+    var after = inputEl.value.slice(end);
+    inputEl.value = before + text + after;
+    var pos = start + text.length;
+    if (inputEl.setSelectionRange) inputEl.setSelectionRange(pos, pos);
+    inputEl.focus();
+    inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function attachDictation(targetEl, button, continuous) {
+    if (!supportsSpeech()) {
+      button.disabled = true;
+      button.title = "Spracheingabe wird von diesem Browser nicht unterstützt (funktioniert in Chrome).";
+      return;
+    }
+    var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var recognizer = null;
+    var listening = false;
+
+    button.addEventListener("click", function () {
+      if (listening) {
+        recognizer.stop();
+        return;
+      }
+      recognizer = new Recognition();
+      recognizer.lang = "de-DE";
+      recognizer.continuous = !!continuous;
+      recognizer.interimResults = false;
+
+      listening = true;
+      button.classList.add("recording");
+      button.textContent = "⏹";
+
+      recognizer.onresult = function (event) {
+        var transcript = "";
+        for (var i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            transcript += event.results[i][0].transcript;
+          }
+        }
+        if (transcript.trim()) {
+          insertAtCursor(targetEl, transcript.trim() + " ");
+        }
+      };
+
+      recognizer.onerror = function (e) {
+        showStatus("Spracherkennung: " + (e.error || "Fehler"), true);
+      };
+
+      recognizer.onend = function () {
+        listening = false;
+        button.classList.remove("recording");
+        button.textContent = "🎤";
+      };
+
+      recognizer.start();
+    });
+  }
+
   // ---------- Event-Bindings ----------
   el.btnLogin.addEventListener("click", signIn);
   el.btnLogout.addEventListener("click", signOut);
@@ -1070,6 +1194,10 @@
   el.btnCancelNote.addEventListener("click", closeNoteModal);
   el.btnSaveNote.addEventListener("click", saveNote);
   el.btnDeleteNote.addEventListener("click", deleteNote);
+
+  attachDictation(el.noteTitleInput, el.micTitle, false);
+  attachDictation(el.noteBodyInput, el.micBody, true);
+  attachDictation(el.noteTagInput, el.micTag, false);
 
   el.btnReport.addEventListener("click", openReportModal);
   el.btnCancelReport.addEventListener("click", closeReportModal);

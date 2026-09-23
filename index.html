@@ -493,7 +493,7 @@ async function completeGTask(taskId){
     await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`, {
       method:"PATCH", body:JSON.stringify({status:"completed"})
     });
-    // Nur normale Aufgaben (keine Ziele) zusätzlich im Sheet protokollieren
+    // Normale Aufgaben zusätzlich als Schatten-Eintrag im Sheet anlegen (für Anzeige/Referenz)
     if(gt && !goal){
       const protoId="gt_"+taskId;
       const dueKey=gt.due?gt.due.slice(0,10):todayKey();
@@ -508,8 +508,12 @@ async function completeGTask(taskId){
         });
         await saveTasks();
       }
-      if(!logs.some(l=>l.itemId===protoId)){
-        logs.push({itemId:protoId, date:todayKey(), doneAt:new Date().toISOString()});
+    }
+    // Log-Eintrag für den Tageszähler: für ALLE erledigten Google Tasks, auch Tagesziele
+    {
+      const logItemId = (gt && !goal) ? "gt_"+taskId : taskId;
+      if(!logs.some(l=>l.itemId===logItemId)){
+        logs.push({itemId:logItemId, date:todayKey(), doneAt:new Date().toISOString()});
         await saveLogs();
       }
     }

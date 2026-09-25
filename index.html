@@ -467,6 +467,24 @@ async function addGoalTask(title, dueDate){
     setSync("on");
   }
 }
+async function updateGoalTask(id, title, dueDate){
+  dueDate=dueDate||todayKey();
+  setSync("busy");
+  try{
+    if(!defaultGTaskListId){ await loadGTasks(); }
+    const due=dueDate+"T12:00:00.000Z";
+    await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks/${encodeURIComponent(id)}`, {
+      method:"PATCH",
+      body:JSON.stringify({title:title, notes:GOAL_MARKER, due:due})
+    });
+    await loadGTasks();
+    setSync("on"); render(); toast("Ziel aktualisiert");
+  }catch(e){
+    console.error("❌ updateGoalTask Fehler:",e.message);
+    alert("Ziel aktualisieren fehlgeschlagen:\n"+e.message);
+    setSync("on");
+  }
+}
 
 /* ---- Kalender Event abhaken ---- */
 function completeCalEvent(eventId){
@@ -1105,6 +1123,7 @@ function goalTaskCard(g){
     <div class="check${g.completed?' on':''}" data-${g.completed?'guncheck':'gtask'}="${g.id}">${checkSvg()}</div>
     <div class="body"><div class="title" style="color:#000">${esc(g.title)}</div></div>
     <div class="row-actions">
+      <button class="mini" data-gedit="${g.id}">Bearb.</button>
       <button class="mini" data-gdel="${g.id}">🗑</button>
     </div>
   </div>`;
@@ -2538,7 +2557,7 @@ function openForm(type, existing){
   }
   if(type==="goal"){
     typeFields=`<label>Ziel</label><input type="text" id="f_title" value="${esc(t.title||"")}" placeholder="z. B. 2 l Wasser trinken">
-      <label style="margin-top:12px">Fällig am</label><input type="date" id="f_goaldate" value="${t.goalDate||todayKey()}" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px">
+      <label style="margin-top:12px">Fällig am</label><input type="date" id="f_goaldate" value="${t.due||todayKey()}" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px">
       <p class="muted" style="font-size:12px;margin-top:8px">Wird am festgelegten Tag angezeigt — morgens neu eintragen.</p>`;
   }
   if(type==="duty"){
@@ -2622,7 +2641,8 @@ function openForm(type, existing){
     if(type==="goal"){ 
       const goalDate=$("f_goaldate").value||todayKey();
       $("modalBg").remove(); 
-      await addGoalTask(title, goalDate); 
+      if(isEdit) await updateGoalTask(existing.id, title, goalDate);
+      else await addGoalTask(title, goalDate); 
       return; 
     }
     const data={type, title, syncCalendar: syncBtn ? syncBtn.classList.contains("on") : false};
@@ -2803,6 +2823,7 @@ main.addEventListener("click",e=>{
   const gt=e.target.closest("[data-gtask]"); if(gt){ completeGTask(gt.dataset.gtask); return; }
   const ce=e.target.closest("[data-calevent]"); if(ce){ completeCalEvent(ce.dataset.calevent); return; }
   const guc=e.target.closest("[data-guncheck]"); if(guc){ uncompleteGTask(guc.dataset.guncheck); return; }
+  const ged=e.target.closest("[data-gedit]"); if(ged){ const g=goalTasks.find(x=>x.id===ged.dataset.gedit); if(g) openForm("goal", g); return; }
   const gdl=e.target.closest("[data-gdel]"); if(gdl){ if(confirm("Ziel wirklich löschen?")) deleteGTask(gdl.dataset.gdel); return; }
   const ed=e.target.closest("[data-edit]"); if(ed){ const t=tasks.find(x=>x.id===ed.dataset.edit); if(t) openForm(t.type,t); return; }
   const dl=e.target.closest("[data-del]"); if(dl){

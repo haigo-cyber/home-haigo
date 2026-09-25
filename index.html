@@ -485,6 +485,44 @@ async function updateGoalTask(id, title, dueDate){
     setSync("on");
   }
 }
+async function pushGoalToCalendar(id, calId){
+  const g=goalTasks.find(x=>x.id===id)||allOpenGoals.find(x=>x.id===id);
+  if(!g){ toast("Ziel nicht gefunden"); return; }
+  setSync("busy");
+  try{
+    const targetCal=calId||defaultCalId||"primary";
+    const body={summary:g.title, start:{date:g.due}, end:{date:nextDayKey(g.due)}};
+    await api(calUrl(targetCal), {method:"POST", body:JSON.stringify(body)});
+    setSync("on"); toast("Im Kalender eingetragen");
+  }catch(e){
+    console.error("❌ pushGoalToCalendar Fehler:",e.message);
+    alert("Eintragen in den Kalender fehlgeschlagen:\n"+e.message);
+    setSync("on");
+  }
+}
+function openGoalCalendarPicker(id){
+  const g=goalTasks.find(x=>x.id===id)||allOpenGoals.find(x=>x.id===id);
+  if(!g){ toast("Ziel nicht gefunden"); return; }
+  if(!calendars.length){ toast("Keine Kalender geladen"); return; }
+  let html='<div class="modal-bg" id="modalBg"><div class="modal">';
+  html+='<h2>In Kalender eintragen</h2>';
+  html+='<p class="muted" style="font-size:13px;margin-bottom:10px">'+esc(g.title)+' am '+new Date(g.due).toLocaleDateString("de-DE")+'</p>';
+  calendars.forEach(c=>{
+    html+='<button class="mini" data-gcal-pick="'+esc(c.id)+'" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:10px">'+esc(c.summary)+(c.id===defaultCalId?" (Standard)":"")+'</button>';
+  });
+  html+='<div class="modal-actions"><button class="btn-ghost" id="f_cancel">Abbrechen</button></div>';
+  html+='</div></div>';
+  document.body.insertAdjacentHTML("beforeend", html);
+  $("f_cancel").onclick=()=>$("modalBg").remove();
+  $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  [...document.querySelectorAll("[data-gcal-pick]")].forEach(btn=>{
+    btn.onclick=async()=>{
+      const calId=btn.dataset.gcalPick;
+      $("modalBg").remove();
+      await pushGoalToCalendar(id, calId);
+    };
+  });
+}
 
 /* ---- Kalender Event abhaken ---- */
 function completeCalEvent(eventId){
@@ -1123,6 +1161,7 @@ function goalTaskCard(g){
     <div class="check${g.completed?' on':''}" data-${g.completed?'guncheck':'gtask'}="${g.id}">${checkSvg()}</div>
     <div class="body"><div class="title" style="color:#000">${esc(g.title)}</div></div>
     <div class="row-actions">
+      <button class="mini" data-gcal="${g.id}" title="In Google Kalender eintragen">📅</button>
       <button class="mini" data-gedit="${g.id}">Bearb.</button>
       <button class="mini" data-gdel="${g.id}">🗑</button>
     </div>
@@ -2820,6 +2859,7 @@ main.addEventListener("click",e=>{
   const ce=e.target.closest("[data-calevent]"); if(ce){ completeCalEvent(ce.dataset.calevent); return; }
   const guc=e.target.closest("[data-guncheck]"); if(guc){ uncompleteGTask(guc.dataset.guncheck); return; }
   const ged=e.target.closest("[data-gedit]"); if(ged){ const g=goalTasks.find(x=>x.id===ged.dataset.gedit)||allOpenGoals.find(x=>x.id===ged.dataset.gedit); if(g) openForm("goal", g); return; }
+  const gcal=e.target.closest("[data-gcal]"); if(gcal){ openGoalCalendarPicker(gcal.dataset.gcal); return; }
   const gdl=e.target.closest("[data-gdel]"); if(gdl){ if(confirm("Ziel wirklich löschen?")) deleteGTask(gdl.dataset.gdel); return; }
   const ed=e.target.closest("[data-edit]"); if(ed){ const t=tasks.find(x=>x.id===ed.dataset.edit); if(t) openForm(t.type,t); return; }
   const dl=e.target.closest("[data-del]"); if(dl){

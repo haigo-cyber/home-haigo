@@ -1466,6 +1466,15 @@ function render(){
         });
       }
     }
+    const todosToday = sorted.filter(t=>t.type==="todo");
+    const habitsAndDuties = sorted.filter(t=>t.type!=="todo");
+    if(todosToday.length){
+      h+=`<div class="section-title">📝 ToDos heute</div>`;
+      const openTodos=todosToday.filter(t=>!isDone(t.id,key));
+      const doneTodos=todosToday.filter(t=>isDone(t.id,key));
+      h+=openTodos.map(t=>taskCard(t,{key,oneTime:true})).join("");
+      if(doneTodos.length) h+=`<div class="section-title">Erledigt</div>`+doneTodos.map(t=>taskCard(t,{key,oneTime:true})).join("");
+    }
     const otherGtasks = gtasks.filter(t=>!isGoalTask(t) && !isMetaTask(t));
     if(otherGtasks.length){
       h+=`<div class="section-title">⭐ Wichtige Termine (Google Tasks)</div>`;
@@ -1476,13 +1485,13 @@ function render(){
         h+=`<div class="muted center" style="padding:6px;font-size:13px">+${sortedGT.length-MAX_SHOWN} weitere · vollständige Liste unter Deadlines</div>`;
       }
     }
-    if(!sorted.length) h+=empty("Heute nichts fällig. 🎉");
-    else{
-      if(goalTasks.length||gtasks.length) h+=`<div class="section-title">Aufgaben</div>`;
-      const open=sorted.filter(t=>!isDone(t.id,key));
-      const done=sorted.filter(t=>isDone(t.id,key));
-      h+=open.length?open.map(t=>taskCard(t,{key,oneTime:t.type==="todo"})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
-      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{key,oneTime:t.type==="todo"})).join("");
+    if(!habitsAndDuties.length && !todosToday.length) h+=empty("Heute nichts fällig. 🎉");
+    else if(habitsAndDuties.length){
+      h+=`<div class="section-title">Gewohnheiten &amp; Pflichtaufgaben</div>`;
+      const open=habitsAndDuties.filter(t=>!isDone(t.id,key));
+      const done=habitsAndDuties.filter(t=>isDone(t.id,key));
+      h+=open.length?open.map(t=>taskCard(t,{key,oneTime:false})).join(""):'<div class="muted center" style="padding:8px">Alles erledigt ✓</div>';
+      if(done.length) h+=`<div class="section-title">Erledigt</div>`+done.map(t=>taskCard(t,{key,oneTime:false})).join("");
     }
     const doneDistractionsToday = distractions.filter(d=>logs.some(l=>l.itemId===d.id && l.date===key));
     if(doneDistractionsToday.length){

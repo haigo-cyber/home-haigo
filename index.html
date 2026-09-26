@@ -2590,7 +2590,8 @@ function openQuickAdd(){
 
 function openForm(type, existing){
   const t=existing||{};
-  const isEdit=!!existing;
+  const isEdit=!!(existing && existing.id);
+  const origType = existing ? (existing._origType!==undefined ? existing._origType : (existing.type || "goal")) : null;
   let typeFields="";
   if(type==="habit"){
     typeFields=`<label>Name</label><input type="text" id="f_title" value="${esc(t.title||"")}" placeholder="z. B. 20 Min lesen">`;
@@ -2641,10 +2642,18 @@ function openForm(type, existing){
   const calSelect = (type==="goal") ? "" : `<label>Kalender</label>
     <select id="f_cal">${calendars.map(c=>`<option value="${esc(c.id)}" ${c.id===curCal?"selected":""}>${esc(c.summary)}</option>`).join("")}</select>`;
   const titleTxt={habit:"Gewohnheit",duty:"Pflichtaufgabe",todo:"ToDo",goal:"Tages-Ziel"}[type];
+  const categorySelect = `<label>Kategorie</label>
+      <select id="f_category" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;margin-bottom:12px">
+        <option value="habit" ${type==="habit"?"selected":""}>Gewohnheit</option>
+        <option value="duty" ${type==="duty"?"selected":""}>Pflichtaufgabe</option>
+        <option value="todo" ${type==="todo"?"selected":""}>ToDo</option>
+        <option value="goal" ${type==="goal"?"selected":""}>Tages-Ziel</option>
+      </select>`;
 
   main.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${isEdit?"Bearbeiten":"Neu: "+titleTxt}</h2>
+      ${categorySelect}
       ${typeFields}${projSelect}${syncToggle}${calSelect}
       <label>Notizen (optional)</label><textarea id="f_notes" placeholder="Zusätzliche Infos..." style="width:100%;min-height:60px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.notes||"")}</textarea>
       <div class="modal-actions">
@@ -2652,6 +2661,18 @@ function openForm(type, existing){
         <button class="btn-primary" id="f_save">Speichern</button>
       </div>
     </div></div>`);
+
+  $("f_category").onchange=()=>{
+    const newType=$("f_category").value;
+    if(newType===type) return;
+    const currentTitle=$("f_title") ? $("f_title").value : (t.title||"");
+    $("modalBg").remove();
+    if(existing){
+      openForm(newType, Object.assign({}, existing, {title:currentTitle, type:newType, _origType:origType}));
+    } else {
+      openForm(newType, {title:currentTitle});
+    }
+  };
 
   // Interaktionen
   const segSel={v: (existing&&existing.scheduleType)|| (type==="duty"?"daily":"once")};
@@ -2677,12 +2698,20 @@ function openForm(type, existing){
   const doSave=async()=>{
     const title=$("f_title").value.trim();
     if(!title){ toast("Titel fehlt"); return; }
+    const convertingToGoal = type==="goal" && origType && origType!=="goal";
+    const convertingFromGoal = origType==="goal" && type!=="goal";
     // Ziele laufen über Google Tasks, nicht über das Sheet
     if(type==="goal"){ 
       const goalDate=$("f_goaldate").value||todayKey();
       $("modalBg").remove(); 
-      if(isEdit) await updateGoalTask(existing.id, title, goalDate);
-      else await addGoalTask(title, goalDate); 
+      if(convertingToGoal){
+        if(existing && existing.id) await deleteTask(existing.id);
+        await addGoalTask(title, goalDate);
+      } else if(isEdit){
+        await updateGoalTask(existing.id, title, goalDate);
+      } else {
+        await addGoalTask(title, goalDate); 
+      }
       return; 
     }
     const data={type, title, syncCalendar: syncBtn ? syncBtn.classList.contains("on") : false};
@@ -2702,7 +2731,14 @@ function openForm(type, existing){
     const cs=$("f_cal"); if(cs) data.calendarId=cs.value;
     const fn=$("f_notes"); if(fn && fn.value.trim()) data.notes=fn.value.trim();
     $("modalBg").remove();
-    if(isEdit) await updateTask(existing.id, data); else await addTask(data);
+    if(convertingFromGoal){
+      if(existing && existing.id) await deleteGTask(existing.id);
+      await addTask(data);
+    } else if(isEdit){
+      await updateTask(existing.id, data);
+    } else {
+      await addTask(data);
+    }
   };
   $("f_save").onclick=doSave;
   // Enter speichert – außer im mehrzeiligen Notizfeld

@@ -159,7 +159,7 @@ const SCOPES = [
 ].join(" ");
 const SHEET_NAME = "ToDo App Data";
 const DEFAULT_SYNC = true;          // Kalender-Sync standardmäßig AN
-const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived","calendarId","startTime","projectId"];
+const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived","calendarId","startTime","projectId","tag"];
 const LOG_COLS  = ["itemId","date","doneAt"];
 const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 
@@ -1111,14 +1111,15 @@ function taskCard(t,{showCheck=true, key=todayKey(), oneTime=false}={}){
   const notes=cleanNotes?`<details class="note-detail"><summary style="color:#000">📝 ${cleanNotes.length} Zeichen</summary><div class="note-text" style="color:#000">${esc(cleanNotes)}</div></details>`:'';
   const urgency=t.startDate?urgencyBar(urgencyDays(t.startDate)):'';
   const inboxBadge=inbox?'<span class="badge" style="background:#d4f1c5;color:#000">⚡ unsortiert</span>':'';
-  const projObj=t.projectId?projects.find(p=>p.id===t.projectId):null;
-  const projBadge=projObj?`<span class="badge">🎯 ${esc(projObj.name)}</span>`:'';
+  const TAG_COLORS={privat:"#93c5fd", job:"#fca5a5", projekt:"#fcd34d"};
+  const TAG_LABELS={privat:"Privat", job:"Job", projekt:"Projekt"};
+  const tagBadge=t.tag&&TAG_LABELS[t.tag]?`<span class="badge" style="background:${TAG_COLORS[t.tag]};color:#000">${TAG_LABELS[t.tag]}</span>`:'';
   return `<div class="card${done?' done':''}">
     ${showCheck?`<div class="check${done?' on':''}" data-toggle="${t.id}" data-key="${toggleKey}">${checkSvg()}</div>`:''}
     <div class="body">
       <div class="title" style="color:#000">${esc(t.title)}</div>
       ${urgency}
-      <div class="sub" style="color:#000"><span>${esc(scheduleLabel(t))}</span>${cal}${projBadge}${inboxBadge}</div>
+      <div class="sub" style="color:#000"><span>${esc(scheduleLabel(t))}</span>${cal}${tagBadge}${inboxBadge}</div>
       ${notes}
     </div>
     <div class="row-actions">
@@ -1277,7 +1278,7 @@ function noteCard(n){
     <div class="body">
       <div class="title" style="color:#000">${esc(n.text).substring(0,60)}${n.text.length>60?'...':''}</div>
       <div class="sub" style="color:#000">
-        ${n.projectId?`📌 ${esc(projects.find(p=>p.id===n.projectId)?.name||'Projekt')}${dueInfo?' • '+dueInfo:''}`:dueInfo}
+        ${dueInfo}
       </div>
     </div>
     <div class="row-actions">
@@ -1866,7 +1867,6 @@ function render(){
             <div class="title" style="color:${textColor};font-weight:${fontWeight};font-size:16px">${esc(d.title)}</div>
             <div class="sub" style="color:${textColor};font-size:12px;margin-top:4px">${typeLabel} · Fällig: ${dueStr}</div>
             <div class="sub" style="color:${textColor};font-size:12px;opacity:0.9">Deadline: ${dlStr}</div>
-            ${d.projectId?`<div class="sub" style="color:${textColor};font-size:12px">🎯 ${esc(projects.find(p=>p.id===d.projectId)?.name||"")}</div>`:""}
             <div style="font-size:14px;margin-top:8px;padding:6px 10px;background:${color};color:#fff;border-radius:4px;font-weight:bold;display:inline-block">
               ${d.daysLeft === null ? '–' : (d.daysLeft < 0 ? `⚠️ ÜBERFÄLLIG ${Math.abs(d.daysLeft)}d` : `${label}`)}
             </div>
@@ -2474,8 +2474,6 @@ function saveBilanz(){
 /* ---- Bilanz beim Ziel-Laden prüfen ---- */
 function openSortForm(id){
   const t=tasks.find(x=>x.id===id); if(!t){ toast("Eintrag nicht gefunden"); return; }
-  const projOpts=projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority)
-    .map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
   main.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>➜ Einsortieren</h2>
@@ -2488,12 +2486,6 @@ function openSortForm(id){
         <button data-t="goal">Tagesziel</button>
         <button data-t="note">Notiz</button>
       </div>
-      <div id="s_projWrap" style="margin-top:10px">
-        <label>Projekt (optional)</label>
-        <select id="s_proj" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px">
-          <option value="">— kein Projekt —</option>${projOpts}
-        </select>
-      </div>
       <div class="modal-actions">
         <button class="btn-ghost" id="s_cancel">Abbrechen</button>
         <button class="btn-primary" id="s_save">Übernehmen</button>
@@ -2504,8 +2496,6 @@ function openSortForm(id){
   $("s_target").querySelectorAll("button").forEach(b=>b.onclick=()=>{
     $("s_target").querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
     b.classList.add("sel"); target=b.dataset.t;
-    // Projektzuordnung für alle Aufgabentypen, nicht für Ziele (Google Tasks)
-    $("s_projWrap").style.display=(target==="goal")?"none":"block";
   });
   $("s_cancel").onclick=()=>$("modalBg").remove();
   $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
@@ -2524,7 +2514,6 @@ function openSortForm(id){
       return;
     }
     const data={notes:cleanNotes, type:target};
-    const sp=$("s_proj"); data.projectId=sp?sp.value:"";
     if(target==="habit"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); }
     if(target==="duty"){ data.scheduleType="daily"; data.startDate=t.startDate||todayKey(); }
     if(target==="todo"){
@@ -2544,17 +2533,19 @@ function openQuickAdd(){
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>⚡ Schnell erfassen</h2>
       <input type="text" id="q_text" placeholder="Was ist zu tun?" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:15px">
+      <label style="margin-top:10px">Kategorie</label>
+      <select id="q_type" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface2);color:var(--text)">
+        <option value="todo" selected>ToDo</option>
+        <option value="goal">Tages-Ziel</option>
+        <option value="habit">Gewohnheit</option>
+        <option value="duty">Pflichtaufgabe</option>
+      </select>
       <div class="seg" id="q_when" style="margin-top:10px">
         <button data-w="today" class="sel">Heute</button>
         <button data-w="tomorrow">Morgen</button>
         <button data-w="none">Ohne Datum</button>
       </div>
-      <p class="muted" style="font-size:12px;margin-top:8px">Wird als ToDo angelegt. Details kannst du später ergänzen.</p>
-      <label>Projekt (optional)</label>
-      <select id="q_proj" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface2);color:var(--text)">
-        <option value="">— kein Projekt —</option>
-        ${projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}
-      </select>
+      <p class="muted" style="font-size:12px;margin-top:8px" id="q_hint">Wird als ToDo angelegt. Details kannst du später ergänzen.</p>
       <div class="modal-actions">
         <button class="btn-ghost" id="q_cancel">Abbrechen</button>
         <button class="btn-primary" id="q_save">Speichern</button>
@@ -2566,19 +2557,41 @@ function openQuickAdd(){
     $("q_when").querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
     b.classList.add("sel"); when=b.dataset.w;
   });
+  const HINTS={
+    todo:"Wird als ToDo angelegt. Details kannst du später ergänzen.",
+    goal:"Wird als Tages-Ziel angelegt — erscheint an dem gewählten Tag. „Ohne Datum“ zählt als heute.",
+    habit:"Wird als tägliche Gewohnheit angelegt. Das Datum spielt dabei keine Rolle.",
+    duty:"Wird als tägliche Pflichtaufgabe angelegt. Details kannst du später ergänzen."
+  };
+  $("q_type").onchange=()=>{
+    const qt=$("q_type").value;
+    $("q_hint").textContent=HINTS[qt];
+  };
   $("q_cancel").onclick=()=>$("modalBg").remove();
   $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
 
   const quickSave=async()=>{
     const title=$("q_text").value.trim();
     if(!title){ toast("Text fehlt"); return; }
+    const qtype=$("q_type").value;
     let startDate="";
     if(when==="today") startDate=todayKey();
     else if(when==="tomorrow") startDate=nextDayKey(todayKey());
-    const data={type:"todo", title, syncCalendar:false, scheduleType:"once", startDate, notes:INBOX_MARKER};
-    const qp=$("q_proj"); if(qp && qp.value) data.projectId=qp.value;
-    if(startDate){ const wd=parseDate(startDate); data.weekday=wd?String(wd.getDay()):""; }
     $("modalBg").remove();
+    if(qtype==="goal"){
+      await addGoalTask(title, startDate||todayKey());
+      return;
+    }
+    const data={type:qtype, title, syncCalendar:false, notes:INBOX_MARKER};
+    if(qtype==="habit"){
+      data.scheduleType="daily"; data.startDate=todayKey();
+    } else if(qtype==="duty"){
+      data.scheduleType="daily"; data.startDate=startDate||todayKey();
+      const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):"";
+    } else {
+      data.scheduleType="once"; data.startDate=startDate;
+      if(startDate){ const wd=parseDate(startDate); data.weekday=wd?String(wd.getDay()):""; }
+    }
     await addTask(data);
   };
   $("q_save").onclick=quickSave;
@@ -2627,13 +2640,6 @@ function openForm(type, existing){
         <div class="muted" style="font-size:12px" id="wdHint"></div></div>
         <button class="switch ${weekly?"on":""}" id="f_weekly"></button></div>`;
   }
-  // Projektzuordnung für alle Aufgabentypen (außer Tagesziele, die in Google Tasks liegen)
-  const curProj=(isEdit && t.projectId) ? t.projectId : "";
-  const projSelect = (type==="goal") ? "" : `<label>Projekt (optional)</label>
-      <select id="f_proj" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px">
-        <option value="">— kein Projekt —</option>
-        ${projects.filter(p=>!p.archived).sort((a,b)=>b.priority-a.priority).map(p=>`<option value="${esc(p.id)}" ${p.id===curProj?"selected":""}>${esc(p.name)}</option>`).join("")}
-      </select>`;
   const sync = isEdit ? (t.syncCalendar!==false) : (type==="todo" ? false : DEFAULT_SYNC);
   const syncToggle = (type==="goal") ? "" : `<div class="toggle-row"><div><div style="font-size:14px">In Google Calendar</div>
     <div class="muted" style="font-size:12px">Termin synchronisieren</div></div>
@@ -2649,12 +2655,20 @@ function openForm(type, existing){
         <option value="todo" ${type==="todo"?"selected":""}>ToDo</option>
         <option value="goal" ${type==="goal"?"selected":""}>Tages-Ziel</option>
       </select>`;
+  const curTag = (isEdit && t.tag) ? t.tag : "";
+  const tagSelect = (type==="goal") ? "" : `<label style="margin-top:12px">Tag</label>
+      <div class="seg" id="f_tag" style="margin-bottom:12px">
+        <button data-tag="" class="${curTag===""?"sel":""}">Kein Tag</button>
+        <button data-tag="privat" class="${curTag==="privat"?"sel":""}">Privat</button>
+        <button data-tag="job" class="${curTag==="job"?"sel":""}">Job</button>
+        <button data-tag="projekt" class="${curTag==="projekt"?"sel":""}">Projekt</button>
+      </div>`;
 
   main.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${isEdit?"Bearbeiten":"Neu: "+titleTxt}</h2>
       ${categorySelect}
-      ${typeFields}${projSelect}${syncToggle}${calSelect}
+      ${typeFields}${tagSelect}${syncToggle}${calSelect}
       <label>Notizen (optional)</label><textarea id="f_notes" placeholder="Zusätzliche Infos..." style="width:100%;min-height:60px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.notes||"")}</textarea>
       <div class="modal-actions">
         <button class="btn-ghost" id="f_cancel">Abbrechen</button>
@@ -2666,13 +2680,23 @@ function openForm(type, existing){
     const newType=$("f_category").value;
     if(newType===type) return;
     const currentTitle=$("f_title") ? $("f_title").value : (t.title||"");
+    const currentTag=selectedTag;
     $("modalBg").remove();
     if(existing){
-      openForm(newType, Object.assign({}, existing, {title:currentTitle, type:newType, _origType:origType}));
+      openForm(newType, Object.assign({}, existing, {title:currentTitle, tag:currentTag, type:newType, _origType:origType}));
     } else {
-      openForm(newType, {title:currentTitle});
+      openForm(newType, {title:currentTitle, tag:currentTag});
     }
   };
+
+  let selectedTag = curTag;
+  const tagEl=$("f_tag");
+  if(tagEl){
+    tagEl.querySelectorAll("button").forEach(b=>b.onclick=()=>{
+      tagEl.querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
+      b.classList.add("sel"); selectedTag=b.dataset.tag;
+    });
+  }
 
   // Interaktionen
   const segSel={v: (existing&&existing.scheduleType)|| (type==="duty"?"daily":"once")};
@@ -2725,9 +2749,8 @@ function openForm(type, existing){
     if(type==="todo"){ data.startDate=$("f_start").value;
       data.scheduleType=weeklyBtn.classList.contains("on")?"weekly":"once";
       const wd=parseDate(data.startDate); data.weekday=wd?String(wd.getDay()):""; }
-    // Projektzuordnung gilt für alle Aufgabentypen; leere Auswahl hebt sie auf
-    const fp=$("f_proj"); if(fp) data.projectId=fp.value||"";
     const ft=$("f_time"); if(ft && ft.value) data.startTime=ft.value;
+    data.tag=selectedTag||"";
     const cs=$("f_cal"); if(cs) data.calendarId=cs.value;
     const fn=$("f_notes"); if(fn && fn.value.trim()) data.notes=fn.value.trim();
     $("modalBg").remove();
@@ -2794,7 +2817,6 @@ function openNoteForm(existing){
   const isEdit=!!existing;
   const text=existing?.text||"";
   const url=existing?.url||"";
-  const pid=existing?.projectId||"";
   
   let html='<div class="modal-bg" id="modalBg"><div class="modal">';
   html+='<h2>'+(isEdit?'Notiz bearbeiten':'Neue Notiz')+'</h2>';
@@ -2802,13 +2824,6 @@ function openNoteForm(existing){
   html+='<textarea id="f_text" placeholder="Notiz..." style="width:100%;min-height:100px;padding:10px;border:1px solid var(--line);border-radius:6px;font-family:inherit">'+esc(text)+'</textarea>';
   html+='<label style="margin-top:12px">Link (optional)</label>';
   html+='<input type="text" id="f_url" placeholder="https://..." value="'+esc(url)+'" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px;margin-bottom:12px">';
-  html+='<label>Projekt (optional)</label>';
-  html+='<select id="f_proj" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px">';
-  html+='<option value="">— kein —</option>';
-  projects.filter(p=>!p.archived).forEach(p=>{
-    html+='<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+'>'+esc(p.name)+'</option>';
-  });
-  html+='</select>';
   html+='<label style="margin-top:12px">Datum (optional, für Bericht)</label>';
   html+='<input type="date" id="f_date" value="'+(existing?.dueDate||"")+'" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;margin-bottom:12px">';
   html+='<div class="modal-actions"><button class="btn-ghost" id="f_cancel">Abbrechen</button><button class="btn-primary" id="f_save">Speichern</button></div>';
@@ -2825,8 +2840,6 @@ function openNoteForm(existing){
     if(u) data.url=u;
     const d=$("f_date").value;
     if(d) data.dueDate=d;
-    const pr=$("f_proj").value;
-    if(pr) data.projectId=pr;
     $("modalBg").remove();
     if(isEdit) await updateNote(existing.id,data);
     else await addNote(data);
@@ -2838,7 +2851,6 @@ function openLinkForm(existing){
   const isEdit=!!existing;
   const url=existing?.url||"";
   const title=existing?.title||"";
-  const pid=existing?.projectId||"";
   
   let html='<div class="modal-bg" id="modalBg"><div class="modal">';
   html+='<h2>'+(isEdit?'Link bearbeiten':'Neuer Link')+'</h2>';
@@ -2846,13 +2858,6 @@ function openLinkForm(existing){
   html+='<input type="text" id="f_url" placeholder="https://..." value="'+esc(url)+'" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px;margin-bottom:12px">';
   html+='<label>Titel (optional)</label>';
   html+='<input type="text" id="f_title" placeholder="z. B. Wichtiger Artikel" value="'+esc(title)+'" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px;margin-bottom:12px">';
-  html+='<label>Projekt (optional)</label>';
-  html+='<select id="f_proj" style="width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px">';
-  html+='<option value="">— kein —</option>';
-  projects.filter(p=>!p.archived).forEach(p=>{
-    html+='<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+'>'+esc(p.name)+'</option>';
-  });
-  html+='</select>';
   html+='<div class="modal-actions"><button class="btn-ghost" id="f_cancel">Abbrechen</button><button class="btn-primary" id="f_save">Speichern</button></div>';
   html+='</div></div>';
   
@@ -2865,8 +2870,6 @@ function openLinkForm(existing){
     const data={url:u};
     const t=$("f_title").value.trim();
     if(t) data.title=t;
-    const pr=$("f_proj").value;
-    if(pr) data.projectId=pr;
     $("modalBg").remove();
     if(isEdit) await updateLink(existing.id,data);
     else await addLink(data);

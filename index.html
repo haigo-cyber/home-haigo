@@ -2544,7 +2544,9 @@ function openQuickAdd(){
         <button data-w="today" class="sel">Heute</button>
         <button data-w="tomorrow">Morgen</button>
         <button data-w="none">Ohne Datum</button>
+        <button data-w="custom">Datum wählen</button>
       </div>
+      <input type="date" id="q_customdate" style="display:none;width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;margin-top:8px">
       <p class="muted" style="font-size:12px;margin-top:8px" id="q_hint">Wird als ToDo angelegt. Details kannst du später ergänzen.</p>
       <div class="modal-actions">
         <button class="btn-ghost" id="q_cancel">Abbrechen</button>
@@ -2556,6 +2558,8 @@ function openQuickAdd(){
   $("q_when").querySelectorAll("button").forEach(b=>b.onclick=()=>{
     $("q_when").querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
     b.classList.add("sel"); when=b.dataset.w;
+    $("q_customdate").style.display=(when==="custom")?"block":"none";
+    if(when==="custom" && !$("q_customdate").value) $("q_customdate").value=todayKey();
   });
   const HINTS={
     todo:"Wird als ToDo angelegt. Details kannst du später ergänzen.",
@@ -2577,6 +2581,7 @@ function openQuickAdd(){
     let startDate="";
     if(when==="today") startDate=todayKey();
     else if(when==="tomorrow") startDate=nextDayKey(todayKey());
+    else if(when==="custom") startDate=$("q_customdate").value||todayKey();
     $("modalBg").remove();
     if(qtype==="goal"){
       await addGoalTask(title, startDate||todayKey());

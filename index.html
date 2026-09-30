@@ -226,7 +226,7 @@ function isDue(task, date){
   }
   if(task.type==="todo"){
     if(task.scheduleType==="weekly") return d%7===0;
-    return d===0;
+    return true; // einmaliges ToDo: ab Fälligkeit sichtbar, bleibt bis zur Erledigung in Heute (auch überfällig)
   }
   return false;
 }
@@ -1110,6 +1110,8 @@ function taskCard(t,{showCheck=true, key=todayKey(), oneTime=false}={}){
   const cleanNotes=(t.notes||"").replace(INBOX_MARKER,"").trim();
   const notes=cleanNotes?`<details class="note-detail"><summary style="color:#000">📝 ${cleanNotes.length} Zeichen</summary><div class="note-text" style="color:#000">${esc(cleanNotes)}</div></details>`:'';
   const urgency=t.startDate?urgencyBar(urgencyDays(t.startDate)):'';
+  const overdueDays=(t.type==="todo" && t.scheduleType!=="weekly" && t.startDate && !done)?Math.round((parseDate(todayKey())-parseDate(t.startDate))/86400000):0;
+  const overdueBadge=overdueDays>0?`<span class="badge" style="background:#fecaca;color:#b91c1c">überfällig seit ${overdueDays} ${overdueDays===1?"Tag":"Tagen"}</span>`:'';
   const inboxBadge=inbox?'<span class="badge" style="background:#d4f1c5;color:#000">⚡ unsortiert</span>':'';
   const TAG_COLORS={privat:"#93c5fd", job:"#fca5a5", projekt:"#fcd34d"};
   const TAG_LABELS={privat:"Privat", job:"Job", projekt:"Projekt"};
@@ -1119,7 +1121,7 @@ function taskCard(t,{showCheck=true, key=todayKey(), oneTime=false}={}){
     <div class="body">
       <div class="title" style="color:#000">${esc(t.title)}</div>
       ${urgency}
-      <div class="sub" style="color:#000"><span>${esc(scheduleLabel(t))}</span>${cal}${tagBadge}${inboxBadge}</div>
+      <div class="sub" style="color:#000"><span>${esc(scheduleLabel(t))}</span>${cal}${tagBadge}${overdueBadge}${inboxBadge}</div>
       ${notes}
     </div>
     <div class="row-actions">

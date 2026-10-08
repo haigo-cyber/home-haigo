@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mathe-Werkzeuge</title>
+<style>
+  :root { --text:#e6e8eb; --muted:#9aa1a9; --line:#4a4f55; --dark:#121315; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--text);
+         background: linear-gradient(160deg, #000 0%, #0b0c0d 35%, #2a2d31 75%, #5a5f66 100%) fixed; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.5rem; margin: 0 0 12px; }
+  .card { background: linear-gradient(145deg, #1a1c1f 0%, #26292d 50%, #3a3e44 100%); border:1px solid #5a5f66; border-radius:10px; padding:14px; margin-bottom:14px;
+          box-shadow: 0 2px 10px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.08); }
+  .controls { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; }
+  button { font: inherit; color:var(--text); padding:7px 14px; border:1px solid #6b7078; border-radius:8px; cursor:pointer;
+           background: linear-gradient(180deg, #4b4f55 0%, #2c2f33 100%); }
+  button:hover { background: linear-gradient(180deg, #5d626a 0%, #373b40 100%); }
+  button:disabled { opacity:.4; cursor:default; }
+  input[type=checkbox] { accent-color:#9aa1a9; }
+  label.opt { display:flex; align-items:center; gap:6px; cursor:pointer; }
+  .inputs { display:flex; flex-wrap:wrap; gap:12px; }
+  .frac { display:flex; flex-direction:column; align-items:center; border:2px solid var(--c); border-radius:10px; padding:8px 10px; position:relative; min-width:84px; }
+  .frac { background: rgba(0,0,0,.35); }
+  .frac input { width:64px; font-size:1.2rem; text-align:center; padding:4px; border:1px solid #5a5f66; border-radius:6px; color:var(--text); background:#0d0e10; }
+  .frac .bar { width:64px; height:2px; background:#aeb4bb; margin:4px 0; }
+  .frac .del { position:absolute; top:-10px; right:-10px; width:24px; height:24px; padding:0; border-radius:50%; line-height:1; }
+  .stage { position:relative; margin-top:6px; }
+  .row { display:flex; align-items:center; gap:10px; margin:10px 0; }
+  .label { width:var(--lw, 64px); text-align:center; font-size:1.05rem; flex:none; line-height:1.1; }
+  .label small { display:block; color:var(--muted); font-size:.75rem; }
+  .strip { flex:1; display:flex; height:46px; border:2px solid #aeb4bb; border-radius:4px; overflow:hidden; background:var(--dark); }
+  .cell { flex:1; border-right:1px solid #aeb4bb; background:linear-gradient(180deg, #1b1d20, #0d0e10); }
+  .cell:last-child { border-right:none; }
+  .cell.on { background:linear-gradient(180deg, color-mix(in srgb, var(--c) 100%, #fff 25%), var(--c) 55%, color-mix(in srgb, var(--c) 80%, #000)); }
+  .overlay { position:absolute; top:0; bottom:0; left:calc(var(--lw, 64px) + 10px); right:0; pointer-events:none; }
+  .overlay i { position:absolute; top:0; bottom:0; border-left:1px dashed rgba(255,255,255,.6); }
+  .result { font-size:1.25rem; line-height:1.8; }
+  .result .f { font-weight:700; color:var(--c); white-space:nowrap; }
+  .result .op { margin:0 8px; font-weight:700; }
+  .note { color:var(--muted); font-size:.9rem; }
+  .err { color:#ff7a6b; }
+
+  [hidden] { display:none !important; }
+  .tabs { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
+  .tab { padding:9px 18px; font-size:1.05rem; }
+  .tab[aria-selected="true"] { background: linear-gradient(180deg, #8a9099 0%, #4e5359 100%); border-color:#c3c8ce; color:#fff;
+                               box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
+
+  .numrow { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+  .numbox { position:relative; display:flex; }
+  .numbox input { width:120px; font-size:1.3rem; text-align:center; padding:6px; border:1px solid #5a5f66; border-radius:6px; color:var(--text); background:#0d0e10; }
+  .numbox .del { position:absolute; top:-10px; right:-10px; width:24px; height:24px; padding:0; border-radius:50%; line-height:1; }
+  input[type=range] { accent-color:#9aa1a9; }
+  .legend { display:flex; flex-wrap:wrap; gap:10px 32px; align-items:flex-end; }
+  .legend > div { display:flex; flex-direction:column; align-items:center; gap:6px; font-size:.9rem; color:var(--muted); }
+  .legend svg, .wp svg { display:block; }
+  .wtitle { font-size:1.15rem; margin-bottom:10px; }
+  .wtafel { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); border:2px solid #aeb4bb; border-radius:6px; overflow:hidden; background:var(--dark); }
+  .wcol { border-right:1px solid #aeb4bb; display:flex; flex-direction:column; min-width:0; }
+  .wcol:last-child { border-right:none; }
+  .wh { background: linear-gradient(180deg, color-mix(in srgb, var(--c) 100%, #fff 20%), color-mix(in srgb, var(--c) 80%, #000));
+        color:#fff; text-align:center; padding:6px 4px; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+  .wh b { display:block; font-size:1.3rem; }
+  .wh small { font-size:.75rem; }
+  .wd { text-align:center; font-size:2.6rem; font-weight:700; color:var(--c); padding:4px 0; border-bottom:1px solid #4a4f55; }
+  .wp { display:flex; flex-wrap:wrap; gap:6px 5px; align-items:flex-end; align-content:flex-start; justify-content:center; padding:10px 6px; min-height:40px; flex:1; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mathe-Werkzeuge</h1>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-bruch" aria-selected="true">Bruchstreifen</button>
+    <button class="tab" role="tab" id="tab-stell" aria-selected="false">Stellenwerttafel</button>
+  </div>
+
+  <section id="panel-bruch">
+
+  <div class="card">
+    <div class="controls" style="margin-bottom:12px">
+      <button id="add">Bruch hinzufügen</button>
+      <button id="reset">Beispiel laden</button>
+      <label class="opt"><input type="checkbox" id="same"> Gleichnamig machen</label>
+      <label class="opt"><input type="checkbox" id="guides"> Hilfslinien über alle Streifen</label>
+      <label class="opt"><input type="checkbox" id="dec"> Dezimalwert anzeigen</label>
+    </div>
+    <div class="inputs" id="inputs"></div>
+    <p class="note" id="msg"></p>
+  </div>
+
+  <div class="card">
+    <div class="stage" id="stage"></div>
+  </div>
+
+  <div class="card">
+    <div class="result" id="result"></div>
+  </div>
+  </section>
+
+  <section id="panel-stell" hidden>
+    <div class="card">
+      <div class="controls" style="margin-bottom:12px">
+        <button id="sAdd">Zahl hinzufügen</button>
+        <button id="sRandom">Zufallszahlen</button>
+        <label class="opt"><input type="checkbox" id="sDigits" checked> Ziffern in der Tafel</label>
+        <label class="opt"><input type="checkbox" id="sPics" checked> Bilder</label>
+        <label class="opt">Größe <input type="range" id="sSize" min="4" max="12" value="6"></label>
+      </div>
+      <div class="numrow" id="numrow"></div>
+      <p class="note" id="sMsg"></p>
+    </div>
+    <div class="card">
+      <div class="legend" id="legend"></div>
+    </div>
+    <div id="sOut"></div>
+  </section>
+</main>
+
+<script>
+const COLORS = ["#e4572e","#2e86ab","#3fa34d","#f2a900","#8e5bd1","#d6336c","#1aa6a6","#7a5c3e"];
+const MAXN = 24, MAXFRAC = 8, LIMIT = 60;
+let fracs = [];
+let nextId = 1;
+
+function mk(z, n) { return { id: nextId++, z: z, n: n, color: COLORS[(nextId - 2) % COLORS.length] }; }
+function example() { nextId = 1; fracs = [mk(2,3), mk(3,4), mk(5,8)]; }
+
+function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
+
+function renderInputs() {
+  const box = document.getElementById("inputs");
+  box.innerHTML = "";
+  fracs.forEach(f => {
+    const d = document.createElement("div");
+    d.className = "frac";
+    d.style.setProperty("--c", f.color);
+    d.innerHTML = '<input type="number" min="0" max="' + MAXN + '" value="' + f.z + '" data-k="z">' +
+      '<div class="bar"></div>' +
+      '<input type="number" min="1" max="' + MAXN + '" value="' + f.n + '" data-k="n">' +
+      (fracs.length > 2 ? '<button class="del" title="Entfernen">x</button>' : '');
+    d.querySelectorAll("input").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const v = parseInt(inp.value, 10);
+        f[inp.dataset.k] = isNaN(v) ? NaN : v;
+        renderView();
+      });
+    });
+    const del = d.querySelector(".del");
+    if (del) del.addEventListener("click", () => { fracs = fracs.filter(x => x.id !== f.id); renderInputs(); renderView(); });
+    box.appendChild(d);
+  });
+  document.getElementById("add").disabled = fracs.length >= MAXFRAC;
+}
+
+function valid(f) {
+  return Number.isInteger(f.z) && Number.isInteger(f.n) && f.n >= 1 && f.n <= MAXN && f.z >= 0 && f.z <= f.n;
+}
+
+function renderView() {
+  const msg = document.getElementById("msg");
+  const stage = document.getElementById("stage");
+  const result = document.getElementById("result");
+  const showDec = document.getElementById("dec").checked;
+  const guides = document.getElementById("guides").checked;
+
+  const bad = fracs.filter(f => !valid(f));
+  msg.className = bad.length ? "note err" : "note";
+  msg.textContent = bad.length
+    ? "Bitte nur Brüche zwischen 0 und 1 eingeben: Nenner von 1 bis " + MAXN + ", Zähler von 0 bis zum Nenner."
+    : "Alle Streifen sind gleich lang und stellen das Ganze dar.";
+
+  const ok = fracs.filter(valid);
+  const L = ok.reduce((a, f) => a / gcd(a, f.n) * f.n, 1);
+  const wantSame = document.getElementById("same").checked && ok.length > 0;
+  const useSame = wantSame && L <= LIMIT;
+  if (wantSame && !useSame) {
+    msg.className = "note err";
+    msg.textContent = "Der Hauptnenner ist " + L + " und damit größer als " + LIMIT + ". Dafür sind die Streifen nicht mehr sinnvoll darstellbar, deshalb zeige ich die Originalbrüche.";
+  } else if (useSame) {
+    msg.className = "note";
+    msg.textContent = "Alle Brüche sind auf den Hauptnenner " + L + " erweitert. Die Streifen zeigen die erweiterten Brüche.";
+  }
+  stage.style.setProperty("--lw", useSame ? "130px" : "64px");
+  stage.innerHTML = "";
+  ok.forEach(f => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.style.setProperty("--c", f.color);
+    const dn = useSame ? L : f.n;
+    const dz = useSame ? f.z * (L / f.n) : f.z;
+    const dec = showDec ? "<small>" + (f.z / f.n).toLocaleString("de-DE", { maximumFractionDigits: 3 }) + "</small>" : "";
+    const lab = useSame
+      ? f.z + "/" + f.n + " = " + dz + "/" + dn + "<small>erweitert mit " + (L / f.n) + "</small>" + dec
+      : f.z + "/" + f.n + dec;
+    row.innerHTML = '<div class="label">' + lab + "</div>";
+    const strip = document.createElement("div");
+    strip.className = "strip";
+    for (let i = 0; i < dn; i++) {
+      const c = document.createElement("div");
+      c.className = "cell" + (i < dz ? " on" : "");
+      strip.appendChild(c);
+    }
+    row.appendChild(strip);
+    stage.appendChild(row);
+  });
+
+  if (guides && ok.length) {
+    const ov = document.createElement("div");
+    ov.className = "overlay";
+    const seen = new Set();
+    ok.forEach(f => {
+      const gn = useSame ? L : f.n;
+      for (let k = 1; k < gn; k++) {
+        const key = (k / gn).toFixed(6);
+        if (!seen.has(key)) {
+          seen.add(key);
+          const l = document.createElement("i");
+          l.style.left = (k / gn * 100) + "%";
+          ov.appendChild(l);
+        }
+      }
+    });
+    stage.appendChild(ov);
+  }
+
+  // Vergleich
+  if (ok.length < 2) { result.textContent = ""; return; }
+  const sorted = ok.slice().sort((a, b) => a.z * b.n - b.z * a.n);
+  let html = "";
+  sorted.forEach((f, i) => {
+    if (i > 0) {
+      const p = sorted[i - 1];
+      const eq = p.z * f.n === f.z * p.n;
+      html += '<span class="op">' + (eq ? "=" : "&lt;") + "</span>";
+    }
+    html += '<span class="f" style="--c:' + f.color + '">' + f.z + "/" + f.n +
+      (useSame ? " (" + (f.z * (L / f.n)) + "/" + L + ")" : "") + "</span>";
+  });
+  result.innerHTML = "Von klein nach groß: " + html;
+}
+
+document.getElementById("add").addEventListener("click", () => {
+  if (fracs.length < MAXFRAC) { fracs.push(mk(1, 2)); renderInputs(); renderView(); }
+});
+document.getElementById("reset").addEventListener("click", () => { example(); renderInputs(); renderView(); });
+document.getElementById("guides").addEventListener("change", renderView);
+document.getElementById("same").addEventListener("change", renderView);
+document.getElementById("dec").addEventListener("change", renderView);
+
+example();
+renderInputs();
+renderView();
+
+/* ===== Tabs ===== */
+function showTab(which) {
+  const b = which === "bruch";
+  document.getElementById("panel-bruch").hidden = !b;
+  document.getElementById("panel-stell").hidden = b;
+  document.getElementById("tab-bruch").setAttribute("aria-selected", b ? "true" : "false");
+  document.getElementById("tab-stell").setAttribute("aria-selected", b ? "false" : "true");
+}
+document.getElementById("tab-bruch").addEventListener("click", () => showTab("bruch"));
+document.getElementById("tab-stell").addEventListener("click", () => showTab("stell"));
+
+/* ===== Stellenwerttafel ===== */
+// dims = [Breite, Höhe, Tiefe] in Einheiten eines Einers
+const PLACES = [
+  { key: "T", name: "Tausender", f: 1000, color: "#8e5bd1", dims: [10, 10, 10] },
+  { key: "H", name: "Hunderter", f: 100,  color: "#2e86ab", dims: [10, 10, 1] },
+  { key: "Z", name: "Zehner",    f: 10,   color: "#f2a900", dims: [1, 10, 1] },
+  { key: "E", name: "Einer",     f: 1,    color: "#e4572e", dims: [1, 1, 1] }
+];
+const MAXNUM = 9999, MAXNUMS = 4;
+let nums = [{ id: 1, v: 3407 }];
+let numNext = 2;
+
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  const t = k > 0 ? 255 : 0, p = Math.abs(k);
+  r = Math.round(r + (t - r) * p);
+  g = Math.round(g + (t - g) * p);
+  b = Math.round(b + (t - b) * p);
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+
+// Schrägbild (Kavalierperspektive): Vorderseite als echtes Rechteck, Tiefe diagonal nach oben rechts
+function stoneSvg(a, h, e, u, color) {
+  const s = 0.5 * u, dx = s * e;
+  const W = a * u + dx, H = h * u + dx;
+  const f = x => x.toFixed(1);
+  const pts = arr => arr.map(p => f(p[0]) + "," + f(p[1])).join(" ");
+  const front = [[0, dx], [a * u, dx], [a * u, dx + h * u], [0, dx + h * u]];
+  const top = [[0, dx], [a * u, dx], [a * u + dx, 0], [dx, 0]];
+  const right = [[a * u, dx], [a * u + dx, 0], [a * u + dx, h * u], [a * u, dx + h * u]];
+  let d = "";
+  const ln = (x1, y1, x2, y2) => { d += "M" + f(x1) + "," + f(y1) + "L" + f(x2) + "," + f(y2); };
+  for (let i = 1; i < a; i++) { ln(i * u, dx, i * u, dx + h * u); ln(i * u, dx, i * u + dx, 0); }
+  for (let k = 1; k < h; k++) { ln(0, dx + k * u, a * u, dx + k * u); ln(a * u, dx + k * u, a * u + dx, k * u); }
+  for (let j = 1; j < e; j++) {
+    ln(s * j, dx - s * j, a * u + s * j, dx - s * j);
+    ln(a * u + s * j, dx - s * j, a * u + s * j, dx + h * u - s * j);
+  }
+  const outline = 'fill="none" stroke="rgba(0,0,0,.65)" stroke-width="1" stroke-linejoin="round"';
+  return '<svg width="' + f(W + 2) + '" height="' + f(H + 2) + '" viewBox="-1 -1 ' + f(W + 2) + " " + f(H + 2) + '" aria-hidden="true">' +
+    '<polygon points="' + pts(front) + '" fill="' + shade(color, 0) + '"/>' +
+    '<polygon points="' + pts(top) + '" fill="' + shade(color, 0.35) + '"/>' +
+    '<polygon points="' + pts(right) + '" fill="' + shade(color, -0.3) + '"/>' +
+    '<path d="' + d + '" stroke="rgba(0,0,0,.35)" stroke-width="0.7" fill="none"/>' +
+    '<polygon points="' + pts(front) + '" ' + outline + "/>" +
+    '<polygon points="' + pts(top) + '" ' + outline + "/>" +
+    '<polygon points="' + pts(right) + '" ' + outline + "/></svg>";
+}
+
+function digitsOf(v) { return [Math.floor(v / 1000) % 10, Math.floor(v / 100) % 10, Math.floor(v / 10) % 10, v % 10]; }
+function numValid(n) { return Number.isInteger(n.v) && n.v >= 0 && n.v <= MAXNUM; }
+
+function renderLegend(u) {
+  const box = document.getElementById("legend");
+  box.innerHTML = "";
+  PLACES.slice().reverse().forEach(p => {
+    const d = document.createElement("div");
+    d.innerHTML = stoneSvg(p.dims[0], p.dims[1], p.dims[2], u, p.color) + "<span>" + p.name + " = " + p.f + "</span>";
+    box.appendChild(d);
+  });
+}
+
+function renderStell() {
+  const showD = document.getElementById("sDigits").checked;
+  const showP = document.getElementById("sPics").checked;
+  const u = parseInt(document.getElementById("sSize").value, 10);
+  const out = document.getElementById("sOut");
+  const msg = document.getElementById("sMsg");
+  const bad = nums.filter(n => !numValid(n));
+  msg.className = bad.length ? "note err" : "note";
+  msg.textContent = bad.length
+    ? "Bitte nur ganze Zahlen von 0 bis " + MAXNUM + " eingeben."
+    : "Einer sind kleine Würfel, Zehner Stangen, Hunderter Quadrate (Platten) und Tausender große Würfel.";
+  renderLegend(u);
+  out.innerHTML = "";
+  nums.filter(numValid).forEach(n => {
+    const ds = digitsOf(n.v);
+    const card = document.createElement("div");
+    card.className = "card";
+    let html = '<div class="wtitle">' + n.v + " = " +
+      ds.map((x, i) => x + " " + PLACES[i].key).join(" + ") + '</div><div class="wtafel">';
+    PLACES.forEach((p, i) => {
+      html += '<div class="wcol" style="--c:' + p.color + '"><div class="wh"><b>' + p.key + "</b><small>" + p.name + "</small></div>";
+      if (showD) html += '<div class="wd">' + ds[i] + "</div>";
+      if (showP) {
+        const svg = stoneSvg(p.dims[0], p.dims[1], p.dims[2], u, p.color);
+        html += '<div class="wp">' + svg.repeat(ds[i]) + "</div>";
+      }
+      html += "</div>";
+    });
+    html += "</div>";
+    card.innerHTML = html;
+    out.appendChild(card);
+  });
+}
+
+function renderNumInputs() {
+  const box = document.getElementById("numrow");
+  box.innerHTML = "";
+  nums.forEach(n => {
+    const d = document.createElement("div");
+    d.className = "numbox";
+    d.innerHTML = '<input type="number" min="0" max="' + MAXNUM + '" step="1" value="' + (Number.isNaN(n.v) ? "" : n.v) + '">' +
+      (nums.length > 1 ? '<button class="del" title="Entfernen">x</button>' : "");
+    d.querySelector("input").addEventListener("input", ev => {
+      n.v = ev.target.value === "" ? NaN : Number(ev.target.value);
+      renderStell();
+    });
+    const del = d.querySelector(".del");
+    if (del) del.addEventListener("click", () => { nums = nums.filter(x => x.id !== n.id); renderNumInputs(); renderStell(); });
+    box.appendChild(d);
+  });
+  document.getElementById("sAdd").disabled = nums.length >= MAXNUMS;
+}
+
+function rnd() { return Math.floor(Math.random() * (MAXNUM + 1)); }
+document.getElementById("sAdd").addEventListener("click", () => {
+  if (nums.length < MAXNUMS) { nums.push({ id: numNext++, v: rnd() }); renderNumInputs(); renderStell(); }
+});
+document.getElementById("sRandom").addEventListener("click", () => {
+  nums.forEach(n => { n.v = rnd(); });
+  renderNumInputs(); renderStell();
+});
+["sDigits", "sPics"].forEach(id => document.getElementById(id).addEventListener("change", renderStell));
+document.getElementById("sSize").addEventListener("input", renderStell);
+
+renderNumInputs();
+renderStell();
+</script>
+</body>
+</html>

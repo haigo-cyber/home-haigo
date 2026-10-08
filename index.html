@@ -258,6 +258,31 @@
   @media(prefers-reduced-motion:reduce){
     *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   }
+
+  /* ================= LAPTOP / BREITER BILDSCHIRM: Navigation als Seitenleiste links ================= */
+  @media(min-width:900px){
+    :root{--sbw:232px}
+    body:has(#nav[style*="flex"]){padding-left:var(--sbw)}
+    .app{max-width:780px}
+    main{padding:18px 20px 40px}
+    nav{left:0;top:0;bottom:0;right:auto;width:var(--sbw);max-width:none;margin:0;
+      flex-direction:column;flex-wrap:nowrap;justify-content:flex-start;gap:2px;overflow-y:auto;
+      padding:18px 10px calc(18px + env(safe-area-inset-bottom));
+      background:linear-gradient(90deg,#1c1e23,#0a0b0d);border-top:0;border-right:1px solid #3a3f47}
+    nav::before{content:"ToDo";display:block;padding:4px 14px 16px;font:800 13px var(--mono);letter-spacing:.3em;color:var(--muted)}
+    nav button{flex:none;width:100%;max-width:none;flex-direction:row;justify-content:flex-start;gap:12px;
+      padding:11px 14px;font-size:14px;border-radius:10px;text-align:left}
+    nav button .nico{font-size:18px;width:24px;text-align:center}
+    nav button:hover{background:rgba(255,255,255,.06);color:#fff}
+    nav button.active{background:linear-gradient(90deg,rgba(255,255,255,.12),rgba(255,255,255,.03));font-weight:600}
+    nav button.active::before{top:22%;bottom:22%;left:0;right:auto;width:3px;height:auto;
+      background:linear-gradient(180deg,transparent,#e8eaee,transparent)}
+    .fab{right:max(20px,calc(50% - 470px));bottom:24px}
+    .fab-quick{right:max(24px,calc(50% - 466px));bottom:90px}
+    .toast,.xpfloat{left:calc(50% + var(--sbw) / 2)}
+    .modal-bg{padding-left:var(--sbw);align-items:center}
+    .modal{border-radius:18px;max-width:520px}
+  }
 </style>
 </head>
 <body>
@@ -1644,11 +1669,17 @@ function trophyGridHtml(){
   }).join("")+`</div>`;
 }
 
-window.addEventListener("resize",()=>{ const nv=document.getElementById("nav"); if(nv&&nv.offsetHeight) document.documentElement.style.setProperty("--navh",nv.offsetHeight+"px"); });
+function setNavH(){
+  const nv=document.getElementById("nav"); if(!nv) return;
+  const desk=window.matchMedia("(min-width:900px)").matches;
+  if(desk) document.documentElement.style.setProperty("--navh","0px");
+  else if(nv.offsetHeight) document.documentElement.style.setProperty("--navh",nv.offsetHeight+"px");
+}
+window.addEventListener("resize",setNavH);
 function render(){
   gameTick();
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  { const nv=$("nav"); if(nv.offsetHeight) document.documentElement.style.setProperty("--navh",nv.offsetHeight+"px"); }
+  setNavH();
   const titles={today:"Heute",distractions:"Ablenkungen",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",settings:"Konto"};
   $("hTitle").textContent=titles[view]||"ToDo";
   $("fab").style.display=(view==="today"||view==="settings"||view==="stats"||view==="migrate"||view==="deadlines")?"none":"block";

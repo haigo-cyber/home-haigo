@@ -423,14 +423,14 @@ function isNodeDone(node){ return node.children.length===0 ? node.status==="fert
 
 /* ============ Markdown Parsing / Serialisierung ============ */
 const HEAD_RE = /^(#{1,6})\s+(.*)$/;
-const META_RE = /<!--\s*(status|due|gt|archived|upd|done|dl|sd):([^>]*?)-->/g;
+const META_RE = /<!--\s*(status|due|gt|archived|upd|done|dl|sd|meta):([^>]*?)-->/g;
 
 function parseHeadingLine(line){
   const m = line.match(HEAD_RE);
   if(!m) return null;
   const level = m[1].length;
   let rest = m[2];
-  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0, done:0, deadline:null, startDate:null};
+  const meta = {status:"offen", due:null, gtId:null, archived:false, upd:0, done:0, deadline:null, startDate:null, meta:null};
   rest = rest.replace(META_RE, (whole, key, val)=>{
     val = (val||"").trim();
     if(key==="status"){ if(STATUS_ORDER.includes(val)) meta.status = val; }
@@ -441,9 +441,10 @@ function parseHeadingLine(line){
     else if(key==="done"){ meta.done = parseInt(val,10) || 0; }
     else if(key==="dl"){ meta.deadline = val || null; }
     else if(key==="sd"){ meta.startDate = val || null; }
+    else if(key==="meta"){ meta.meta = val || null; }
     return "";
   });
-  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd, done: meta.done, deadline: meta.deadline, startDate: meta.startDate};
+  return {level, title: rest.trim(), status: meta.status, due: meta.due, gtId: meta.gtId, archived: meta.archived, upd: meta.upd, done: meta.done, deadline: meta.deadline, startDate: meta.startDate, meta: meta.meta};
 }
 
 function parseMarkdown(text){
@@ -453,7 +454,7 @@ function parseMarkdown(text){
   for(const line of lines){
     const h = parseHeadingLine(line);
     if(h){
-      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, done:h.done||0, deadline:h.deadline||null, startDate:h.startDate||null, body:[], children:[], parent:null};
+      const node = {level:h.level, title:h.title, status:h.status, due:h.due, gtId:h.gtId, archived:h.archived, upd:h.upd||0, done:h.done||0, deadline:h.deadline||null, startDate:h.startDate||null, meta:h.meta||null, body:[], children:[], parent:null};
       while(stack.length && stack[stack.length-1].level >= node.level) stack.pop();
       const parent = stack[stack.length-1];
       node.parent = parent;
@@ -478,6 +479,7 @@ function serializeMarkdown(root){
       if(n.done) line += " <!--done:"+n.done+"-->";
       if(n.deadline) line += " <!--dl:"+n.deadline+"-->";
       if(n.startDate) line += " <!--sd:"+n.startDate+"-->";
+      if(n.meta) line += " <!--meta:"+n.meta+"-->";
       out.push(line);
     }
     n.body.forEach(l=>out.push(l));

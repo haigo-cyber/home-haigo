@@ -773,6 +773,7 @@ async function gtUpdate(node, projectTitle){
   const notes = gtNotes(node, projectTitle);
   const body = {id: node.gtId, title: node.title || "(ohne Titel)", notes: notes};
   if(node.due) body.due = dueToRfc(node.due);
+  if(node.status!=="fertig"){ body.status = "needsAction"; body.completed = null; }   // offener Schritt: Google-Aufgabe darf nicht erledigt bleiben
   await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(node.gtId), {
     method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)
   });
@@ -781,6 +782,17 @@ async function gtComplete(gtId){
   await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(gtId), {
     method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({status:"completed"})
   });
+}
+async function gtReopen(node){
+  if(!node.gtId || !accessToken) return;
+  try{
+    const r = await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(node.gtId), {
+      method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({status:"needsAction", completed:null})
+    });
+  }catch(e){
+    if(String(e.message).includes("404")) node.gtId = null;   // Aufgabe existiert nicht mehr: Verknüpfung lösen
+    else throw e;
+  }
 }
 async function gtGet(gtId){
   return await gtApi("/lists/"+GT_LIST+"/tasks/"+encodeURIComponent(gtId), {}, true);
@@ -2047,6 +2059,10 @@ function bindNodeEvents(container){
       touchNode(n);
       renderDetail();
       scheduleSave(currentProject);
+      if(wasFertig && n.status!=="fertig" && n.gtId){
+        // Wieder geöffnet: die Google-Aufgabe ebenfalls öffnen, sonst setzt der nächste Abgleich den Punkt wieder auf erledigt
+        try{ await gtReopen(n); scheduleSave(currentProject); }catch(e){ toast("Google-Tasks-Fehler beim Wiederöffnen"); }
+      }
       if(n.due || n.gtId){ await syncOne(n, currentProject); renderDetail(); }
     };
   });

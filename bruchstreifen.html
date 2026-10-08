@@ -28,13 +28,13 @@
   .frac .del { position:absolute; top:-10px; right:-10px; width:24px; height:24px; padding:0; border-radius:50%; line-height:1; }
   .stage { position:relative; margin-top:6px; }
   .row { display:flex; align-items:center; gap:10px; margin:10px 0; }
-  .label { width:64px; text-align:center; font-size:1.05rem; flex:none; line-height:1.1; }
+  .label { width:var(--lw, 64px); text-align:center; font-size:1.05rem; flex:none; line-height:1.1; }
   .label small { display:block; color:var(--muted); font-size:.75rem; }
   .strip { flex:1; display:flex; height:46px; border:2px solid #aeb4bb; border-radius:4px; overflow:hidden; background:var(--dark); }
   .cell { flex:1; border-right:1px solid #aeb4bb; background:linear-gradient(180deg, #1b1d20, #0d0e10); }
   .cell:last-child { border-right:none; }
   .cell.on { background:linear-gradient(180deg, color-mix(in srgb, var(--c) 100%, #fff 25%), var(--c) 55%, color-mix(in srgb, var(--c) 80%, #000)); }
-  .overlay { position:absolute; top:0; bottom:0; left:74px; right:0; pointer-events:none; }
+  .overlay { position:absolute; top:0; bottom:0; left:calc(var(--lw, 64px) + 10px); right:0; pointer-events:none; }
   .overlay i { position:absolute; top:0; bottom:0; border-left:1px dashed rgba(255,255,255,.6); }
   .result { font-size:1.25rem; line-height:1.8; }
   .result .f { font-weight:700; color:var(--c); white-space:nowrap; }
@@ -51,6 +51,7 @@
     <div class="controls" style="margin-bottom:12px">
       <button id="add">Bruch hinzufügen</button>
       <button id="reset">Beispiel laden</button>
+      <label class="opt"><input type="checkbox" id="same"> Gleichnamig machen</label>
       <label class="opt"><input type="checkbox" id="guides"> Hilfslinien über alle Streifen</label>
       <label class="opt"><input type="checkbox" id="dec"> Dezimalwert anzeigen</label>
     </div>
@@ -69,7 +70,7 @@
 
 <script>
 const COLORS = ["#e4572e","#2e86ab","#3fa34d","#f2a900","#8e5bd1","#d6336c","#1aa6a6","#7a5c3e"];
-const MAXN = 24, MAXFRAC = 8;
+const MAXN = 24, MAXFRAC = 8, LIMIT = 60;
 let fracs = [];
 let nextId = 1;
 
@@ -121,19 +122,34 @@ function renderView() {
     : "Alle Streifen sind gleich lang und stellen das Ganze dar.";
 
   const ok = fracs.filter(valid);
+  const L = ok.reduce((a, f) => a / gcd(a, f.n) * f.n, 1);
+  const wantSame = document.getElementById("same").checked && ok.length > 0;
+  const useSame = wantSame && L <= LIMIT;
+  if (wantSame && !useSame) {
+    msg.className = "note err";
+    msg.textContent = "Der Hauptnenner ist " + L + " und damit größer als " + LIMIT + ". Dafür sind die Streifen nicht mehr sinnvoll darstellbar, deshalb zeige ich die Originalbrüche.";
+  } else if (useSame) {
+    msg.className = "note";
+    msg.textContent = "Alle Brüche sind auf den Hauptnenner " + L + " erweitert. Die Streifen zeigen die erweiterten Brüche.";
+  }
+  stage.style.setProperty("--lw", useSame ? "130px" : "64px");
   stage.innerHTML = "";
   ok.forEach(f => {
     const row = document.createElement("div");
     row.className = "row";
     row.style.setProperty("--c", f.color);
-    const g = gcd(f.z, f.n);
+    const dn = useSame ? L : f.n;
+    const dz = useSame ? f.z * (L / f.n) : f.z;
     const dec = showDec ? "<small>" + (f.z / f.n).toLocaleString("de-DE", { maximumFractionDigits: 3 }) + "</small>" : "";
-    row.innerHTML = '<div class="label">' + f.z + "/" + f.n + dec + "</div>";
+    const lab = useSame
+      ? f.z + "/" + f.n + " = " + dz + "/" + dn + "<small>erweitert mit " + (L / f.n) + "</small>" + dec
+      : f.z + "/" + f.n + dec;
+    row.innerHTML = '<div class="label">' + lab + "</div>";
     const strip = document.createElement("div");
     strip.className = "strip";
-    for (let i = 0; i < f.n; i++) {
+    for (let i = 0; i < dn; i++) {
       const c = document.createElement("div");
-      c.className = "cell" + (i < f.z ? " on" : "");
+      c.className = "cell" + (i < dz ? " on" : "");
       strip.appendChild(c);
     }
     row.appendChild(strip);
@@ -145,12 +161,13 @@ function renderView() {
     ov.className = "overlay";
     const seen = new Set();
     ok.forEach(f => {
-      for (let k = 1; k < f.n; k++) {
-        const key = (k / f.n).toFixed(6);
+      const gn = useSame ? L : f.n;
+      for (let k = 1; k < gn; k++) {
+        const key = (k / gn).toFixed(6);
         if (!seen.has(key)) {
           seen.add(key);
           const l = document.createElement("i");
-          l.style.left = (k / f.n * 100) + "%";
+          l.style.left = (k / gn * 100) + "%";
           ov.appendChild(l);
         }
       }
@@ -168,7 +185,8 @@ function renderView() {
       const eq = p.z * f.n === f.z * p.n;
       html += '<span class="op">' + (eq ? "=" : "&lt;") + "</span>";
     }
-    html += '<span class="f" style="--c:' + f.color + '">' + f.z + "/" + f.n + "</span>";
+    html += '<span class="f" style="--c:' + f.color + '">' + f.z + "/" + f.n +
+      (useSame ? " (" + (f.z * (L / f.n)) + "/" + L + ")" : "") + "</span>";
   });
   result.innerHTML = "Von klein nach groß: " + html;
 }
@@ -178,6 +196,7 @@ document.getElementById("add").addEventListener("click", () => {
 });
 document.getElementById("reset").addEventListener("click", () => { example(); renderInputs(); renderView(); });
 document.getElementById("guides").addEventListener("change", renderView);
+document.getElementById("same").addEventListener("change", renderView);
 document.getElementById("dec").addEventListener("change", renderView);
 
 example();

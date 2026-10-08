@@ -556,8 +556,15 @@ async function loadGTasks(){
     defaultGTaskListId=defaultList.id;
     const today=todayKey();
     // 1) Offene Aufgaben
-    const resOpen=await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks?showCompleted=false&maxResults=100`);
-    const openItems=((resOpen && resOpen.items)||[]).filter(t=>t.status!=="completed");
+    // Alle Seiten laden (Google liefert höchstens 100 pro Abruf), sonst fehlen bei vielen Aufgaben einzelne, z. B. Metaprojekte
+    let openRaw=[], pageTok="";
+    for(let pg=0; pg<10; pg++){
+      const resOpen=await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks?showCompleted=false&maxResults=100`+(pageTok?`&pageToken=${encodeURIComponent(pageTok)}`:""));
+      openRaw=openRaw.concat((resOpen && resOpen.items)||[]);
+      pageTok=(resOpen && resOpen.nextPageToken)||"";
+      if(!pageTok) break;
+    }
+    const openItems=openRaw.filter(t=>t.status!=="completed");
     // 2) Heute erledigte Aufgaben (für die Ziel-Grafik)
     const startISO=new Date(today+"T00:00:00").toISOString();
     const resDone=await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks?showCompleted=true&showHidden=true&completedMin=${encodeURIComponent(startISO)}&maxResults=100`);

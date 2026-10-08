@@ -809,7 +809,7 @@ let syncing = false;
 async function syncTasks(silent){
   if(!accessToken || syncing) return;
   syncing = true;
-  let pushed = 0, pulled = 0;
+  let pushed = 0, pulled = 0, metaCount = 0;
   const changed = new Set();
   try{
     for(const p of projects){
@@ -832,6 +832,7 @@ async function syncTasks(silent){
         // 2) Offene Schritte mit Datum nach Google Tasks schieben
         const isDone = node.status === "fertig";
         if(node.due && !isDone){
+          if(isMetaNode(node)) metaCount++;
           if(!node.gtId){
             node.gtId = await gtCreate(node, p.title);
             pushed++;
@@ -844,7 +845,7 @@ async function syncTasks(silent){
       }
     }
     for(const p of changed){ await saveProject(p, true); }
-    if(!silent) toast("Sync: "+pushed+" neu, "+pulled+" erledigt übernommen");
+    if(!silent) toast("Sync: "+pushed+" neu, "+pulled+" erledigt übernommen, "+metaCount+" Metaprojekt-Schritte mit Datum");
   }catch(e){
     if(!silent) toast("Sync fehlgeschlagen");
   }

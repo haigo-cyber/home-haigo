@@ -178,6 +178,14 @@
   .lvpill{font:700 11px var(--mono);letter-spacing:.1em;padding:5px 9px;border-radius:999px;border:1px solid #5b6270;
     background:var(--metal-hi);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
   .medal{font-size:15px;line-height:1}
+  /* Statusquadrate: zwei Zustände */
+  .sq{display:inline-block;width:12px;height:12px;border-radius:3px;flex:none;vertical-align:-1px}
+  .sq-red{background:#ff5a5f;box-shadow:0 0 6px rgba(255,90,95,.55)}
+  .sq-green{background:#34d27b;box-shadow:0 0 6px rgba(52,210,123,.55)}
+  .legend .sq{margin-right:2px}
+  .sqbtn{background:transparent;border:0;padding:0 9px;min-height:24px;min-width:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;border-radius:6px;line-height:0}
+  .sqbtn:active{background:rgba(255,255,255,.12)}
+  .sqwrap{display:inline-flex;align-items:center;justify-content:center;min-width:30px;line-height:0}
   /* Status ans Zeilenende: bleibt am rechten Rand sichtbar, auch wenn die Zeile seitlich gescrollt wird */
   .st-end{position:sticky;right:0;z-index:2;flex:none;display:flex;align-items:center;margin-left:auto;
     padding:0 2px 0 8px;background:linear-gradient(90deg,transparent,#0a0b0d 8px)}
@@ -189,7 +197,7 @@
     .next-main{flex:1 1 calc(100% - 36px);min-width:0}
     .next-item .st-end{position:static;background:none;padding:0 0 0 6px}
   }
-  .st-end .badge{font-size:9px;padding:2px 6px}
+  .st-end{padding:0 0 0 6px}
   .card .sub{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 
   /* ---- HUD ---- */
@@ -359,10 +367,8 @@
       <div id="deadlineWarn" class="deadline-warn hidden"></div>
       <div id="donutWrap" style="text-align:center;padding:10px 0;"></div>
       <div class="legend">
-        <span><i class="dot" style="background:var(--rot)"></i>nicht begonnen</span>
-        <span><i class="dot" style="background:var(--orange)"></i>angefangen</span>
-        <span><i class="dot" style="background:var(--blau)"></i>weitgehend fertig</span>
-        <span><i class="dot" style="background:var(--gruen)"></i>abgeschlossen</span>
+        <span><i class="sq sq-red"></i>offen</span>
+        <span><i class="sq sq-green"></i>erledigt</span>
       </div>
       <div id="bulkBarDetail" class="bulk-bar hidden">
         <span class="bulk-count" id="bulkCountDetail">0 markiert</span>
@@ -405,12 +411,15 @@ const GT_LIST = "@default";
 const GT_MARKER = "[Projekt-Visualizer]";
 
 /* ============ Status-Modell ============ */
-const STATUS_ORDER = ["offen","begonnen","weit","fertig"];
-const STATUS_LABEL = {offen:"nicht begonnen",begonnen:"angefangen",weit:"weitgehend fertig",fertig:"abgeschlossen"};
-const STATUS_COLOR = {offen:"var(--rot)",begonnen:"var(--orange)",weit:"var(--blau)",fertig:"var(--gruen)"};
-const STATUS_WEIGHT = {offen:0,begonnen:1/3,weit:2/3,fertig:1};
+const STATUS_ORDER = ["offen","fertig"];   // alte Werte "begonnen" und "weit" aus bestehenden Dateien werden beim Einlesen zu "offen"
+const STATUS_LABEL = {offen:"offen",fertig:"erledigt"};
+const STATUS_COLOR = {offen:"var(--rot)",fertig:"var(--gruen)"};
+const STATUS_WEIGHT = {offen:0,fertig:1};
 
-function nextStatus(s){ const i = STATUS_ORDER.indexOf(s); return STATUS_ORDER[(i+1)%STATUS_ORDER.length]; }
+function nextStatus(s){ return s==="fertig" ? "offen" : "fertig"; }
+/* Kleines Statusquadrat: grün = erledigt, rot = offen */
+function sqHtml(done){ return `<i class="sq ${done?"sq-green":"sq-red"}"></i>`; }
+function isNodeDone(node){ return node.children.length===0 ? node.status==="fertig" : nodeProgress(node)>=1; }
 
 /* ============ Markdown Parsing / Serialisierung ============ */
 const HEAD_RE = /^(#{1,6})\s+(.*)$/;
@@ -1399,7 +1408,7 @@ function renderNext(){
   const filterLabels = {all:"Filter: Alle", untimed:"Filter: Unterminiert", overdue:"Filter: Überfällig"};
   const btnUt = document.getElementById("btnOnlyUntimed");
   if(btnUt){ btnUt.textContent = filterLabels[nextFilter]; btnUt.classList.toggle("active", nextFilter!=="all"); }
-  const prio = {begonnen:0, weit:1, offen:2};
+  const prio = {offen:0};
   const dueOf = x => (x.node && x.node.due) ? x.node.due : null;
   untimedFiltered.sort((a,b)=>{
     const da=dueOf(a), db=dueOf(b);
@@ -1428,7 +1437,7 @@ function renderNext(){
       <input type="date" class="dl-input next-dl" data-i="${i}" value="${n.deadline||''}" title="Deadline">
       <button class="mini next-archive" data-i="${i}" title="Archivieren">📦</button>
       <button class="mini next-del" data-i="${i}" title="Löschen">🗑</button>
-      <span class="st-end"><span class="badge badge-${item.status}">${STATUS_LABEL[item.status]}</span></span>
+      <span class="st-end" title="offen">${sqHtml(false)}</span>
     </div>`;
   }).join("");
   [...list.querySelectorAll(".next-sd")].forEach(el=>{
@@ -1677,7 +1686,7 @@ function renderNode(node, isRoot){
   const delBtn = isRoot || node.level === 1 ? "" : `<button class="btnDel" data-nid="${node._id}">x</button>`;
   const pg = hasChildren ? nodeProgress(node) : 0;
   const pct = Math.round(pg * 100);
-  const displayStatus = getNodeStatus(node);
+  const nodeDone = isNodeDone(node);
   const indent = isRoot ? 0 : node.level;
   const todayStr = new Date().toISOString().slice(0,10);
   const deadlineClass = (!isRoot && node.deadline && node.status!=="fertig")
@@ -1690,16 +1699,16 @@ function renderNode(node, isRoot){
       <div class="node-row node-archived">
         <span class="node-title">${escapeHtml(node.title)}</span>
         <div class="node-actions"><button class="btnUnarcLeaf" data-nid="${node._id}" title="Punkt wieder aktiv setzen">Aktiv</button>${delBtn}</div>
-        <span class="st-end"><span class="badge badge-fertig">${STATUS_LABEL['fertig']}</span></span>
+        <span class="st-end" title="erledigt">${sqHtml(true)}</span>
       </div>
     </div>`;
   }
 
   const statusDisplay = hasChildren
     ? (isRoot
-        ? `<span class="badge badge-${displayStatus}">${pct}%</span>`
-        : `<button class="badge badge-${displayStatus} focus-btn" data-nid="${node._id}" title="Als Unterprojekt öffnen">${pct}%</button>`)
-    : `<button class="status-btn badge badge-${displayStatus}" data-nid="${node._id}">${STATUS_LABEL[displayStatus]}</button>`;
+        ? `<span class="sqwrap" title="${nodeDone?'alles erledigt':pct+' Prozent erledigt'}">${sqHtml(nodeDone)}</span>`
+        : `<button class="sqbtn focus-btn" data-nid="${node._id}" title="${nodeDone?'alles erledigt':pct+' Prozent erledigt'} · als Unterprojekt öffnen">${sqHtml(nodeDone)}</button>`)
+    : `<button class="sqbtn status-btn" data-nid="${node._id}" title="${nodeDone?'erledigt · antippen für offen':'offen · antippen für erledigt'}">${sqHtml(nodeDone)}</button>`;
   const late = isLate(node);
   const dueChip = isRoot ? "" : (
     `<input type="date" class="sd-input" data-nid="${node._id}" value="${node.startDate||''}" title="Start-Datum">` +
@@ -1768,14 +1777,7 @@ async function applyBulk(pairs, op){
   for(const p of projSet){ try{ await saveProject(p); }catch(e){} }
   return changed;
 }
-function getNodeStatus(node){
-  if(node.children.length === 0) return node.status;
-  const pg = nodeProgress(node);
-  if(pg < 0.25) return "offen";
-  if(pg < 0.5) return "begonnen";
-  if(pg < 0.75) return "weit";
-  return "fertig";
-}
+function getNodeStatus(node){ return isNodeDone(node) ? "fertig" : "offen"; }
 
 function showMoveTargets(nodes, source){
   if(!nodes || !nodes.length) return;

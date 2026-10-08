@@ -178,6 +178,18 @@
   .lvpill{font:700 11px var(--mono);letter-spacing:.1em;padding:5px 9px;border-radius:999px;border:1px solid #5b6270;
     background:var(--metal-hi);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
   .medal{font-size:15px;line-height:1}
+  /* Status ans Zeilenende: bleibt am rechten Rand sichtbar, auch wenn die Zeile seitlich gescrollt wird */
+  .st-end{position:sticky;right:0;z-index:2;flex:none;display:flex;align-items:center;margin-left:auto;
+    padding:0 2px 0 8px;background:linear-gradient(90deg,transparent,#0a0b0d 8px)}
+  .next-main{flex:1;min-width:2.5cm;flex-shrink:0}
+  .next-item .st-end{background:linear-gradient(90deg,transparent,#1b1d21 8px)}
+  @media(max-width:600px){
+    /* Handy: Zeile umbrechen, damit Titel, Daten, Buttons und Status ohne seitliches Scrollen erreichbar sind */
+    .next-item{flex-wrap:wrap;overflow-x:visible;row-gap:8px}
+    .next-main{flex:1 1 calc(100% - 36px);min-width:0}
+    .next-item .st-end{position:static;background:none;padding:0 0 0 6px}
+  }
+  .st-end .badge{font-size:9px;padding:2px 6px}
   .card .sub{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 
   /* ---- HUD ---- */
@@ -1407,8 +1419,7 @@ function renderNext(){
     const n = item.node;
     return `<div class="next-item" data-i="${i}">
       <input type="checkbox" class="next-sel" data-i="${i}" ${selectedNext.has(i)?'checked':''} title="Für Sammelaktion markieren">
-      <span class="badge badge-${item.status}">${STATUS_LABEL[item.status]}</span>
-      <div style="flex:1;min-width:2.5cm;flex-shrink:0">
+      <div class="next-main">
         <div>${escapeHtml(item.title)}</div>
         <div class="proj">${escapeHtml(item.project.title)}</div>
       </div>
@@ -1417,6 +1428,7 @@ function renderNext(){
       <input type="date" class="dl-input next-dl" data-i="${i}" value="${n.deadline||''}" title="Deadline">
       <button class="mini next-archive" data-i="${i}" title="Archivieren">📦</button>
       <button class="mini next-del" data-i="${i}" title="Löschen">🗑</button>
+      <span class="st-end"><span class="badge badge-${item.status}">${STATUS_LABEL[item.status]}</span></span>
     </div>`;
   }).join("");
   [...list.querySelectorAll(".next-sd")].forEach(el=>{
@@ -1676,9 +1688,9 @@ function renderNode(node, isRoot){
   if(!isRoot && isLeaf && node.archived){
     return `<div class="node node-indent-${indent}">
       <div class="node-row node-archived">
-        <span class="badge badge-fertig">${STATUS_LABEL['fertig']}</span>
         <span class="node-title">${escapeHtml(node.title)}</span>
         <div class="node-actions"><button class="btnUnarcLeaf" data-nid="${node._id}" title="Punkt wieder aktiv setzen">Aktiv</button>${delBtn}</div>
+        <span class="st-end"><span class="badge badge-fertig">${STATUS_LABEL['fertig']}</span></span>
       </div>
     </div>`;
   }
@@ -1711,10 +1723,10 @@ function renderNode(node, isRoot){
   return `<div class="node node-indent-${indent}">
     <div class="node-row ${deadlineClass}">
       <input type="checkbox" class="sel-box" data-nid="${node._id}" ${selectedNids.has(node._id)?'checked':''} title="Für Sammelaktion markieren">
-      ${statusDisplay}
       <span class="node-title" data-nid="${node._id}" data-role="rename">${escapeHtml(node.title)}</span>
       ${dueChip}
       <div class="node-actions">${moveBtns}${moveProjBtn}${moveToParentBtn}${moveToAnyParentBtn}${arcLeafBtn}${arcBtn}${addBtn}${delBtn}</div>
+      <span class="st-end">${statusDisplay}</span>
     </div>
     ${progressHtml}
     ${childrenHtml}

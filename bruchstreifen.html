@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bruchstreifen-Vergleich</title>
+<style>
+  :root { --text:#e6e8eb; --muted:#9aa1a9; --line:#4a4f55; --dark:#121315; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--text);
+         background: linear-gradient(160deg, #000 0%, #0b0c0d 35%, #2a2d31 75%, #5a5f66 100%) fixed; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.5rem; margin: 0 0 12px; }
+  .card { background: linear-gradient(145deg, #1a1c1f 0%, #26292d 50%, #3a3e44 100%); border:1px solid #5a5f66; border-radius:10px; padding:14px; margin-bottom:14px;
+          box-shadow: 0 2px 10px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.08); }
+  .controls { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; }
+  button { font: inherit; color:var(--text); padding:7px 14px; border:1px solid #6b7078; border-radius:8px; cursor:pointer;
+           background: linear-gradient(180deg, #4b4f55 0%, #2c2f33 100%); }
+  button:hover { background: linear-gradient(180deg, #5d626a 0%, #373b40 100%); }
+  button:disabled { opacity:.4; cursor:default; }
+  input[type=checkbox] { accent-color:#9aa1a9; }
+  label.opt { display:flex; align-items:center; gap:6px; cursor:pointer; }
+  .inputs { display:flex; flex-wrap:wrap; gap:12px; }
+  .frac { display:flex; flex-direction:column; align-items:center; border:2px solid var(--c); border-radius:10px; padding:8px 10px; position:relative; min-width:84px; }
+  .frac { background: rgba(0,0,0,.35); }
+  .frac input { width:64px; font-size:1.2rem; text-align:center; padding:4px; border:1px solid #5a5f66; border-radius:6px; color:var(--text); background:#0d0e10; }
+  .frac .bar { width:64px; height:2px; background:#aeb4bb; margin:4px 0; }
+  .frac .del { position:absolute; top:-10px; right:-10px; width:24px; height:24px; padding:0; border-radius:50%; line-height:1; }
+  .stage { position:relative; margin-top:6px; }
+  .row { display:flex; align-items:center; gap:10px; margin:10px 0; }
+  .label { width:64px; text-align:center; font-size:1.05rem; flex:none; line-height:1.1; }
+  .label small { display:block; color:var(--muted); font-size:.75rem; }
+  .strip { flex:1; display:flex; height:46px; border:2px solid #aeb4bb; border-radius:4px; overflow:hidden; background:var(--dark); }
+  .cell { flex:1; border-right:1px solid #aeb4bb; background:linear-gradient(180deg, #1b1d20, #0d0e10); }
+  .cell:last-child { border-right:none; }
+  .cell.on { background:linear-gradient(180deg, color-mix(in srgb, var(--c) 100%, #fff 25%), var(--c) 55%, color-mix(in srgb, var(--c) 80%, #000)); }
+  .overlay { position:absolute; top:0; bottom:0; left:74px; right:0; pointer-events:none; }
+  .overlay i { position:absolute; top:0; bottom:0; border-left:1px dashed rgba(255,255,255,.6); }
+  .result { font-size:1.25rem; line-height:1.8; }
+  .result .f { font-weight:700; color:var(--c); white-space:nowrap; }
+  .result .op { margin:0 8px; font-weight:700; }
+  .note { color:var(--muted); font-size:.9rem; }
+  .err { color:#b42318; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bruchstreifen-Vergleich</h1>
+
+  <div class="card">
+    <div class="controls" style="margin-bottom:12px">
+      <button id="add">Bruch hinzufügen</button>
+      <button id="reset">Beispiel laden</button>
+      <label class="opt"><input type="checkbox" id="guides"> Hilfslinien über alle Streifen</label>
+      <label class="opt"><input type="checkbox" id="dec"> Dezimalwert anzeigen</label>
+    </div>
+    <div class="inputs" id="inputs"></div>
+    <p class="note" id="msg"></p>
+  </div>
+
+  <div class="card">
+    <div class="stage" id="stage"></div>
+  </div>
+
+  <div class="card">
+    <div class="result" id="result"></div>
+  </div>
+</main>
+
+<script>
+const COLORS = ["#e4572e","#2e86ab","#3fa34d","#f2a900","#8e5bd1","#d6336c","#1aa6a6","#7a5c3e"];
+const MAXN = 24, MAXFRAC = 8;
+let fracs = [];
+let nextId = 1;
+
+function mk(z, n) { return { id: nextId++, z: z, n: n, color: COLORS[(nextId - 2) % COLORS.length] }; }
+function example() { nextId = 1; fracs = [mk(2,3), mk(3,4), mk(5,8)]; }
+
+function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
+
+function renderInputs() {
+  const box = document.getElementById("inputs");
+  box.innerHTML = "";
+  fracs.forEach(f => {
+    const d = document.createElement("div");
+    d.className = "frac";
+    d.style.setProperty("--c", f.color);
+    d.innerHTML = '<input type="number" min="0" max="' + MAXN + '" value="' + f.z + '" data-k="z">' +
+      '<div class="bar"></div>' +
+      '<input type="number" min="1" max="' + MAXN + '" value="' + f.n + '" data-k="n">' +
+      (fracs.length > 2 ? '<button class="del" title="Entfernen">x</button>' : '');
+    d.querySelectorAll("input").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const v = parseInt(inp.value, 10);
+        f[inp.dataset.k] = isNaN(v) ? NaN : v;
+        renderView();
+      });
+    });
+    const del = d.querySelector(".del");
+    if (del) del.addEventListener("click", () => { fracs = fracs.filter(x => x.id !== f.id); renderInputs(); renderView(); });
+    box.appendChild(d);
+  });
+  document.getElementById("add").disabled = fracs.length >= MAXFRAC;
+}
+
+function valid(f) {
+  return Number.isInteger(f.z) && Number.isInteger(f.n) && f.n >= 1 && f.n <= MAXN && f.z >= 0 && f.z <= f.n;
+}
+
+function renderView() {
+  const msg = document.getElementById("msg");
+  const stage = document.getElementById("stage");
+  const result = document.getElementById("result");
+  const showDec = document.getElementById("dec").checked;
+  const guides = document.getElementById("guides").checked;
+
+  const bad = fracs.filter(f => !valid(f));
+  msg.className = bad.length ? "note err" : "note";
+  msg.textContent = bad.length
+    ? "Bitte nur Brüche zwischen 0 und 1 eingeben: Nenner von 1 bis " + MAXN + ", Zähler von 0 bis zum Nenner."
+    : "Alle Streifen sind gleich lang und stellen das Ganze dar.";
+
+  const ok = fracs.filter(valid);
+  stage.innerHTML = "";
+  ok.forEach(f => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.style.setProperty("--c", f.color);
+    const g = gcd(f.z, f.n);
+    const dec = showDec ? "<small>" + (f.z / f.n).toLocaleString("de-DE", { maximumFractionDigits: 3 }) + "</small>" : "";
+    row.innerHTML = '<div class="label">' + f.z + "/" + f.n + dec + "</div>";
+    const strip = document.createElement("div");
+    strip.className = "strip";
+    for (let i = 0; i < f.n; i++) {
+      const c = document.createElement("div");
+      c.className = "cell" + (i < f.z ? " on" : "");
+      strip.appendChild(c);
+    }
+    row.appendChild(strip);
+    stage.appendChild(row);
+  });
+
+  if (guides && ok.length) {
+    const ov = document.createElement("div");
+    ov.className = "overlay";
+    const seen = new Set();
+    ok.forEach(f => {
+      for (let k = 1; k < f.n; k++) {
+        const key = (k / f.n).toFixed(6);
+        if (!seen.has(key)) {
+          seen.add(key);
+          const l = document.createElement("i");
+          l.style.left = (k / f.n * 100) + "%";
+          ov.appendChild(l);
+        }
+      }
+    });
+    stage.appendChild(ov);
+  }
+
+  // Vergleich
+  if (ok.length < 2) { result.textContent = ""; return; }
+  const sorted = ok.slice().sort((a, b) => a.z * b.n - b.z * a.n);
+  let html = "";
+  sorted.forEach((f, i) => {
+    if (i > 0) {
+      const p = sorted[i - 1];
+      const eq = p.z * f.n === f.z * p.n;
+      html += '<span class="op">' + (eq ? "=" : "&lt;") + "</span>";
+    }
+    html += '<span class="f" style="--c:' + f.color + '">' + f.z + "/" + f.n + "</span>";
+  });
+  result.innerHTML = "Von klein nach groß: " + html;
+}
+
+document.getElementById("add").addEventListener("click", () => {
+  if (fracs.length < MAXFRAC) { fracs.push(mk(1, 2)); renderInputs(); renderView(); }
+});
+document.getElementById("reset").addEventListener("click", () => { example(); renderInputs(); renderView(); });
+document.getElementById("guides").addEventListener("change", renderView);
+document.getElementById("dec").addEventListener("change", renderView);
+
+example();
+renderInputs();
+renderView();
+</script>
+</body>
+</html>

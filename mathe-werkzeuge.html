@@ -144,6 +144,7 @@
   .zeq { font-size:1.2rem; line-height:2; }
   .zeq .usmall { display:inline-block; min-width:260px; }
   .zsw { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; margin-right:6px; border:1px solid rgba(0,0,0,.5); }
+  .zsep { border-top:2px dashed #aeb4bb; border-bottom:1px solid #4a4f55; text-align:center; font-weight:700; font-size:.95rem; padding:3px 4px; background:rgba(255,255,255,.04); }
   .zbig { font-size:1.9rem; font-weight:700; margin:4px 0 6px; }
 </style>
 </head>
@@ -1254,14 +1255,20 @@ renderStell();
     return parts.slice(0, -1).join(", ") + " und " + parts[parts.length - 1];
   }
 
-  function tafel(cols) {
+  function tafel(cols, sec) {
     const u = parseInt($("zSize").value, 10);
+    const mh = Math.round(10.5 * u + 22);
+    const secCol = op === "add" ? "#5fd06f" : "#ff6b5e";
+    const secTxt = op === "add" ? "dazu: " : "weg: ";
     let h = '<div class="wtafel" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:8px">';
     for (let p = 2; p >= 0; p--) {
       const dm = dimsOf(p);
+      const draw = arr => arr.map(c => stoneSvg(dm[0], dm[1], dm[2], u, COL[c])).join("");
       h += '<div class="wcol" style="--c:#6b7078"><div class="wh"><b>' + "HZE"[2 - p] + "</b><small>" + NAMES[p] + "</small></div>" +
-        '<div class="wd" style="font-size:1.8rem;color:#e6e8eb">' + cols[p].length + "</div><div class=\"wp\">" +
-        cols[p].map(c => stoneSvg(dm[0], dm[1], dm[2], u, COL[c])).join("") + "</div></div>";
+        '<div class="wd" style="font-size:1.8rem;color:#e6e8eb">' + cols[p].length + "</div>" +
+        '<div class="wp" style="flex:none;min-height:' + mh + 'px">' + draw(cols[p]) + "</div>" +
+        '<div class="zsep" style="color:' + secCol + '">' + (sec[p].length ? secTxt + sec[p].length : "&nbsp;") + "</div>" +
+        '<div class="wp" style="flex:none;min-height:' + mh + 'px">' + draw(sec[p]) + "</div></div>";
     }
     return h + "</div>";
   }
@@ -1280,27 +1287,30 @@ renderStell();
   function build() {
     const out = [];
     const ad = digs(A), bd = digs(B);
-    let cols = [[], [], []];
+    let cols = [[], [], []], sec = [[], [], []];
     ueb = false;
-    for (let p = 0; p < 3; p++) cols[p] = mkArr(ad[p], "steel");
+    const secColor = op === "add" ? "green" : "red";
+    for (let p = 0; p < 3; p++) { cols[p] = mkArr(ad[p], "steel"); sec[p] = mkArr(bd[p], secColor); }
     const copy = () => cols.map(c => c.slice());
+    const copySec = () => sec.map(c => c.slice());
     const norm = () => { cols = cols.map(c => c.filter(x => x !== "red").map(() => "steel")); };
     function snap(t, txt, cls) {
-      out.push({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + tafel(copy()) });
+      out.push({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + tafel(copy(), copySec()) });
       norm();
     }
     const spA = '<span class="zs">' + A + "</span>";
     const spB = '<span class="' + (op === "add" ? "zg" : "zr") + '">' + B + "</span>";
 
     if (op === "add") {
-      snap("Aufgabe", "Du beginnst mit " + spA + " (" + zerl(A) + "). Dazu kommen " + spB + " (" + zerl(B) + "), grün dargestellt. Du fängst immer bei den Einern an.");
+      snap("Aufgabe", "Oben liegt der erste Summand " + spA + " (" + zerl(A) + "). Unter der Trennlinie liegt der zweite Summand " + spB + " (" + zerl(B) + ") in Grün. Beide Summanden sind von Anfang an im Bild. Nun wird Stück für Stück nach oben umgruppiert, du fängst bei den Einern an.");
       for (let p = 0; p < 3; p++) {
         if (bd[p] > 0) {
           const before = cols[p].length;
           for (let i = 0; i < bd[p]; i++) cols[p].push("green");
+          sec[p] = [];
           const tot = before + bd[p];
-          snap(bd[p] + " " + NAMES[p] + " dazulegen",
-            before + " + " + bd[p] + " = " + tot + " " + NAMES[p] + "." + (tot >= 10 ? " Das sind mehr als 9, also kann gebündelt werden." : ""));
+          snap(bd[p] + " " + NAMES[p] + " nach oben holen",
+            "Die " + bd[p] + " grünen " + NAMES[p] + " von unten wandern nach oben zu den " + before + " " + NAMES[p] + ": " + before + " + " + bd[p] + " = " + tot + " " + NAMES[p] + "." + (tot >= 10 ? " Das sind mehr als 9, also kann gebündelt werden." : ""));
         }
         if (cols[p].length >= 10 && p < 2) {
           ueb = true;
@@ -1312,7 +1322,7 @@ renderStell();
         }
       }
     } else {
-      snap("Aufgabe", "Du beginnst mit " + spA + " (" + zerl(A) + ") und nimmst " + spB + " (" + zerl(B) + ") weg. Die Teile, die weggenommen werden, sind rot. Du fängst immer bei den Einern an.");
+      snap("Aufgabe", "Oben liegt die erste Zahl " + spA + " (" + zerl(A) + "). Unter der Trennlinie liegt in Rot, was weggenommen wird: " + spB + " (" + zerl(B) + "). Beide Zahlen sind von Anfang an im Bild. Du fängst bei den Einern an.");
       for (let p = 0; p < 3; p++) {
         if (bd[p] === 0) continue;
         if (cols[p].length < bd[p]) {
@@ -1332,8 +1342,9 @@ renderStell();
         }
         const n = cols[p].length;
         for (let i = n - bd[p]; i < n; i++) cols[p][i] = "red";
+        sec[p] = [];
         snap(bd[p] + " " + NAMES[p] + " wegnehmen",
-          n + " " + NAMES[p] + " liegen da. Du nimmst " + bd[p] + " weg (rot): " + n + " − " + bd[p] + " = " + (n - bd[p]) + ".");
+          "Oben liegen " + n + " " + NAMES[p] + ". Die " + bd[p] + " roten von unten legen sich darauf und nehmen so viele weg: " + n + " − " + bd[p] + " = " + (n - bd[p]) + ".");
       }
     }
 
@@ -1378,8 +1389,9 @@ renderStell();
       h += "<div>" + stoneSvg(dm[0], dm[1], dm[2], u, COL.steel) + "<span>" + NAMES[p] + " = " + FAC[p] + "</span></div>";
     });
     h += '<div style="align-items:flex-start;gap:4px;font-size:.95rem">' +
-      '<span><i class="zsw" style="background:' + COL.steel + '"></i>liegt schon da</span>' +
-      '<span><i class="zsw" style="background:' + COL.green + '"></i>wird dazugelegt (Addition)</span>' +
+      '<span><i class="zsw" style="background:' + COL.steel + '"></i>erste Zahl (oben)</span>' +
+      '<span>Unter der gestrichelten Linie liegt die zweite Zahl.</span>' +
+      '<span><i class="zsw" style="background:' + COL.green + '"></i>zweiter Summand, wandert nach oben (Addition)</span>' +
       '<span><i class="zsw" style="background:' + COL.red + '"></i>wird weggenommen (Subtraktion)</span>' +
       '<span><i class="zsw" style="background:' + COL.gold + '"></i>neu gebündelt oder entbündelt (getauscht)</span></div>';
     $("zLegend").innerHTML = h;

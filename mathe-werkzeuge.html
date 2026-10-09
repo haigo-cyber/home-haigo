@@ -33,15 +33,21 @@
   .stage { position:relative; margin-top:6px; }
   .row { display:flex; align-items:center; gap:10px; margin:10px 0; }
   .label { width:var(--lw, 64px); text-align:center; font-size:1.05rem; flex:none; line-height:1.1; }
-  .label small { display:block; color:var(--muted); font-size:.75rem; }
-  .strip { flex:1; display:flex; height:46px; border:2px solid #aeb4bb; border-radius:4px; overflow:hidden; background:var(--dark); }
+  .label small { display:block; color:var(--muted); font-size:.75rem; white-space:normal; margin-top:2px; }
+  .label .lform { white-space:nowrap; }
+  .leq { margin:0 3px; }
+  .strip { position:relative; flex:1; display:flex; height:46px; border:2px solid #aeb4bb; border-radius:4px; overflow:hidden; background:var(--dark); }
   .cell { flex:1; border-right:1px solid #aeb4bb; background:linear-gradient(180deg, #1b1d20, #0d0e10); }
   .cell:last-child { border-right:none; }
+  .strip.two .cell { border-right-color:rgba(174,180,187,.5); }
+  .tick { position:absolute; top:0; bottom:0; width:4px; margin-left:-2px; background:#fff; box-shadow:0 0 0 1px rgba(0,0,0,.55); pointer-events:none; }
   .cell.on { background:linear-gradient(180deg, color-mix(in srgb, var(--c) 100%, #fff 25%), var(--c) 55%, color-mix(in srgb, var(--c) 80%, #000)); }
   .overlay { position:absolute; top:0; bottom:0; left:calc(var(--lw, 64px) + 10px); right:0; pointer-events:none; }
   .overlay i { position:absolute; top:0; bottom:0; border-left:1px dashed rgba(255,255,255,.6); }
-  .result { font-size:1.25rem; line-height:1.8; }
+  .result { font-size:1.25rem; line-height:2.4; }
   .result .f { font-weight:700; color:var(--c); white-space:nowrap; }
+  .result .rline { margin:2px 0; }
+  .result .rlab { display:inline-block; min-width:190px; color:var(--muted); font-size:1rem; }
   .result .op { margin:0 8px; font-weight:700; }
   .note { color:var(--muted); font-size:.9rem; }
   .err { color:#ff7a6b; }
@@ -135,6 +141,7 @@
     <div class="controls" style="margin-bottom:12px">
       <button id="add">Bruch hinzufügen</button>
       <button id="reset">Beispiel laden</button>
+      <label class="opt"><input type="checkbox" id="red"> Kürzen</label>
       <label class="opt"><input type="checkbox" id="same"> Gleichnamig machen</label>
       <label class="opt"><input type="checkbox" id="guides"> Hilfslinien über alle Streifen</label>
       <label class="opt"><input type="checkbox" id="dec"> Dezimalwert anzeigen</label>
@@ -244,12 +251,15 @@ function valid(f) {
   return Number.isInteger(f.z) && Number.isInteger(f.n) && f.n >= 1 && f.n <= MAXN && f.z >= 0 && f.z <= f.n;
 }
 
+function fr(z, n) { return '<span class="ufrac"><s>' + z + "</s><i></i><s>" + n + "</s></span>"; }
+
 function renderView() {
   const msg = document.getElementById("msg");
   const stage = document.getElementById("stage");
   const result = document.getElementById("result");
   const showDec = document.getElementById("dec").checked;
   const guides = document.getElementById("guides").checked;
+  const wantRed = document.getElementById("red").checked;
 
   const bad = fracs.filter(f => !valid(f));
   msg.className = bad.length ? "note err" : "note";
@@ -258,49 +268,100 @@ function renderView() {
     : "Alle Streifen sind gleich lang und stellen das Ganze dar.";
 
   const ok = fracs.filter(valid);
-  const L = ok.reduce((a, f) => a / gcd(a, f.n) * f.n, 1);
+  // Schritt 1 (optional): kürzen. Schritt 2 (optional): auf den Hauptnenner erweitern.
+  const info = ok.map(f => {
+    const g = (wantRed && f.z > 0) ? gcd(f.z, f.n) : 1;
+    return { f: f, g: g, bz: f.z / g, bn: f.n / g };
+  });
+  const L = info.reduce((a, i) => a / gcd(a, i.bn) * i.bn, 1);
   const wantSame = document.getElementById("same").checked && ok.length > 0;
   const useSame = wantSame && L <= LIMIT;
-  if (bad.length) {
-    // Fehlermeldung zu ungültigen Brüchen bleibt stehen
-  } else if (wantSame && !useSame) {
-    msg.className = "note err";
-    msg.textContent = "Der Hauptnenner ist " + L + " und damit größer als " + LIMIT + ". Dafür sind die Streifen nicht mehr sinnvoll darstellbar, deshalb zeige ich die Originalbrüche.";
-  } else if (useSame) {
-    msg.className = "note";
-    msg.textContent = "Alle Brüche sind auf den Hauptnenner " + L + " erweitert. Die Streifen zeigen die erweiterten Brüche.";
+  info.forEach(i => {
+    i.k = useSame ? L / i.bn : 1; i.dz = i.bz * i.k; i.dn = i.bn * i.k;
+    // Streifen: mit Erweitern die erweiterte Einteilung, sonst die ursprüngliche (dünne Linien).
+    // Beim Kürzen kommen dicke Linien für die gekürzte Einteilung dazu.
+    i.fn = useSame ? i.dn : i.f.n;
+    i.fz = useSame ? i.dz : i.f.z;
+  });
+  const anyCut = info.some(i => i.g > 1);
+
+  if (!bad.length) {
+    const parts = [];
+    if (wantRed && ok.length) parts.push(info.some(i => i.g > 1) ? "Alle Brüche sind so weit wie möglich gekürzt." : "Kein Bruch lässt sich weiter kürzen.");
+    if (useSame) parts.push("Alle Brüche sind auf den Hauptnenner " + L + " erweitert.");
+    if (wantSame && !useSame) {
+      msg.className = "note err";
+      msg.textContent = (parts.length ? parts.join(" ") + " " : "") + "Der Hauptnenner wäre " + L + " und damit größer als " + LIMIT + ". Dafür sind die Streifen nicht mehr sinnvoll darstellbar, deshalb wird nicht auf den Hauptnenner erweitert." + (anyCut ? " Dünne Linien zeigen den ursprünglichen Bruch, dicke Linien den gekürzten Bruch." : "");
+    } else if (parts.length) {
+      msg.className = "note";
+      msg.textContent = parts.join(" ") + (useSame
+        ? " Die Streifen zeigen die erweiterten Brüche." + (anyCut ? " Dicke Linien zeigen die gekürzte Einteilung." : "")
+        : (anyCut ? " Dünne Linien zeigen den ursprünglichen Bruch, dicke Linien den gekürzten Bruch." : " Die Streifen zeigen die Brüche."));
+    }
   }
-  stage.style.setProperty("--lw", useSame ? "130px" : "64px");
+
+  // Schreibweise je Bruch: Original [= gekürzt] [= erweitert]
+  const forms = i => {
+    const out = [[i.f.z, i.f.n]];
+    if (i.g > 1) out.push([i.bz, i.bn]);
+    if (i.k > 1) out.push([i.dz, i.dn]);
+    return out;
+  };
+  const note = i => {
+    const t = [];
+    if (i.g > 1) t.push("gekürzt mit " + i.g);
+    else if (wantRed && i.f.z > 0) t.push("nicht kürzbar");
+    if (i.k > 1) t.push("erweitert mit " + i.k);
+    else if (useSame && i.g === 1) t.push("bleibt gleich");
+    return t.join(", ");
+  };
+  let lw = 64;
+  info.forEach(i => {
+    const fm = forms(i);
+    let w = 0;
+    fm.forEach(p => { w += Math.max(String(p[0]).length, String(p[1]).length) * 11 + 16; });
+    w += (fm.length - 1) * 24;
+    if (note(i)) w = Math.max(w, 120);
+    lw = Math.max(lw, w);
+  });
+  stage.style.setProperty("--lw", Math.min(lw, 300) + "px");
   stage.innerHTML = "";
-  ok.forEach(f => {
+  info.forEach(i => {
+    const f = i.f;
     const row = document.createElement("div");
     row.className = "row";
     row.style.setProperty("--c", f.color);
-    const dn = useSame ? L : f.n;
-    const dz = useSame ? f.z * (L / f.n) : f.z;
     const dec = showDec ? "<small>" + (f.z / f.n).toLocaleString("de-DE", { maximumFractionDigits: 3 }) + "</small>" : "";
-    const lab = useSame
-      ? (L === f.n ? f.z + "/" + f.n + "<small>bleibt gleich</small>" + dec
-        : f.z + "/" + f.n + " = " + dz + "/" + dn + "<small>erweitert mit " + (L / f.n) + "</small>" + dec)
-      : f.z + "/" + f.n + dec;
+    const nt = note(i);
+    const lab = '<span class="lform">' + forms(i).map(p => fr(p[0], p[1])).join('<span class="leq"> = </span>') + "</span>" +
+      (nt ? "<small>" + nt + "</small>" : "") + dec;
     row.innerHTML = '<div class="label">' + lab + "</div>";
     const strip = document.createElement("div");
-    strip.className = "strip";
-    for (let i = 0; i < dn; i++) {
-      const c = document.createElement("div");
-      c.className = "cell" + (i < dz ? " on" : "");
-      strip.appendChild(c);
+    const cut = i.g > 1;
+    strip.className = "strip" + (cut ? " two" : "");
+    for (let c = 0; c < i.fn; c++) {
+      const cell = document.createElement("div");
+      cell.className = "cell" + (c < i.fz ? " on" : "");
+      strip.appendChild(cell);
+    }
+    if (cut) {
+      for (let k = 1; k < i.bn; k++) {
+        const t = document.createElement("div");
+        t.className = "tick";
+        t.style.left = (k / i.bn * 100) + "%";
+        strip.appendChild(t);
+      }
     }
     row.appendChild(strip);
     stage.appendChild(row);
   });
 
-  if (guides && ok.length) {
+  if (guides && info.length) {
     const ov = document.createElement("div");
     ov.className = "overlay";
     const seen = new Set();
-    ok.forEach(f => {
-      const gn = useSame ? L : f.n;
+    info.forEach(i => {
+      const gn = i.fn;
       for (let k = 1; k < gn; k++) {
         const key = (k / gn).toFixed(6);
         if (!seen.has(key)) {
@@ -314,20 +375,28 @@ function renderView() {
     stage.appendChild(ov);
   }
 
-  // Vergleich
-  if (ok.length < 2) { result.textContent = ""; return; }
-  const sorted = ok.slice().sort((a, b) => a.z * b.n - b.z * a.n);
-  let html = "";
-  sorted.forEach((f, i) => {
-    if (i > 0) {
-      const p = sorted[i - 1];
-      const eq = p.z * f.n === f.z * p.n;
-      html += '<span class="op">' + (eq ? "=" : "&lt;") + "</span>";
-    }
-    html += '<span class="f" style="--c:' + f.color + '">' + f.z + "/" + f.n +
-      (useSame ? " (" + (f.z * (L / f.n)) + "/" + L + ")" : "") + "</span>";
-  });
-  result.innerHTML = "Von klein nach groß: " + html;
+  // Vergleich: erst nur die Aufgabenbrüche, Umformungen stehen getrennt darunter
+  if (info.length < 2) { result.textContent = ""; return; }
+  const sorted = info.slice().sort((a, b) => a.f.z * b.f.n - b.f.z * a.f.n);
+  const chain = pick => {
+    let html = "";
+    sorted.forEach((i, idx) => {
+      if (idx > 0) {
+        const p = sorted[idx - 1].f;
+        const eq = p.z * i.f.n === i.f.z * p.n;
+        html += '<span class="op">' + (eq ? "=" : "&lt;") + "</span>";
+      }
+      const q = pick(i);
+      html += '<span class="f" style="--c:' + i.f.color + '">' + fr(q[0], q[1]) + "</span>";
+    });
+    return html;
+  };
+  let out = '<div class="rline"><span class="rlab">Von klein nach groß:</span> ' + chain(i => [i.f.z, i.f.n]) + "</div>";
+  if (info.some(i => i.g > 1 || i.k > 1)) {
+    out += '<div class="rline"><span class="rlab">' + (useSame ? "Gleichnamig gemacht:" : "Gekürzt:") + "</span> " +
+      chain(i => useSame ? [i.dz, i.dn] : [i.bz, i.bn]) + "</div>";
+  }
+  result.innerHTML = out;
 }
 
 document.getElementById("add").addEventListener("click", () => {
@@ -336,6 +405,7 @@ document.getElementById("add").addEventListener("click", () => {
 document.getElementById("reset").addEventListener("click", () => { example(); renderInputs(); renderView(); });
 document.getElementById("guides").addEventListener("change", renderView);
 document.getElementById("same").addEventListener("change", renderView);
+document.getElementById("red").addEventListener("change", renderView);
 document.getElementById("dec").addEventListener("change", renderView);
 
 example();
@@ -891,7 +961,7 @@ renderStell();
   }
 
   function strip(num, den, cls, color) {
-    let h = '<div class="row" style="--c:' + color + ';--lw:96px"><div class="label ' + cls + '">' + num + "/" + den + '</div><div class="strip">';
+    let h = '<div class="row" style="--c:' + color + ';--lw:96px"><div class="label ' + cls + '">' + fr(num, den) + '</div><div class="strip">';
     if (den <= 100) {
       for (let i = 0; i < den; i++) h += '<div class="cell' + (i < num ? " on" : "") + '"></div>';
     } else {

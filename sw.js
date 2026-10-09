@@ -1,6 +1,6 @@
 // Service Worker – cacht nur die App-Hülle, niemals Google-API-Antworten.
-const CACHE = "todo-shell-v134";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
+const CACHE = "todo-shell-v135";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest?v=2", "./icon-192.png?v=2", "./icon-512.png?v=2", "./favicon-32.png?v=2"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -41,17 +41,16 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Übrige App-Hülle (Icons, Manifest): erst Cache, dann Netz.
+  // Übrige App-Hülle (Icons, Manifest): erst Netz, dann Cache.
   e.respondWith(
     caches.match(e.request).then((cached) => {
-      const net = fetch(e.request).then((res) => {
+      return fetch(e.request).then((res) => {
         if (res && res.ok) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy));
         }
         return res;
       }).catch(() => cached);
-      return cached || net;
     })
   );
 });

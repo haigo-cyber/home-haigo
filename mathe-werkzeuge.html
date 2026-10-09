@@ -136,6 +136,15 @@
   .hr.hl { background:rgba(255,255,255,.2); outline:2px solid rgba(255,255,255,.55); }
   .mc { cursor:default; }
   .mc.hl .cellr { stroke:#fff; stroke-width:3; }
+  /* Zehnerübergang */
+  .zg { color:#5fd06f; font-weight:700; }
+  .zr { color:#ff6b5e; font-weight:700; }
+  .zy { color:#f2a900; font-weight:700; }
+  .zs { color:#a9bbd0; font-weight:700; }
+  .zeq { font-size:1.2rem; line-height:2; }
+  .zeq .usmall { display:inline-block; min-width:260px; }
+  .zsw { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; margin-right:6px; border:1px solid rgba(0,0,0,.5); }
+  .zbig { font-size:1.9rem; font-weight:700; margin:4px 0 6px; }
 </style>
 </head>
 <body>
@@ -146,6 +155,7 @@
     <button class="tab" role="tab" id="tab-stell" aria-selected="false">Stellenwerttafel</button>
     <button class="tab" role="tab" id="tab-mul" aria-selected="false">Flächenmodell</button>
     <button class="tab" role="tab" id="tab-stuf" aria-selected="false">Auf Stufenzahl erweitern</button>
+    <button class="tab" role="tab" id="tab-uez" aria-selected="false">Zehnerübergang</button>
   </div>
 
   <section id="panel-bruch">
@@ -203,6 +213,31 @@
       <p class="note" id="uMsg"></p>
     </div>
     <div id="uSteps"></div>
+  </section>
+
+  <section id="panel-uez" hidden>
+    <div class="card">
+      <div class="controls" style="margin-bottom:12px">
+        <button class="tab" id="zAdd" aria-selected="true">Addition</button>
+        <button class="tab" id="zSub" aria-selected="false">Subtraktion</button>
+        <button id="zRandom">Zufallsaufgabe</button>
+        <button id="zBack">Schritt zurück</button>
+        <button id="zNext">Nächster Schritt</button>
+        <button id="zAll">Alle Schritte zeigen</button>
+        <button id="zRestart">Neu starten</button>
+        <label class="opt">Größe <input type="range" id="zSize" min="6" max="18" value="12"></label>
+      </div>
+      <div class="numrow">
+        <div class="numbox"><input type="number" id="zA" min="0" max="999" step="1" value="38"></div>
+        <span class="mdot" id="zOp">+</span>
+        <div class="numbox"><input type="number" id="zB" min="0" max="999" step="1" value="27"></div>
+      </div>
+      <p class="note" id="zMsg"></p>
+    </div>
+    <div id="zSteps"></div>
+    <div class="card">
+      <div class="legend" id="zLegend"></div>
+    </div>
   </section>
 
   <section id="panel-mul" hidden>
@@ -435,12 +470,12 @@ renderView();
 
 /* ===== Tabs ===== */
 function showTab(which) {
-  ["bruch", "stell", "mul", "stuf"].forEach(k => {
+  ["bruch", "stell", "mul", "stuf", "uez"].forEach(k => {
     document.getElementById("panel-" + k).hidden = k !== which;
     document.getElementById("tab-" + k).setAttribute("aria-selected", k === which ? "true" : "false");
   });
 }
-["bruch", "stell", "mul", "stuf"].forEach(k => document.getElementById("tab-" + k).addEventListener("click", () => showTab(k)));
+["bruch", "stell", "mul", "stuf", "uez"].forEach(k => document.getElementById("tab-" + k).addEventListener("click", () => showTab(k)));
 
 /* ===== Stellenwerttafel ===== */
 // dims = [Breite, Höhe, Tiefe] in Einheiten eines Einers
@@ -1196,6 +1231,233 @@ renderStell();
   });
 
   renderInputs();
+  render();
+})();
+/* ===== Zehnerübergang: Addition und Subtraktion mit Stellenwertmaterial ===== */
+(function () {
+  const NAMES = ["Einer", "Zehner", "Hunderter"];
+  const FAC = [1, 10, 100];
+  const COL = { steel: "#8fa3b8", green: "#3fb455", red: "#e03a2f", gold: "#f2a900" };
+  const MAXV = 999;
+  let op = "add", A = 38, B = 27, shown = 0, steps = [], ueb = false;
+  const $ = id => document.getElementById(id);
+  const digs = v => [v % 10, Math.floor(v / 10) % 10, Math.floor(v / 100) % 10];
+  const sym = () => op === "add" ? "+" : "−";
+  const dimsOf = p => PLACES[3 - p].dims;
+  const mkArr = (n, c) => Array(n).fill(c);
+
+  function zerl(v) {
+    const d = digs(v), parts = [];
+    for (let p = 2; p >= 0; p--) if (d[p] > 0) parts.push(d[p] + " " + NAMES[p]);
+    if (!parts.length) return "nichts";
+    if (parts.length === 1) return parts[0];
+    return parts.slice(0, -1).join(", ") + " und " + parts[parts.length - 1];
+  }
+
+  function tafel(cols) {
+    const u = parseInt($("zSize").value, 10);
+    let h = '<div class="wtafel" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:8px">';
+    for (let p = 2; p >= 0; p--) {
+      const dm = dimsOf(p);
+      h += '<div class="wcol" style="--c:#6b7078"><div class="wh"><b>' + "HZE"[2 - p] + "</b><small>" + NAMES[p] + "</small></div>" +
+        '<div class="wd" style="font-size:1.8rem;color:#e6e8eb">' + cols[p].length + "</div><div class=\"wp\">" +
+        cols[p].map(c => stoneSvg(dm[0], dm[1], dm[2], u, COL[c])).join("") + "</div></div>";
+    }
+    return h + "</div>";
+  }
+
+  function validInput() {
+    const ok = v => Number.isInteger(v) && v >= 0 && v <= MAXV;
+    return ok(A) && ok(B);
+  }
+  function problem() {
+    if (!validInput()) return "Bitte zwei ganze Zahlen von 0 bis " + MAXV + " eingeben.";
+    if (op === "add" && A + B > MAXV) return "Die Summe darf höchstens " + MAXV + " sein, sonst fehlt die Tausenderstelle.";
+    if (op === "sub" && A < B) return "Beim Abziehen muss die erste Zahl mindestens so groß sein wie die zweite.";
+    return "";
+  }
+
+  function build() {
+    const out = [];
+    const ad = digs(A), bd = digs(B);
+    let cols = [[], [], []];
+    ueb = false;
+    for (let p = 0; p < 3; p++) cols[p] = mkArr(ad[p], "steel");
+    const copy = () => cols.map(c => c.slice());
+    const norm = () => { cols = cols.map(c => c.filter(x => x !== "red").map(() => "steel")); };
+    function snap(t, txt, cls) {
+      out.push({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + tafel(copy()) });
+      norm();
+    }
+    const spA = '<span class="zs">' + A + "</span>";
+    const spB = '<span class="' + (op === "add" ? "zg" : "zr") + '">' + B + "</span>";
+
+    if (op === "add") {
+      snap("Aufgabe", "Du beginnst mit " + spA + " (" + zerl(A) + "). Dazu kommen " + spB + " (" + zerl(B) + "), grün dargestellt. Du fängst immer bei den Einern an.");
+      for (let p = 0; p < 3; p++) {
+        if (bd[p] > 0) {
+          const before = cols[p].length;
+          for (let i = 0; i < bd[p]; i++) cols[p].push("green");
+          const tot = before + bd[p];
+          snap(bd[p] + " " + NAMES[p] + " dazulegen",
+            before + " + " + bd[p] + " = " + tot + " " + NAMES[p] + "." + (tot >= 10 ? " Das sind mehr als 9, also kann gebündelt werden." : ""));
+        }
+        if (cols[p].length >= 10 && p < 2) {
+          ueb = true;
+          cols[p].splice(0, 10);
+          cols[p + 1].push("gold");
+          snap("10 " + NAMES[p] + " bündeln",
+            '<span class="zy">Zehnerübergang:</span> 10 ' + NAMES[p] + " werden gegen 1 " + NAMES[p + 1] + " getauscht (10 · " + FAC[p] + " = " + FAC[p + 1] + "). Jetzt: " +
+            cols[p].length + " " + NAMES[p] + " und " + cols[p + 1].length + " " + NAMES[p + 1] + ".");
+        }
+      }
+    } else {
+      snap("Aufgabe", "Du beginnst mit " + spA + " (" + zerl(A) + ") und nimmst " + spB + " (" + zerl(B) + ") weg. Die Teile, die weggenommen werden, sind rot. Du fängst immer bei den Einern an.");
+      for (let p = 0; p < 3; p++) {
+        if (bd[p] === 0) continue;
+        if (cols[p].length < bd[p]) {
+          let q = p + 1;
+          while (q < 3 && cols[q].length === 0) q++;
+          if (q >= 3) break;
+          ueb = true;
+          const have = cols[p].length;
+          for (let k = q; k > p; k--) {
+            cols[k].pop();
+            for (let i = 0; i < 10; i++) cols[k - 1].push("gold");
+            snap("1 " + NAMES[k] + " entbündeln",
+              (k === q ? "Du willst " + bd[p] + " " + NAMES[p] + " wegnehmen, hast aber " + (have === 0 ? "keine" : "nur " + have) + ". " : "") +
+              '<span class="zy">Zehnerunterschreitung:</span> 1 ' + NAMES[k] + " wird gegen 10 " + NAMES[k - 1] + " getauscht (" + FAC[k] + " = 10 · " + FAC[k - 1] + "). Jetzt: " +
+              cols[k].length + " " + NAMES[k] + " und " + cols[k - 1].length + " " + NAMES[k - 1] + ".");
+          }
+        }
+        const n = cols[p].length;
+        for (let i = n - bd[p]; i < n; i++) cols[p][i] = "red";
+        snap(bd[p] + " " + NAMES[p] + " wegnehmen",
+          n + " " + NAMES[p] + " liegen da. Du nimmst " + bd[p] + " weg (rot): " + n + " − " + bd[p] + " = " + (n - bd[p]) + ".");
+      }
+    }
+
+    // Ergebnis mit halbschriftlichen Rechenwegen
+    const total = op === "add" ? A + B : A - B;
+    const m = sym();
+    const cB = op === "add" ? "zg" : "zr";
+    let res = '<div class="zbig"><span class="zs">' + A + '</span> <span class="' + cB + '">' + m + " " + B + "</span> = " + total + "</div>";
+    const line = (lab, txt) => '<div class="zeq"><span class="usmall">' + lab + "</span>" + txt + "</div>";
+    const ea = ad[0], eb = bd[0];
+    if (op === "add") {
+      const place = v => digs(v).map((x, p) => x * FAC[p]);
+      const pa = place(A).reverse().filter(x => x > 0), pb = place(B).reverse().filter(x => x > 0);
+      const sums = [2, 1, 0].map(p => (ad[p] + bd[p]) * FAC[p]).filter(x => x > 0);
+      if (pa.length + pb.length > 2) {
+        let t = A + " + " + B + " = " + pa.concat(pb).join(" + ");
+        if (sums.length > 1) t += " = " + sums.join(" + ");
+        t += " = " + total;
+        res += line("Stellenweise:", t);
+      }
+      if (ea > 0 && eb > 0 && ea + eb >= 10) {
+        const fill = 10 - ea;
+        if (B > fill) res += line("Schrittweise (Zehner auffüllen):", A + " + " + B + " = " + A + " + " + fill + " + " + (B - fill) + " = " + (A + fill) + " + " + (B - fill) + " = " + total);
+      }
+    } else {
+      if (ea > 0 && ea < eb) {
+        res += line("Schrittweise (bis zum Zehner):", A + " − " + B + " = " + A + " − " + ea + " − " + (B - ea) + " = " + (A - ea) + " − " + (B - ea) + " = " + total);
+      }
+      if (eb > 0 && B - eb > 0) {
+        res += line("Zehner und Einer getrennt:", A + " − " + B + " = " + A + " − " + (B - eb) + " − " + eb + " = " + (A - (B - eb)) + " − " + eb + " = " + total);
+      }
+    }
+    snap("Ergebnis", res, "good");
+    return out;
+  }
+
+  function renderLegend() {
+    const u = parseInt($("zSize").value, 10);
+    let h = "";
+    [0, 1, 2].forEach(p => {
+      const dm = dimsOf(p);
+      h += "<div>" + stoneSvg(dm[0], dm[1], dm[2], u, COL.steel) + "<span>" + NAMES[p] + " = " + FAC[p] + "</span></div>";
+    });
+    h += '<div style="align-items:flex-start;gap:4px;font-size:.95rem">' +
+      '<span><i class="zsw" style="background:' + COL.steel + '"></i>liegt schon da</span>' +
+      '<span><i class="zsw" style="background:' + COL.green + '"></i>wird dazugelegt (Addition)</span>' +
+      '<span><i class="zsw" style="background:' + COL.red + '"></i>wird weggenommen (Subtraktion)</span>' +
+      '<span><i class="zsw" style="background:' + COL.gold + '"></i>neu gebündelt oder entbündelt (getauscht)</span></div>';
+    $("zLegend").innerHTML = h;
+  }
+
+  function render() {
+    const msg = $("zMsg"), host = $("zSteps");
+    const nextB = $("zNext"), backB = $("zBack"), allB = $("zAll");
+    $("zOp").textContent = sym();
+    $("zOp").className = "mdot " + (op === "add" ? "zg" : "zr");
+    $("zAdd").setAttribute("aria-selected", op === "add" ? "true" : "false");
+    $("zSub").setAttribute("aria-selected", op === "sub" ? "true" : "false");
+    renderLegend();
+    const pr = problem();
+    if (pr) {
+      msg.className = "note err";
+      msg.textContent = pr;
+      host.innerHTML = "";
+      nextB.disabled = backB.disabled = allB.disabled = true;
+      return;
+    }
+    steps = build();
+    msg.className = "note";
+    msg.textContent = (ueb
+      ? (op === "add" ? "Bei dieser Aufgabe gibt es einen Zehnerübergang: Es müssen Stellen gebündelt werden. "
+                      : "Bei dieser Aufgabe gibt es eine Zehnerunterschreitung: Es muss entbündelt werden. ")
+      : (op === "add" ? "Bei dieser Aufgabe wird nichts gebündelt, es gibt keinen Zehnerübergang. "
+                      : "Bei dieser Aufgabe muss nichts entbündelt werden, es gibt keine Zehnerunterschreitung. ")) +
+      "Mit „Nächster Schritt“ geht es weiter, der neueste Schritt steht immer oben.";
+    if (shown > steps.length - 1) shown = steps.length - 1;
+    let h = "";
+    for (let i = shown; i >= 0; i--) {
+      const s = steps[i];
+      h += '<div class="ustep' + (i === shown ? " cur" : "") + (i === shown && s.cls ? " " + s.cls : "") + '"><div class="unum">' + (i + 1) +
+        '</div><div class="ubody"><div class="utitle">' + s.t + "</div>" + s.h + "</div></div>";
+    }
+    host.innerHTML = h;
+    nextB.disabled = allB.disabled = shown >= steps.length - 1;
+    backB.disabled = shown <= 0;
+  }
+
+  function restart() { shown = 0; render(); }
+  const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+
+  function randomTask() {
+    for (let t = 0; t < 500; t++) {
+      const three = Math.random() < 0.3;
+      if (op === "add") {
+        const ea = ri(1, 9), eb = ri(10 - ea, 9);
+        const a = (three ? ri(1, 4) * 100 : 0) + ri(1, 8) * 10 + ea;
+        const b = (three && Math.random() < 0.5 ? ri(1, 3) * 100 : 0) + ri(1, 8) * 10 + eb;
+        if (a + b <= MAXV) return [a, b];
+      } else {
+        const ea = ri(0, 8), eb = ri(ea + 1, 9);
+        const a = (three ? ri(1, 9) * 100 : 0) + ri(2, 9) * 10 + ea;
+        const b = (three && Math.random() < 0.4 ? ri(1, 3) * 100 : 0) + ri(1, 8) * 10 + eb;
+        if (a >= b && b >= 11) return [a, b];
+      }
+    }
+    return op === "add" ? [38, 27] : [52, 27];
+  }
+
+  $("zAdd").addEventListener("click", () => { op = "add"; restart(); });
+  $("zSub").addEventListener("click", () => { op = "sub"; restart(); });
+  $("zA").addEventListener("input", ev => { A = ev.target.value === "" ? NaN : Number(ev.target.value); restart(); });
+  $("zB").addEventListener("input", ev => { B = ev.target.value === "" ? NaN : Number(ev.target.value); restart(); });
+  $("zSize").addEventListener("input", render);
+  $("zNext").addEventListener("click", () => { shown++; render(); });
+  $("zBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
+  $("zAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
+  $("zRestart").addEventListener("click", restart);
+  $("zRandom").addEventListener("click", () => {
+    const t = randomTask();
+    A = t[0]; B = t[1];
+    $("zA").value = A; $("zB").value = B;
+    restart();
+  });
+
   render();
 })();
 </script>

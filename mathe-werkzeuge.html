@@ -140,8 +140,11 @@
   .zg { color:#5fd06f; font-weight:700; }
   .zr { color:#ff6b5e; font-weight:700; }
   .zy { color:#5fd06f; font-weight:700; }
+  .zgrid { display:inline-grid; grid-template-columns:repeat(5, auto); gap:5px; align-items:end; justify-items:center; }
+  .zblock { display:inline-block; }
   .zring { display:inline-flex; flex-wrap:wrap; gap:5px; align-items:flex-end; border:3px solid #c3c8ce; border-radius:14px; padding:4px 5px; box-shadow:0 0 0 1px rgba(0,0,0,.5); }
-  .zs { color:#a9bbd0; font-weight:700; }
+  .zs { color:#6cc0f5; font-weight:700; }
+  .zw { color:#e6e8eb; font-weight:700; }
   .zeq { font-size:1.2rem; line-height:2; }
   .zeq .usmall { display:inline-block; min-width:260px; }
   .zsw { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; margin-right:6px; border:1px solid rgba(0,0,0,.5); }
@@ -149,9 +152,10 @@
   .zbig { font-size:1.9rem; font-weight:700; margin:4px 0 6px; }
   .uhead { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; margin-bottom:4px; }
   .uhead .utitle { margin-bottom:0; }
-  .unav { display:flex; gap:10px; }
-  .unav button { padding:10px 20px; font-size:1.1rem; }
-  .unav button.primary { background: linear-gradient(180deg, #8a9099 0%, #4e5359 100%); border-color:#c3c8ce; color:#fff; font-weight:700; }
+  .unav { flex:none; display:flex; flex-direction:column; justify-content:center; gap:12px; align-self:center; width:190px; }
+  .unav button { padding:16px 14px; font-size:1.15rem; width:100%; }
+  .unav button.primary { background: linear-gradient(180deg, #8a9099 0%, #4e5359 100%); border-color:#c3c8ce; color:#fff; font-weight:700; padding:26px 14px; font-size:1.3rem; }
+  @media (max-width: 760px) { .ustep { flex-wrap:wrap; } .unav { flex-direction:row; width:100%; } }
 </style>
 </head>
 <body>
@@ -1232,7 +1236,7 @@ renderStell();
     let h = "";
     for (let i = shown; i >= 0; i--) {   // neuester Schritt zuerst
       const s = steps[i];
-      h += '<div class="ustep' + (i === shown ? " cur" : "") + (i === shown && s.cls ? " " + s.cls : "") + '"><div class="unum">' + (i + 1) + '</div><div class="ubody"><div class="uhead"><div class="utitle">' + s.t + "</div>" + (i === shown ? navBtns("u", shown >= steps.length - 1, shown > 0) : "") + "</div>" + s.h + "</div></div>";
+      h += '<div class="ustep' + (i === shown ? " cur" : "") + (i === shown && s.cls ? " " + s.cls : "") + '"><div class="unum">' + (i + 1) + '</div><div class="ubody"><div class="utitle">' + s.t + "</div>" + s.h + "</div>" + (i === shown ? navBtns("u", shown >= steps.length - 1, shown > 0) : "") + "</div>";
     }
     host.innerHTML = h;
     bindNav(host, "u");
@@ -1265,7 +1269,7 @@ renderStell();
   const MAT = ["Einerwürfel", "Zehnerstange", "Hunderterplatte"];
   const MATPL = ["Einerwürfel", "Zehnerstangen", "Hunderterplatten"];
   const AB = ["E", "Z", "H"];
-  const COL = { steel: "#8fa3b8", green: "#3fb455", red: "#e03a2f", gold: "#3fb455" };
+  const COL = { steel: "#5aaee8", green: "#3fb455", red: "#e03a2f", gold: "#3fb455" };
   const MAXV = 999;
   let op = "add", A = 38, B = 27, shown = 0, steps = [], ueb = false;
   const $ = id => document.getElementById(id);
@@ -1282,6 +1286,57 @@ renderStell();
     return parts.slice(0, -1).join(", ") + " und " + parts[parts.length - 1];
   }
 
+  // Ein Stein ist ein Objekt: { c: "steel"|"green"|"red", m: null | Array der Teilfarben (gebündelte Steine), ring: bool, mark: bool }
+  const baseCols = it => it.m ? it.m : [it.c];
+  const clsOf = items => {
+    const set = new Set();
+    items.forEach(it => baseCols(it).forEach(c => set.add(c)));
+    if (set.size !== 1) return "zw";
+    const c = Array.from(set)[0];
+    return c === "steel" ? "zs" : c === "green" ? "zg" : "zr";
+  };
+  const num = (n, items) => '<span class="' + clsOf(items) + '">' + n + "</span>";
+  const unitsOf = (it, n) => it.mark ? Array(n).fill("red") : (it.m ? it.m : Array(n).fill(it.c));
+
+  // Gebündelter Stein (Zehnerstange oder Hunderterplatte) mit Teilfarben: zeigt, woher die Teile kommen
+  function composedSvg(a, u, units) {
+    const h = 10, s = 0.5 * u, dx = s;
+    const W = a * u + dx, H = h * u + dx;
+    const f = x => x.toFixed(1);
+    const pts = arr => arr.map(q => f(q[0]) + "," + f(q[1])).join(" ");
+    // Farbe der Zelle (Spalte col, Zeile row von oben)
+    const cell = (col, row) => COL[units[col * 10 + (9 - row)]];
+    let svg = '<svg width="' + f(W + 2) + '" height="' + f(H + 2) + '" viewBox="-1 -1 ' + f(W + 2) + " " + f(H + 2) + '" aria-hidden="true">';
+    for (let col = 0; col < a; col++) {
+      for (let row = 0; row < h; row++) {
+        svg += '<polygon points="' + pts([[col * u, dx + row * u], [(col + 1) * u, dx + row * u], [(col + 1) * u, dx + (row + 1) * u], [col * u, dx + (row + 1) * u]]) + '" fill="' + shade(cell(col, row), 0) + '"/>';
+      }
+    }
+    for (let col = 0; col < a; col++) {
+      svg += '<polygon points="' + pts([[col * u, dx], [(col + 1) * u, dx], [(col + 1) * u + dx, 0], [col * u + dx, 0]]) + '" fill="' + shade(cell(col, 0), 0.35) + '"/>';
+    }
+    for (let row = 0; row < h; row++) {
+      svg += '<polygon points="' + pts([[a * u, dx + row * u], [a * u + dx, row * u], [a * u + dx, (row + 1) * u], [a * u, dx + (row + 1) * u]]) + '" fill="' + shade(cell(a - 1, row), -0.3) + '"/>';
+    }
+    let d = "";
+    const ln = (x1, y1, x2, y2) => { d += "M" + f(x1) + "," + f(y1) + "L" + f(x2) + "," + f(y2); };
+    for (let i = 1; i < a; i++) { ln(i * u, dx, i * u, dx + h * u); ln(i * u, dx, i * u + dx, 0); }
+    for (let k = 1; k < h; k++) { ln(0, dx + k * u, a * u, dx + k * u); ln(a * u, dx + k * u, a * u + dx, k * u); }
+    svg += '<path d="' + d + '" stroke="rgba(0,0,0,.35)" stroke-width="0.7" fill="none"/>';
+    const outline = 'fill="none" stroke="rgba(0,0,0,.65)" stroke-width="1" stroke-linejoin="round"';
+    svg += '<polygon points="' + pts([[0, dx], [a * u, dx], [a * u, dx + h * u], [0, dx + h * u]]) + '" ' + outline + "/>" +
+      '<polygon points="' + pts([[0, dx], [a * u, dx], [a * u + dx, 0], [dx, 0]]) + '" ' + outline + "/>" +
+      '<polygon points="' + pts([[a * u, dx], [a * u + dx, 0], [a * u + dx, h * u], [a * u, dx + h * u]]) + '" ' + outline + "/></svg>";
+    return svg;
+  }
+
+  function stoneHtml(it, p, u) {
+    const dm = dimsOf(p);
+    if (p === 0) return stoneSvg(1, 1, 1, u, COL[it.mark ? "red" : it.c]);
+    if (it.m || it.mark) return composedSvg(p === 1 ? 1 : 10, u, unitsOf(it, FAC[p]));
+    return stoneSvg(dm[0], dm[1], dm[2], u, COL[it.c]);
+  }
+
   function tafel(cols, sec) {
     const u = parseInt($("zSize").value, 10);
     const colW = Math.max(120, (($("panel-uez").clientWidth || 960) - 60) / 3 - 12);
@@ -1292,19 +1347,26 @@ renderStell();
     const secTxt = op === "add" ? "dazu: " : "weg: ";
     let h = '<div class="wtafel" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:8px">';
     for (let p = 2; p >= 0; p--) {
-      const dm = dimsOf(p);
       const draw = arr => {
-        let o = "", grp = "";
-        const flush = () => { if (grp) { o += '<span class="zring">' + grp + "</span>"; grp = ""; } };
-        arr.forEach(c => {
-          const sv = stoneSvg(dm[0], dm[1], dm[2], u, COL[c]);
-          if (c === "gold") grp += sv; else { flush(); o += sv; }
-        });
-        flush();
+        let o = "";
+        if (p === 0) {
+          // Einer: immer in Fünferreihen, je zwei Reihen (10 Einer) bilden einen Block
+          const grid = items => '<span class="zgrid">' + items.map(it => stoneHtml(it, 0, u)).join("") + "</span>";
+          let plain = [], g = [];
+          const flush = () => { for (let i = 0; i < plain.length; i += 10) o += '<span class="zblock">' + grid(plain.slice(i, i + 10)) + "</span>"; plain = []; };
+          const flushG = () => { if (g.length) { flush(); o += '<span class="zring">' + grid(g) + "</span>"; g = []; } };
+          arr.forEach(it => { if (it.ring) g.push(it); else { flushG(); plain.push(it); } });
+          flushG(); flush();
+          return o;
+        }
+        let grp = "";
+        const flush2 = () => { if (grp) { o += '<span class="zring">' + grp + "</span>"; grp = ""; } };
+        arr.forEach(it => { if (it.ring) grp += stoneHtml(it, p, u); else { flush2(); o += stoneHtml(it, p, u); } });
+        flush2();
         return o;
       };
       h += '<div class="wcol" style="--c:#6b7078"><div class="wh"><b>' + "HZE"[2 - p] + "</b><small>" + NAMES[p] + "</small></div>" +
-        '<div class="wd" style="font-size:1.8rem;color:#e6e8eb">' + cols[p].length + "</div>" +
+        '<div class="wd" style="font-size:1.8rem"><span class="' + clsOf(cols[p]) + '">' + cols[p].length + "</span></div>" +
         '<div class="wp" style="flex:none;min-height:' + mh + 'px">' + draw(cols[p]) + "</div>" +
         '<div class="zsep" style="color:' + secCol + '">' + (sec[p].length ? secTxt + sec[p].length : "&nbsp;") + "</div>" +
         '<div class="wp" style="flex:none;min-height:' + mh + 'px">' + draw(sec[p]) + "</div></div>";
@@ -1329,42 +1391,52 @@ renderStell();
     let cols = [[], [], []], sec = [[], [], []];
     ueb = false;
     const secColor = op === "add" ? "green" : "red";
-    for (let p = 0; p < 3; p++) { cols[p] = mkArr(ad[p], "steel"); sec[p] = mkArr(bd[p], secColor); }
-    const copy = () => cols.map(c => c.slice());
-    const copySec = () => sec.map(c => c.slice());
-    const norm = () => { cols = cols.map(c => c.filter(x => x !== "red").map(() => "steel")); };
+    const mkIt = c => ({ c: c, m: null, ring: false, mark: false });
+    for (let p = 0; p < 3; p++) { cols[p] = Array.from({ length: ad[p] }, () => mkIt("steel")); sec[p] = Array.from({ length: bd[p] }, () => mkIt(secColor)); }
+    const cp = arr => arr.map(it => Object.assign({}, it));
+    const copy = () => cols.map(cp);
+    const copySec = () => sec.map(cp);
+    // nach jedem Schritt: Markierungen und Ringe weg, Farben bleiben
+    const norm = () => { cols = cols.map(c => c.filter(it => !it.mark).map(it => { it.ring = false; return it; })); };
     function snap(t, txt, cls) {
       out.push({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + tafel(copy(), copySec()) });
       norm();
     }
+    const unitsOfItem = (it, p) => it.m ? it.m : Array(FAC[p]).fill(it.c);
     const spA = '<span class="zs">' + A + "</span>";
     const spB = '<span class="' + (op === "add" ? "zg" : "zr") + '">' + B + "</span>";
 
     if (op === "add") {
-      snap("Aufgabe", "Oben liegt der erste Summand " + spA + " (" + zerl(A) + "). Unter der Trennlinie liegt der zweite Summand " + spB + " (" + zerl(B) + ") in Grün. Beide Summanden sind von Anfang an im Bild. Ich fange bei den Einern an und gruppiere Stück für Stück um.");
+      snap("Aufgabe", "Oben liegt der erste Summand " + spA + " (" + zerl(A) + ") in Hellblau. Unter der Trennlinie liegt der zweite Summand " + spB + " (" + zerl(B) + ") in Grün. Beide Summanden sind von Anfang an im Bild. Ich fange bei den Einern an und gruppiere Stück für Stück um. Hellblau bleibt hellblau und grün bleibt grün, so sieht man immer, woher die Teile kommen.");
       for (let p = 0; p < 3; p++) {
         if (bd[p] > 0) {
           const before = cols[p].length;
-          for (let i = 0; i < bd[p]; i++) cols[p].push("green");
+          const beforeCls = clsOf(cols[p]);
+          for (let i = 0; i < bd[p]; i++) cols[p].push(mkIt("green"));
           sec[p] = [];
           const tot = before + bd[p];
+          if (tot >= 10 && p < 2) for (let i = 0; i < 10; i++) cols[p][i].ring = true;
           snap(bd[p] + " " + NAMES[p] + " dazulegen",
-            "Ich lege die " + bd[p] + " grünen " + NAMES[p] + " von unten zu den " + before + " " + ["Einern", "Zehnern", "Hundertern"][p] + " oben dazu. Ich habe jetzt " + tot + " " + NAMES[p] + ". " +
-            '<span class="usmall">Mathesprache: ' + before + " " + AB[p] + " + " + bd[p] + " " + AB[p] + " = " + tot + " " + AB[p] + "." + "</span>" +
-            (tot >= 10 ? " Das sind mehr als 9 " + NAMES[p] + ", ich kann bündeln." : ""));
+            "Ich lege die " + '<span class="zg">' + bd[p] + "</span> grünen " + NAMES[p] + " von unten zu den " + '<span class="' + beforeCls + '">' + before + "</span> " + ["Einern", "Zehnern", "Hundertern"][p] + " oben dazu. Ich habe jetzt <b>" + tot + "</b> " + NAMES[p] + ". " +
+            '<span class="usmall">Mathesprache: <span class="' + beforeCls + '">' + before + "</span> " + AB[p] + ' + <span class="zg">' + bd[p] + "</span> " + AB[p] + " = " + tot + " " + AB[p] + "." + "</span>" +
+            (tot >= 10 && p < 2 ? " Das sind mehr als 9 " + NAMES[p] + ". Ich kreise 10 " + NAMES[p] + " ein, die kann ich bündeln." : ""));
         }
         if (cols[p].length >= 10 && p < 2) {
           ueb = true;
-          cols[p].splice(0, 10);
-          cols[p + 1].push("gold");
+          const ten = cols[p].splice(0, 10);
+          let units = [];
+          ten.forEach(it => { units = units.concat(unitsOfItem(it, p)); });
+          const mixed = units.indexOf("steel") >= 0 && units.indexOf("green") >= 0;
+          cols[p + 1].push({ c: "steel", m: units, ring: true, mark: false });
           snap("10 " + NAMES[p] + " bündeln",
             '<span class="zy">Zehnerübergang:</span> Ich bündele 10 ' + NAMES[p] + " zu 1 " + NAMES[p + 1] + ". Ich tausche 10 " + MATPL[p] + " gegen 1 " + MAT[p + 1] +
             " und verschiebe sie in die " + NAMES[p + 1] + "spalte. Jetzt habe ich " + cols[p].length + " " + NAMES[p] + " und " + cols[p + 1].length + " " + NAMES[p + 1] + ". " +
-            '<span class="usmall">(10 · ' + FAC[p] + " = " + FAC[p + 1] + ")</span>");
+            (mixed ? "Die neue " + MAT[p + 1] + " ist teils hellblau und teils grün, so sieht man, woher ihre Teile kommen. " : "") +
+            '<span class="usmall">Mathesprache: 10 ' + AB[p] + " = 1 " + AB[p + 1] + "</span>");
         }
       }
     } else {
-      snap("Aufgabe", "Oben liegt die erste Zahl " + spA + " (Minuend: " + zerl(A) + "). Unter der Trennlinie liegt in Rot die zweite Zahl " + spB + " (Subtrahend: " + zerl(B) + "), die ich wegnehme. Beide Zahlen sind von Anfang an im Bild. Ich fange bei den Einern an.");
+      snap("Aufgabe", "Oben liegt die erste Zahl " + spA + " (Minuend: " + zerl(A) + ") in Hellblau. Unter der Trennlinie liegt in Rot die zweite Zahl " + spB + " (Subtrahend: " + zerl(B) + "), die ich wegnehme. Beide Zahlen sind von Anfang an im Bild. Ich fange bei den Einern an.");
       for (let p = 0; p < 3; p++) {
         if (bd[p] === 0) continue;
         if (cols[p].length < bd[p]) {
@@ -1374,21 +1446,27 @@ renderStell();
           ueb = true;
           const have = cols[p].length;
           for (let k = q; k > p; k--) {
-            cols[k].pop();
-            for (let i = 0; i < 10; i++) cols[k - 1].push("gold");
+            const popped = cols[k].pop();
+            const un = unitsOfItem(popped, k);
+            const step = FAC[k - 1];
+            for (let i = 0; i < 10; i++) {
+              const part = un.slice(i * step, (i + 1) * step);
+              cols[k - 1].push(step === 1 ? { c: part[0], m: null, ring: true, mark: false } : { c: part[0], m: part, ring: true, mark: false });
+            }
             snap("1 " + NAMES[k] + " entbündeln",
               (k === q ? "Ich will " + bd[p] + " " + NAMES[p] + " wegnehmen, habe aber " + (have === 0 ? "keine" : "nur " + have) + ". " : "") +
               '<span class="zy">Zehnerunterschreitung:</span> Ich entbündele 1 ' + NAMES[k] + ". Ich ersetze die " + MAT[k] + " durch 10 " + MATPL[k - 1] +
               " und verschiebe sie in die " + NAMES[k - 1] + "spalte. Jetzt habe ich " + cols[k].length + " " + NAMES[k] + " und " + cols[k - 1].length + " " + NAMES[k - 1] + ". " +
-              '<span class="usmall">(' + FAC[k] + " = 10 · " + FAC[k - 1] + ")</span>");
+              '<span class="usmall">Mathesprache: 1 ' + AB[k] + " = 10 " + AB[k - 1] + "</span>");
           }
         }
         const n = cols[p].length;
-        for (let i = n - bd[p]; i < n; i++) cols[p][i] = "red";
+        const beforeMarkCls = null;
+        for (let i = n - bd[p]; i < n; i++) cols[p][i].mark = true;
         sec[p] = [];
         snap(bd[p] + " " + NAMES[p] + " wegnehmen",
-          "Oben liegen " + n + " " + NAMES[p] + ". Ich nehme " + bd[p] + " " + NAMES[p] + " weg, das sind die roten von unten. Es bleiben " + (n - bd[p]) + " " + NAMES[p] + ". " +
-          '<span class="usmall">Mathesprache: ' + n + " " + AB[p] + " − " + bd[p] + " " + AB[p] + " = " + (n - bd[p]) + " " + AB[p] + ".</span>");
+          "Oben liegen " + num(n, cols[p]) + " " + NAMES[p] + ". Ich nehme " + '<span class="zr">' + bd[p] + "</span> " + NAMES[p] + " weg, das sind die roten von unten. Es bleiben " + num(n - bd[p], cols[p].slice(0, n - bd[p])) + " " + NAMES[p] + ". " +
+          '<span class="usmall">Mathesprache: ' + num(n, cols[p]) + " " + AB[p] + " − " + '<span class="zr">' + bd[p] + "</span> " + AB[p] + " = " + num(n - bd[p], cols[p].slice(0, n - bd[p])) + " " + AB[p] + ".</span>");
       }
     }
 
@@ -1397,6 +1475,8 @@ renderStell();
     const m = sym();
     const cB = op === "add" ? "zg" : "zr";
     let res = '<div class="zbig"><span class="zs">' + A + '</span> <span class="' + cB + '">' + m + " " + B + "</span> = " + total + "</div>";
+    const cA = n => '<span class="zs">' + n + "</span>";
+    const cB2 = n => '<span class="' + cB + '">' + n + "</span>";
     const line = (lab, txt) => '<div class="zeq"><span class="usmall">' + lab + "</span>" + txt + "</div>";
     const ea = ad[0], eb = bd[0];
     if (op === "add") {
@@ -1404,21 +1484,21 @@ renderStell();
       const pa = place(A).reverse().filter(x => x > 0), pb = place(B).reverse().filter(x => x > 0);
       const sums = [2, 1, 0].map(p => (ad[p] + bd[p]) * FAC[p]).filter(x => x > 0);
       if (pa.length + pb.length > 2) {
-        let t = A + " + " + B + " = " + pa.concat(pb).join(" + ");
+        let t = cA(A) + " + " + cB2(B) + " = " + pa.map(cA).concat(pb.map(cB2)).join(" + ");
         if (sums.length > 1) t += " = " + sums.join(" + ");
         t += " = " + total;
         res += line("Stellenweise:", t);
       }
       if (ea > 0 && eb > 0 && ea + eb >= 10) {
         const fill = 10 - ea;
-        if (B > fill) res += line("Schrittweise (Zehner auffüllen):", A + " + " + B + " = " + A + " + " + fill + " + " + (B - fill) + " = " + (A + fill) + " + " + (B - fill) + " = " + total);
+        if (B > fill) res += line("Schrittweise (Zehner auffüllen):", cA(A) + " + " + cB2(B) + " = " + cA(A) + " + " + cB2(fill) + " + " + cB2(B - fill) + " = " + (A + fill) + " + " + cB2(B - fill) + " = " + total);
       }
     } else {
       if (ea > 0 && ea < eb) {
-        res += line("Schrittweise (bis zum Zehner):", A + " − " + B + " = " + A + " − " + ea + " − " + (B - ea) + " = " + (A - ea) + " − " + (B - ea) + " = " + total);
+        res += line("Schrittweise (bis zum Zehner):", cA(A) + " − " + cB2(B) + " = " + cA(A) + " − " + cB2(ea) + " − " + cB2(B - ea) + " = " + (A - ea) + " − " + cB2(B - ea) + " = " + total);
       }
       if (eb > 0 && B - eb > 0) {
-        res += line("Zehner und Einer getrennt:", A + " − " + B + " = " + A + " − " + (B - eb) + " − " + eb + " = " + (A - (B - eb)) + " − " + eb + " = " + total);
+        res += line("Zehner und Einer getrennt:", cA(A) + " − " + cB2(B) + " = " + cA(A) + " − " + cB2(B - eb) + " − " + cB2(eb) + " = " + (A - (B - eb)) + " − " + cB2(eb) + " = " + total);
       }
     }
     if (total > 0) res += '<div class="utext">Ich lese ab: ' + zerl(total) + ". Das Ergebnis ist " + total + ".</div>";
@@ -1434,11 +1514,11 @@ renderStell();
       h += "<div>" + stoneSvg(dm[0], dm[1], dm[2], u, COL.steel) + "<span>" + NAMES[p] + " = " + FAC[p] + "</span></div>";
     });
     h += '<div style="align-items:flex-start;gap:4px;font-size:.95rem">' +
-      '<span><i class="zsw" style="background:' + COL.steel + '"></i>erste Zahl (oben)</span>' +
+      '<span><i class="zsw" style="background:' + COL.steel + '"></i>erste Zahl (hellblau, oben)</span>' +
       '<span>Unter der gestrichelten Linie liegt die zweite Zahl.</span>' +
-      '<span><i class="zsw" style="background:' + COL.green + '"></i>zweiter Summand, wandert nach oben (Addition)</span>' +
+      '<span><i class="zsw" style="background:' + COL.green + '"></i>zweiter Summand (grün), wandert nach oben</span>' +
       '<span><i class="zsw" style="background:' + COL.red + '"></i>wird weggenommen (Subtraktion)</span>' +
-      '<span><i class="zsw" style="background:' + COL.green + ';border:2px solid #c3c8ce;border-radius:50%"></i>neu gebündelt oder entbündelt (grün, grau umkringelt)</span></div>';
+      '<span><i class="zsw" style="background:transparent;border:2px solid #c3c8ce;border-radius:50%"></i>grauer Ring: eingekreist, gebündelt oder entbündelt (die Farben bleiben)</span></div>';
     $("zLegend").innerHTML = h;
   }
 
@@ -1446,6 +1526,8 @@ renderStell();
     const msg = $("zMsg"), host = $("zSteps");
     const nextB = $("zNext"), backB = $("zBack"), allB = $("zAll");
     $("zOp").textContent = sym();
+    $("zA").style.color = "#6cc0f5"; $("zA").style.borderColor = "#5aaee8";
+    $("zB").style.color = op === "add" ? "#5fd06f" : "#ff6b5e"; $("zB").style.borderColor = op === "add" ? "#3fb455" : "#e03a2f";
     $("zOp").className = "mdot " + (op === "add" ? "zg" : "zr");
     $("zAdd").setAttribute("aria-selected", op === "add" ? "true" : "false");
     $("zSub").setAttribute("aria-selected", op === "sub" ? "true" : "false");
@@ -1471,7 +1553,7 @@ renderStell();
     for (let i = shown; i >= 0; i--) {
       const s = steps[i];
       h += '<div class="ustep' + (i === shown ? " cur" : "") + (i === shown && s.cls ? " " + s.cls : "") + '"><div class="unum">' + (i + 1) +
-        '</div><div class="ubody"><div class="uhead"><div class="utitle">' + s.t + "</div>" + (i === shown ? navBtns("z", shown >= steps.length - 1, shown > 0) : "") + "</div>" + s.h + "</div></div>";
+        '</div><div class="ubody"><div class="utitle">' + s.t + "</div>" + s.h + "</div>" + (i === shown ? navBtns("z", shown >= steps.length - 1, shown > 0) : "") + "</div>";
     }
     host.innerHTML = h;
     bindNav(host, "z");

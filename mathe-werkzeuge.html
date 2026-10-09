@@ -139,7 +139,8 @@
   /* Zehnerübergang */
   .zg { color:#5fd06f; font-weight:700; }
   .zr { color:#ff6b5e; font-weight:700; }
-  .zy { color:#f2a900; font-weight:700; }
+  .zy { color:#5fd06f; font-weight:700; }
+  .zring { display:inline-flex; flex-wrap:wrap; gap:5px; align-items:flex-end; border:3px solid #c3c8ce; border-radius:14px; padding:4px 5px; box-shadow:0 0 0 1px rgba(0,0,0,.5); }
   .zs { color:#a9bbd0; font-weight:700; }
   .zeq { font-size:1.2rem; line-height:2; }
   .zeq .usmall { display:inline-block; min-width:260px; }
@@ -1264,7 +1265,7 @@ renderStell();
   const MAT = ["Einerwürfel", "Zehnerstange", "Hunderterplatte"];
   const MATPL = ["Einerwürfel", "Zehnerstangen", "Hunderterplatten"];
   const AB = ["E", "Z", "H"];
-  const COL = { steel: "#8fa3b8", green: "#3fb455", red: "#e03a2f", gold: "#f2a900" };
+  const COL = { steel: "#8fa3b8", green: "#3fb455", red: "#e03a2f", gold: "#3fb455" };
   const MAXV = 999;
   let op = "add", A = 38, B = 27, shown = 0, steps = [], ueb = false;
   const $ = id => document.getElementById(id);
@@ -1292,7 +1293,16 @@ renderStell();
     let h = '<div class="wtafel" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:8px">';
     for (let p = 2; p >= 0; p--) {
       const dm = dimsOf(p);
-      const draw = arr => arr.map(c => stoneSvg(dm[0], dm[1], dm[2], u, COL[c])).join("");
+      const draw = arr => {
+        let o = "", grp = "";
+        const flush = () => { if (grp) { o += '<span class="zring">' + grp + "</span>"; grp = ""; } };
+        arr.forEach(c => {
+          const sv = stoneSvg(dm[0], dm[1], dm[2], u, COL[c]);
+          if (c === "gold") grp += sv; else { flush(); o += sv; }
+        });
+        flush();
+        return o;
+      };
       h += '<div class="wcol" style="--c:#6b7078"><div class="wh"><b>' + "HZE"[2 - p] + "</b><small>" + NAMES[p] + "</small></div>" +
         '<div class="wd" style="font-size:1.8rem;color:#e6e8eb">' + cols[p].length + "</div>" +
         '<div class="wp" style="flex:none;min-height:' + mh + 'px">' + draw(cols[p]) + "</div>" +
@@ -1428,7 +1438,7 @@ renderStell();
       '<span>Unter der gestrichelten Linie liegt die zweite Zahl.</span>' +
       '<span><i class="zsw" style="background:' + COL.green + '"></i>zweiter Summand, wandert nach oben (Addition)</span>' +
       '<span><i class="zsw" style="background:' + COL.red + '"></i>wird weggenommen (Subtraktion)</span>' +
-      '<span><i class="zsw" style="background:' + COL.gold + '"></i>neu gebündelt oder entbündelt (getauscht)</span></div>';
+      '<span><i class="zsw" style="background:' + COL.green + ';border:2px solid #c3c8ce;border-radius:50%"></i>neu gebündelt oder entbündelt (grün, grau umkringelt)</span></div>';
     $("zLegend").innerHTML = h;
   }
 

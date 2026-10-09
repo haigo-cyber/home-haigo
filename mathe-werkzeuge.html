@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mathe-Werkzeuge</title>
+<title>Seifferts Mathe-Werkzeuge</title>
 <style>
   :root { --text:#e6e8eb; --muted:#9aa1a9; --line:#4a4f55; --dark:#121315; }
   * { box-sizing: border-box; }
@@ -69,14 +69,60 @@
   .wh small { font-size:.75rem; }
   .wd { text-align:center; font-size:2.6rem; font-weight:700; color:var(--c); padding:4px 0; border-bottom:1px solid #4a4f55; }
   .wp { display:flex; flex-wrap:wrap; gap:6px 5px; align-items:flex-end; align-content:flex-start; justify-content:center; padding:10px 6px; min-height:40px; flex:1; }
+
+  /* Flächenmodell */
+  .mfactors { display:flex; flex-wrap:wrap; align-items:center; gap:16px 20px; }
+  .mfac { border:1px solid #5a5f66; border-radius:10px; padding:10px 12px; background:rgba(0,0,0,.3); }
+  .mfname { color:var(--muted); font-size:.85rem; margin-bottom:8px; }
+  .mterms { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .mplus { font-size:1.4rem; color:#aeb4bb; }
+  .mt input { width:104px; }
+  #mVals input { font-size:1rem; text-align:center; padding:3px; border:1px solid #5a5f66; border-radius:6px; color:var(--text); background:#0d0e10; }
+  .mt input.bad { border-color:#ff7a6b; box-shadow:0 0 0 1px #ff7a6b; }
+  .mbtns { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; max-width:270px; }
+  .mbtns button { padding:5px 10px; font-size:.9rem; }
+  .mdot { font-size:2.4rem; color:#aeb4bb; }
+  .meq { display:grid; grid-template-columns:minmax(120px, max-content) 1fr; gap:10px 18px; align-items:baseline; font-size:1.5rem; }
+  .elab { color:var(--muted); font-size:.9rem; }
+  .ecol { line-height:1.9; }
+  .eop { color:#aeb4bb; }
+  .enote { color:var(--muted); font-size:.95rem; }
+  .eqc { padding:1px 5px; border-radius:5px; font-weight:700; cursor:default; }
+  .eqc.hl { background:rgba(255,255,255,.2); outline:2px solid rgba(255,255,255,.55); }
+  /* Erweitern auf Stufenzahl */
+  .ustep { display:flex; gap:14px; align-items:flex-start; background: linear-gradient(145deg, #1a1c1f 0%, #26292d 60%, #31353a 100%);
+           border:1px solid #4a4f55; border-radius:10px; padding:12px 14px; margin-bottom:10px; opacity:.72; }
+  .ustep.cur { opacity:1; border-color:#aeb4bb; box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 2px 10px rgba(0,0,0,.6); }
+  .ustep.good { border-color:#3fa34d; }
+  .ustep.bad { border-color:#e4572e; }
+  .unum { flex:none; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700;
+          background: linear-gradient(180deg, #8a9099, #4e5359); color:#fff; }
+  .ubody { flex:1; min-width:0; }
+  .utitle { font-weight:700; margin-bottom:4px; }
+  .utext { font-size:1.1rem; line-height:1.7; }
+  .ubig { font-size:1.6rem; line-height:1.9; }
+  .uorig { color:#e4572e; font-weight:700; }
+  .ufac { color:#3fa34d; font-weight:700; }
+  .ures { color:#2e86ab; font-weight:700; }
+  .ustuf { color:#f2a900; font-weight:700; }
+  .usmall { color:var(--muted); font-size:.92rem; }
+  .ufrac { display:inline-flex; flex-direction:column; align-items:center; vertical-align:middle; line-height:1.15; margin:0 3px; }
+  .ufrac i { display:block; width:100%; height:2px; background:currentColor; margin:1px 0; }
+  .ufrac s { text-decoration:none; padding:0 4px; }
+  .uok { color:#6fd37c; font-weight:700; }
+  .ubad { color:#ff7a6b; font-weight:700; }
+  .mc { cursor:default; }
+  .mc.hl .cellr { stroke:#fff; stroke-width:3; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Mathe-Werkzeuge</h1>
+  <h1>Seifferts Mathe-Werkzeuge</h1>
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-bruch" aria-selected="true">Bruchstreifen</button>
     <button class="tab" role="tab" id="tab-stell" aria-selected="false">Stellenwerttafel</button>
+    <button class="tab" role="tab" id="tab-mul" aria-selected="false">Flächenmodell</button>
+    <button class="tab" role="tab" id="tab-stuf" aria-selected="false">Auf Stufenzahl erweitern</button>
   </div>
 
   <section id="panel-bruch">
@@ -118,6 +164,38 @@
     <div class="card">
       <div class="legend" id="legend"></div>
     </div>
+  </section>
+
+  <section id="panel-stuf" hidden>
+    <div class="card">
+      <div class="controls" style="margin-bottom:12px">
+        <button id="uRandom">Zufallsbruch</button>
+        <button id="uBack">Schritt zurück</button>
+        <button id="uNext">Nächster Schritt</button>
+        <button id="uAll">Alle Schritte zeigen</button>
+        <button id="uRestart">Neu starten</button>
+      </div>
+      <div class="inputs" id="uInputs"></div>
+      <p class="note" id="uMsg"></p>
+    </div>
+    <div id="uSteps"></div>
+  </section>
+
+  <section id="panel-mul" hidden>
+    <div class="card">
+      <div class="controls" style="margin-bottom:12px">
+        <button id="mRandom">Zufallsaufgabe</button>
+        <button id="mSwap">Faktoren tauschen</button>
+        <label class="opt"><input type="checkbox" id="mGrid"> Einheitsquadrate</label>
+        <label class="opt"><input type="checkbox" id="mLabels" checked> Rechnung in den Flächen</label>
+      </div>
+      <div class="controls" id="mEx" style="margin-bottom:12px"><span class="note">Beispiele:</span></div>
+      <div class="mfactors" id="mFactors"></div>
+      <div class="controls" id="mVals" style="margin-top:12px"></div>
+      <p class="note" id="mMsg"></p>
+    </div>
+    <div class="card"><div id="mDiagram"></div></div>
+    <div class="card"><div id="mEq"></div></div>
   </section>
 </main>
 
@@ -258,14 +336,12 @@ renderView();
 
 /* ===== Tabs ===== */
 function showTab(which) {
-  const b = which === "bruch";
-  document.getElementById("panel-bruch").hidden = !b;
-  document.getElementById("panel-stell").hidden = b;
-  document.getElementById("tab-bruch").setAttribute("aria-selected", b ? "true" : "false");
-  document.getElementById("tab-stell").setAttribute("aria-selected", b ? "false" : "true");
+  ["bruch", "stell", "mul", "stuf"].forEach(k => {
+    document.getElementById("panel-" + k).hidden = k !== which;
+    document.getElementById("tab-" + k).setAttribute("aria-selected", k === which ? "true" : "false");
+  });
 }
-document.getElementById("tab-bruch").addEventListener("click", () => showTab("bruch"));
-document.getElementById("tab-stell").addEventListener("click", () => showTab("stell"));
+["bruch", "stell", "mul", "stuf"].forEach(k => document.getElementById("tab-" + k).addEventListener("click", () => showTab(k)));
 
 /* ===== Stellenwerttafel ===== */
 // dims = [Breite, Höhe, Tiefe] in Einheiten eines Einers
@@ -401,6 +477,555 @@ document.getElementById("sSize").addEventListener("input", renderStell);
 
 renderNumInputs();
 renderStell();
+
+/* ===== Flächenmodell / Distributivgesetz (Zahlen, Variablen, Exponenten) ===== */
+(function () {
+  const MAXT = 4, MAXC = 9999, GW = 620, GH = 420, MINW = 40, MINH = 34, UMAX = 40;
+  const LEFT = 150, TOP = 84;
+  const SUP = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+  const supStr = n => String(n).split("").map(d => SUP[+d]).join("");
+  const DEFVAL = { x: 5, y: 4, z: 3, a: 6, b: 4, c: 5, d: 3, m: 5, n: 4, p: 5, q: 3, r: 4, s: 3, t: 4, u: 5, v: 4, w: 3 };
+  const nominal = {};
+  const valOf = l => nominal[l] != null ? nominal[l] : (DEFVAL[l] != null ? DEFVAL[l] : 5);
+  const esc = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+  /* ---- Terme (Monome) ---- */
+  function parse(text) {
+    const s = String(text).replace(/[\s·*]/g, "");
+    if (!s) return null;
+    const m = /^(\d+)?((?:[a-zA-Z](?:\^\d|[²³⁴⁵⁶⁷⁸⁹])?)*)$/.exec(s);
+    if (!m) return null;
+    const c = m[1] != null ? parseInt(m[1], 10) : 1;
+    const vars = {};
+    const re = /([a-zA-Z])(?:\^(\d)|([²³⁴⁵⁶⁷⁸⁹]))?/g;
+    let mm;
+    while ((mm = re.exec(m[2])) !== null) {
+      let e = 1;
+      if (mm[2] != null) e = +mm[2]; else if (mm[3]) e = SUP.indexOf(mm[3]);
+      if (e < 1) return null;
+      vars[mm[1]] = (vars[mm[1]] || 0) + e;
+    }
+    if (c < 1 || c > MAXC) return null;
+    for (const k in vars) if (vars[k] > 9) return null;
+    return { c: c, vars: vars };
+  }
+  const isNum = t => Object.keys(t.vars).length === 0;
+  const degree = t => Object.keys(t.vars).reduce((s, k) => s + t.vars[k], 0);
+  const keyOf = t => Object.keys(t.vars).sort().map(k => k + t.vars[k]).join("");
+  function mul(p, q) {
+    const v = {};
+    for (const k in p.vars) v[k] = p.vars[k];
+    for (const k in q.vars) v[k] = (v[k] || 0) + q.vars[k];
+    return { c: p.c * q.c, vars: v };
+  }
+  function mstr(t) {
+    const ks = Object.keys(t.vars).sort();
+    if (!ks.length) return String(t.c);
+    return (t.c !== 1 ? String(t.c) : "") + ks.map(k => k + (t.vars[k] > 1 ? supStr(t.vars[k]) : "")).join("");
+  }
+  function cmp(p, q) {
+    const dp = degree(p), dq = degree(q);
+    if (dp !== dq) return dq - dp;
+    const kp = Object.keys(p.vars).sort(), kq = Object.keys(q.vars).sort();
+    for (let i = 0; i < Math.max(kp.length, kq.length); i++) {
+      if (kp[i] === undefined) return 1;
+      if (kq[i] === undefined) return -1;
+      if (kp[i] !== kq[i]) return kp[i] < kq[i] ? -1 : 1;
+      if (p.vars[kp[i]] !== q.vars[kq[i]]) return q.vars[kq[i]] - p.vars[kp[i]];
+    }
+    return 0;
+  }
+  function combine(list) {
+    const map = {};
+    list.forEach(t => {
+      const k = keyOf(t);
+      if (map[k]) map[k].c += t.c; else map[k] = { c: t.c, vars: Object.assign({}, t.vars) };
+    });
+    return Object.keys(map).map(k => map[k]).sort(cmp);
+  }
+  const polyStr = arr => arr.map(mstr).join(" + ");
+  function evalMono(t) {
+    let v = t.c;
+    for (const k in t.vars) v *= Math.pow(valOf(k), t.vars[k]);
+    return v;
+  }
+
+  /* ---- Zustand ---- */
+  let uid = 1;
+  const T = text => ({ id: uid++, text: String(text), p: parse(text) });
+  const fac = { A: [T("20"), T("3")], B: [T("10"), T("4")] };
+  const root = document.getElementById("panel-mul");
+  const allT = () => fac.A.concat(fac.B);
+  const valid = () => allT().every(t => t.p);
+  const P = arr => arr.map(t => t.p);
+  const F = arr => arr.length > 1 ? "(" + arr.map(t => mstr(t.p)).join(" + ") + ")" : mstr(arr[0].p);
+  const n1 = v => (Math.round(v * 10) / 10).toString();
+  const color = (i, j, nb) => COLORS[(i * nb + j) % COLORS.length];
+  const EXAMPLES = [
+    ["(a + b) · (c + d)", ["a", "b"], ["c", "d"]],
+    ["(x + 3) · (x + 5)", ["x", "3"], ["x", "5"]],
+    ["(a + b)²", ["a", "b"], ["a", "b"]],
+    ["(x² + 2x) · (x + 4)", ["x²", "2x"], ["x", "4"]],
+    ["(2x + 1) · (x² + 3)", ["2x", "1"], ["x²", "3"]]
+  ];
+
+  // 23 -> 20 + 3 (höchstens MAXT Summanden)
+  function splitPlaces(s) {
+    const str = String(s), n = str.length, parts = [];
+    let acc = 0;
+    for (let i = 0; i < n; i++) {
+      const d = +str[i];
+      if (d === 0) continue;
+      if (parts.length === MAXT - 1) { parts.push(s - acc); break; }
+      const v = d * Math.pow(10, n - 1 - i);
+      parts.push(v);
+      acc += v;
+    }
+    return parts.map(v => T(v));
+  }
+
+  function buildFactor(key, label) {
+    const arr = fac[key];
+    const d = document.createElement("div");
+    d.className = "mfac";
+    let h = '<div class="mfname">' + label + '</div><div class="mterms">';
+    arr.forEach((t, i) => {
+      if (i > 0) h += '<span class="mplus">+</span>';
+      h += '<span class="numbox mt"><input type="text" data-id="' + t.id + '" value="' + esc(t.text) + '" placeholder="3x²" autocomplete="off" spellcheck="false" aria-label="Summand">' +
+        (arr.length > 1 ? '<button class="del" data-del="' + t.id + '" title="Entfernen">x</button>' : "") + "</span>";
+    });
+    h += '</div><div class="mbtns"><button data-act="add"' + (arr.length >= MAXT ? " disabled" : "") + '>+ Summand</button>' +
+      '<button data-act="split" data-split="' + key + '">nach Stellenwerten</button><button data-act="merge">zusammenfassen</button></div>';
+    d.innerHTML = h;
+    d.querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => {
+      const t = fac[key].find(x => x.id === Number(inp.dataset.id));
+      t.text = inp.value;
+      t.p = parse(inp.value);
+      render();
+    }));
+    d.querySelectorAll("[data-del]").forEach(bt => bt.addEventListener("click", () => {
+      fac[key] = fac[key].filter(x => x.id !== Number(bt.dataset.del));
+      buildAll();
+    }));
+    d.querySelector('[data-act="add"]').addEventListener("click", () => {
+      if (fac[key].length < MAXT) { fac[key].push(T("1")); buildAll(); }
+    });
+    d.querySelector('[data-act="split"]').addEventListener("click", () => {
+      if (!fac[key].every(t => t.p && isNum(t.p))) return;
+      const s = fac[key].reduce((a, t) => a + t.p.c, 0);
+      if (s >= 1) { fac[key] = splitPlaces(s); buildAll(); }
+    });
+    d.querySelector('[data-act="merge"]').addEventListener("click", () => {
+      if (!fac[key].every(t => t.p)) return;
+      const c = combine(P(fac[key]));
+      if (c.some(t => t.c > MAXC)) return;
+      fac[key] = c.map(t => T(mstr(t)));
+      buildAll();
+    });
+    return d;
+  }
+
+  function buildAll() {
+    const host = document.getElementById("mFactors");
+    host.innerHTML = "";
+    host.appendChild(buildFactor("A", "Faktor A (Breite)"));
+    const dot = document.createElement("div");
+    dot.className = "mdot";
+    dot.textContent = "·";
+    host.appendChild(dot);
+    host.appendChild(buildFactor("B", "Faktor B (Höhe)"));
+    render();
+  }
+
+  let lastLetters = null;
+  function renderVals(letters) {
+    const box = document.getElementById("mVals");
+    const sig = letters.join("");
+    if (sig === lastLetters) return;
+    lastLetters = sig;
+    box.innerHTML = "";
+    if (!letters.length) return;
+    const lab = document.createElement("span");
+    lab.className = "note";
+    lab.textContent = "Zeichenwerte (nur für die Zeichnung und die Probe):";
+    box.appendChild(lab);
+    letters.forEach(l => {
+      const w = document.createElement("label");
+      w.className = "opt";
+      w.innerHTML = l + ' = <input type="number" min="1" max="12" step="1" value="' + valOf(l) + '" data-v="' + l + '" style="width:64px">';
+      w.querySelector("input").addEventListener("input", ev => {
+        const v = Number(ev.target.value);
+        if (Number.isInteger(v) && v >= 1 && v <= 12) { nominal[l] = v; render(); }
+      });
+      box.appendChild(w);
+    });
+  }
+
+  function render() {
+    const msg = document.getElementById("mMsg");
+    const dia = document.getElementById("mDiagram");
+    const eq = document.getElementById("mEq");
+
+    ["A", "B"].forEach(k => {
+      const btn = root.querySelector('[data-split="' + k + '"]');
+      if (btn) btn.disabled = !fac[k].every(t => t.p && isNum(t.p));
+    });
+    allT().forEach(t => {
+      const inp = root.querySelector('input[data-id="' + t.id + '"]');
+      if (inp) inp.classList.toggle("bad", !t.p);
+    });
+
+    if (!valid()) {
+      msg.className = "note err";
+      msg.textContent = "Bitte nur Summanden wie 12, x, 3x, ab oder a²b eingeben: Zahlen von 1 bis " + MAXC + ", Buchstaben a bis z, Exponenten von 2 bis 9 mit ^ oder ² (zum Beispiel x^2).";
+      dia.innerHTML = "";
+      eq.innerHTML = "";
+      renderVals([]);
+      return;
+    }
+
+    const a = P(fac.A), b = P(fac.B);
+    const na = a.length, nb = b.length;
+    const letterSet = {};
+    a.concat(b).forEach(t => Object.keys(t.vars).forEach(k => { letterSet[k] = 1; }));
+    const letters = Object.keys(letterSet).sort();
+    const hasVars = letters.length > 0;
+    renderVals(letters);
+
+    const va = a.map(evalMono), vb = b.map(evalMono);
+    const ta = va.reduce((x, y) => x + y, 0), tb = vb.reduce((x, y) => x + y, 0);
+    const wantGrid = document.getElementById("mGrid").checked;
+    const labels = document.getElementById("mLabels").checked;
+    const grid = wantGrid && !hasVars && ta <= 30 && tb <= 30;
+    const u = Math.min(GW / ta, GH / tb, UMAX);
+    let clamped = false;
+    const wA = va.map(v => { const w = v * u; if (!grid && w < MINW) { clamped = true; return MINW; } return w; });
+    const hB = vb.map(v => { const h = v * u; if (!grid && h < MINH) { clamped = true; return MINH; } return h; });
+    const xs = [], ys = [];
+    let x = 0, y = 0;
+    wA.forEach(w => { xs.push(x); x += w; });
+    hB.forEach(h => { ys.push(y); y += h; });
+    const gw = x, gh = y;
+    const W = LEFT + gw + 24, H = TOP + gh + 16;
+
+    const bTop = (x1, x2, yy) => '<path d="M' + n1(x1) + "," + n1(yy + 6) + "V" + n1(yy) + "H" + n1(x2) + "V" + n1(yy + 6) +
+      '" fill="none" stroke="#aeb4bb" stroke-width="1.5"/>';
+    const bLeft = (y1, y2, xx) => '<path d="M' + n1(xx - 6) + "," + n1(y1) + "H" + n1(xx) + "V" + n1(y2) + "H" + n1(xx - 6) +
+      '" fill="none" stroke="#aeb4bb" stroke-width="1.5"/>';
+    const txt = (xx, yy, str, anchor, size, fill) => '<text x="' + n1(xx) + '" y="' + n1(yy) + '" text-anchor="' + anchor +
+      '" font-size="' + size + '" font-weight="700" fill="' + fill + '">' + str + "</text>";
+
+    let s = '<svg viewBox="0 0 ' + n1(W) + " " + n1(H) + '" style="width:100%;max-width:' + n1(W) +
+      'px;height:auto;display:block;margin:0 auto" role="img" aria-label="Flächenmodell der Multiplikation">';
+    a.forEach((t, i) => {
+      s += bTop(LEFT + xs[i] + 2, LEFT + xs[i] + wA[i] - 2, TOP - 12) + txt(LEFT + xs[i] + wA[i] / 2, TOP - 20, mstr(t), "middle", 18, "#e6e8eb");
+    });
+    if (na > 1) s += bTop(LEFT + 2, LEFT + gw - 2, TOP - 46) + txt(LEFT + gw / 2, TOP - 54, polyStr(combine(a)), "middle", 20, "#fff");
+    b.forEach((t, j) => {
+      s += bLeft(TOP + ys[j] + 2, TOP + ys[j] + hB[j] - 2, LEFT - 12) + txt(LEFT - 22, TOP + ys[j] + hB[j] / 2 + 6, mstr(t), "end", 18, "#e6e8eb");
+    });
+    if (nb > 1) s += bLeft(TOP + 2, TOP + gh - 2, LEFT - 76) + txt(LEFT - 86, TOP + gh / 2 + 7, polyStr(combine(b)), "end", 20, "#fff");
+
+    const tstyle = 'fill="#fff" style="paint-order:stroke;stroke:rgba(0,0,0,.6);stroke-width:3px;stroke-linejoin:round"';
+    for (let i = 0; i < na; i++) {
+      for (let j = 0; j < nb; j++) {
+        const cx = LEFT + xs[i], cy = TOP + ys[j], w = wA[i], h = hB[j];
+        const prod = mul(a[i], b[j]);
+        const l1 = mstr(a[i]) + " · " + mstr(b[j]), l2 = mstr(prod);
+        s += '<g class="mc" data-ij="' + i + "-" + j + '"><rect class="cellr" x="' + n1(cx) + '" y="' + n1(cy) + '" width="' + n1(w) +
+          '" height="' + n1(h) + '" fill="' + color(i, j, nb) + '" stroke="#0d0e10" stroke-width="2"/>';
+        if (grid) {
+          let d = "";
+          for (let k = 1; k < va[i]; k++) d += "M" + n1(cx + k * u) + "," + n1(cy) + "V" + n1(cy + h);
+          for (let k = 1; k < vb[j]; k++) d += "M" + n1(cx) + "," + n1(cy + k * u) + "H" + n1(cx + w);
+          s += '<path d="' + d + '" stroke="rgba(255,255,255,.45)" stroke-width="1" fill="none"/>';
+        }
+        if (labels) {
+          if (h >= 40 && w >= l1.length * 6.8 + 14 && w >= l2.length * 10 + 10) {
+            s += '<text x="' + n1(cx + w / 2) + '" y="' + n1(cy + h / 2 - 5) + '" text-anchor="middle" font-size="13" ' + tstyle + ">" + l1 + "</text>";
+            s += '<text x="' + n1(cx + w / 2) + '" y="' + n1(cy + h / 2 + 15) + '" text-anchor="middle" font-size="17" font-weight="700" ' + tstyle + ">" + l2 + "</text>";
+          } else if (h >= 20 && w >= l2.length * 9 + 10) {
+            s += '<text x="' + n1(cx + w / 2) + '" y="' + n1(cy + h / 2 + 5) + '" text-anchor="middle" font-size="14" font-weight="700" ' + tstyle + ">" + l2 + "</text>";
+          }
+        }
+        s += "</g>";
+      }
+    }
+    s += "</svg>";
+    dia.innerHTML = s;
+
+    // Rechnung
+    const cs = (i, j, t) => '<span class="eqc" data-ij="' + i + "-" + j + '" style="color:' + color(i, j, nb) + '">' + t + "</span>";
+    const joinAll = fn => {
+      const out = [];
+      for (let i = 0; i < na; i++) for (let j = 0; j < nb; j++) out.push(fn(i, j));
+      return out.join('<span class="eop"> + </span>');
+    };
+    const row = (label, content) => '<div class="elab">' + label + '</div><div class="ecol">' + content + "</div>";
+    const products = [];
+    for (let i = 0; i < na; i++) for (let j = 0; j < nb; j++) products.push(mul(a[i], b[j]));
+    const combined = combine(products);
+
+    let h = '<div class="meq">' + row("Aufgabe", F(fac.A) + " · " + F(fac.B));
+    if (na > 1 || nb > 1) {
+      h += row("Distributivgesetz", joinAll((i, j) => cs(i, j, mstr(a[i]) + " · " + mstr(b[j]))));
+      h += row("Teilprodukte", joinAll((i, j) => cs(i, j, mstr(mul(a[i], b[j])))));
+    }
+    if (!hasVars) {
+      const total = ta * tb;
+      h += row("Ergebnis", "<b>" + total + '</b> <span class="enote">(Kontrolle: ' + ta + " · " + tb + " = " + total + ")</span>");
+    } else {
+      const groups = {};
+      products.forEach(t => { const k = keyOf(t); (groups[k] = groups[k] || []).push(t); });
+      const notes = Object.keys(groups).filter(k => groups[k].length > 1).map(k => {
+        const sum = combine(groups[k])[0];
+        return groups[k].map(mstr).join(" + ") + " = " + mstr(sum);
+      });
+      if (notes.length) h += row("Zusammenfassen", notes.join(", ") + ' <span class="enote">(gleichartige Terme)</span>');
+      h += row("Ergebnis", "<b>" + polyStr(combined) + "</b>");
+      const lhsF = arr => arr.length > 1 ? "(" + arr.join(" + ") + ")" : String(arr[0]);
+      const sumRound = va.reduce((p, q) => p + q, 0) * vb.reduce((p, q) => p + q, 0);
+      const rhsEval = combined.map(evalMono);
+      const rhsSum = rhsEval.reduce((p, q) => p + q, 0);
+      const okProbe = Math.abs(sumRound - rhsSum) < 1e-9;
+      h += row("Probe mit " + letters.map(l => l + " = " + valOf(l)).join(", "),
+        lhsF(va) + " · " + lhsF(vb) + " = <b>" + sumRound + "</b> &nbsp;und&nbsp; " + rhsEval.join(" + ") + " = <b>" + rhsSum + "</b> " +
+        (okProbe ? '<span class="uok">stimmt</span>' : '<span class="ubad">stimmt nicht</span>'));
+    }
+    h += "</div>";
+    eq.innerHTML = h;
+
+    let note = "Jede Teilfläche ist ein Teilprodukt. Fahre mit der Maus über eine Fläche oder einen Term der Rechnung, dann werden beide markiert.";
+    if (na === 1 && nb === 1) note = "Zerlege mindestens einen Faktor in eine Summe, bei Zahlen zum Beispiel mit „nach Stellenwerten“. Dann siehst du das Distributivgesetz.";
+    if (hasVars) note += " Buchstaben werden mit einem Zeichenwert gezeichnet, die Flächen sind deshalb nur ungefähr im Verhältnis.";
+    if (wantGrid && !grid) note += hasVars ? " Einheitsquadrate gibt es nur bei reinen Zahlen." : " Einheitsquadrate gibt es nur bis 30 · 30, hier werden die Flächen als Rechtecke gezeigt.";
+    if (clamped && !hasVars) note += " Damit kleine Teile lesbar bleiben, sind die Flächen nicht maßstabsgetreu.";
+    msg.className = "note";
+    msg.textContent = note;
+  }
+
+  // Hervorheben: Fläche und zugehöriger Term gemeinsam
+  const hl = (ij, on) => root.querySelectorAll('[data-ij="' + ij + '"]').forEach(el => el.classList.toggle("hl", on));
+  root.addEventListener("mouseover", ev => {
+    const el = ev.target.closest && ev.target.closest("[data-ij]");
+    if (el) hl(el.getAttribute("data-ij"), true);
+  });
+  root.addEventListener("mouseout", ev => {
+    const el = ev.target.closest && ev.target.closest("[data-ij]");
+    if (el) hl(el.getAttribute("data-ij"), false);
+  });
+
+  const exBox = document.getElementById("mEx");
+  EXAMPLES.forEach(ex => {
+    const bt = document.createElement("button");
+    bt.textContent = ex[0];
+    bt.addEventListener("click", () => { fac.A = ex[1].map(T); fac.B = ex[2].map(T); buildAll(); });
+    exBox.appendChild(bt);
+  });
+
+  document.getElementById("mSwap").addEventListener("click", () => { const t = fac.A; fac.A = fac.B; fac.B = t; buildAll(); });
+  document.getElementById("mRandom").addEventListener("click", () => {
+    const ra = 11 + Math.floor(Math.random() * 89);
+    const rb = Math.random() < 0.5 ? 2 + Math.floor(Math.random() * 8) : 11 + Math.floor(Math.random() * 39);
+    fac.A = splitPlaces(ra);
+    fac.B = splitPlaces(rb);
+    buildAll();
+  });
+  document.getElementById("mGrid").addEventListener("change", render);
+  document.getElementById("mLabels").addEventListener("change", render);
+
+  buildAll();
+})();
+
+/* ===== Auf Stufenzahl erweitern ===== */
+(function () {
+  const MAXZ = 9999, MAXN = 999;
+  let st = { z: 3, n: 8 };
+  let shown = 0;       // Index des zuletzt gezeigten Schritts
+  let steps = [];
+
+  const gcd2 = (a, b) => b === 0 ? a : gcd2(b, a % b);
+  const fr = (z, n) => '<span class="ufrac"><s>' + z + "</s><i></i><s>" + n + "</s></span>";
+  const col = (cls, h) => '<span class="' + cls + '">' + h + "</span>";
+  const pot = k => "10" + (k > 1 ? "<sup>" + k + "</sup>" : "");
+  const zerl = (m, pf) => m === 1 ? "Der Nenner ist 1." : pf.length === 1 ? m + " ist eine Primzahl, sein einziger Primfaktor ist " + pf[0] + "." : "Zerlegung des Nenners: " + m + " = " + pf.join(" · ") + ".";
+
+  function primes(m) {
+    const out = [];
+    let d = 2;
+    while (m > 1) {
+      while (m % d === 0) { out.push(d); m /= d; }
+      d++;
+    }
+    return out;
+  }
+
+  // Dezimaldarstellung von num / 10^k als Text (deutsches Komma)
+  function dec(num, k) {
+    let s = String(num);
+    while (s.length <= k) s = "0" + s;
+    let a = s.slice(0, s.length - k), b = s.slice(s.length - k).replace(/0+$/, "");
+    return b ? a + "," + b : a;
+  }
+
+  function strip(num, den, cls, color) {
+    let h = '<div class="row" style="--c:' + color + ';--lw:96px"><div class="label ' + cls + '">' + num + "/" + den + '</div><div class="strip">';
+    if (den <= 100) {
+      for (let i = 0; i < den; i++) h += '<div class="cell' + (i < num ? " on" : "") + '"></div>';
+    } else {
+      const pct = Math.max(0, Math.min(100, num / den * 100));
+      h += '<div style="height:100%;width:' + pct.toFixed(3) + '%;background:linear-gradient(180deg, color-mix(in srgb, var(--c) 100%, #fff 25%), var(--c) 55%, color-mix(in srgb, var(--c) 80%, #000))"></div>';
+    }
+    return h + "</div></div>";
+  }
+
+  function build() {
+    const z = st.z, n = st.n;
+    const out = [];
+    const g = gcd2(z, n);
+    const zz = z / g, nn = n / g;
+    const pf = primes(nn);
+    const possible = pf.every(p => p === 2 || p === 5);
+
+    out.push({
+      t: "Aufgabe",
+      h: '<div class="ubig">Erweitere ' + col("uorig", fr(z, n)) + ' auf einen Bruch mit einer Stufenzahl im Nenner.</div>' +
+        '<div class="utext">Stufenzahlen sind 10, 100, 1000, 10000, ... Erweitern heißt: Zähler und Nenner mit derselben Zahl multiplizieren. ' +
+        "Der Wert des Bruchs ändert sich dabei nicht.</div>"
+    });
+
+    if (g > 1) {
+      out.push({
+        t: "Erst kürzen",
+        h: '<div class="utext">Zähler und Nenner haben den gemeinsamen Teiler <b>' + g + '</b>. Man kürzt zuerst, dann ist der Nenner kleiner und leichter zu prüfen:</div>' +
+          '<div class="ubig">' + col("uorig", fr(z, n)) + " = " + fr(z + " : " + g, n + " : " + g) + " = " + col("uorig", fr(zz, nn)) + "</div>"
+      });
+    }
+
+    const kmax = possible ? 12 : 3;
+    let found = 0;
+    for (let k = 1; k <= kmax; k++) {
+      const S = Math.pow(10, k);
+      const q = Math.floor(S / nn), r = S % nn;
+      const first = k === 1;
+      let h = '<div class="utext">' + (first ? "Passt der Nenner <b>" + nn + "</b> in eine Stufenzahl? Teste der Reihe nach, ob die Stufenzahl durch " + nn + " teilbar ist.<br>" : "") +
+        "<b>" + S + " : " + nn + "</b> = " + q + (r ? " Rest " + r + ' &rarr; <span class="ubad">geht nicht</span>' : ' &rarr; <span class="uok">geht ohne Rest</span>') + "</div>";
+      out.push({ t: "Stufenzahl " + S + " testen", h: h, cls: r ? "" : "good" });
+      if (!r) { found = k; break; }
+    }
+
+    if (!possible) {
+      const bad = pf.filter(p => p !== 2 && p !== 5);
+      const badP = bad.filter((p, i) => bad.indexOf(p) === i);
+      out.push({
+        t: "Das geht nicht",
+        cls: "bad",
+        h: '<div class="utext"><span class="ubad">' + col("uorig", fr(zz, nn)) + " lässt sich nicht auf eine Stufenzahl erweitern.</span><br>" +
+          zerl(nn, pf) + "<br>" +
+          "Jede Stufenzahl ist ein Produkt aus lauter 2 und 5 (zum Beispiel 100 = 2 · 2 · 5 · 5). Der Nenner enthält aber den Primfaktor " +
+          badP.join(" und ") + ", den keine Stufenzahl hat. Deshalb teilt der Nenner nie eine Stufenzahl, egal wie weit man weiterprobiert.</div>" +
+          '<div class="usmall">Folge: Der Bruch ist als Dezimalzahl periodisch, das heißt, die Ziffern wiederholen sich.</div>'
+      });
+      return out;
+    }
+
+    const S = Math.pow(10, found);
+    const f = S / nn;
+    const nz = zz * f;
+
+    out.push({
+      t: "Die passende Stufenzahl ist " + S,
+      h: '<div class="utext">Die kleinste Stufenzahl, die durch ' + nn + " teilbar ist, ist " + col("ustuf", "<b>" + S + "</b>" + (found > 1 ? " (= " + pot(found) + ")" : "")) + ".<br>" +
+        "Warum klappt das? " + (nn === 1 ? "Der Nenner 1 teilt jede Zahl." : pf.length === 1 ? nn + " ist eine Primzahl und hat nur den Primfaktor " + pf[0] + ", den Stufenzahlen auch haben." :
+          nn + " = " + pf.join(" · ") + ", also nur 2 und 5 als Primfaktoren, und die stecken in jeder Stufenzahl.") + "</div>"
+    });
+
+    out.push({
+      t: "Erweiterungszahl berechnen",
+      h: '<div class="utext">Mit welcher Zahl muss man den Nenner multiplizieren, um ' + S + " zu erhalten?</div>" +
+        '<div class="ubig">' + nn + " · ? = " + S + " &nbsp; also &nbsp; " + S + " : " + nn + " = " + col("ufac", f) + "</div>" +
+        '<div class="utext">Die Erweiterungszahl ist ' + col("ufac", "<b>" + f + "</b>") + ".</div>"
+    });
+
+    out.push({
+      t: "Zähler und Nenner mit " + f + " multiplizieren",
+      h: '<div class="ubig">' + col("uorig", fr(zz, nn)) + " = " + fr(zz + " · " + col("ufac", f), nn + " · " + col("ufac", f)) + " = " + col("ures", fr(nz, S)) + "</div>" +
+        '<div class="utext">Der Zähler wird ' + zz + " · " + f + " = " + nz + ", der Nenner wird " + nn + " · " + f + " = " + S + ".</div>"
+    });
+
+    // Ergebnis
+    const decimal = dec(nz, found);
+    const pctNum = nz * 100;
+    const pct = dec(pctNum, found);
+    let res = '<div class="ubig">' + col("uorig", fr(z, n)) + (g > 1 ? " = " + col("uorig", fr(zz, nn)) : "") + " = " + col("ures", fr(nz, S)) + "</div>" +
+      '<div class="utext">Als Dezimalzahl: <b>' + decimal + "</b>. In Prozent: <b>" + pct + " %</b>.</div>";
+    if (z <= n) {
+      res += '<div style="margin-top:8px" class="strips">' + strip(z, n, "uorig", "#e4572e") + strip(nz, S, "ures", "#2e86ab") + "</div>" +
+        '<div class="usmall">Beide Streifen sind gleich lang und gleich weit gefüllt. Nur die Einteilung ist feiner geworden.</div>';
+    }
+    out.push({ t: "Ergebnis", cls: "good", h: res });
+    return out;
+  }
+
+  function validInput() {
+    return Number.isInteger(st.z) && Number.isInteger(st.n) && st.n >= 1 && st.n <= MAXN && st.z >= 0 && st.z <= MAXZ;
+  }
+
+  function renderInputs() {
+    const box = document.getElementById("uInputs");
+    box.innerHTML = '<div class="frac" style="--c:#e4572e"><input type="number" min="0" max="' + MAXZ + '" value="' + (Number.isNaN(st.z) ? "" : st.z) + '" data-k="z">' +
+      '<div class="bar"></div><input type="number" min="1" max="' + MAXN + '" value="' + (Number.isNaN(st.n) ? "" : st.n) + '" data-k="n"></div>';
+    box.querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => {
+      st[inp.dataset.k] = inp.value === "" ? NaN : Number(inp.value);
+      restart();
+    }));
+  }
+
+  function render() {
+    const msg = document.getElementById("uMsg");
+    const host = document.getElementById("uSteps");
+    const nextB = document.getElementById("uNext"), backB = document.getElementById("uBack"), allB = document.getElementById("uAll");
+    if (!validInput()) {
+      msg.className = "note err";
+      msg.textContent = "Bitte einen Zähler von 0 bis " + MAXZ + " und einen Nenner von 1 bis " + MAXN + " als ganze Zahlen eingeben.";
+      host.innerHTML = "";
+      nextB.disabled = backB.disabled = allB.disabled = true;
+      return;
+    }
+    msg.className = "note";
+    msg.textContent = "Gehe die Schritte nacheinander durch. Mit „Nächster Schritt“ wird jeweils der nächste Gedanke aufgedeckt.";
+    steps = build();
+    if (shown > steps.length - 1) shown = steps.length - 1;
+    let h = "";
+    for (let i = 0; i <= shown; i++) {
+      const s = steps[i];
+      h += '<div class="ustep' + (i === shown ? " cur" : "") + (i === shown && s.cls ? " " + s.cls : "") + '"><div class="unum">' + (i + 1) + '</div><div class="ubody"><div class="utitle">' + s.t + "</div>" + s.h + "</div></div>";
+    }
+    host.innerHTML = h;
+    nextB.disabled = shown >= steps.length - 1;
+    allB.disabled = shown >= steps.length - 1;
+    backB.disabled = shown <= 0;
+    const last = host.lastElementChild;
+    if (last && shown > 0 && last.scrollIntoView) last.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function restart() { shown = 0; render(); }
+
+  document.getElementById("uNext").addEventListener("click", () => { shown++; render(); });
+  document.getElementById("uBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
+  document.getElementById("uAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
+  document.getElementById("uRestart").addEventListener("click", restart);
+  document.getElementById("uRandom").addEventListener("click", () => {
+    const pool = [2, 4, 5, 8, 16, 20, 25, 40, 50, 125, 3, 6, 7, 12, 15, 18];
+    const n = pool[Math.floor(Math.random() * pool.length)];
+    st = { z: 1 + Math.floor(Math.random() * Math.max(1, n - 1)), n: n };
+    renderInputs();
+    restart();
+  });
+
+  renderInputs();
+  render();
+})();
 </script>
 </body>
 </html>

@@ -121,6 +121,19 @@
   .ufrac s { text-decoration:none; padding:0 4px; }
   .uok { color:#6fd37c; font-weight:700; }
   .ubad { color:#ff7a6b; font-weight:700; }
+  /* Malkreuz und halbschriftliches Rechnen */
+  .ktitle { font-weight:700; font-size:1.05rem; margin-bottom:8px; }
+  .mk { border-collapse:separate; border-spacing:4px; margin:0 auto; }
+  .mk th, .mk td { text-align:center; padding:8px 14px; min-width:64px; border-radius:6px; font-size:1.3rem; font-weight:700; }
+  .mk th { background: linear-gradient(180deg, #3a3e44, #26292d); color:#e6e8eb; }
+  .mk th.kcorner { background:transparent; color:#aeb4bb; }
+  .mk td.kc { color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.65); cursor:default; }
+  .mk td.ks { background:rgba(255,255,255,.07); color:#c3c8ce; font-weight:600; border:1px dashed #5a5f66; cursor:default; }
+  .mk .hl { outline:3px solid #fff; outline-offset:-3px; }
+  .hline { font-size:1.35rem; line-height:2.1; margin:2px 0 8px; }
+  .hlab { display:block; color:var(--muted); font-size:.9rem; line-height:1.4; }
+  .hr { padding:1px 6px; border-radius:5px; cursor:default; border-bottom:2px dotted #8a9099; white-space:nowrap; }
+  .hr.hl { background:rgba(255,255,255,.2); outline:2px solid rgba(255,255,255,.55); }
   .mc { cursor:default; }
   .mc.hl .cellr { stroke:#fff; stroke-width:3; }
 </style>
@@ -200,6 +213,7 @@
         <label class="opt"><input type="checkbox" id="mGrid"> Einheitsquadrate</label>
         <label class="opt"><input type="checkbox" id="mDots"> Punkte</label>
         <label class="opt"><input type="checkbox" id="mLabels" checked> Rechnung in den Flächen</label>
+        <label class="opt"><input type="checkbox" id="mSums" checked> Summen am Rand des Malkreuzes</label>
       </div>
       <div class="controls" id="mEx" style="margin-bottom:12px"><span class="note">Beispiele:</span></div>
       <div class="mfactors" id="mFactors"></div>
@@ -207,6 +221,13 @@
       <p class="note" id="mMsg"></p>
     </div>
     <div class="card"><div id="mDiagram"></div></div>
+    <div class="card" id="mKreuzCard" hidden>
+      <div class="ktitle">Malkreuz</div>
+      <div style="overflow-x:auto"><div id="mKreuz"></div></div>
+      <div class="ktitle" style="margin-top:14px">Halbschriftlich gerechnet</div>
+      <div id="mHalb"></div>
+      <p class="note" id="mKNote"></p>
+    </div>
     <div class="card"><div id="mEq"></div></div>
   </section>
 </main>
@@ -758,6 +779,7 @@ renderStell();
       msg.textContent = "Bitte nur Summanden wie 12, x, 3x, ab oder a²b eingeben: Zahlen von 1 bis " + MAXC + ", Buchstaben a bis z, Exponenten von 2 bis 9 mit ^ oder ² (zum Beispiel x^2).";
       dia.innerHTML = "";
       eq.innerHTML = "";
+      document.getElementById("mKreuzCard").hidden = true;
       renderVals([]);
       return;
     }
@@ -845,6 +867,58 @@ renderStell();
     s += "</svg>";
     dia.innerHTML = s;
 
+    // Malkreuz und halbschriftliche Rechnung
+    const kCard = document.getElementById("mKreuzCard");
+    if (na > 1 || nb > 1) {
+      kCard.hidden = false;
+      const sums = document.getElementById("mSums").checked && !hasVars;
+      const rowSums = sums && na > 1, colSums = sums && nb > 1;
+      let k = '<table class="mk"><tr><th class="kcorner">·</th>';
+      a.forEach((t, i) => { k += '<th data-col="' + i + '">' + mstr(t) + "</th>"; });
+      if (rowSums) k += '<th class="kcorner">Summe</th>';
+      k += "</tr>";
+      b.forEach((tb2, j) => {
+        k += '<tr><th data-row="' + j + '">' + mstr(tb2) + "</th>";
+        a.forEach((ta2, i) => {
+          k += '<td class="kc" data-ij="' + i + "-" + j + '" style="background:' + color(i, j, nb) + '">' + mstr(mul(ta2, tb2)) + "</td>";
+        });
+        if (rowSums) k += '<td class="ks" data-row="' + j + '">' + (ta * vb[j]) + "</td>";
+        k += "</tr>";
+      });
+      if (colSums) {
+        k += '<tr><th class="kcorner">Summe</th>';
+        a.forEach((t, i) => { k += '<td class="ks" data-col="' + i + '">' + (va[i] * tb) + "</td>"; });
+        if (rowSums) k += '<td class="ks">' + (ta * tb) + "</td>";
+        k += "</tr>";
+      }
+      k += "</table>";
+      document.getElementById("mKreuz").innerHTML = k;
+
+      let hb = "";
+      if (!hasVars) {
+        if (nb > 1) {
+          const termsR = b.map((t, j) => '<span class="hr" data-row="' + j + '">' + ta + " · " + vb[j] + "</span>");
+          const resR = b.map((t, j) => '<span class="hr" data-row="' + j + '">' + (ta * vb[j]) + "</span>");
+          hb += '<div class="hline"><span class="hlab">Zweiten Faktor zerlegen (die Zeilen des Malkreuzes)</span>' +
+            ta + " · " + tb + " = " + termsR.join(" + ") + " = " + resR.join(" + ") + " = <b>" + (ta * tb) + "</b></div>";
+        }
+        if (na > 1) {
+          const termsC = a.map((t, i) => '<span class="hr" data-col="' + i + '">' + va[i] + " · " + tb + "</span>");
+          const resC = a.map((t, i) => '<span class="hr" data-col="' + i + '">' + (va[i] * tb) + "</span>");
+          hb += '<div class="hline"><span class="hlab">Ersten Faktor zerlegen (die Spalten des Malkreuzes)</span>' +
+            ta + " · " + tb + " = " + termsC.join(" + ") + " = " + resC.join(" + ") + " = <b>" + (ta * tb) + "</b></div>";
+        }
+      } else {
+        hb = '<div class="hlab">Das halbschriftliche Rechnen gibt es nur bei reinen Zahlen. Das Malkreuz funktioniert aber auch mit Buchstaben.</div>';
+      }
+      document.getElementById("mHalb").innerHTML = hb;
+      document.getElementById("mKNote").textContent = hasVars
+        ? "Jede Zelle des Malkreuzes gehört zu einer Fläche im Flächenmodell und hat dieselbe Farbe."
+        : "Jede Zelle des Malkreuzes gehört zu einer Fläche im Flächenmodell. Jede Zeile oder Spalte des Malkreuzes ist ein Rechenschritt beim halbschriftlichen Rechnen. Fahre mit der Maus über einen Term, dann siehst du, welche Flächen dazugehören.";
+    } else {
+      kCard.hidden = true;
+    }
+
     // Rechnung
     const cs = (i, j, t) => '<span class="eqc" data-ij="' + i + "-" + j + '" style="color:' + color(i, j, nb) + '">' + t + "</span>";
     const joinAll = fn => {
@@ -896,14 +970,21 @@ renderStell();
   }
 
   // Hervorheben: Fläche und zugehöriger Term gemeinsam
-  const hl = (ij, on) => root.querySelectorAll('[data-ij="' + ij + '"]').forEach(el => el.classList.toggle("hl", on));
+  const HOVER = "[data-ij],[data-row],[data-col]";
+  const selFor = el => {
+    if (el.hasAttribute("data-ij")) return '[data-ij="' + el.getAttribute("data-ij") + '"]';
+    if (el.hasAttribute("data-row")) { const j = el.getAttribute("data-row"); return '[data-row="' + j + '"],[data-ij$="-' + j + '"]'; }
+    const i = el.getAttribute("data-col");
+    return '[data-col="' + i + '"],[data-ij^="' + i + '-"]';
+  };
+  const hl = (el, on) => root.querySelectorAll(selFor(el)).forEach(x => x.classList.toggle("hl", on));
   root.addEventListener("mouseover", ev => {
-    const el = ev.target.closest && ev.target.closest("[data-ij]");
-    if (el) hl(el.getAttribute("data-ij"), true);
+    const el = ev.target.closest && ev.target.closest(HOVER);
+    if (el) hl(el, true);
   });
   root.addEventListener("mouseout", ev => {
-    const el = ev.target.closest && ev.target.closest("[data-ij]");
-    if (el) hl(el.getAttribute("data-ij"), false);
+    const el = ev.target.closest && ev.target.closest(HOVER);
+    if (el) hl(el, false);
   });
 
   const exBox = document.getElementById("mEx");
@@ -925,6 +1006,7 @@ renderStell();
   document.getElementById("mGrid").addEventListener("change", render);
   document.getElementById("mDots").addEventListener("change", render);
   document.getElementById("mLabels").addEventListener("change", render);
+  document.getElementById("mSums").addEventListener("change", render);
 
   buildAll();
 })();

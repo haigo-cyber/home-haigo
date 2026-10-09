@@ -191,6 +191,7 @@
         <button id="mRandom">Zufallsaufgabe</button>
         <button id="mSwap">Faktoren tauschen</button>
         <label class="opt"><input type="checkbox" id="mGrid"> Einheitsquadrate</label>
+        <label class="opt"><input type="checkbox" id="mDots"> Punkte</label>
         <label class="opt"><input type="checkbox" id="mLabels" checked> Rechnung in den Flächen</label>
       </div>
       <div class="controls" id="mEx" style="margin-bottom:12px"><span class="note">Beispiele:</span></div>
@@ -205,7 +206,7 @@
 
 <script>
 const COLORS = ["#e4572e","#2e86ab","#3fa34d","#f2a900","#8e5bd1","#d6336c","#1aa6a6","#7a5c3e"];
-const MAXN = 24, MAXFRAC = 8, LIMIT = 60;
+const MAXN = 100, MAXFRAC = 8, LIMIT = 100;
 let fracs = [];
 let nextId = 1;
 
@@ -260,7 +261,9 @@ function renderView() {
   const L = ok.reduce((a, f) => a / gcd(a, f.n) * f.n, 1);
   const wantSame = document.getElementById("same").checked && ok.length > 0;
   const useSame = wantSame && L <= LIMIT;
-  if (wantSame && !useSame) {
+  if (bad.length) {
+    // Fehlermeldung zu ungültigen Brüchen bleibt stehen
+  } else if (wantSame && !useSame) {
     msg.className = "note err";
     msg.textContent = "Der Hauptnenner ist " + L + " und damit größer als " + LIMIT + ". Dafür sind die Streifen nicht mehr sinnvoll darstellbar, deshalb zeige ich die Originalbrüche.";
   } else if (useSame) {
@@ -277,7 +280,8 @@ function renderView() {
     const dz = useSame ? f.z * (L / f.n) : f.z;
     const dec = showDec ? "<small>" + (f.z / f.n).toLocaleString("de-DE", { maximumFractionDigits: 3 }) + "</small>" : "";
     const lab = useSame
-      ? f.z + "/" + f.n + " = " + dz + "/" + dn + "<small>erweitert mit " + (L / f.n) + "</small>" + dec
+      ? (L === f.n ? f.z + "/" + f.n + "<small>bleibt gleich</small>" + dec
+        : f.z + "/" + f.n + " = " + dz + "/" + dn + "<small>erweitert mit " + (L / f.n) + "</small>" + dec)
       : f.z + "/" + f.n + dec;
     row.innerHTML = '<div class="label">' + lab + "</div>";
     const strip = document.createElement("div");
@@ -700,11 +704,16 @@ renderStell();
     const ta = va.reduce((x, y) => x + y, 0), tb = vb.reduce((x, y) => x + y, 0);
     const wantGrid = document.getElementById("mGrid").checked;
     const labels = document.getElementById("mLabels").checked;
-    const grid = wantGrid && !hasVars && ta <= 30 && tb <= 30;
+    const wantDots = document.getElementById("mDots").checked;
+    const MAXG = 50;
+    const unitOk = !hasVars && ta <= MAXG && tb <= MAXG;
+    const grid = wantGrid && unitOk;
+    const dots = wantDots && unitOk;
+    const unit = grid || dots;
     const u = Math.min(GW / ta, GH / tb, UMAX);
     let clamped = false;
-    const wA = va.map(v => { const w = v * u; if (!grid && w < MINW) { clamped = true; return MINW; } return w; });
-    const hB = vb.map(v => { const h = v * u; if (!grid && h < MINH) { clamped = true; return MINH; } return h; });
+    const wA = va.map(v => { const w = v * u; if (!unit && w < MINW) { clamped = true; return MINW; } return w; });
+    const hB = vb.map(v => { const h = v * u; if (!unit && h < MINH) { clamped = true; return MINH; } return h; });
     const xs = [], ys = [];
     let x = 0, y = 0;
     wA.forEach(w => { xs.push(x); x += w; });
@@ -743,6 +752,14 @@ renderStell();
           for (let k = 1; k < va[i]; k++) d += "M" + n1(cx + k * u) + "," + n1(cy) + "V" + n1(cy + h);
           for (let k = 1; k < vb[j]; k++) d += "M" + n1(cx) + "," + n1(cy + k * u) + "H" + n1(cx + w);
           s += '<path d="' + d + '" stroke="rgba(255,255,255,.45)" stroke-width="1" fill="none"/>';
+        }
+        if (dots) {
+          const r = Math.max(1, Math.min(u * 0.22, 4.5));
+          let cc = "";
+          for (let k = 0; k < va[i]; k++) for (let m = 0; m < vb[j]; m++) {
+            cc += '<circle cx="' + n1(cx + (k + 0.5) * u) + '" cy="' + n1(cy + (m + 0.5) * u) + '" r="' + n1(r) + '"/>';
+          }
+          s += '<g fill="rgba(255,255,255,.9)" stroke="rgba(0,0,0,.35)" stroke-width="0.5">' + cc + "</g>";
         }
         if (labels) {
           if (h >= 40 && w >= l1.length * 6.8 + 14 && w >= l2.length * 10 + 10) {
@@ -802,7 +819,7 @@ renderStell();
     let note = "Jede Teilfläche ist ein Teilprodukt. Fahre mit der Maus über eine Fläche oder einen Term der Rechnung, dann werden beide markiert.";
     if (na === 1 && nb === 1) note = "Zerlege mindestens einen Faktor in eine Summe, bei Zahlen zum Beispiel mit „nach Stellenwerten“. Dann siehst du das Distributivgesetz.";
     if (hasVars) note += " Buchstaben werden mit einem Zeichenwert gezeichnet, die Flächen sind deshalb nur ungefähr im Verhältnis.";
-    if (wantGrid && !grid) note += hasVars ? " Einheitsquadrate gibt es nur bei reinen Zahlen." : " Einheitsquadrate gibt es nur bis 30 · 30, hier werden die Flächen als Rechtecke gezeigt.";
+    if ((wantGrid || wantDots) && !unit) note += hasVars ? " Einheitsquadrate und Punkte gibt es nur bei reinen Zahlen." : " Einheitsquadrate und Punkte gibt es nur, wenn jeder Faktor höchstens " + MAXG + " ist. Hier werden die Flächen als Rechtecke gezeigt.";
     if (clamped && !hasVars) note += " Damit kleine Teile lesbar bleiben, sind die Flächen nicht maßstabsgetreu.";
     msg.className = "note";
     msg.textContent = note;
@@ -836,6 +853,7 @@ renderStell();
     buildAll();
   });
   document.getElementById("mGrid").addEventListener("change", render);
+  document.getElementById("mDots").addEventListener("change", render);
   document.getElementById("mLabels").addEventListener("change", render);
 
   buildAll();
@@ -997,11 +1015,11 @@ renderStell();
       return;
     }
     msg.className = "note";
-    msg.textContent = "Gehe die Schritte nacheinander durch. Mit „Nächster Schritt“ wird jeweils der nächste Gedanke aufgedeckt.";
+    msg.textContent = "Gehe die Schritte nacheinander durch. Mit „Nächster Schritt“ wird der nächste Gedanke aufgedeckt, der neueste Schritt steht immer oben.";
     steps = build();
     if (shown > steps.length - 1) shown = steps.length - 1;
     let h = "";
-    for (let i = 0; i <= shown; i++) {
+    for (let i = shown; i >= 0; i--) {   // neuester Schritt zuerst
       const s = steps[i];
       h += '<div class="ustep' + (i === shown ? " cur" : "") + (i === shown && s.cls ? " " + s.cls : "") + '"><div class="unum">' + (i + 1) + '</div><div class="ubody"><div class="utitle">' + s.t + "</div>" + s.h + "</div></div>";
     }
@@ -1009,8 +1027,6 @@ renderStell();
     nextB.disabled = shown >= steps.length - 1;
     allB.disabled = shown >= steps.length - 1;
     backB.disabled = shown <= 0;
-    const last = host.lastElementChild;
-    if (last && shown > 0 && last.scrollIntoView) last.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
   function restart() { shown = 0; render(); }

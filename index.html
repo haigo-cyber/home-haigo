@@ -429,6 +429,35 @@
   .ws-fh:hover{color:#fff}
   .ws-fp{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:13px/1.3 inherit;color:var(--text)}
   .ws-fpv{color:var(--muted);padding:2px 4px;cursor:pointer}
+
+  .ws-linkrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .ws-linkrow .ws-in{flex:1 1 180px;min-width:0}
+  .ws-lnkgo{flex:none;color:var(--amber);font-size:13px;font-weight:600;text-decoration:none;border:1px solid rgba(255,176,32,.45);border-radius:8px;padding:6px 10px}
+
+  .ws-wkbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 8px}
+  .ws-wklabel{font:700 13px var(--mono);flex:1;text-align:center;min-width:150px}
+  .ws-wksel{background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:8px;font-size:14px;max-width:48%}
+  .ws-wkq{flex:1 1 120px;min-width:0;padding:8px;font-size:16px}
+  .ws-wkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;padding-bottom:6px;align-items:start}
+  .ws-wkcol{background:#101216;border:1px solid #2c3037;border-radius:10px;padding:6px;min-height:120px;display:flex;flex-direction:column;gap:6px}
+  .ws-wkcol.today{border-color:var(--amber)}
+  .ws-wkcol.pool{border-style:dashed}
+  .ws-wkcol.over{background:#1a2230;border-color:#5b8def}
+  .ws-wkhead{font:700 12px var(--mono);color:var(--muted);display:flex;gap:6px;align-items:center}
+  .ws-wkhead.today{color:var(--amber)} .ws-wkhead.over{color:var(--red)}
+  .ws-wkn{background:#1d2026;border-radius:999px;padding:1px 7px;font-size:11px}
+  .ws-wkcard{background:#14161a;border:1px solid #2c3037;border-radius:8px;padding:5px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .ws-wkcard.done .ws-wkin{text-decoration:line-through;color:#6d737e}
+  .ws-wkcard.over{border-color:var(--red)}
+  .ws-wkin{flex:1 1 90px;min-width:0;padding:5px 6px;font-size:14px}
+  .ws-wkmeta{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding-left:2px}
+  .ws-wkchip{font:600 11px var(--mono);color:var(--muted);background:#101216;border:1px solid #2c3037;border-radius:999px;padding:1px 6px}
+  .ws-wkchip.over{color:var(--red);border-color:var(--red)} .ws-wkchip.tg{color:var(--amber)}
+  .ws-wkdoc{font-size:11px;color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ws-wkadd{padding:6px;font-size:14px}
+  .ws-wkover{background:#101216;border:1px solid var(--red);border-radius:10px;padding:6px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
+  .ws-wkdayhint{font:600 11px var(--mono);color:var(--red)}
+  @media(max-width:700px){ .ws-wkgrid{grid-template-columns:1fr} .ws-wksel{max-width:100%} }
 </style>
 </head>
 <body>
@@ -3190,21 +3219,25 @@ function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapse
 /* Anhang an einem Punkt: Text (auch als Notiz nutzbar) oder Tabelle; trägt wie ein Punkt Datum, Erledigt-Haken und Verknüpfung */
 function wsNewAtt(type){
   const a = {id:wsId(), type:type, title:"", done:false, date:"", link:null};
-  if(type==="table"){ a.cols = ["Spalte 1","Spalte 2"]; a.rows = [["",""],["",""]]; } else a.text = "";
+  if(type==="table"){ a.cols = ["Spalte 1","Spalte 2"]; a.rows = [["",""],["",""]]; }
+  else if(type==="link") a.url = "";
+  else a.text = "";
   return a;
 }
-function wsIsAtt(x){ return !!x && !Array.isArray(x.children) && typeof x.done==="boolean" && (x.type==="text" || x.type==="table"); }   // Blöcke haben kein done
+function wsIsAtt(x){ return !!x && !Array.isArray(x.children) && typeof x.done==="boolean" && (x.type==="text" || x.type==="table" || x.type==="link"); }   // Blöcke haben kein done
 function wsTitleOf(x){
   if(!x) return "";
   if(!wsIsAtt(x)) return (x.text||"").trim();
   if((x.title||"").trim()) return x.title.trim();
+  if(x.type==="link") return (x.url||"").trim().slice(0,80);
   return x.type==="text" ? (x.text||"").trim().split("\n")[0].slice(0,80) : "";
 }
 function wsSetTitle(x, v){ if(wsIsAtt(x)) x.title = v; else x.text = v; }
 function wsNormAtt(a){
-  if(!a || typeof a!=="object" || (a.type!=="text" && a.type!=="table")) return null;
+  if(!a || typeof a!=="object" || (a.type!=="text" && a.type!=="table" && a.type!=="link")) return null;
   const o = {id:a.id||wsId(), type:a.type, title:String(a.title||""), done:!!a.done, date:wsIsDate(a.date)?a.date:"", link:wsNormLink(a.link)};
   if(a.type==="text") o.text = String(a.text||"");
+  else if(a.type==="link") o.url = String(a.url||"").trim().slice(0,2000);
   else{
     o.cols = (Array.isArray(a.cols) && a.cols.length) ? a.cols.map(String) : ["Spalte 1"];
     o.rows = (Array.isArray(a.rows)?a.rows:[]).map(r=>{ const row=(Array.isArray(r)?r:[]).map(String); while(row.length<o.cols.length) row.push(""); return row.slice(0,o.cols.length); });
@@ -3538,7 +3571,7 @@ function wsNodeMatch(n, f, today, eff){
   }
   if(f.q){
     const q = f.q.toLowerCase();
-    let hay = (n.text||"")+" "+(n.att||[]).map(a=>(a.title||"")+" "+(a.text||"")).join(" ");
+    let hay = (n.text||"")+" "+(n.att||[]).map(a=>(a.title||"")+" "+(a.text||"")+" "+(a.url||"")).join(" ");
     if(!hay.toLowerCase().includes(q)) return false;
   }
   return true;
@@ -3639,6 +3672,55 @@ function wsDocUrgKey(doc){
   let best = "";
   doc.blocks.forEach(b=>{ if(b.type==="outline") b.items.forEach(n=>{ const k = wsUrgKey(n); if(k && (!best || k<best)) best = k; }); });
   return best;
+}
+
+/* ---- Links (rein): nur http, https und mailto werden zu anklickbaren Adressen ---- */
+function wsNormUrl(u){
+  u = String(u||"").trim();
+  if(!u) return "";
+  if(/^(https?:\/\/|mailto:)\S+$/i.test(u)) return u;
+  if(/^[a-z][a-z0-9+.-]*:/i.test(u)) return "";                 // andere Schemata (javascript: usw.) nie
+  if(/^[^\s\/@]+\.[a-z]{2,}(\/\S*)?$/i.test(u)) return "https://"+u;
+  return "";
+}
+
+/* ---- Wochenübersicht (rein) ---- */
+function wsMonday(d){
+  const t = new Date(+d.slice(0,4), +d.slice(5,7)-1, +d.slice(8,10));
+  return wsAddDays(d, -((t.getDay()+6)%7));
+}
+function wsKW(d){
+  const t = new Date(Date.UTC(+d.slice(0,4), +d.slice(5,7)-1, +d.slice(8,10)));
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay()+6)%7) + 3);                 // Donnerstag der Woche
+  const j4 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  return 1 + Math.round(((t - j4)/86400000 - 3 + ((j4.getUTCDay()+6)%7)) / 7);
+}
+/* Aufgaben für die Woche: Blätter und alle terminierten Punkte; Tag = Tag der Verknüpfung (Deadline-Tag) oder Start */
+function wsWeekTasks(docs, o){
+  const days = []; for(let i=0;i<7;i++) days.push(wsAddDays(o.start, i));
+  const byDay = {}; days.forEach(d=>{ byDay[d] = []; });
+  const pool = [], overdue = [];
+  const em = wsEffTags(docs), q = (o.q||"").trim().toLowerCase();
+  const showOver = o.start >= wsMonday(o.today);
+  docs.forEach(doc=>{
+    if(o.doc && o.doc!=="all" && doc.id!==o.doc) return;
+    wsAllNodes(doc).forEach(n=>{
+      if(n.hid || !(n.text||"").trim()) return;
+      const day = wsLinkDay(n);
+      if(!(n.children.length===0 || day)) return;
+      if(!wsTagMatch(em.get(n.id), o.tag||"")) return;
+      if(q && !n.text.toLowerCase().includes(q)) return;
+      const it = {doc, node:n, day};
+      if(n.done){ if(o.showDone && day && byDay[day]) byDay[day].push(it); return; }
+      if(!day){ pool.push(it); return; }
+      if(byDay[day]) byDay[day].push(it);
+      else if(showOver && day<o.today && day<days[0]) overdue.push(it);
+    });
+  });
+  days.forEach(d=>{ byDay[d] = byDay[d].map((x,i)=>({x,i})).sort((a,b)=>(a.x.node.done?1:0)-(b.x.node.done?1:0) || a.i-b.i).map(z=>z.x); });
+  overdue.sort((a,b)=>a.day<b.day?-1:a.day>b.day?1:0);
+  const keyed = pool.map((x,i)=>({x,i,k:wsUrgKey(x.node)})).sort((a,b)=>(a.k?0:1)-(b.k?0:1) || (a.k<b.k?-1:a.k>b.k?1:0) || a.i-b.i);
+  return {days, byDay, pool:keyed.map(z=>z.x), overdue};
 }
 /* WS-PURE-END */
 
@@ -3810,7 +3892,10 @@ function wsTableBody(b, drag){
 function wsAttHtml(a){
   const open = wsFoldOpen(a.id, a.type);
   const body = !open
-    ? `<div class="ws-fp ws-fpv">${a.type==="text" ? (esc(wsFirstLine(a.text)) || "(leer)") : "Tabelle · "+a.rows.length+" Zeilen"}</div>`
+    ? `<div class="ws-fp ws-fpv">${a.type==="text" ? (esc(wsFirstLine(a.text)) || "(leer)") : a.type==="link" ? (esc(a.url) || "(kein Link)") : "Tabelle · "+a.rows.length+" Zeilen"}</div>`
+    : a.type==="link"
+      ? `<div class="ws-linkrow"><input type="url" class="ws-in" data-wsf="aurl" value="${esc(a.url)}" placeholder="https://…" inputmode="url" autocapitalize="off" autocomplete="off">
+          <a class="ws-lnkgo" target="_blank" rel="noopener noreferrer" href="${esc(wsNormUrl(a.url)||"#")}"${wsNormUrl(a.url)?"":' style="display:none"'}>Öffnen ↗</a></div>`
     : a.type==="text"
       ? `<textarea class="ws-in ws-ta" data-wsf="atext" rows="1" placeholder="Text oder Notiz">${esc(a.text)}</textarea>`
       : wsTableBody(a, false);
@@ -3818,7 +3903,7 @@ function wsAttHtml(a){
     <div class="ws-arow">
       <button class="ws-tog" data-wsact="fold" title="${open?"Einklappen":"Aufklappen"}">${open?"▾":"▸"}</button>
       <button class="ws-chk${a.done?" on":""}" data-wsact="done" title="Erledigt">${a.done?"✓":""}</button>
-      <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":"Titel der Tabelle"}">
+      <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":a.type==="link"?"Bezeichnung des Links (optional)":"Titel der Tabelle"}">
       <span class="ws-nright">${wsNodeChips(a)}<button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
     </div>
     <div class="ws-abody"${open?"":' data-wsact="fold"'}>${body}</div>
@@ -3826,7 +3911,7 @@ function wsAttHtml(a){
 }
 function wsAttsHtml(n){
   return `<div class="ws-atts">${n.att.map(wsAttHtml).join("")}
-    <div class="ws-add"><button class="ws-addbtn" data-wsact="add-att" data-type="text">+ Text / Notiz</button><button class="ws-addbtn" data-wsact="add-att" data-type="table">+ Tabelle</button></div></div>`;
+    <div class="ws-add"><button class="ws-addbtn" data-wsact="add-att" data-type="text">+ Text / Notiz</button><button class="ws-addbtn" data-wsact="add-att" data-type="table">+ Tabelle</button><button class="ws-addbtn" data-wsact="add-att" data-type="link">+ Link</button></div></div>`;
 }
 function wsNodeHtml(n, depth, inh){
   depth = depth||0;
@@ -4017,13 +4102,205 @@ function wsOldNotesHtml(){
   }
   return h;
 }
+
+/* ============ WOCHENÜBERSICHT ============ */
+let wsWk = (()=>{ try{ const o = JSON.parse(localStorage.getItem("wsWk")||"null")||{}; return {doc:String(o.doc||"all"), q:String(o.q||""), showDone:o.showDone!==false}; }catch(e){ return {doc:"all", q:"", showDone:true}; } })();
+let wsWkStart = null, wsPoolAll = false, wsWkDrag = null;
+function wsWkSave(){ try{ localStorage.setItem("wsWk", JSON.stringify(wsWk)); }catch(e){} }
+function wsWkMonday(){ if(!wsWkStart) wsWkStart = wsMonday(todayKey()); return wsWkStart; }
+function wsWkData(){ return wsWeekTasks(wsDocs, {start:wsWkMonday(), today:todayKey(), doc:wsWk.doc, tag:wsF.tag==="!none"?"!none":wsF.tag, q:wsWk.q, showDone:wsWk.showDone}); }
+function wsWkCardHtml(it, em){
+  const n = it.node, today = todayKey();
+  const chips = [];
+  if(n.dl) chips.push(`<span class="ws-wkchip${n.dl<today&&!n.done?" over":""}">⚑ ${esc(wsShortDate(n.dl))}</span>`);
+  if(n.dur>1) chips.push(`<span class="ws-wkchip">+${n.dur}T</span>`);
+  if(n.link) chips.push(`<span class="ws-wkchip">${n.link.kind==="goal"?"🎯":"☑"}</span>`);
+  const eff = em.get(n.id); if(eff) chips.push(`<span class="ws-wkchip tg">🏷 ${esc(eff)}</span>`);
+  return `<div class="ws-wkcard${n.done?" done":""}${it.day&&it.day<today&&!n.done?" over":""}" data-did="${it.doc.id}" data-nid="${n.id}">
+    <span class="ws-handle sm" draggable="true" data-wkdrag="1" title="Ziehen: auf einen anderen Tag oder in den Taskpool">⠿</span>
+    <button class="ws-chk${n.done?" on":""}" data-wsact="wk-done" title="Erledigt">${n.done?"✓":""}</button>
+    <input type="text" class="ws-in ws-wkin" data-wk="text" value="${esc(n.text)}">
+    <div class="ws-wkmeta">${chips.join("")}<span class="ws-wkdoc">${esc(it.doc.title||"Ohne Titel")}</span>
+      <button class="ws-mini" data-wsact="wk-move" title="Auf anderen Tag verschieben">⇄</button>
+      <button class="ws-mini" data-wsact="wk-open" title="Im Dokument öffnen">↗</button></div>
+  </div>`;
+}
+function wsWeekHtml(){
+  if(!wsLoaded) return `<div class="empty">Der Arbeitsbereich ist nicht geladen.</div>`;
+  const D = wsWkData(), em = wsEffTags(wsDocs), today = todayKey();
+  const first = D.days[0], last = D.days[6];
+  const label = "KW "+wsKW(first)+" · "+first.slice(8,10)+"."+first.slice(5,7)+". bis "+last.slice(8,10)+"."+last.slice(5,7)+".";
+  const opts = [`<option value="all">Alle Dokumente</option>`].concat(wsDocs.map(d=>`<option value="${esc(d.id)}"${wsWk.doc===d.id?" selected":""}>${esc(d.title||"Ohne Titel")}</option>`)).join("");
+  let h = wsTagBarHtml();
+  h += `<div class="ws-wkbar">
+    <button class="ws-tb" data-wsact="wk-prev" title="Vorige Woche">◀</button>
+    <span class="ws-wklabel">${label}</span>
+    <button class="ws-tb" data-wsact="wk-next" title="Nächste Woche">▶</button>
+    <button class="ws-tb" data-wsact="wk-today">Heute</button>
+  </div>
+  <div class="ws-wkbar">
+    <select id="wsWkDoc" class="ws-wksel">${opts}</select>
+    <input type="search" id="wsWkQ" data-wkq="1" class="ws-in ws-wkq" value="${esc(wsWk.q)}" placeholder="Suche">
+    <button class="ws-fc${wsWk.showDone?" on":""}" data-wsact="wk-showdone">Erledigte zeigen</button>
+  </div>`;
+  if(D.overdue.length){
+    h += `<div class="ws-wkover"><div class="ws-wkhead over">⚠ Überfällig (${D.overdue.length})</div>${D.overdue.map(it=>`<div class="ws-wkdayhint">${esc(wsShortDate(it.day))}</div>`+wsWkCardHtml(it, em)).join("")}</div>`;
+  }
+  h += `<div class="ws-wkgrid">`;
+  D.days.forEach(d=>{
+    const list = D.byDay[d], isT = d===today;
+    h += `<div class="ws-wkcol${isT?" today":""}" data-wkday="${d}">
+      <div class="ws-wkhead${isT?" today":""}">${esc(wsShortDate(d))}${list.length?` <span class="ws-wkn">${list.filter(x=>!x.node.done).length}</span>`:""}</div>
+      ${list.map(it=>wsWkCardHtml(it, em)).join("")}
+      <input type="text" class="ws-in ws-wkadd" data-wkadd="${d}" placeholder="+ Aufgabe">
+    </div>`;
+  });
+  const LIM = 40, pl = wsPoolAll ? D.pool : D.pool.slice(0, LIM);
+  h += `<div class="ws-wkcol pool" data-wkday="">
+      <div class="ws-wkhead pool">Taskpool <span class="ws-wkn">${D.pool.length}</span></div>
+      ${pl.map(it=>wsWkCardHtml(it, em)).join("")}
+      ${D.pool.length>LIM&&!wsPoolAll?`<button class="ws-addbtn" data-wsact="wk-pool-all">${D.pool.length-LIM} weitere zeigen</button>`:""}
+      <input type="text" class="ws-in ws-wkadd" data-wkadd="" placeholder="+ Aufgabe ohne Termin">
+    </div></div>`;
+  const tgt = wsWeekTargetDoc();
+  h += `<div class="ws-meta" style="margin-top:8px">Neue Aufgaben landen in: ${esc(tgt?tgt.title||"Ohne Titel":"neuem Dokument Aufgaben")}. Ziehen am ⠿ oder ⇄ verschiebt auf einen anderen Tag, in den Taskpool nur ohne ToDo/Ziel-Verknüpfung.</div>`;
+  return h;
+}
+function wsWeekTargetDoc(){
+  if(wsWk.doc!=="all"){ const d = wsGet(wsWk.doc); if(d) return d; }
+  return wsPinned() || wsDocs[0] || null;
+}
+function wsWeekAdd(text, day){
+  text = String(text||"").trim(); if(!text || !wsLoaded) return false;
+  let doc = wsWeekTargetDoc();
+  if(!doc){ doc = wsNewDoc("Aufgaben"); wsDocs.push(doc); }
+  let block = doc.blocks.find(b=>b.type==="outline");
+  if(!block){ block = wsNewBlock("outline"); block.items = []; doc.blocks.push(block); }
+  const n = wsNewNode(text); n.date = day||"";
+  if(wsF.tag && wsF.tag!=="!none"){
+    const disp = wsAllTags(wsDocs).find(t=>wsTagKey(t)===wsF.tag);
+    const beff = wsBlockTags(doc)[block.id] || "";
+    if(disp && wsTagKey(beff)!==wsF.tag) n.tag = disp;
+  }
+  block.items.push(n); wsTouch(doc);
+  return doc;
+}
+async function wsMoveTask(docId, nid, day){
+  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r) return;
+  const n = r.node, L = n.link, today = todayKey();
+  if(!day){
+    if(L){ toast("Mit ToDo/Ziel verknüpft: braucht einen Tag. Erst die Verknüpfung lösen."); return; }
+    n.date = ""; n.ld = ""; wsTouch(doc); render(); return;
+  }
+  if(L){
+    if(L.kind==="goal" && day!==wsLinkDay(n)){
+      if(day<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
+      if(wsGoalCount(day)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag am "+wsShortDate(day)); return; }
+    }
+    if(n.ld || n.dl) n.ld = day; else n.date = day;
+  }else{ n.date = day; n.ld = ""; }
+  wsTouch(doc); render();
+  if(L) wsLinkRun(()=>wsSyncItem(doc, n, L.cal));
+}
+function wsOpenMoveMenu(docId, nid){
+  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r || document.getElementById("modalBg")) return;
+  const days = wsWkData().days, cur = wsLinkDay(r.node);
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>${esc(r.node.text||"Aufgabe")}</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">Auf welchen Tag?</p>
+      <div class="ws-frow" style="margin-bottom:12px">${days.map(d=>`<button class="ws-fc${d===cur?" on":""}" data-day="${d}">${esc(wsShortDate(d))}</button>`).join("")}
+        <button class="ws-fc${!cur?" on":""}" data-day="">Taskpool</button></div>
+      <label>Anderes Datum</label><input type="date" id="wsm_date" value="${esc(cur)}">
+      <div class="modal-actions"><button class="btn-ghost" id="wsm_cancel">Abbrechen</button><button class="btn-primary" id="wsm_ok">Datum setzen</button></div>
+    </div></div>`);
+  const close = ()=>{ const mb = $("modalBg"); if(mb) mb.remove(); };
+  $("wsm_cancel").onclick = close;
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+  document.querySelectorAll("#modalBg [data-day]").forEach(b=>{ b.onclick = ()=>{ close(); wsMoveTask(docId, nid, b.dataset.day); }; });
+  $("wsm_ok").onclick = ()=>{ const v = $("wsm_date").value; close(); if(wsIsDate(v)) wsMoveTask(docId, nid, v); };
+}
+let wsWkQTimer = null;
+main.addEventListener("input", e=>{
+  const el = e.target; if(!(el.dataset && el.dataset.wkq)) return;
+  clearTimeout(wsWkQTimer);
+  wsWkQTimer = setTimeout(()=>{ wsWk.q = el.value; wsWkSave(); wsFocusSel = "#wsWkQ"; render(); }, 350);
+});
+main.addEventListener("change", e=>{
+  const el = e.target;
+  if(el.id==="wsWkDoc"){ wsWk.doc = el.value; wsWkSave(); render(); return; }
+  if(el.dataset && el.dataset.wk==="text"){
+    const card = el.closest(".ws-wkcard"), doc = card && wsGet(card.dataset.did), r = doc && wsFindNode(doc, card.dataset.nid); if(!r) return;
+    r.node.text = el.value; wsTouch(doc);
+    if(r.node.link) wsLinkRun(()=>wsSyncItem(doc, r.node, r.node.link.cal));
+  }
+});
+main.addEventListener("keydown", e=>{
+  const el = e.target;
+  if(e.key==="Enter" && el.dataset && el.dataset.wkadd!==undefined){
+    e.preventDefault();
+    const day = el.dataset.wkadd, doc = wsWeekAdd(el.value, day);
+    if(doc){ wsFocusSel = '.ws-wkadd[data-wkadd="'+day+'"]'; render(); }
+  }
+});
+main.addEventListener("dragstart", e=>{
+  const h = e.target.closest && e.target.closest("[data-wkdrag]"); if(!h) return;
+  const card = h.closest(".ws-wkcard"); if(!card) return;
+  wsWkDrag = {did:card.dataset.did, nid:card.dataset.nid, el:card};
+  e.dataTransfer.effectAllowed = "move";
+  try{ e.dataTransfer.setData("text/plain", "wk"); e.dataTransfer.setDragImage(card, 12, 12); }catch(_){}
+  setTimeout(()=>{ if(wsWkDrag) card.classList.add("ws-dragging"); }, 0);
+});
+main.addEventListener("dragover", e=>{
+  if(!wsWkDrag) return;
+  const col = e.target.closest && e.target.closest(".ws-wkcol"); if(!col) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = "move";
+  document.querySelectorAll(".ws-wkcol.over").forEach(x=>{ if(x!==col) x.classList.remove("over"); });
+  col.classList.add("over");
+});
+main.addEventListener("drop", e=>{
+  if(!wsWkDrag) return;
+  const col = e.target.closest && e.target.closest(".ws-wkcol"); if(!col) return;
+  e.preventDefault();
+  const d = wsWkDrag; wsWkDrag = null;
+  document.querySelectorAll(".ws-wkcol.over,.ws-dragging").forEach(x=>x.classList.remove("over","ws-dragging"));
+  wsMoveTask(d.did, d.nid, col.dataset.wkday);
+});
+main.addEventListener("dragend", ()=>{
+  if(!wsWkDrag) return;
+  wsWkDrag = null; document.querySelectorAll(".ws-wkcol.over,.ws-dragging").forEach(x=>x.classList.remove("over","ws-dragging"));
+});
+main.addEventListener("click", e=>{
+  const a = e.target.closest("[data-wsact]"); if(!a) return;
+  const act = a.dataset.wsact; if(act.indexOf("wk-")!==0) return;
+  const card = a.closest(".ws-wkcard");
+  if(act==="wk-prev"){ wsWkStart = wsAddDays(wsWkMonday(), -7); render(); return; }
+  if(act==="wk-next"){ wsWkStart = wsAddDays(wsWkMonday(), 7); render(); return; }
+  if(act==="wk-today"){ wsWkStart = wsMonday(todayKey()); render(); return; }
+  if(act==="wk-showdone"){ wsWk.showDone = !wsWk.showDone; wsWkSave(); render(); return; }
+  if(act==="wk-pool-all"){ wsPoolAll = true; render(); return; }
+  if(!card) return;
+  const doc = wsGet(card.dataset.did), r = doc && wsFindNode(doc, card.dataset.nid); if(!r) return;
+  if(act==="wk-done"){
+    r.node.done = !r.node.done; wsTouch(doc); render();
+    if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+    return;
+  }
+  if(act==="wk-move"){ wsOpenMoveMenu(doc.id, r.node.id); return; }
+  if(act==="wk-open"){
+    wsOpenDocId = doc.id; localStorage.setItem("wsOpenDoc", doc.id);
+    wsTab = "docs"; localStorage.setItem("wsTab", "docs"); render();
+  }
+});
 function wsViewHtml(){
   let h = `<div class="seg" style="margin-bottom:12px">
     <button data-wstab="docs" class="${wsTab==="docs"?"sel":""}">Dokumente</button>
+    <button data-wstab="week" class="${wsTab==="week"?"sel":""}">Woche</button>
     <button data-wstab="gantt" class="${wsTab==="gantt"?"sel":""}">Gantt</button>
     <button data-wstab="notes" class="${wsTab==="notes"?"sel":""}">Notizen</button>
   </div>`;
   if(wsTab==="docs") h += wsDocsTabHtml();
+  else if(wsTab==="week") h += wsWeekHtml();
   else if(wsTab==="gantt") h += wsTagBarHtml() + `<div id="wsGanttBox"></div>`;
   else h += wsOldNotesHtml();
   return h;
@@ -4063,6 +4340,11 @@ main.addEventListener("input", e=>{
   else if(f==="text"){ const b = wsBlock(doc, el.closest(".ws-block").dataset.bid); if(b) b.text = el.value; if(el.tagName==="TEXTAREA") wsAutosizeEl(el); }
   else if(f==="node"){ const r = wsFindNode(doc, el.closest(".ws-node").dataset.nid); if(r) r.node.text = el.value; }
   else if(f==="atitle"){ const a = wsFindAny(doc, el.closest(".ws-att").dataset.aid); if(a) a.title = el.value; }
+  else if(f==="aurl"){
+    const a = wsFindAny(doc, el.closest(".ws-att").dataset.aid); if(a) a.url = el.value.trim();
+    const go = el.closest(".ws-att").querySelector(".ws-lnkgo"), nu = wsNormUrl(el.value);
+    if(go){ go.href = nu || "#"; go.style.display = nu ? "" : "none"; }
+  }
   else if(f==="atext"){ const a = wsFindAny(doc, el.closest(".ws-att").dataset.aid); if(a) a.text = el.value; if(el.tagName==="TEXTAREA") wsAutosizeEl(el); }
   else if(f==="col"){ const b = wsTableOf(doc, el); if(b) b.cols[+el.dataset.ci] = el.value; }
   else if(f==="cell"){ const b = wsTableOf(doc, el); if(b && b.rows[+el.dataset.ri]) b.rows[+el.dataset.ri][+el.dataset.ci] = el.value; }
@@ -4085,6 +4367,11 @@ main.addEventListener("change", e=>{
     const docEl = el.closest(".ws-doc"); const doc = docEl ? wsGet(docEl.dataset.doc) : null;
     const a = doc ? wsFindAny(doc, el.closest(".ws-att").dataset.aid) : null;
     if(a && a.link) wsLinkRun(()=>wsSyncItem(doc, a, a.link.cal));
+  }
+  if(el.dataset && el.dataset.wsf==="aurl"){
+    const docEl = el.closest(".ws-doc"); const doc = docEl ? wsGet(docEl.dataset.doc) : null;
+    const a = doc ? wsFindAny(doc, el.closest(".ws-att").dataset.aid) : null;
+    if(a && a.link && !(a.title||"").trim()) wsLinkRun(()=>wsSyncItem(doc, a, a.link.cal));
   }
   if(el.dataset && el.dataset.wsf==="atext"){
     const docEl = el.closest(".ws-doc"); const doc = docEl ? wsGet(docEl.dataset.doc) : null;
@@ -4472,7 +4759,7 @@ function wsRenderIfSafe(){
   const ae = document.activeElement;
   if(ae && (ae.tagName==="INPUT" || ae.tagName==="TEXTAREA" || ae.tagName==="SELECT")) return;
   if(document.getElementById("modalBg")) return;
-  if(view==="notes"){ wsDocs.forEach(wsRefreshDoc); return; }
+  if(view==="notes"){ if(wsTab==="week"){ render(); return; } wsDocs.forEach(wsRefreshDoc); return; }
   render();
 }
 
@@ -4780,7 +5067,7 @@ async function wsDeleteAttFlow(doc, att){
     mode = await wsAskLinks(links, "Dieser Anhang");
     if(!mode) return;
   }else{
-    const empty = att.type==="table" ? att.rows.every(r=>r.every(c=>!c)) : !(att.text||"").trim();
+    const empty = att.type==="table" ? att.rows.every(r=>r.every(c=>!c)) : att.type==="link" ? !(att.url||"").trim() && !(att.title||"").trim() : !(att.text||"").trim();
     if(!empty && !confirm("Diesen Anhang mit Inhalt löschen?")) return;
   }
   const owner = wsAttOwner(doc, att.id); if(!owner) return;

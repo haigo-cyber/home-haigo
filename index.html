@@ -420,6 +420,7 @@
 
   .ws-tagbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
   .ws-tagb.on{color:var(--amber);border-color:rgba(255,176,32,.45)}
+  .ws-tagb.inh{color:var(--amber);opacity:.55;font-style:italic}
   .ws-x.ws-tagb{width:auto;padding:0 8px;font-size:12px;white-space:nowrap}
 
   #wsTopBar{position:sticky;z-index:4;display:none;gap:6px;overflow-x:auto;padding:6px 14px;background:var(--bg);border-bottom:1px solid #2c3037}
@@ -486,6 +487,29 @@
     :is(.ws-agday,.ws-two .ws-wkcol,.ws-dayone) .ws-wkevt{min-width:92px}
   }
   @media(max-width:700px){ .ws-wkgrid{grid-template-columns:1fr} .ws-wksel{max-width:100%} .ws-wkcol.ws-agday{grid-template-columns:56px minmax(0,1fr)} .ws-daygrid{grid-template-columns:1fr} }
+
+  .g-tg{font-size:10px;color:var(--amber);white-space:nowrap}
+  .ws-tgc{font-size:11px;color:var(--amber)}
+  /* Dateien (Bild, PDF) und 3D-Ansicht */
+  .ws-fimg{display:block;max-width:100%;max-height:260px;border-radius:8px;border:1px solid #30343b;cursor:zoom-in;background:#101216;min-height:40px}
+  .ws-frow2{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;font-size:13px}
+  .ws-ficon{display:inline-block;padding:4px 8px;border-radius:6px;border:1.5px solid var(--text);font-weight:700;font-size:11px}
+  .ws-ficon.pdf{border-color:#ef4444;color:#ef4444}
+  .ws-fv{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.88);display:flex;flex-direction:column}
+  .ws-fvbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 14px;background:#15181d}
+  .ws-fvname{flex:1 1 200px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ws-fvbody{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:auto;padding:8px}
+  .ws-fvimg{max-width:100%;max-height:100%;object-fit:contain}
+  .ws-fvpdf{width:100%;flex:1;border:0;background:#fff;border-radius:6px}
+  .ws3d-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+  .ws3d-bar select,.ws3d-bar input[type=search]{flex:1 1 150px;max-width:260px;font-size:14px}
+  .ws3d-ck{display:flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap}
+  .ws3d-wrap{position:relative;border:1px solid #2c3037;border-radius:12px;overflow:hidden;background:#0d0f12}
+  .ws3d-wrap canvas{display:block;touch-action:none}
+  .ws3d-hint{position:absolute;left:8px;bottom:6px;right:8px;font-size:11px;opacity:.55;pointer-events:none}
+  .ws3d-info{margin-top:8px}
+  .ws3d-card{background:rgba(255,255,255,.04);border:1px solid #2c3037;border-radius:10px;padding:10px}
+  .ws3d-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 </style>
 </head>
 <body>
@@ -3246,26 +3270,29 @@ function wsId(){ return Date.now().toString(36) + (++_wsCnt).toString(36) + Math
 function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapsed:false, date:"", ld:"", dur:0, dl:"", meta:false, hid:false, tag:"", link:null, aopen:false, att:[], children:[]}; }
 /* Anhang an einem Punkt: Text (auch als Notiz nutzbar) oder Tabelle; trägt wie ein Punkt Datum, Erledigt-Haken und Verknüpfung */
 function wsNewAtt(type){
-  const a = {id:wsId(), type:type, title:"", done:false, date:"", link:null};
+  const a = {id:wsId(), type:type, title:"", done:false, date:"", link:null, tag:""};
   if(type==="table"){ a.cols = ["Spalte 1","Spalte 2"]; a.rows = [["",""],["",""]]; }
   else if(type==="link") a.url = "";
+  else if(type==="file"){ a.fileId = ""; a.name = ""; a.mime = ""; a.size = 0; }
   else a.text = "";
   return a;
 }
-function wsIsAtt(x){ return !!x && !Array.isArray(x.children) && typeof x.done==="boolean" && (x.type==="text" || x.type==="table" || x.type==="link"); }   // Blöcke haben kein done
+function wsIsAtt(x){ return !!x && !Array.isArray(x.children) && typeof x.done==="boolean" && (x.type==="text" || x.type==="table" || x.type==="link" || x.type==="file"); }   // Blöcke haben kein done
 function wsTitleOf(x){
   if(!x) return "";
   if(!wsIsAtt(x)) return (x.text||"").trim();
   if((x.title||"").trim()) return x.title.trim();
   if(x.type==="link") return (x.url||"").trim().slice(0,80);
+  if(x.type==="file") return (x.name||"").trim().slice(0,80);
   return x.type==="text" ? (x.text||"").trim().split("\n")[0].slice(0,80) : "";
 }
 function wsSetTitle(x, v){ if(wsIsAtt(x)) x.title = v; else x.text = v; }
 function wsNormAtt(a){
-  if(!a || typeof a!=="object" || (a.type!=="text" && a.type!=="table" && a.type!=="link")) return null;
-  const o = {id:a.id||wsId(), type:a.type, title:String(a.title||""), done:!!a.done, date:wsIsDate(a.date)?a.date:"", link:wsNormLink(a.link)};
+  if(!a || typeof a!=="object" || (a.type!=="text" && a.type!=="table" && a.type!=="link" && a.type!=="file")) return null;
+  const o = {id:a.id||wsId(), type:a.type, title:String(a.title||""), done:!!a.done, date:wsIsDate(a.date)?a.date:"", link:wsNormLink(a.link), tag:wsNormTag(a.tag)};
   if(a.type==="text") o.text = String(a.text||"");
   else if(a.type==="link") o.url = String(a.url||"").trim().slice(0,2000);
+  else if(a.type==="file"){ o.fileId = String(a.fileId||"").slice(0,200); o.name = String(a.name||"").slice(0,300); o.mime = String(a.mime||"").slice(0,120); o.size = Math.max(0, Math.floor(+a.size||0)); }
   else{
     o.cols = (Array.isArray(a.cols) && a.cols.length) ? a.cols.map(String) : ["Spalte 1"];
     o.rows = (Array.isArray(a.rows)?a.rows:[]).map(r=>{ const row=(Array.isArray(r)?r:[]).map(String); while(row.length<o.cols.length) row.push(""); return row.slice(0,o.cols.length); });
@@ -3342,10 +3369,10 @@ function wsNewDoc(title){
   return {id:wsId(), title:title||"Neues Dokument", pinned:false, tag:"", createdAt:now, updatedAt:now, blocks:[]};
 }
 function wsNewBlock(type){
-  if(type==="text") return {id:wsId(), type:"text", text:""};
+  if(type==="text") return {id:wsId(), type:"text", text:"", tag:""};
   if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:""};
-  if(type==="outline") return {id:wsId(), type:"outline", items:[wsNewNode("")]};
-  if(type==="table") return {id:wsId(), type:"table", cols:["Spalte 1","Spalte 2","Spalte 3"], rows:[["","",""],["","",""]]};
+  if(type==="outline") return {id:wsId(), type:"outline", items:[wsNewNode("")], tag:""};
+  if(type==="table") return {id:wsId(), type:"table", cols:["Spalte 1","Spalte 2","Spalte 3"], rows:[["","",""],["","",""]], tag:""};
   return null;
 }
 function wsNormNodes(a){
@@ -3363,9 +3390,9 @@ function wsNormalizeDocs(arr){
     (Array.isArray(d.blocks)?d.blocks:[]).forEach(b=>{
       if(!b || typeof b!=="object") return;
       const id = b.id||wsId();
-      if(b.type==="text") doc.blocks.push({id, type:b.type, text:String(b.text||"")});
+      if(b.type==="text") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag)});
       else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag)});
-      else if(b.type==="outline") doc.blocks.push({id, type:"outline", items:wsNormNodes(b.items)});
+      else if(b.type==="outline") doc.blocks.push({id, type:"outline", items:wsNormNodes(b.items), tag:wsNormTag(b.tag)});
       else if(b.type==="table"){
         const cols = (Array.isArray(b.cols) && b.cols.length) ? b.cols.map(String) : ["Spalte 1"];
         const rows = (Array.isArray(b.rows)?b.rows:[]).map(r=>{
@@ -3373,7 +3400,7 @@ function wsNormalizeDocs(arr){
           while(row.length<cols.length) row.push("");
           return row.slice(0, cols.length);
         });
-        doc.blocks.push({id, type:"table", cols, rows});
+        doc.blocks.push({id, type:"table", cols, rows, tag:wsNormTag(b.tag)});
       }
     });
     return doc;
@@ -3525,7 +3552,7 @@ function wsGanttRows(roots, sel, em, sort){
     if(wsAllDone(n)) return null;
     if(sel && !wsTagShownNode(n, sel, em)) return null;
     const own = wsSpan(n);
-    const row = {id:n.id, title:(n.text||"").trim()||"(ohne Titel)", level, meta:!!n.meta, own, start:null, end:null, agg:false, dl:n.dl||"", late:false};
+    const row = {id:n.id, title:(n.text||"").trim()||"(ohne Titel)", level, meta:!!n.meta, own, start:null, end:null, agg:false, dl:n.dl||"", late:false, tag:em ? (em.get(n.id)||"") : ""};
     rows.push(row);
     let lo = own ? own.start : null, hi = own ? own.end : null;
     (sort ? sort(n.children) : n.children).forEach(c=>{
@@ -3646,7 +3673,7 @@ function wsBlockTags(doc){
   const out = {}; let sec = "";
   doc.blocks.forEach(b=>{
     if(b.type==="heading"){ sec = b.tag||""; out[b.id] = sec || doc.tag || ""; }
-    else out[b.id] = sec || doc.tag || "";
+    else out[b.id] = b.tag || sec || doc.tag || "";
   });
   return out;
 }
@@ -3664,8 +3691,8 @@ function wsTagShownNode(n, sel, em){ return wsTagMatch(em.get(n.id), sel) || n.c
 function wsAllTags(docs){
   const seen = new Map();
   const add = t=>{ const k = wsTagKey(t); if(k && !seen.has(k)) seen.set(k, wsNormTag(t)); };
-  const walk = items=>items.forEach(n=>{ add(n.tag); walk(n.children); });
-  docs.forEach(d=>{ add(d.tag); d.blocks.forEach(b=>{ if(b.type==="heading") add(b.tag); if(b.type==="outline") walk(b.items); }); });
+  const walk = items=>items.forEach(n=>{ add(n.tag); (n.att||[]).forEach(a=>add(a.tag)); walk(n.children); });
+  docs.forEach(d=>{ add(d.tag); d.blocks.forEach(b=>{ add(b.tag); if(b.type==="outline") walk(b.items); }); });
   return [...seen.values()].sort((a,b)=>a.localeCompare(b, "de"));
 }
 function wsDocHasTag(doc, sel){
@@ -3787,6 +3814,54 @@ function wsWeekEvents(evs, days){
   days.forEach(d=>{ byDay[d].sort((a,b)=>(a.allDay?0:1)-(b.allDay?0:1) || (a.st<b.st?-1:a.st>b.st?1:0) || (a.title<b.title?-1:a.title>b.title?1:0)); });
   return byDay;
 }
+/* ---- 3D-Graph (rein): Dokumente, Überschriften/Blöcke, Punkte, Anhänge und Tags als Knoten ---- */
+/* Knoten-IDs: d:<Dokument>, b:<Block>, n:<Punkt>, a:<Anhang>, t:<Tag>; Tag-Knoten hängen nur an Elementen mit EIGENEM Tag (Vererbung zeigt die Baumstruktur) */
+function wsGraph(docs, o){
+  o = o || {};
+  const max = o.max || 1000, nodes = [], links = [], idx = new Map();
+  let cut = false;
+  const em = wsEffTags(docs);
+  const add = n=>{ if(nodes.length>=max){ cut = true; return null; } nodes.push(n); idx.set(n.id, n); return n; };
+  const link = (a, b, kind)=>{ if(a && b && idx.has(a) && idx.has(b)) links.push({a, b, kind:kind||"tree"}); };
+  const ownTag = (id, tag)=>{
+    const t = wsNormTag(tag); if(!t || o.tags===false) return;
+    const tid = "t:"+wsTagKey(t);
+    if(!idx.has(tid)) add({id:tid, kind:"tag", label:"#"+t, doc:"", ref:t, eff:t, done:false});
+    link(id, tid, "tag");
+  };
+  const first = t=>{ const s = String(t||"").trim().split("\n")[0]; return s.length>60 ? s.slice(0,60)+"…" : s; };
+  docs.forEach(doc=>{
+    if(o.doc && doc.id!==o.doc) return;
+    const did = "d:"+doc.id;
+    if(!add({id:did, kind:"doc", label:doc.title||"(ohne Titel)", doc:doc.id, ref:doc.id, eff:doc.tag||"", done:false})) return;
+    ownTag(did, doc.tag);
+    const bt = wsBlockTags(doc);
+    let parent = did;
+    const walk = (items, par, inhTag)=>items.forEach(n=>{
+      if((n.done && !o.showDone) || (n.hid && !o.showHid)) return;
+      const id = "n:"+n.id, eff = em.get(n.id)||"";
+      if(!add({id, kind:"node", label:first(n.text)||"(leer)", doc:doc.id, ref:n.id, eff, done:!!n.done, meta:!!n.meta, date:n.date||"", dl:n.dl||""})) return;
+      link(par, id); ownTag(id, n.tag);
+      (n.att||[]).forEach(a=>{
+        if(a.done && !o.showDone) return;
+        const aid = "a:"+a.id;
+        const label = wsTitleOf(a) || (a.type==="table" ? "Tabelle" : a.type==="file" ? "Datei" : a.type==="link" ? "Link" : "Notiz");
+        if(!add({id:aid, kind:"att", type:a.type, label:first(label), doc:doc.id, ref:a.id, eff:a.tag||eff, done:!!a.done, fileId:a.fileId||"", mime:a.mime||"", url:a.url||""})) return;
+        link(id, aid); ownTag(aid, a.tag);
+      });
+      walk(n.children, id);
+    });
+    doc.blocks.forEach(b=>{
+      if(b.type==="outline"){ walk(b.items, parent); return; }
+      const id = "b:"+b.id;
+      const label = b.type==="heading" ? first(b.text) : b.type==="table" ? "Tabelle" : first(b.text);
+      if(!add({id, kind:"block", type:b.type, label:label||(b.type==="heading"?"(Überschrift)":"(Text)"), doc:doc.id, ref:b.id, eff:bt[b.id]||"", done:false})) return;
+      link(b.type==="heading" ? did : parent, id); ownTag(id, b.tag);
+      if(b.type==="heading") parent = id;
+    });
+  });
+  return {nodes, links, cut};
+}
 /* WS-PURE-END */
 
 /* ---- Zustand ---- */
@@ -3814,7 +3889,7 @@ function wsEffCollapsed(n, depth){
   return !!(wsF.lvl && depth+1>=wsF.lvl);
 }
 let wsTab = localStorage.getItem("wsTab") || "docs";                 // docs | gantt | notes
-if(!["docs","gantt","notes"].includes(wsTab)) wsTab = "docs";
+if(!["docs","week","gantt","3d","notes"].includes(wsTab)) wsTab = "docs";
 let wsOpenDocId = localStorage.getItem("wsOpenDoc") || null;
 let wsTodayExpanded = localStorage.getItem("wsTodayExp")==="1";
 let wsRev = 0;
@@ -3954,13 +4029,17 @@ function wsTableBody(b, drag){
       + `<td class="ws-rh"><button class="ws-mini" data-wsact="del-row" data-ri="${ri}" title="Zeile löschen">✕</button></td></tr>`).join("")
     + `</tbody></table></div><button class="ws-addbtn" data-wsact="add-row">+ Zeile</button>`;
 }
-function wsAttHtml(a){
+function wsAttTagBtn(x, eff, act, what){
+  return `<button class="ws-mini ws-tagb${x.tag?" on":(eff?" inh":"")}" data-wsact="${act}" title="${x.tag?"Eigener Tag, gilt für "+what:(eff?"Tag geerbt von oben, hier änderbar":"Tag setzen")}">🏷${eff?" "+esc(eff):""}</button>`;
+}
+function wsAttHtml(a, eff){
   const open = wsFoldOpen(a.id, a.type);
   const body = !open
-    ? `<div class="ws-fp ws-fpv">${a.type==="text" ? (esc(wsFirstLine(a.text)) || "(leer)") : a.type==="link" ? (esc(a.url) || "(kein Link)") : "Tabelle · "+a.rows.length+" Zeilen"}</div>`
+    ? `<div class="ws-fp ws-fpv">${a.type==="text" ? (esc(wsFirstLine(a.text)) || "(leer)") : a.type==="link" ? (esc(a.url) || "(kein Link)") : a.type==="file" ? ((wsIsPdf(a)?"📄 ":wsIsImg(a)?"🖼 ":"📎 ")+esc(a.name)+(a.size?" · "+wsSizeText(a.size):"")) : "Tabelle · "+a.rows.length+" Zeilen"}</div>`
     : a.type==="link"
       ? `<div class="ws-linkrow"><input type="url" class="ws-in" data-wsf="aurl" value="${esc(a.url)}" placeholder="https://…" inputmode="url" autocapitalize="off" autocomplete="off">
           <a class="ws-lnkgo" target="_blank" rel="noopener noreferrer" href="${esc(wsNormUrl(a.url)||"#")}"${wsNormUrl(a.url)?"":' style="display:none"'}>Öffnen ↗</a></div>`
+    : a.type==="file" ? wsFileBodyHtml(a)
     : a.type==="text"
       ? `<textarea class="ws-in ws-ta" data-wsf="atext" rows="1" placeholder="Text oder Notiz">${esc(a.text)}</textarea>`
       : wsTableBody(a, false);
@@ -3968,15 +4047,16 @@ function wsAttHtml(a){
     <div class="ws-arow">
       <button class="ws-tog" data-wsact="fold" title="${open?"Einklappen":"Aufklappen"}">${open?"▾":"▸"}</button>
       <button class="ws-chk${a.done?" on":""}" data-wsact="done" title="Erledigt">${a.done?"✓":""}</button>
-      <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":a.type==="link"?"Bezeichnung des Links (optional)":"Titel der Tabelle"}">
-      <span class="ws-nright">${wsNodeChips(a)}<button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
+      <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":a.type==="link"?"Bezeichnung des Links (optional)":a.type==="file"?(a.name||"Bezeichnung (optional)"):"Titel der Tabelle"}">
+      <span class="ws-nright">${wsNodeChips(a)}${wsAttTagBtn(a, a.tag||eff||"", "tag-att", "diesen Anhang")}<button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
     </div>
     <div class="ws-abody"${open?"":' data-wsact="fold"'}>${body}</div>
   </div>`;
 }
-function wsAttsHtml(n){
-  return `<div class="ws-atts">${n.att.map(wsAttHtml).join("")}
-    <div class="ws-add"><button class="ws-addbtn" data-wsact="add-att" data-type="text">+ Text / Notiz</button><button class="ws-addbtn" data-wsact="add-att" data-type="table">+ Tabelle</button><button class="ws-addbtn" data-wsact="add-att" data-type="link">+ Link</button></div></div>`;
+function wsAttsHtml(n, eff){
+  const list = n.att.filter(a=>!wsF.tag || wsTagMatch(a.tag||eff||"", wsF.tag));
+  return `<div class="ws-atts">${list.map(a=>wsAttHtml(a, eff)).join("")}
+    <div class="ws-add"><button class="ws-addbtn" data-wsact="add-att" data-type="text">+ Text / Notiz</button><button class="ws-addbtn" data-wsact="add-att" data-type="table">+ Tabelle</button><button class="ws-addbtn" data-wsact="add-att" data-type="link">+ Link</button><button class="ws-addbtn" data-wsact="add-file" title="Bild oder PDF in deinen Google-Drive-Ordner hochladen">+ Bild / PDF</button></div></div>`;
 }
 function wsNodeHtml(n, depth, inh){
   depth = depth||0;
@@ -3996,12 +4076,12 @@ function wsNodeHtml(n, depth, inh){
       ${wsNodeChips(n)}
       ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}
       ${wsF.noAtt?"":`<button class="ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle an diesen Punkt anhängen">📎 ${n.att.length?n.att.length:"Anhang"}</button>`}
-      <button class="ws-mini ws-tagb${n.tag?" on":""}" data-wsact="tag-node" title="Tag setzen (gilt auch für alle Unterpunkte und Anhänge)">🏷${n.tag?" "+esc(n.tag):""}</button>
+      <button class="ws-mini ws-tagb${n.tag?" on":(eff?" inh":"")}" data-wsact="tag-node" title="${n.tag?"Eigener Tag, gilt auch für alle Unterpunkte und Anhänge":(eff?"Tag geerbt von oben, hier änderbar":"Tag setzen (gilt auch für alle Unterpunkte und Anhänge)")}">🏷${eff?" "+esc(eff):""}</button>
       <button class="ws-mini ws-eye${n.hid?" on":""}" data-wsact="hide-node" title="${n.hid?"Wieder einblenden":"Ausblenden (unter Ansicht wieder einblendbar)"}">${n.hid?"🙈":"👁"}</button>
       <button class="ws-mini" data-wsact="add-child" title="Unterpunkt anlegen">+</button>
       <button class="ws-mini" data-wsact="del-node" title="Punkt löschen">✕</button>
       </span>
-    </div>${(n.aopen && !wsF.noAtt)?wsAttsHtml(n):""}${sub}
+    </div>${(n.aopen && !wsF.noAtt)?wsAttsHtml(n, eff):""}${sub}
   </li>`;
 }
 function wsBlockHtml(b, eff){
@@ -4027,7 +4107,7 @@ function wsBlockHtml(b, eff){
   return `<div class="ws-block" data-bid="${b.id}" data-kind="${b.type}">
     <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
     <div class="ws-bbody">${body}</div>
-    ${b.type==="heading"?`<button class="ws-x ws-tagb${b.tag?" on":""}" data-wsact="tag-block" title="Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)">🏷${b.tag?" "+esc(b.tag):""}</button>`:""}
+    <button class="ws-x ws-tagb${b.tag?" on":(eff?" inh":"")}" data-wsact="tag-block" title="${b.type==="heading"?"Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)":(b.tag?"Eigener Tag des Blocks":(eff?"Tag geerbt von oben, hier änderbar":"Tag für diesen Block setzen"))}">🏷${eff?" "+esc(eff):""}</button>
     <button class="ws-x" data-wsact="del-block" title="Block löschen">✕</button>
   </div>`;
 }
@@ -4096,7 +4176,7 @@ function wsTodayInner(doc){
     const next = wsNextOpenItems(doc, 4, n=>wsVis(n, em.get(n.id)), wsSorter());
     h += `<div data-wsact="today-toggle" style="cursor:pointer">`;
     if(next.length){
-      h += `<ul class="ws-prev">${next.map((n,i)=>`<li class="${i===0?"first":""}">${esc(n.text.trim())}${n.date?` <span class="ws-pd${n.date<todayKey()?" over":""}">${esc(wsShortDate(n.date))}</span>`:""}${n.link?` <span class="ws-pd">${n.link.kind==="goal"?"🎯":"☑"}</span>`:""}</li>`).join("")}</ul>`;
+      h += `<ul class="ws-prev">${next.map((n,i)=>`<li class="${i===0?"first":""}">${esc(n.text.trim())}${n.date?` <span class="ws-pd${n.date<todayKey()?" over":""}">${esc(wsShortDate(n.date))}</span>`:""}${n.link?` <span class="ws-pd">${n.link.kind==="goal"?"🎯":"☑"}</span>`:""}${em.get(n.id)?` <span class="ws-pd">🏷 ${esc(em.get(n.id))}</span>`:""}</li>`).join("")}</ul>`;
     }else{
       const lines = doc.blocks.filter(b=>(b.type==="text"||b.type==="heading") && (b.text||"").trim()).slice(0,3).map(b=>(b.text||"").trim().split("\n")[0]);
       h += lines.length ? `<ul class="ws-prev plain">${lines.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>`
@@ -4255,6 +4335,7 @@ function wsWkCardHtml(it, em){
     <button class="ws-chk${n.done?" on":""}" data-wsact="wk-done" title="Erledigt">${n.done?"✓":""}</button>
     <input type="text" class="ws-in ws-wkin" data-wk="text" value="${esc(n.text)}">
     <div class="ws-wkmeta">${chips.join("")}<span class="ws-wkdoc">${esc(it.doc.title||"Ohne Titel")}</span>
+      <button class="ws-mini" data-wsact="wk-edit" title="Bearbeiten: Text, Tag, Termine, ToDo/Ziel">✎</button>
       <button class="ws-mini" data-wsact="wk-move" title="Auf anderen Tag verschieben">⇄</button>
       <button class="ws-mini" data-wsact="wk-open" title="Im Dokument öffnen">↗</button></div>
   </div>`;
@@ -4269,6 +4350,7 @@ function wsWkXCardHtml(x){
     <button class="ws-chk${x.done?" on":""}" data-wsact="wk-xdone" title="Erledigt">${x.done?"✓":""}</button>
     <span class="ws-wkxt">${esc(x.title)}</span>
     <div class="ws-wkmeta">${chips.join("")}<span class="ws-wkdoc">ToDo-App</span>
+      <button class="ws-mini" data-wsact="wk-xedit" title="Bearbeiten">✎</button>
       <button class="ws-mini" data-wsact="wk-move" title="Auf anderen Tag verschieben">⇄</button></div>
   </div>`;
 }
@@ -4528,6 +4610,11 @@ main.addEventListener("click", e=>{
   if(!card) return;
   if(card.dataset.xk){
     const kind = card.dataset.xk, id = card.dataset.xid;
+    if(act==="wk-xedit"){
+      if(kind==="todo"){ const t = tasks.find(x=>x.id===id); if(t) openForm(t.type, t); }
+      else{ const g = allOpenGoals.concat(goalTasks).find(x=>x.id===id); if(g) openForm("goal", g); }
+      return;
+    }
     if(act==="wk-xdone"){
       if(kind==="todo") toggleDone(id, "once");
       else{ const g = allOpenGoals.concat(goalTasks).find(x=>x.id===id); if(g && g.completed) uncompleteGTask(id); else completeGTask(id); }
@@ -4545,6 +4632,7 @@ main.addEventListener("click", e=>{
     if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
     return;
   }
+  if(act==="wk-edit"){ wsOpenLinkMenu(doc.id, r.node.id); return; }
   if(act==="wk-move"){ wsOpenMoveMenu(doc.id, r.node.id); return; }
   if(act==="wk-open"){
     wsOpenDocId = doc.id; localStorage.setItem("wsOpenDoc", doc.id);
@@ -4556,13 +4644,417 @@ function wsViewHtml(){
     <button data-wstab="docs" class="${wsTab==="docs"?"sel":""}">Dokumente</button>
     <button data-wstab="week" class="${wsTab==="week"?"sel":""}">Woche</button>
     <button data-wstab="gantt" class="${wsTab==="gantt"?"sel":""}">Gantt</button>
+    <button data-wstab="3d" class="${wsTab==="3d"?"sel":""}">3D</button>
     <button data-wstab="notes" class="${wsTab==="notes"?"sel":""}">Notizen</button>
   </div>`;
   if(wsTab==="docs") h += wsDocsTabHtml();
   else if(wsTab==="week") h += wsWeekHtml();
   else if(wsTab==="gantt") h += wsTagBarHtml() + `<div id="wsGanttBox"></div>`;
+  else if(wsTab==="3d") h += ws3dHtml();
   else h += wsOldNotesHtml();
   return h;
+}
+
+/* ============ DATEIEN IN GOOGLE DRIVE (Bilder, PDF) ============ */
+/* Eigener Ordner im Drive; die App sieht nur Dateien, die sie selbst angelegt hat (Berechtigung drive.file). */
+const WS_FOLDER_NAME = "ToDo-App Arbeitsdateien";
+const WS_MAXFILE = 15*1024*1024;
+let wsFolderP = null;
+async function wsDriveFolder(){
+  if(!wsFolderP) wsFolderP = (async()=>{
+    let id = ""; try{ id = localStorage.getItem("wsDriveFolder")||""; }catch(e){}
+    if(id){
+      try{ const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?fields=id,trashed"); if(f && f.id && !f.trashed) return id; }catch(e){}
+    }
+    const q = encodeURIComponent(`name='${WS_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const res = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
+    id = (res && res.files && res.files.length) ? res.files[0].id : "";
+    if(!id){
+      const c = await api("https://www.googleapis.com/drive/v3/files?fields=id", {method:"POST", body:JSON.stringify({name:WS_FOLDER_NAME, mimeType:"application/vnd.google-apps.folder"})});
+      id = c.id;
+    }
+    try{ localStorage.setItem("wsDriveFolder", id); }catch(e){}
+    return id;
+  })();
+  const p = wsFolderP;
+  try{ return await p; } finally { if(wsFolderP===p) wsFolderP = null; }
+}
+async function wsDriveUpload(file){
+  const folder = await wsDriveFolder();
+  const boundary = "wsb"+Math.random().toString(36).slice(2);
+  const meta = JSON.stringify({name:file.name||"Datei", parents:[folder]});
+  const body = new Blob([`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${file.type||"application/octet-stream"}\r\n\r\n`, file, `\r\n--${boundary}--`]);
+  return api("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,size",
+    {method:"POST", headers:{"Content-Type":"multipart/related; boundary="+boundary}, body});
+}
+async function wsDriveFetch(fileId){
+  const url = "https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(fileId)+"?alt=media";
+  let r = await fetch(url, {headers:{Authorization:"Bearer "+accessToken}});
+  if(r.status===401){ try{ await requestToken(false); }catch(e){ await requestToken(true); } r = await fetch(url, {headers:{Authorization:"Bearer "+accessToken}}); }
+  if(!r.ok) throw new Error("Drive "+r.status);
+  return r.blob();
+}
+const wsBlobs = new Map(), wsUrls = new Map();
+function wsFileBlob(fileId){
+  if(!wsBlobs.has(fileId)){
+    if(wsBlobs.size>=30) wsBlobs.delete(wsBlobs.keys().next().value);
+    const p = wsDriveFetch(fileId); wsBlobs.set(fileId, p);
+    p.catch(()=>{ if(wsBlobs.get(fileId)===p) wsBlobs.delete(fileId); });
+  }
+  return wsBlobs.get(fileId);
+}
+async function wsFileUrl(fileId){
+  if(wsUrls.has(fileId)) return wsUrls.get(fileId);
+  const u = URL.createObjectURL(await wsFileBlob(fileId)); wsUrls.set(fileId, u); return u;
+}
+function wsHydrateFiles(){
+  document.querySelectorAll("img[data-wsfid]:not([data-h])").forEach(img=>{
+    img.dataset.h = "1";
+    wsFileUrl(img.dataset.wsfid).then(u=>{ img.src = u; }).catch(()=>{ img.dataset.h = "err"; img.alt = "Bild konnte nicht geladen werden"; });
+  });
+}
+if(document.body) new MutationObserver(wsHydrateFiles).observe(document.body, {childList:true, subtree:true});
+function wsSizeText(b){ return b>=1048576 ? (b/1048576).toFixed(1).replace(".",",")+" MB" : Math.max(1,Math.round(b/1024))+" KB"; }
+function wsIsImg(a){ return /^image\//.test(a.mime||""); }
+function wsIsPdf(a){ return a.mime==="application/pdf" || /\.pdf$/i.test(a.name||""); }
+function wsDriveLink(id){ return "https://drive.google.com/file/d/"+encodeURIComponent(id)+"/view"; }
+function wsFileBodyHtml(a){
+  const meta = `${esc(a.name)}${a.size?" · "+wsSizeText(a.size):""}`;
+  const links = `<button class="ws-addbtn" data-wsact="file-view">Ansehen</button><a class="ws-lnkgo" target="_blank" rel="noopener noreferrer" href="${esc(wsDriveLink(a.fileId))}">In Drive ↗</a>`;
+  if(!a.fileId) return `<div class="ws-fp ws-fpv">(keine Datei)</div>`;
+  if(wsIsImg(a)) return `<img class="ws-fimg" data-wsfid="${esc(a.fileId)}" data-wsact="file-view" alt="${esc(a.name)}"><div class="ws-frow2"><span class="muted">${meta}</span>${links}</div>`;
+  return `<div class="ws-frow2"><span class="ws-ficon${wsIsPdf(a)?" pdf":""}">${wsIsPdf(a)?"PDF":"DATEI"}</span><span>${meta}</span>${links}</div>`;
+}
+async function wsAddFiles(doc, owner){
+  const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.accept = "image/*,application/pdf";
+  inp.onchange = async ()=>{
+    const files = [...inp.files]; if(!files.length) return;
+    for(const f of files){
+      if(f.size>WS_MAXFILE){ alert(`„${f.name}“ ist größer als ${WS_MAXFILE/1048576} MB und wird nicht hochgeladen.`); continue; }
+      toast("Lade „"+f.name+"“ in Google Drive hoch …");
+      try{
+        const r = await wsDriveUpload(f);
+        const at = wsNewAtt("file");
+        at.fileId = r.id; at.name = r.name||f.name; at.mime = r.mimeType||f.type||""; at.size = +r.size||f.size;
+        wsOpenMap.set(at.id, true);
+        owner.att.push(at); owner.aopen = true; wsTouch(doc);
+        wsFocusSel = null; wsRerender(doc.id);
+        toast("Hochgeladen: "+at.name);
+      }catch(e){ alert("Hochladen fehlgeschlagen:\n"+e.message); }
+    }
+  };
+  inp.click();
+}
+function wsCloseFileView(){ const o = document.getElementById("wsFv"); if(o) o.remove(); }
+async function wsOpenFileView(a){
+  if(!a || !a.fileId) return;
+  wsCloseFileView();
+  document.body.insertAdjacentHTML("beforeend", `<div class="ws-fv" id="wsFv"><div class="ws-fvbar"><span class="ws-fvname">${esc(a.name)}</span>
+    <a class="ws-lnkgo" id="wsFvTab" target="_blank" rel="noopener noreferrer" href="#" style="display:none">Neuer Tab ↗</a>
+    <a class="ws-lnkgo" target="_blank" rel="noopener noreferrer" href="${esc(wsDriveLink(a.fileId))}">In Drive ↗</a>
+    <button class="ws-addbtn" id="wsFvX">Schließen</button></div><div class="ws-fvbody" id="wsFvBody"><div class="muted center">Lädt …</div></div></div>`);
+  document.getElementById("wsFvX").onclick = wsCloseFileView;
+  try{
+    const u = await wsFileUrl(a.fileId), body = document.getElementById("wsFvBody"); if(!body) return;
+    const tab = document.getElementById("wsFvTab"); tab.href = u; tab.style.display = "";
+    if(wsIsImg(a)) body.innerHTML = `<img class="ws-fvimg" src="${u}" alt="${esc(a.name)}">`;
+    else if(wsIsPdf(a)) body.innerHTML = `<iframe class="ws-fvpdf" src="${u}" title="${esc(a.name)}"></iframe><div class="muted center" style="font-size:12px;padding:6px">Wird das PDF hier nicht angezeigt (manche Handys), nutze „Neuer Tab“ oder „In Drive“.</div>`;
+    else body.innerHTML = `<div class="muted center">Für diesen Dateityp gibt es keine Vorschau. Nutze „Neuer Tab“ oder „In Drive“.</div>`;
+  }catch(e){ const body = document.getElementById("wsFvBody"); if(body) body.innerHTML = `<div class="center" style="color:var(--red)">Datei konnte nicht geladen werden: ${esc(e.message)}</div>`; }
+}
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") wsCloseFileView(); });
+
+/* ============ 3D-ANSICHT ============ */
+/* Eigene kleine 3D-Darstellung auf Canvas (ohne Bibliothek, funktioniert offline): Kraft-Layout im Raum, Drehen/Zoomen/Verschieben. */
+const ws3d = {
+  cam:{yaw:0.6, pitch:0.35, dist:900, ox:0, oy:0, tx:0, ty:0, tz:0},
+  pos:new Map(), sel:"", g:null, byId:new Map(), nb:new Map(), proj:new Map(),
+  cv:null, ctx:null, w:0, h:0, alpha:1, raf:0, hits:[], ptr:new Map(), moved:false, thumbs:new Map(), loading:0, hover:"",
+  opt:(()=>{ let o = {}; try{ o = JSON.parse(localStorage.getItem("ws3dOpt")||"{}")||{}; }catch(e){}
+    return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, focus:false, q:""}; })()
+};
+function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels})); }catch(e){} }
+function ws3dHtml(){
+  const o = ws3d.opt;
+  return `<div class="ws3d-bar">
+    <select id="ws3dDoc" class="ws-in"><option value="">Alle Dokumente</option>${wsDocs.map(d=>`<option value="${esc(d.id)}"${o.doc===d.id?" selected":""}>${esc(d.title||"(ohne Titel)")}</option>`).join("")}</select>
+    <input id="ws3dQ" class="ws-in" type="search" placeholder="Suchen" value="${esc(o.q)}">
+    <label class="ws3d-ck"><input type="checkbox" id="ws3dDone"${o.showDone?" checked":""}> Erledigte</label>
+    <label class="ws3d-ck"><input type="checkbox" id="ws3dTags"${o.tags?" checked":""}> Tags als Knoten</label>
+    <label class="ws3d-ck"><input type="checkbox" id="ws3dLab"${o.labels?" checked":""}> Beschriftung</label>
+    <button class="ws-addbtn" id="ws3dReset">Ansicht zurücksetzen</button>
+    <button class="ws-addbtn" id="ws3dShake">Neu ordnen</button>
+  </div>
+  <div class="ws3d-wrap" id="ws3dWrap"><canvas id="ws3dCv" aria-label="3D-Übersicht der Dokumente, Punkte, Anhänge und Tags"></canvas>
+    <div class="ws3d-hint">Ziehen: drehen · Mausrad oder zwei Finger: zoomen · Umschalt+Ziehen oder zwei Finger ziehen: verschieben · Klick auf Knoten: Details</div></div>
+  <div class="ws3d-info" id="ws3dInfo"></div>`;
+}
+function ws3dHue(t){ let h = 0; const k = wsTagKey(t); for(let i=0;i<k.length;i++) h = (h*31 + k.charCodeAt(i))%360; return h; }
+function ws3dColor(n){ return n.eff ? `hsl(${ws3dHue(n.eff)},65%,62%)` : "#8b93a1"; }
+function ws3dBuild(){
+  const o = ws3d.opt;
+  const g = wsGraph(wsDocs, {doc:o.doc, showDone:o.showDone, tags:o.tags, max:1000});
+  ws3d.g = g; ws3d.byId = new Map(g.nodes.map(n=>[n.id, n]));
+  ws3d.nb = new Map(g.nodes.map(n=>[n.id, new Set()]));
+  const parentOf = new Map();
+  g.links.forEach(l=>{ ws3d.nb.get(l.a).add(l.b); ws3d.nb.get(l.b).add(l.a); if(!parentOf.has(l.b)) parentOf.set(l.b, l.a); });
+  let fresh = 0; const R = ()=>(Math.random()-.5);
+  g.nodes.forEach(n=>{
+    if(ws3d.pos.has(n.id)) return;
+    fresh++;
+    const p = ws3d.pos.get(parentOf.get(n.id));
+    if(p) ws3d.pos.set(n.id, {x:p.x+R()*80, y:p.y+R()*80, z:p.z+R()*80, vx:0, vy:0, vz:0});
+    else ws3d.pos.set(n.id, {x:R()*500, y:R()*500, z:R()*500, vx:0, vy:0, vz:0});
+  });
+  for(const id of [...ws3d.pos.keys()]) if(!ws3d.byId.has(id)) ws3d.pos.delete(id);
+  if(ws3d.sel && !ws3d.byId.has(ws3d.sel)) ws3d.sel = "";
+  if(fresh){
+    ws3d.alpha = fresh===g.nodes.length ? 1 : 0.5;
+    if(g.nodes.length<=400){ while(ws3d.alpha>0.05) ws3dStep(); }       // kleine Graphen sofort fertig anordnen
+    if(!ws3d.fitted && g.nodes.length){ ws3d.fitted = true; ws3dFit(); }
+  }
+}
+function ws3dStep(){
+  const ns = ws3d.g.nodes, n = ns.length, P = ns.map(x=>ws3d.pos.get(x.id)), a = ws3d.alpha;
+  const REP = 15000;
+  for(let i=0;i<n;i++){
+    const p = P[i];
+    for(let j=i+1;j<n;j++){
+      const q = P[j]; let dx = p.x-q.x, dy = p.y-q.y, dz = p.z-q.z;
+      const d2 = dx*dx+dy*dy+dz*dz+30; if(d2>1000000) continue;
+      const f = REP/d2/Math.sqrt(d2)*a;
+      dx*=f; dy*=f; dz*=f; p.vx+=dx; p.vy+=dy; p.vz+=dz; q.vx-=dx; q.vy-=dy; q.vz-=dz;
+    }
+    p.vx -= p.x*0.0025*a; p.vy -= p.y*0.0025*a; p.vz -= p.z*0.0025*a;
+  }
+  const idx = new Map(ns.map((x,i)=>[x.id,i]));
+  ws3d.g.links.forEach(l=>{
+    const p = P[idx.get(l.a)], q = P[idx.get(l.b)]; if(!p || !q) return;
+    const dx = q.x-p.x, dy = q.y-p.y, dz = q.z-p.z, d = Math.sqrt(dx*dx+dy*dy+dz*dz)+0.01;
+    const L = l.kind==="tag" ? 230 : 120, f = (d-L)/d*0.06*a;
+    p.vx+=dx*f; p.vy+=dy*f; p.vz+=dz*f; q.vx-=dx*f; q.vy-=dy*f; q.vz-=dz*f;
+  });
+  P.forEach(p=>{
+    p.vx*=0.82; p.vy*=0.82; p.vz*=0.82;
+    const m = Math.max(Math.abs(p.vx),Math.abs(p.vy),Math.abs(p.vz)); if(m>30){ const k = 30/m; p.vx*=k; p.vy*=k; p.vz*=k; }
+    p.x+=p.vx; p.y+=p.vy; p.z+=p.vz;
+  });
+  ws3d.alpha *= 0.985;
+}
+/* Zoom so wählen, dass alle Knoten ins Bild passen */
+function ws3dFit(){
+  let R = 120; ws3d.g.nodes.forEach(n=>{ const p = ws3d.pos.get(n.id); R = Math.max(R, Math.hypot(p.x, p.y, p.z)); });
+  const half = Math.max(160, Math.min(ws3d.w||700, ws3d.h||600)/2);
+  ws3d.cam.dist = Math.max(450, Math.min(3500, (R+220)*900/(half*0.8)));
+}
+function ws3dVisible(){
+  const g = ws3d.g, q = ws3d.opt.q.trim().toLowerCase();
+  let vis = new Set(g.nodes.map(n=>n.id));
+  if(ws3d.opt.focus && ws3d.sel && vis.has(ws3d.sel)){
+    vis = new Set([ws3d.sel]); let fr = [ws3d.sel];
+    for(let d=0; d<2; d++){ const nx = []; fr.forEach(id=>ws3d.nb.get(id).forEach(x=>{ if(!vis.has(x)){ vis.add(x); nx.push(x); } })); fr = nx; }
+  }
+  const hit = q ? new Set(g.nodes.filter(n=>n.label.toLowerCase().includes(q) || (n.eff||"").toLowerCase().includes(q)).map(n=>n.id)) : null;
+  return {vis, hit};
+}
+function ws3dThumb(n){
+  if(!n.fileId || !/^image\//.test(n.mime)) return null;
+  const t = ws3d.thumbs.get(n.fileId);
+  if(t) return (t==="err" || t==="load") ? null : t;
+  if(ws3d.loading<3){
+    ws3d.loading++; ws3d.thumbs.set(n.fileId, "load");
+    wsFileBlob(n.fileId).then(b=>createImageBitmap(b)).then(bm=>{
+      const k = Math.min(1, 192/Math.max(bm.width, bm.height)), c = document.createElement("canvas");
+      c.width = Math.max(1,Math.round(bm.width*k)); c.height = Math.max(1,Math.round(bm.height*k));
+      c.getContext("2d").drawImage(bm, 0, 0, c.width, c.height); if(bm.close) bm.close();
+      ws3d.thumbs.set(n.fileId, c);
+    }).catch(()=>ws3d.thumbs.set(n.fileId, "err")).finally(()=>{ ws3d.loading--; ws3dKick(); });
+  }
+  return null;
+}
+function ws3dRR(c, x, y, w, h, r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+function ws3dDraw(){
+  const c = ws3d.ctx; if(!c || !ws3d.g) return;
+  const W = ws3d.w, H = ws3d.h, cam = ws3d.cam, F = 900;
+  c.clearRect(0,0,W,H);
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const {vis, hit} = ws3dVisible();
+  const items = [];
+  ws3d.proj.clear();
+  ws3d.g.nodes.forEach(n=>{
+    if(!vis.has(n.id)) return;
+    const p = ws3d.pos.get(n.id);
+    let x = p.x-cam.tx, y = p.y-cam.ty, z = p.z-cam.tz;
+    const x1 = x*cy + z*sy, z1 = -x*sy + z*cy;
+    const y2 = y*cp - z1*sp, z2 = y*sp + z1*cp + cam.dist;
+    if(z2<60) return;
+    const s = F/z2, sx = W/2 + cam.ox + x1*s, syy = H/2 + cam.oy + y2*s;
+    const it = {n, s, x:sx, y:syy, z:z2};
+    items.push(it); ws3d.proj.set(n.id, it);
+  });
+  c.lineWidth = 1;
+  ws3d.g.links.forEach(l=>{
+    const a = ws3d.proj.get(l.a), b = ws3d.proj.get(l.b); if(!a || !b) return;
+    const al = Math.max(0.08, Math.min(0.7, 1.3 - ((a.z+b.z)/2)/(cam.dist*2.2)));
+    c.strokeStyle = l.kind==="tag" ? `rgba(255,176,32,${al*0.55})` : `rgba(150,160,180,${al*0.7})`;
+    c.beginPath(); c.moveTo(a.x,a.y); c.lineTo(b.x,b.y); c.stroke();
+  });
+  items.sort((a,b)=>b.z-a.z);
+  const hits = []; const fill = getComputedStyle(document.body).backgroundColor || "#0d0f12";
+  const lab = ws3d.opt.labels;
+  items.forEach(it=>{
+    const n = it.n, s = it.s, col = ws3dColor(n), dim = (hit && !hit.has(n.id)) ? 0.18 : (n.done ? 0.45 : 1);
+    const depthA = Math.max(0.35, Math.min(1, 1.5 - it.z/(cam.dist*2.4)));
+    c.globalAlpha = dim*depthA;
+    let hw = 8*s, hh = 8*s, text = true, tx = it.x + 10*s, ty = it.y, align = "left", fs = 12*s, bold = false;
+    if(n.kind==="doc"){
+      const w = Math.max(70, Math.min(190, 14 + n.label.length*7.5))*s, h = 30*s;
+      ws3dRR(c, it.x-w/2, it.y-h/2, w, h, 8*s); c.fillStyle = "#23262d"; c.fill(); c.lineWidth = 2*s; c.strokeStyle = n.eff ? col : "#ffb020"; c.stroke();
+      hw = w/2; hh = h/2; c.fillStyle = "#f2f3f5"; c.font = `700 ${Math.max(9,13*s)}px system-ui,sans-serif`; c.textAlign = "center"; c.textBaseline = "middle";
+      if(13*s>=5.5) c.fillText(n.label.length>26 ? n.label.slice(0,25)+"…" : n.label, it.x, it.y);
+      text = false;
+    }else if(n.kind==="tag"){
+      const w = Math.max(40, 16+n.label.length*7.2)*s, h = 22*s;
+      ws3dRR(c, it.x-w/2, it.y-h/2, w, h, h/2); c.fillStyle = col; c.fill();
+      hw = w/2; hh = h/2; c.fillStyle = "#101216"; c.font = `700 ${Math.max(8,12*s)}px system-ui,sans-serif`; c.textAlign = "center"; c.textBaseline = "middle";
+      if(12*s>=5.5) c.fillText(n.label, it.x, it.y);
+      text = false;
+    }else if(n.kind==="att"){
+      const th = n.type==="file" ? ws3dThumb(n) : null;
+      if(th){
+        const k = 70*s/Math.max(th.width, th.height), w = th.width*k, h = th.height*k;
+        c.drawImage(th, it.x-w/2, it.y-h/2, w, h); c.lineWidth = 2*s; c.strokeStyle = col; c.strokeRect(it.x-w/2, it.y-h/2, w, h);
+        hw = w/2; hh = h/2; tx = it.x; ty = it.y+h/2+9*s; align = "center";
+      }else if(n.type==="file"){
+        const pdf = /pdf/i.test(n.mime) || /\.pdf$/i.test(n.label), w = 36*s, h = 46*s;
+        ws3dRR(c, it.x-w/2, it.y-h/2, w, h, 4*s); c.fillStyle = "#1c1f25"; c.fill(); c.lineWidth = 2*s; c.strokeStyle = pdf ? "#ef4444" : col; c.stroke();
+        c.fillStyle = pdf ? "#ef4444" : col; c.font = `700 ${Math.max(7,10*s)}px system-ui,sans-serif`; c.textAlign = "center"; c.textBaseline = "middle";
+        if(10*s>=5) c.fillText(pdf ? "PDF" : (/^image\//.test(n.mime) ? "BILD" : "DATEI"), it.x, it.y);
+        hw = w/2; hh = h/2; tx = it.x; ty = it.y+h/2+9*s; align = "center";
+      }else{
+        const w = 20*s; ws3dRR(c, it.x-w/2, it.y-w/2, w, w, 3*s); c.fillStyle = "#1c1f25"; c.fill(); c.lineWidth = 1.6*s; c.strokeStyle = col; c.stroke();
+        c.fillStyle = col; c.font = `700 ${Math.max(7,12*s)}px system-ui,sans-serif`; c.textAlign = "center"; c.textBaseline = "middle";
+        if(12*s>=5) c.fillText(n.type==="table" ? "▦" : n.type==="link" ? "↗" : "≡", it.x, it.y+0.5*s);
+        hw = hh = w/2;
+      }
+    }else if(n.kind==="block"){
+      const w = (n.type==="heading" ? 14 : 10)*s;
+      c.fillStyle = col; c.fillRect(it.x-w/2, it.y-w/2, w, w); hw = hh = w/2; bold = n.type==="heading"; fs = (n.type==="heading"?13:11.5)*s;
+    }else{
+      const r = (n.meta ? 11 : 7.5)*s;
+      c.beginPath(); c.arc(it.x, it.y, r, 0, 6.2832); c.fillStyle = n.done ? "#3a3f48" : col; c.fill();
+      if(n.done){ c.lineWidth = 1.5*s; c.strokeStyle = col; c.stroke(); }
+      hw = hh = r; tx = it.x + r + 4*s;
+    }
+    fs = Math.min(fs, 22);
+    if(text && lab && fs>=5.2){
+      c.font = `${bold?700:400} ${fs}px system-ui,sans-serif`; c.fillStyle = "#e6e8ec"; c.textAlign = align; c.textBaseline = "middle";
+      const t = n.label.length>34 ? n.label.slice(0,33)+"…" : n.label;
+      c.fillText(t, tx, ty);
+    }
+    if(n.id===ws3d.sel || n.id===ws3d.hover){
+      c.globalAlpha = 1; c.lineWidth = 2.5; c.strokeStyle = n.id===ws3d.sel ? "#ffffff" : "rgba(255,255,255,.55)";
+      c.strokeRect(it.x-hw-3, it.y-hh-3, hw*2+6, hh*2+6);
+    }
+    hits.push({id:n.id, x:it.x, y:it.y, hw:Math.max(hw,6), hh:Math.max(hh,6)});
+  });
+  c.globalAlpha = 1;
+  ws3d.hits = hits;
+}
+function ws3dHit(x, y){
+  for(let i=ws3d.hits.length-1;i>=0;i--){ const h = ws3d.hits[i]; if(Math.abs(x-h.x)<=h.hw+3 && Math.abs(y-h.y)<=h.hh+3) return h.id; }
+  return "";
+}
+function ws3dKick(){
+  if(ws3d.raf) return;
+  ws3d.raf = requestAnimationFrame(()=>{
+    ws3d.raf = 0;
+    if(!ws3d.cv || !document.body.contains(ws3d.cv)) return;
+    if(ws3d.alpha>0.02 && ws3d.g){ ws3dStep(); if(ws3d.g.nodes.length<350) ws3dStep(); }
+    ws3dDraw();
+    if(ws3d.alpha>0.02) ws3dKick();
+  });
+}
+function ws3dResize(){
+  const cv = ws3d.cv, wrap = cv && cv.parentElement; if(!wrap) return;
+  const dpr = window.devicePixelRatio||1, w = Math.max(280, wrap.clientWidth), h = Math.round(Math.max(380, Math.min(760, window.innerHeight*0.62)));
+  ws3d.w = w; ws3d.h = h; cv.style.width = w+"px"; cv.style.height = h+"px";
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  ws3d.ctx = cv.getContext("2d"); ws3d.ctx.setTransform(dpr,0,0,dpr,0,0);
+  ws3dKick();
+}
+function ws3dKindName(n){
+  return n.kind==="doc" ? "Dokument" : n.kind==="tag" ? "Tag" : n.kind==="block" ? (n.type==="heading"?"Überschrift":n.type==="table"?"Tabelle":"Text")
+    : n.kind==="att" ? (n.type==="file" ? (/pdf/i.test(n.mime)?"PDF":/^image\//.test(n.mime)?"Bild":"Datei") : n.type==="table"?"Tabelle (Anhang)":n.type==="link"?"Link":"Notiz (Anhang)") : "Punkt";
+}
+function ws3dInfoHtml(){
+  const n = ws3d.byId.get(ws3d.sel);
+  if(!n) return `<div class="muted" style="font-size:13px">Tippe oder klicke einen Knoten an: Dokumente (Kästen), Punkte (Kreise), Überschriften und Blöcke (Quadrate), Anhänge (Symbole, Bilder, PDF) und Tags (orange Kapseln). Die Farbe zeigt den wirksamen Tag.</div>`;
+  const btn = (a, t)=>`<button class="ws-addbtn" data-w3="${a}">${t}</button>`;
+  let b = "";
+  if(n.kind==="doc") b += btn("goto","Dokument öffnen");
+  else if(n.kind==="node") b += btn("edit","Bearbeiten") + btn("goto","Im Dokument");
+  else if(n.kind==="att") b += btn("edit","Bearbeiten") + (n.type==="file" ? btn("view","Ansehen") : "") + (n.type==="link" && n.url ? btn("url","Link öffnen") : "") + btn("goto","Im Dokument");
+  else if(n.kind==="block") b += btn("goto","Im Dokument");
+  b += btn("focus", ws3d.opt.focus ? "Alles zeigen" : "Nur Umgebung zeigen") + btn("center","Zentrieren");
+  const nb = ws3d.nb.get(n.id).size;
+  return `<div class="ws3d-card"><div><b>${esc(n.label)}</b> <span class="muted">· ${esc(ws3dKindName(n))}${n.eff&&n.kind!=="tag"?" · 🏷 "+esc(n.eff):""} · ${nb} Verbindung${nb===1?"":"en"}${n.done?" · erledigt":""}</span></div><div class="ws3d-btns">${b}</div></div>`;
+}
+function ws3dSelect(id){
+  ws3d.sel = id; const info = document.getElementById("ws3dInfo"); if(info) info.innerHTML = ws3dInfoHtml(); ws3dKick();
+}
+function ws3dAct(act){
+  const n = ws3d.byId.get(ws3d.sel); if(!n) return;
+  if(act==="goto") wsGoToDoc(n.doc);
+  else if(act==="edit"){ if(n.kind==="node") wsEditNode(n.ref); else wsOpenLinkMenu(n.doc, n.ref); }
+  else if(act==="view"){ const d = wsGet(n.doc), a = d && wsFindAny(d, n.ref); if(a) wsOpenFileView(a); }
+  else if(act==="url"){ const u = wsNormUrl(n.url); if(u) window.open(u, "_blank", "noopener,noreferrer"); }
+  else if(act==="focus"){ ws3d.opt.focus = !ws3d.opt.focus; ws3dSelect(ws3d.sel); }
+  else if(act==="center"){ const p = ws3d.pos.get(n.id); if(p){ Object.assign(ws3d.cam, {tx:p.x, ty:p.y, tz:p.z, ox:0, oy:0}); ws3dKick(); } }
+}
+function ws3dMount(){
+  const cv = document.getElementById("ws3dCv"); if(!cv) return;
+  ws3d.cv = cv; ws3dResize(); ws3dBuild();
+  const info = document.getElementById("ws3dInfo"); info.innerHTML = ws3dInfoHtml();
+  info.onclick = e=>{ const b = e.target.closest("[data-w3]"); if(b) ws3dAct(b.dataset.w3); };
+  const $$ = id=>document.getElementById(id);
+  $$("ws3dDoc").onchange = e=>{ ws3d.opt.doc = e.target.value; ws3dSaveOpt(); ws3d.opt.focus = false; ws3dBuild(); ws3dSelect(ws3d.sel); ws3d.alpha = 0.8; ws3dKick(); };
+  $$("ws3dQ").oninput = e=>{ ws3d.opt.q = e.target.value; ws3dKick(); };
+  $$("ws3dDone").onchange = e=>{ ws3d.opt.showDone = e.target.checked; ws3dSaveOpt(); ws3dBuild(); ws3dSelect(ws3d.sel); };
+  $$("ws3dTags").onchange = e=>{ ws3d.opt.tags = e.target.checked; ws3dSaveOpt(); ws3dBuild(); ws3dSelect(ws3d.sel); };
+  $$("ws3dLab").onchange = e=>{ ws3d.opt.labels = e.target.checked; ws3dSaveOpt(); ws3dKick(); };
+  $$("ws3dReset").onclick = ()=>{ Object.assign(ws3d.cam, {yaw:0.6, pitch:0.35, ox:0, oy:0, tx:0, ty:0, tz:0}); ws3dFit(); ws3d.opt.focus = false; ws3dSelect(ws3d.sel); };
+  $$("ws3dShake").onclick = ()=>{ ws3d.pos.clear(); ws3dBuild(); ws3dFit(); ws3dKick(); };
+  const rect = ()=>cv.getBoundingClientRect();
+  cv.onpointerdown = e=>{
+    cv.setPointerCapture(e.pointerId); ws3d.ptr.set(e.pointerId, {x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY, pan:e.shiftKey||e.button===1||e.button===2});
+    ws3d.moved = false;
+  };
+  cv.onpointermove = e=>{
+    const p = ws3d.ptr.get(e.pointerId);
+    if(!p){ const r = rect(), id = ws3dHit(e.clientX-r.left, e.clientY-r.top); if(id!==ws3d.hover){ ws3d.hover = id; cv.style.cursor = id?"pointer":"grab"; ws3dKick(); } return; }
+    const dx = e.clientX-p.x, dy = e.clientY-p.y;
+    if(Math.abs(e.clientX-p.sx)+Math.abs(e.clientY-p.sy)>5) ws3d.moved = true;
+    if(ws3d.ptr.size===2){
+      const o = [...ws3d.ptr.entries()].find(([id])=>id!==e.pointerId)[1];
+      const d0 = Math.hypot(p.x-o.x, p.y-o.y), d1 = Math.hypot(e.clientX-o.x, e.clientY-o.y);
+      if(d0>10 && d1>10) ws3d.cam.dist = Math.max(250, Math.min(4000, ws3d.cam.dist*d0/d1));
+      ws3d.cam.ox += dx/2; ws3d.cam.oy += dy/2;
+    }else if(p.pan){ ws3d.cam.ox += dx; ws3d.cam.oy += dy; }
+    else{ ws3d.cam.yaw -= dx*0.006; ws3d.cam.pitch = Math.max(-1.5, Math.min(1.5, ws3d.cam.pitch + dy*0.006)); }
+    p.x = e.clientX; p.y = e.clientY; ws3dKick();
+  };
+  const up = e=>{
+    const p = ws3d.ptr.get(e.pointerId); ws3d.ptr.delete(e.pointerId);
+    if(p && !ws3d.moved && ws3d.ptr.size===0 && e.type==="pointerup"){ const r = rect(); ws3dSelect(ws3dHit(e.clientX-r.left, e.clientY-r.top)); }
+  };
+  cv.onpointerup = up; cv.onpointercancel = up;
+  cv.ondblclick = e=>{ const r = rect(), id = ws3dHit(e.clientX-r.left, e.clientY-r.top); if(id){ ws3d.sel = id; ws3dAct("center"); ws3dSelect(id); } };
+  cv.onwheel = e=>{ e.preventDefault(); ws3d.cam.dist = Math.max(250, Math.min(4000, ws3d.cam.dist*Math.exp(e.deltaY*0.0012))); ws3dKick(); };
+  cv.oncontextmenu = e=>e.preventDefault();
+  cv.style.cursor = "grab"; cv.style.touchAction = "none";
+  if(window.ResizeObserver){ if(ws3d.ro) ws3d.ro.disconnect(); ws3d.ro = new ResizeObserver(()=>ws3dResize()); ws3d.ro.observe(cv.parentElement); }
+  ws3dKick();
 }
 
 /* ---- Nacharbeiten nach dem Rendern ---- */
@@ -4570,6 +5062,8 @@ function wsAutosizeEl(el){ el.style.height = "auto"; el.style.height = (el.scrol
 function wsAfterRender(){
   document.querySelectorAll(".ws-ta,.ws-nta").forEach(wsAutosizeEl);
   if(view==="notes" && wsTab==="gantt") wsGanttDraw();
+  if(view==="notes" && wsTab==="3d") ws3dMount();
+  wsHydrateFiles();
   if(wsFocusSel){
     const el = document.querySelector(wsFocusSel); wsFocusSel = null;
     if(el){ el.focus(); try{ const n = el.value.length; el.setSelectionRange(n, n); }catch(e){} }
@@ -4731,6 +5225,7 @@ main.addEventListener("click", e=>{
     const t = document.querySelector(".ws-doctitle"); if(t) t.select();
     return;
   }
+  if(act==="dl-edit" || act==="meta-edit"){ wsEditNode(a.dataset.nid); return; }
   if(act==="meta-open"){
     const hit = wsMetaNodes().find(h=>h.node.id===a.dataset.nid); if(!hit) return;
     wsOpenDocId = hit.doc.id; localStorage.setItem("wsOpenDoc", wsOpenDocId);
@@ -4792,6 +5287,8 @@ main.addEventListener("click", e=>{
       return;
     }
     if(act==="link-menu"){ wsOpenLinkMenu(doc.id, att.id); return; }
+    if(act==="tag-att"){ wsOpenTagMenu(doc.id, "att", att.id); return; }
+    if(act==="file-view"){ wsOpenFileView(att); return; }
     if(act==="del-att"){ wsDeleteAttFlow(doc, att); return; }
     if(att.type==="table" && wsTableAct(doc, att, `[data-aid="${att.id}"]`, act, a)) return;
     return;
@@ -4820,6 +5317,7 @@ main.addEventListener("click", e=>{
       return;
     }
     if(act==="link-menu"){ wsOpenLinkMenu(doc.id, nid); return; }
+    if(act==="add-file"){ wsAddFiles(doc, r.node); return; }
     if(act==="att-toggle"){ r.node.aopen = !r.node.aopen; wsTouch(doc); wsRerender(doc.id); return; }
     if(act==="add-att"){
       const at = wsNewAtt(a.dataset.type); if(!at) return;
@@ -4968,15 +5466,19 @@ function gGanttHtml(rows, boxW, today){
       const off = (D(it.start).getTime()-minD)/dayMs, dur = (D(it.end).getTime()-D(it.start).getTime())/dayMs + 1;
       const bw = Math.max(8, Math.round(dur*px)), bl = Math.round(off*px);
       const cls = "g-bar"+(it.meta?" meta":"")+(it.agg?" agg":"")+(it.late?" late":"");
-      bar = `<div class="${cls}" style="left:${bl}px;width:${bw}px" title="${esc(tt)}">${bw>70?esc(it.title.slice(0,Math.floor(bw/7))):""}</div>`;
+      bar = `<div class="${cls}" data-gnid="${esc(it.id)}" style="left:${bl}px;width:${bw}px" title="${esc(tt)} (Klick: bearbeiten)">${bw>70?esc(it.title.slice(0,Math.floor(bw/7))):""}</div>`;
     }
     let dl = "";
     if(it.dl){ const o = Math.round((D(it.dl).getTime()-minD)/dayMs); dl = `<div class="g-dl" style="left:${Math.round((o+1)*px)-2}px" title="Deadline ${esc(D(it.dl).toLocaleDateString("de-DE"))}"></div>`; }
-    h += `<div class="g-row${it.meta?" g-metarow":""}"><div class="g-title" style="width:${titleW}px;padding-left:${pad}px" title="${esc(tt)}">${it.meta?"★ ":""}${esc(it.title)}</div>
+    h += `<div class="g-row${it.meta?" g-metarow":""}"><div class="g-title" data-gnid="${esc(it.id)}" style="width:${titleW}px;padding-left:${pad}px;cursor:pointer" title="${esc(tt)} (Klick: bearbeiten)">${it.meta?"★ ":""}${esc(it.title)}${it.tag?` <span class="g-tg">🏷 ${esc(it.tag)}</span>`:""}</div>
       <div class="g-chart" style="width:${chartW}px">${todayLine}${bar}${dl}</div></div>`;
   });
   return h + `</div></div>`;
 }
+main.addEventListener("click", e=>{
+  const g = e.target.closest && e.target.closest("[data-gnid]"); if(!g) return;
+  wsEditNode(g.dataset.gnid);
+});
 function wsGanttDraw(){
   const box = $("wsGanttBox"); if(!box) return;
   if(!wsLoaded){ box.innerHTML = `<div class="empty">Der Arbeitsbereich ist nicht geladen.</div>`; return; }
@@ -4986,7 +5488,7 @@ function wsGanttDraw(){
   let roots;
   if(ganttSel==="meta") roots = wsMetaRoots(wsDocs);
   else{ const d = wsGet(ganttSel); roots = []; if(d) d.blocks.forEach(b=>{ if(b.type==="outline") roots.push(...b.items); }); }
-  const rows = wsGanttRows(roots, wsF.tag, wsF.tag ? wsEffTags(wsDocs) : null, wsSorter());
+  const rows = wsGanttRows(roots, wsF.tag, wsEffMap(), wsSorter());
   box.innerHTML = `<div class="g-bar-top"><select id="wsGanttSel">${opts.map(o=>`<option value="${esc(o.v)}"${o.v===ganttSel?" selected":""}>${esc(o.t)}</option>`).join("")}</select></div>`
     + (ganttSel==="meta" && !roots.length
         ? `<div class="empty">Noch kein Meta-Projekt. Im Menü 📅 eines Punktes den Schalter Meta-Projekt einschalten.</div>`
@@ -5021,7 +5523,7 @@ function wsRenderIfSafe(){
   const ae = document.activeElement;
   if(ae && (ae.tagName==="INPUT" || ae.tagName==="TEXTAREA" || ae.tagName==="SELECT")) return;
   if(document.getElementById("modalBg")) return;
-  if(view==="notes"){ if(wsTab==="week"){ render(); return; } wsDocs.forEach(wsRefreshDoc); return; }
+  if(view==="notes"){ if(wsTab==="week"){ render(); return; } if(wsTab==="3d"){ render(); return; } wsDocs.forEach(wsRefreshDoc); return; }
   render();
 }
 
@@ -5127,6 +5629,19 @@ async function wsCreateItem(doc, node, kind, cal){
 }
 async function wsApplyMenu(docId, nid, o){
   const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;
+  const wasDone = n.done;
+  if(o.text!==undefined){ const t = wsIsAtt(n) ? String(o.text).trim() : String(o.text).replace(/\s*[\r\n]+\s*/g, " ").trim(); if(wsTitleOfRaw(n)!==t){ wsSetTitle(n, t); } }
+  if(o.tag!==undefined) n.tag = wsNormTag(o.tag);
+  if(o.done!==undefined) n.done = !!o.done;
+  if(o.hid!==undefined && !wsIsAtt(n)) n.hid = !!o.hid;
+  wsTouch(doc);
+  await wsApplyMenuCore(docId, nid, o);
+  if(n.link && n.done!==wasDone) wsLinkRun(()=>wsPushDone(doc, n));
+  if(!(view==="notes" && wsTab==="docs")) render();
+}
+function wsTitleOfRaw(x){ return wsIsAtt(x) ? (x.title||"") : (x.text||""); }
+async function wsApplyMenuCore(docId, nid, o){
+  const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;
   const L = n.link, today = todayKey();
   const date0 = wsIsDate(o.date) ? o.date : "";
   const setFields = ()=>{
@@ -5176,36 +5691,78 @@ function wsOpenTagMenu(docId, kind, id){
   let obj = null;
   if(kind==="doc") obj = doc;
   else if(kind==="block") obj = wsBlock(doc, id);
+  else if(kind==="att") obj = wsFindAny(doc, id);
   else { const r = wsFindNode(doc, id); obj = r ? r.node : null; }
   if(!obj) return;
   const known = []; const seen = new Set();
   wsAllTags(wsDocs).concat(["Privat","Job","Projekt"]).forEach(t=>{ const k = wsTagKey(t); if(!seen.has(k)){ seen.add(k); known.push(t); } });
-  const what = kind==="doc" ? "das ganze Dokument" : kind==="block" ? "diese Überschrift und alle Blöcke bis zur nächsten Überschrift" : "diesen Punkt samt allen Unterpunkten und Anhängen";
+  const what = kind==="doc" ? "das ganze Dokument" : kind==="att" ? "diesen Anhang" : kind==="block" ? (obj.type==="heading" ? "diese Überschrift und alle Blöcke bis zur nächsten Überschrift" : "diesen Block und alles darin") : "diesen Punkt samt allen Unterpunkten und Anhängen";
+  /* Einträge darunter mit eigenem (abweichendem) Tag: auf Wunsch zurücksetzen, damit sie den neuen Tag erben */
+  const own = [];
+  const grabNodes = nodes=>nodes.forEach(n=>{ if(n!==obj && n.tag) own.push(n); (n.att||[]).forEach(x=>{ if(x!==obj && x.tag) own.push(x); }); });
+  const grab = blocks=>blocks.forEach(b=>{ if(b!==obj && b.tag) own.push(b); if(b.type==="outline") grabNodes(wsAllNodes({blocks:[b]})); });
+  if(kind==="doc") grab(doc.blocks);
+  else if(kind==="block"){
+    if(obj.type==="heading"){ const i = doc.blocks.indexOf(obj); const rest = []; for(let k=i+1;k<doc.blocks.length && doc.blocks[k].type!=="heading";k++) rest.push(doc.blocks[k]); grab(rest); }
+    else if(obj.type==="outline") grabNodes(wsAllNodes({blocks:[obj]}));
+  }
+  else if(kind==="node") grabNodes([obj].concat(wsAllNodes({blocks:[{type:"outline", items:obj.children}]})));
+  const inh = (kind==="node" && !obj.tag) ? (wsEffTags(wsDocs).get(obj.id)||"") : "";
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>Tag</h2>
-      <p class="muted" style="font-size:13px;margin-bottom:10px">Der Tag gilt für ${what}. Ohne eigenen Tag wird der Tag des übergeordneten Punkts, der Überschrift oder des Dokuments übernommen.</p>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">Der Tag gilt für ${what}. Ohne eigenen Tag wird der Tag des übergeordneten Punkts, der Überschrift oder des Dokuments übernommen.${inh?` Aktuell geerbt: ${esc(inh)}.`:""}</p>
       <input type="text" id="wst_in" maxlength="30" value="${esc(obj.tag||"")}" placeholder="z. B. Job" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px">
       <div class="ws-frow" style="margin-bottom:12px">${known.map(t=>`<button class="ws-fc" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+      ${own.length?`<div class="toggle-row"><div><div style="font-size:14px">Eigene Tags darunter ersetzen</div>
+        <div class="muted" style="font-size:12px">${own.length} ${own.length===1?"Eintrag hat":"Einträge haben"} einen eigenen Tag. Aus: sie behalten ihn. An: sie übernehmen den Tag von hier.</div></div>
+        <button class="switch" id="wst_over"></button></div>`:""}
       <div class="modal-actions">
         <button class="btn-ghost" id="wst_cancel">Abbrechen</button>
         ${obj.tag?`<button class="btn-ghost" id="wst_clear">Tag entfernen</button>`:""}
         <button class="btn-primary" id="wst_ok">OK</button>
       </div></div></div>`);
   const close = ()=>{ const mb = $("modalBg"); if(mb) mb.remove(); };
-  const apply = v=>{ obj.tag = wsNormTag(v); wsTouch(doc); close(); render(); };
+  const apply = v=>{
+    const over = $("wst_over") && $("wst_over").classList.contains("on");
+    obj.tag = wsNormTag(v);
+    if(over) own.forEach(o=>{ o.tag = ""; });
+    wsTouch(doc); close(); render();
+  };
   $("wst_cancel").onclick = close;
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
   document.querySelectorAll("#modalBg .ws-fc").forEach(b=>{ b.onclick = ()=>{ $("wst_in").value = b.dataset.v; }; });
+  if($("wst_over")) $("wst_over").onclick = ()=>$("wst_over").classList.toggle("on");
   if($("wst_clear")) $("wst_clear").onclick = ()=>apply("");
   $("wst_ok").onclick = ()=>apply($("wst_in").value);
   $("wst_in").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); apply($("wst_in").value); } });
   $("wst_in").focus();
 }
+/* wirksame Tags aller Punkte (zwischengespeichert, solange sich nichts ändert) */
+let _wsEmRev = -1, _wsEmDocs = null, _wsEm = null;
+function wsEffMap(){
+  if(!_wsEm || _wsEmRev!==wsRev || _wsEmDocs!==wsDocs){ _wsEm = wsEffTags(wsDocs); _wsEmRev = wsRev; _wsEmDocs = wsDocs; }
+  return _wsEm;
+}
+function wsTagChip(t){ return t ? `<span class="ws-tgc">🏷 ${esc(t)}</span>` : ""; }
+/* Punkt über alle Dokumente finden (Gantt, Heute, Deadlines kennen nur die Punkt-ID) */
+function wsFindNodeAnyDoc(nid){
+  for(const doc of wsDocs){ const r = wsFindNode(doc, nid); if(r) return {doc, node:r.node}; }
+  return null;
+}
+function wsEditNode(nid){
+  const h = wsFindNodeAnyDoc(nid); if(h) wsOpenLinkMenu(h.doc.id, nid);
+}
+function wsGoToDoc(docId){
+  if(!wsGet(docId)) return;
+  wsOpenDocId = docId; localStorage.setItem("wsOpenDoc", docId);
+  wsTab = "docs"; localStorage.setItem("wsTab", "docs"); view = "notes"; render();
+}
 function wsOpenLinkMenu(docId, nid){
   const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;
   if(document.getElementById("modalBg")) return;
   const L = n.link, att = wsIsAtt(n);
+  const inhTag = (()=>{ if(n.tag) return ""; if(att){ const ow = wsAttOwner(doc, n.id); return ow ? (wsEffMap().get(ow.id)||"") : ""; } return wsEffMap().get(n.id)||""; })();
   const defKind = (!L && !n.date && !n.ld && !n.dl && !n.meta) ? "todo" : "";      // neuer Termin: standardmäßig ein ToDo
   const kindRow = L
     ? `<p class="muted" style="font-size:13px;margin-bottom:10px">Verknüpft mit ${L.kind==="goal"?"einem Tages-Ziel":"einem ToDo"}. Titel, Datum und Erledigt-Status werden in beide Richtungen abgeglichen.</p>`
@@ -5214,6 +5771,11 @@ function wsOpenLinkMenu(docId, nid){
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${esc(wsTitleOf(n)||(att?"Anhang":"Punkt"))}</h2>
+      <label>${att?"Titel":"Text"}</label><textarea id="wsl_text" rows="2" maxlength="2000" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px;resize:vertical">${esc(att?(n.title||""):(n.text||""))}</textarea>
+      <label>Tag</label><input type="text" id="wsl_tag" maxlength="30" list="wsl_tags" value="${esc(n.tag||"")}" placeholder="${esc(inhTag?"geerbt: "+inhTag:"z. B. Job")}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px">
+      <datalist id="wsl_tags">${wsAllTags(wsDocs).concat(["Privat","Job","Projekt"]).filter((t,i,a)=>a.findIndex(x=>wsTagKey(x)===wsTagKey(t))===i).map(t=>`<option value="${esc(t)}">`).join("")}</datalist>
+      <div class="toggle-row"><div><div style="font-size:14px">Erledigt</div></div><button class="switch${n.done?" on":""}" id="wsl_done"></button></div>
+      ${att?"":`<div class="toggle-row"><div><div style="font-size:14px">Ausblenden</div><div class="muted" style="font-size:12px">Nur sichtbar, wenn Ausgeblendete gezeigt werden</div></div><button class="switch${n.hid?" on":""}" id="wsl_hid"></button></div>`}
       ${kindRow}
       <label>${att?"Datum":"Start"}</label><input type="date" id="wsl_date" value="${esc(n.date||"")}">
       ${att?"":`<label>Laufzeit in Tagen (Kalendertage, leer = keine)</label><input type="number" id="wsl_dur" min="0" max="3660" step="1" value="${n.dur||""}" placeholder="z. B. 5">
@@ -5226,8 +5788,10 @@ function wsOpenLinkMenu(docId, nid){
       <div class="toggle-row" id="wsl_calrow" style="${(L||defKind)?"":"display:none"}"><div><div style="font-size:14px">In Google Calendar</div>
         <div class="muted" style="font-size:12px">Ganztägiger Termin am Datum</div></div>
         <button class="switch${L&&L.cal?" on":""}" id="wsl_cal"></button></div>
-      <div class="modal-actions">
+      <div class="modal-actions" style="flex-wrap:wrap">
         <button class="btn-ghost" id="wsl_cancel">Abbrechen</button>
+        <button class="btn-ghost" id="wsl_open">Im Dokument</button>
+        <button class="btn-ghost" id="wsl_del">Löschen</button>
         ${L?`<button class="btn-ghost" id="wsl_unlink">Verknüpfung lösen</button>`:""}
         <button class="btn-primary" id="wsl_ok">Übernehmen</button>
       </div></div></div>`);
@@ -5240,6 +5804,14 @@ function wsOpenLinkMenu(docId, nid){
     upEnd();
   });
   $("wsl_cal").onclick = ()=>$("wsl_cal").classList.toggle("on");
+  $("wsl_done").onclick = ()=>$("wsl_done").classList.toggle("on");
+  if($("wsl_hid")) $("wsl_hid").onclick = ()=>$("wsl_hid").classList.toggle("on");
+  $("wsl_open").onclick = ()=>{ $("modalBg").remove(); wsGoToDoc(docId); };
+  $("wsl_del").onclick = async ()=>{
+    $("modalBg").remove();
+    if(att) await wsDeleteAttFlow(doc, n); else await wsDeleteNodeFlow(doc, nid);
+    if(!(view==="notes" && wsTab==="docs")) render();
+  };
   if($("wsl_meta")) $("wsl_meta").onclick = ()=>$("wsl_meta").classList.toggle("on");
   const upEnd = ()=>{
     const el = $("wsl_end"); if(!el) return;
@@ -5264,10 +5836,11 @@ function wsOpenLinkMenu(docId, nid){
     if(k && !touched){                                               // Standardwahl ToDo gilt nur mit Termin und ohne Meta-Projekt
       const hasDay = !!$("wsl_date").value || ($("wsl_dl") && !!$("wsl_dl").value);
       const isMeta = $("wsl_meta") && $("wsl_meta").classList.contains("on");
-      if(!hasDay || isMeta || !wsTitleOf(n)) k = "";
+      if(!hasDay || isMeta || !($("wsl_text").value.trim() || wsTitleOf(n))) k = "";
     }
     const o = {date:$("wsl_date").value, kind:k, cal:$("wsl_cal").classList.contains("on"),
-      dur:$("wsl_dur")?$("wsl_dur").value:0, dl:$("wsl_dl")?$("wsl_dl").value:"", meta:$("wsl_meta")?$("wsl_meta").classList.contains("on"):false};
+      dur:$("wsl_dur")?$("wsl_dur").value:0, dl:$("wsl_dl")?$("wsl_dl").value:"", meta:$("wsl_meta")?$("wsl_meta").classList.contains("on"):false,
+      text:$("wsl_text").value, tag:$("wsl_tag").value, done:$("wsl_done").classList.contains("on"), hid:$("wsl_hid")?$("wsl_hid").classList.contains("on"):undefined};
     $("modalBg").remove(); wsApplyMenu(docId, nid, o);
   };
 }
@@ -5337,7 +5910,7 @@ async function wsDeleteAttFlow(doc, att){
     mode = await wsAskLinks(links, "Dieser Anhang");
     if(!mode) return;
   }else{
-    const empty = att.type==="table" ? att.rows.every(r=>r.every(c=>!c)) : att.type==="link" ? !(att.url||"").trim() && !(att.title||"").trim() : !(att.text||"").trim();
+    const empty = att.type==="table" ? att.rows.every(r=>r.every(c=>!c)) : att.type==="link" ? !(att.url||"").trim() && !(att.title||"").trim() : att.type==="file" ? !att.fileId : !(att.text||"").trim();
     if(!empty && !confirm("Diesen Anhang mit Inhalt löschen?")) return;
   }
   const owner = wsAttOwner(doc, att.id); if(!owner) return;
@@ -5472,9 +6045,9 @@ function wsDlCard(it, full){
     <div class="check" data-wsact="dl-done" data-did="${it.doc.id}" data-nid="${n.id}" title="Als erledigt abhaken">${checkSvg()}</div>
     <div class="body" data-wsact="dl-open" data-did="${it.doc.id}" data-nid="${n.id}" style="cursor:pointer">
       <div class="title" style="${full?tc:"color:#000"};font-weight:bold">${esc(wsTitleOf(n)||"(ohne Titel)")}${n.hid?" 🙈":""}</div>
-      <div class="sub" style="${tc};font-size:12px;margin-top:2px">${n.meta?"🏛️ Metaprojekt · ":""}${esc(it.doc.title||"Ohne Titel")} · ⚑ ${url}</div>
+      <div class="sub" style="${tc};font-size:12px;margin-top:2px">${n.meta?"🏛️ Metaprojekt · ":""}${esc(it.doc.title||"Ohne Titel")} · ⚑ ${url}${wsEffMap().get(n.id)?" · 🏷 "+esc(wsEffMap().get(n.id)):""}</div>
       <div style="font-size:${full?14:12}px;margin-top:6px;padding:${full?"6px 10px":"4px 8px"};background:${color};color:#fff;border-radius:4px;display:inline-block;font-weight:bold">${wsDlLabel(it.days)}</div>
-    </div></div>`;
+    </div><button class="mini" data-wsact="dl-edit" data-did="${it.doc.id}" data-nid="${n.id}" title="Bearbeiten: Text, Tag, Termine, ToDo/Ziel" style="align-self:flex-start">✎</button></div>`;
 }
 
 /* ---- Leiste mit den dringendsten Deadlines, oben in allen Ansichten außer Heute, Deadlines und Konto ---- */
@@ -5502,7 +6075,7 @@ function wsTopBarUpdate(){
   el.style.display = "flex";
   el.innerHTML = list.map(it=>{
     const color = deadlineColor(it.days);
-    return `<button class="ws-topchip" style="border-color:${color}" data-did="${it.doc.id}" title="Im Arbeitsbereich öffnen"><span class="ws-topd" style="background:${color}">${esc(wsDlLabel(it.days))}</span> ${esc(wsTitleOf(it.node)||"(ohne Titel)")}</button>`;
+    return `<button class="ws-topchip" style="border-color:${color}" data-did="${it.doc.id}" title="Im Arbeitsbereich öffnen"><span class="ws-topd" style="background:${color}">${esc(wsDlLabel(it.days))}</span> ${esc(wsTitleOf(it.node)||"(ohne Titel)")}${wsEffMap().get(it.node.id)?" · 🏷 "+esc(wsEffMap().get(it.node.id)):""}</button>`;
   }).join("");
 }
 function wsUrgentDeadlinesHtml(){
@@ -5536,7 +6109,8 @@ function wsMetaTodayHtml(){
     return `<div class="card" style="border-left:5px solid ${bg}">
       <div class="check" data-wsact="meta-done" data-nid="${n.id}" title="Als erledigt abhaken">${checkSvg()}</div>
       <div class="body" data-wsact="meta-open" data-nid="${n.id}" style="cursor:pointer"><div class="title">${esc(wsTitleOf(n)||"(ohne Titel)")}</div>
-        ${k?`<div class="muted" style="font-size:12px;${over?"color:var(--red)":""}">${n.dl?"⚑ ":""}${esc(wsShortDate(k))}${over?" · überfällig":""}</div>`:""}</div>
+        ${k?`<div class="muted" style="font-size:12px;${over?"color:var(--red)":""}">${n.dl?"⚑ ":""}${esc(wsShortDate(k))}${over?" · überfällig":""}</div>`:""}${wsEffMap().get(n.id)?`<div class="muted" style="font-size:12px">🏷 ${esc(wsEffMap().get(n.id))}</div>`:""}</div>
+      <button class="mini" data-wsact="meta-edit" data-nid="${n.id}" title="Bearbeiten: Text, Tag, Termine, ToDo/Ziel" style="align-self:flex-start">✎</button>
       <span class="rankchip" style="background:${bg};color:${fg}">${i+1}</span>
     </div>`;
   }).join("");

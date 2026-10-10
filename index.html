@@ -510,6 +510,9 @@
   .ws3d-info{margin-top:8px}
   .ws3d-card{background:rgba(255,255,255,.04);border:1px solid #2c3037;border-radius:10px;padding:10px}
   .ws3d-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .ws3d-zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px}
+  .ws3d-zoom button{width:40px;height:40px;border-radius:10px;border:1px solid #3a3f48;background:rgba(30,33,39,.92);color:var(--text);font-size:24px;line-height:1;cursor:pointer}
+  .ws3d-zoom button:hover{background:#2a2e36}
 </style>
 </head>
 <body>
@@ -4786,6 +4789,7 @@ function ws3dHtml(){
     <button class="ws-addbtn" id="ws3dShake">Neu ordnen</button>
   </div>
   <div class="ws3d-wrap" id="ws3dWrap"><canvas id="ws3dCv" aria-label="3D-Übersicht der Dokumente, Punkte, Anhänge und Tags"></canvas>
+    <div class="ws3d-zoom"><button type="button" id="ws3dZin" title="Vergrößern" aria-label="Vergrößern">+</button><button type="button" id="ws3dZout" title="Verkleinern" aria-label="Verkleinern">-</button></div>
     <div class="ws3d-hint">Ziehen: drehen · Mausrad oder zwei Finger: zoomen · Umschalt+Ziehen oder zwei Finger ziehen: verschieben · Klick auf Knoten: Details</div></div>
   <div class="ws3d-info" id="ws3dInfo"></div>`;
 }
@@ -5024,6 +5028,8 @@ function ws3dMount(){
   $$("ws3dTags").onchange = e=>{ ws3d.opt.tags = e.target.checked; ws3dSaveOpt(); ws3dBuild(); ws3dSelect(ws3d.sel); };
   $$("ws3dLab").onchange = e=>{ ws3d.opt.labels = e.target.checked; ws3dSaveOpt(); ws3dKick(); };
   $$("ws3dReset").onclick = ()=>{ Object.assign(ws3d.cam, {yaw:0.6, pitch:0.35, ox:0, oy:0, tx:0, ty:0, tz:0}); ws3dFit(); ws3d.opt.focus = false; ws3dSelect(ws3d.sel); };
+  const zoom = f=>{ ws3d.cam.dist = Math.max(250, Math.min(4000, ws3d.cam.dist*f)); ws3dKick(); };
+  $$("ws3dZin").onclick = ()=>zoom(0.8); $$("ws3dZout").onclick = ()=>zoom(1.25);
   $$("ws3dShake").onclick = ()=>{ ws3d.pos.clear(); ws3dBuild(); ws3dFit(); ws3dKick(); };
   const rect = ()=>cv.getBoundingClientRect();
   cv.onpointerdown = e=>{

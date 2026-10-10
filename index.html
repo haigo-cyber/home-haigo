@@ -4774,14 +4774,15 @@ const ws3d = {
   pos:new Map(), sel:"", g:null, byId:new Map(), nb:new Map(), proj:new Map(),
   cv:null, ctx:null, w:0, h:0, alpha:1, raf:0, hits:[], ptr:new Map(), moved:false, thumbs:new Map(), loading:0, hover:"",
   opt:(()=>{ let o = {}; try{ o = JSON.parse(localStorage.getItem("ws3dOpt")||"{}")||{}; }catch(e){}
-    return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, focus:false, q:""}; })()
+    return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, layout:o.layout==="net"?"net":"tree", focus:false, q:""}; })()
 };
-function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels})); }catch(e){} }
+function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels, layout:ws3d.opt.layout})); }catch(e){} }
 function ws3dHtml(){
   const o = ws3d.opt;
   return `<div class="ws3d-bar">
     <select id="ws3dDoc" class="ws-in"><option value="">Alle Dokumente</option>${wsDocs.map(d=>`<option value="${esc(d.id)}"${o.doc===d.id?" selected":""}>${esc(d.title||"(ohne Titel)")}</option>`).join("")}</select>
     <input id="ws3dQ" class="ws-in" type="search" placeholder="Suchen" value="${esc(o.q)}">
+    <select id="ws3dLay" class="ws-in" title="Anordnung"><option value="tree"${o.layout==="tree"?" selected":""}>Baum (geordnet)</option><option value="net"${o.layout==="net"?" selected":""}>Netz (frei)</option></select>
     <label class="ws3d-ck"><input type="checkbox" id="ws3dDone"${o.showDone?" checked":""}> Erledigte</label>
     <label class="ws3d-ck"><input type="checkbox" id="ws3dTags"${o.tags?" checked":""}> Tags als Knoten</label>
     <label class="ws3d-ck"><input type="checkbox" id="ws3dLab"${o.labels?" checked":""}> Beschriftung</label>
@@ -4794,7 +4795,42 @@ function ws3dHtml(){
   <div class="ws3d-info" id="ws3dInfo"></div>`;
 }
 function ws3dHue(t){ let h = 0; const k = wsTagKey(t); for(let i=0;i<k.length;i++) h = (h*31 + k.charCodeAt(i))%360; return h; }
-function ws3dColor(n){ return n.eff ? `hsl(${ws3dHue(n.eff)},65%,62%)` : "#8b93a1"; }
+function ws3dColor(n){ return n.eff ? `hsl(${ws3dHue(n.eff)},48%,60%)` : "#8b93a1"; }
+function ws3dColorHi(n){ return n.eff ? `hsl(${ws3dHue(n.eff)},55%,84%)` : "#d3d8e0"; }
+/* Geordnetes Layout: Dokumente verteilt im Raum, Unterpunkte in Kegeln nach außen, Tags im Schwerpunkt ihrer Elemente */
+function ws3dTreeLayout(){
+  const g = ws3d.g, kids = new Map(g.nodes.map(n=>[n.id, []])), leaves = new Map();
+  g.links.forEach(l=>{ if(l.kind==="tree") kids.get(l.a).push(l.b); });
+  const cnt = id=>{ if(leaves.has(id)) return leaves.get(id); const k = kids.get(id); const v = k.length ? k.reduce((s,x)=>s+cnt(x),0) : 1; leaves.set(id, v); return v; };
+  const norm = v=>{ const m = Math.hypot(v[0],v[1],v[2])||1; return [v[0]/m,v[1]/m,v[2]/m]; };
+  const cross = (a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const set = (id,x,y,z)=>ws3d.pos.set(id, {x,y,z,vx:0,vy:0,vz:0});
+  const roots = g.nodes.filter(n=>n.kind==="doc"); roots.forEach(r=>cnt(r.id));
+  const place = (id, x, y, z, u, depth, cap)=>{
+    set(id, x, y, z); const k = kids.get(id); if(!k.length) return;
+    const v1 = norm(cross(u, Math.abs(u[2])<0.9 ? [0,0,1] : [1,0,0])), v2 = cross(u, v1);
+    k.forEach((c,i)=>{
+      let p; if(k.length===1 && depth>0) p = [0,0,1];
+      else{ const ct = 1-(i+0.5)/k.length*(1-cap), st = Math.sqrt(Math.max(0,1-ct*ct)), ph = i*2.399963; p = [st*Math.cos(ph), st*Math.sin(ph), ct]; }
+      const d = norm([v1[0]*p[0]+v2[0]*p[1]+u[0]*p[2], v1[1]*p[0]+v2[1]*p[1]+u[1]*p[2], v1[2]*p[0]+v2[2]*p[1]+u[2]*p[2]]);
+      const len = (depth===0 ? 150 : 95) + 14*Math.sqrt(leaves.get(c));
+      place(c, x+d[0]*len, y+d[1]*len, z+d[2]*len, d, depth+1, -0.25);
+    });
+  };
+  const R = roots.length>1 ? 220+70*Math.sqrt(roots.length) : 0;
+  roots.forEach((r,i)=>{
+    if(roots.length===1){ place(r.id, 0, 0, 0, [0,0,1], 0, -1); return; }
+    const ct = 1-(i+0.5)/roots.length*2, st = Math.sqrt(1-ct*ct), ph = i*2.399963, u = [st*Math.cos(ph), st*Math.sin(ph), ct];
+    place(r.id, u[0]*R, u[1]*R, u[2]*R, u, 0, -0.25);
+  });
+  g.nodes.forEach(n=>{
+    if(n.kind!=="tag") return;
+    let sx=0, sy=0, sz=0, c=0;
+    g.links.forEach(l=>{ if(l.kind==="tag" && l.b===n.id){ const p = ws3d.pos.get(l.a); if(p){ sx+=p.x; sy+=p.y; sz+=p.z; c++; } } });
+    if(c) set(n.id, sx/c*1.12, sy/c*1.12, sz/c*1.12);
+  });
+  g.nodes.forEach(n=>{ if(!ws3d.pos.has(n.id)) set(n.id, (Math.random()-.5)*400, (Math.random()-.5)*400, (Math.random()-.5)*400); });
+}
 function ws3dBuild(){
   const o = ws3d.opt;
   const g = wsGraph(wsDocs, {doc:o.doc, showDone:o.showDone, tags:o.tags, max:1000});
@@ -4813,7 +4849,9 @@ function ws3dBuild(){
   for(const id of [...ws3d.pos.keys()]) if(!ws3d.byId.has(id)) ws3d.pos.delete(id);
   if(ws3d.sel && !ws3d.byId.has(ws3d.sel)) ws3d.sel = "";
   if(fresh){
-    ws3d.alpha = fresh===g.nodes.length ? 1 : 0.5;
+    const all = fresh===g.nodes.length;
+    if(all && ws3d.opt.layout==="tree") ws3dTreeLayout();
+    ws3d.alpha = all ? (ws3d.opt.layout==="tree" ? 0.3 : 1) : 0.5;
     if(g.nodes.length<=400){ while(ws3d.alpha>0.05) ws3dStep(); }       // kleine Graphen sofort fertig anordnen
     if(!ws3d.fitted && g.nodes.length){ ws3d.fitted = true; ws3dFit(); }
   }
@@ -4847,9 +4885,11 @@ function ws3dStep(){
 }
 /* Zoom so wählen, dass alle Knoten ins Bild passen */
 function ws3dFit(){
-  let R = 120; ws3d.g.nodes.forEach(n=>{ const p = ws3d.pos.get(n.id); R = Math.max(R, Math.hypot(p.x, p.y, p.z)); });
+  const ns = ws3d.g.nodes; if(!ns.length) return;
+  let cx=0, cy=0, cz=0; ns.forEach(n=>{ const p = ws3d.pos.get(n.id); cx+=p.x; cy+=p.y; cz+=p.z; }); cx/=ns.length; cy/=ns.length; cz/=ns.length;
+  let R = 100; ns.forEach(n=>{ const p = ws3d.pos.get(n.id); R = Math.max(R, Math.hypot(p.x-cx, p.y-cy, p.z-cz)); });
   const half = Math.max(160, Math.min(ws3d.w||700, ws3d.h||600)/2);
-  ws3d.cam.dist = Math.max(450, Math.min(3500, (R+220)*900/(half*0.8)));
+  Object.assign(ws3d.cam, {tx:cx, ty:cy, tz:cz, ox:0, oy:0, dist:Math.max(300, Math.min(3500, (R+90)*900/(half*0.92)))});
 }
 function ws3dVisible(){
   const g = ws3d.g, q = ws3d.opt.q.trim().toLowerCase();
@@ -4900,14 +4940,16 @@ function ws3dDraw(){
   ws3d.g.links.forEach(l=>{
     const a = ws3d.proj.get(l.a), b = ws3d.proj.get(l.b); if(!a || !b) return;
     const al = Math.max(0.08, Math.min(0.7, 1.3 - ((a.z+b.z)/2)/(cam.dist*2.2)));
-    c.strokeStyle = l.kind==="tag" ? `rgba(255,176,32,${al*0.55})` : `rgba(150,160,180,${al*0.7})`;
+    const mine = ws3d.sel && (l.a===ws3d.sel || l.b===ws3d.sel), mute = ws3d.sel && !mine ? 0.45 : 1;
+    c.lineWidth = mine ? 2 : 1;
+    c.strokeStyle = mine ? "rgba(255,255,255,.8)" : l.kind==="tag" ? `rgba(255,176,32,${al*0.4*mute})` : `rgba(150,160,180,${al*0.5*mute})`;
     c.beginPath(); c.moveTo(a.x,a.y); c.lineTo(b.x,b.y); c.stroke();
   });
   items.sort((a,b)=>b.z-a.z);
   const hits = []; const fill = getComputedStyle(document.body).backgroundColor || "#0d0f12";
-  const lab = ws3d.opt.labels;
+  const lab = ws3d.opt.labels, labs = [];
   items.forEach(it=>{
-    const n = it.n, s = it.s, col = ws3dColor(n), dim = (hit && !hit.has(n.id)) ? 0.18 : (n.done ? 0.45 : 1);
+    const n = it.n, s = it.s, col = ws3dColor(n), colHi = ws3dColorHi(n), dim = (hit && !hit.has(n.id)) ? 0.18 : (n.done ? 0.45 : 1);
     const depthA = Math.max(0.35, Math.min(1, 1.5 - it.z/(cam.dist*2.4)));
     c.globalAlpha = dim*depthA;
     let hw = 8*s, hh = 8*s, text = true, tx = it.x + 10*s, ty = it.y, align = "left", fs = 12*s, bold = false;
@@ -4915,13 +4957,13 @@ function ws3dDraw(){
       const w = Math.max(70, Math.min(190, 14 + n.label.length*7.5))*s, h = 30*s;
       ws3dRR(c, it.x-w/2, it.y-h/2, w, h, 8*s); c.fillStyle = "#23262d"; c.fill(); c.lineWidth = 2*s; c.strokeStyle = n.eff ? col : "#ffb020"; c.stroke();
       hw = w/2; hh = h/2; c.fillStyle = "#f2f3f5"; c.font = `700 ${Math.max(9,13*s)}px system-ui,sans-serif`; c.textAlign = "center"; c.textBaseline = "middle";
-      if(13*s>=5.5) c.fillText(n.label.length>26 ? n.label.slice(0,25)+"…" : n.label, it.x, it.y);
+      if(13*s>=4) c.fillText(n.label.length>26 ? n.label.slice(0,25)+"…" : n.label, it.x, it.y);
       text = false;
     }else if(n.kind==="tag"){
       const w = Math.max(40, 16+n.label.length*7.2)*s, h = 22*s;
       ws3dRR(c, it.x-w/2, it.y-h/2, w, h, h/2); c.fillStyle = col; c.fill();
       hw = w/2; hh = h/2; c.fillStyle = "#101216"; c.font = `700 ${Math.max(8,12*s)}px system-ui,sans-serif`; c.textAlign = "center"; c.textBaseline = "middle";
-      if(12*s>=5.5) c.fillText(n.label, it.x, it.y);
+      if(12*s>=4) c.fillText(n.label, it.x, it.y);
       text = false;
     }else if(n.kind==="att"){
       const th = n.type==="file" ? ws3dThumb(n) : null;
@@ -4946,15 +4988,16 @@ function ws3dDraw(){
       c.fillStyle = col; c.fillRect(it.x-w/2, it.y-w/2, w, w); hw = hh = w/2; bold = n.type==="heading"; fs = (n.type==="heading"?13:11.5)*s;
     }else{
       const r = (n.meta ? 11 : 7.5)*s;
-      c.beginPath(); c.arc(it.x, it.y, r, 0, 6.2832); c.fillStyle = n.done ? "#3a3f48" : col; c.fill();
+      c.beginPath(); c.arc(it.x, it.y, r, 0, 6.2832);
+      if(n.done) c.fillStyle = "#3a3f48";
+      else{ const gr = c.createRadialGradient(it.x-r*0.38, it.y-r*0.38, r*0.08, it.x, it.y, r*1.05); gr.addColorStop(0, colHi); gr.addColorStop(1, col); c.fillStyle = gr; }
+      c.fill();
       if(n.done){ c.lineWidth = 1.5*s; c.strokeStyle = col; c.stroke(); }
       hw = hh = r; tx = it.x + r + 4*s;
     }
-    fs = Math.min(fs, 22);
-    if(text && lab && fs>=5.2){
-      c.font = `${bold?700:400} ${fs}px system-ui,sans-serif`; c.fillStyle = "#e6e8ec"; c.textAlign = align; c.textBaseline = "middle";
-      const t = n.label.length>34 ? n.label.slice(0,33)+"…" : n.label;
-      c.fillText(t, tx, ty);
+    if(text && lab && fs>=4){
+      const strong = n.id===ws3d.sel || n.id===ws3d.hover || (hit && hit.has(n.id));
+      labs.push({t:n.label.length>34 ? n.label.slice(0,33)+"…" : n.label, tx, ty, align, bold, fs:Math.max(10, Math.min(fs, 20)), z:it.z, a:dim*depthA, strong, pri:strong?100:(n.kind==="block"&&n.type==="heading"?20:n.meta?15:10)});
     }
     if(n.id===ws3d.sel || n.id===ws3d.hover){
       c.globalAlpha = 1; c.lineWidth = 2.5; c.strokeStyle = n.id===ws3d.sel ? "#ffffff" : "rgba(255,255,255,.55)";
@@ -4962,6 +5005,20 @@ function ws3dDraw(){
     }
     hits.push({id:n.id, x:it.x, y:it.y, hw:Math.max(hw,6), hh:Math.max(hh,6)});
   });
+  // Beschriftungen: nahe und wichtige zuerst, mit dunklem Rand, überlappende werden ausgelassen
+  labs.sort((a,b)=>b.pri-a.pri || a.z-b.z);
+  const placed = hits.filter(h=>{ const k = ws3d.byId.get(h.id); return k && (k.kind==="doc" || k.kind==="tag"); }).map(h=>({x0:h.x-h.hw, y0:h.y-h.hh, x1:h.x+h.hw, y1:h.y+h.hh}));
+  c.lineJoin = "round"; c.textBaseline = "middle";
+  labs.forEach(L=>{
+    c.font = `${L.bold?700:400} ${L.fs}px system-ui,sans-serif`;
+    const w = c.measureText(L.t).width, h = L.fs*1.2, x0 = L.align==="center" ? L.tx-w/2 : L.tx, y0 = L.ty-h/2;
+    if(!L.strong && placed.some(r=>x0<r.x1 && x0+w>r.x0 && y0<r.y1 && y0+h>r.y0)) return;
+    placed.push({x0, y0, x1:x0+w, y1:y0+h});
+    c.globalAlpha = Math.max(0.55, L.a); c.textAlign = "left";
+    c.lineWidth = 3.5; c.strokeStyle = "rgba(13,15,18,.9)"; c.strokeText(L.t, x0, L.ty);
+    c.fillStyle = "#f0f2f5"; c.fillText(L.t, x0, L.ty);
+  });
+  ws3d.labRects = placed;
   c.globalAlpha = 1;
   ws3d.hits = hits;
 }
@@ -5024,10 +5081,11 @@ function ws3dMount(){
   const $$ = id=>document.getElementById(id);
   $$("ws3dDoc").onchange = e=>{ ws3d.opt.doc = e.target.value; ws3dSaveOpt(); ws3d.opt.focus = false; ws3dBuild(); ws3dSelect(ws3d.sel); ws3d.alpha = 0.8; ws3dKick(); };
   $$("ws3dQ").oninput = e=>{ ws3d.opt.q = e.target.value; ws3dKick(); };
+  $$("ws3dLay").onchange = e=>{ ws3d.opt.layout = e.target.value; ws3dSaveOpt(); ws3d.pos.clear(); ws3dBuild(); ws3dFit(); ws3dKick(); };
   $$("ws3dDone").onchange = e=>{ ws3d.opt.showDone = e.target.checked; ws3dSaveOpt(); ws3dBuild(); ws3dSelect(ws3d.sel); };
   $$("ws3dTags").onchange = e=>{ ws3d.opt.tags = e.target.checked; ws3dSaveOpt(); ws3dBuild(); ws3dSelect(ws3d.sel); };
   $$("ws3dLab").onchange = e=>{ ws3d.opt.labels = e.target.checked; ws3dSaveOpt(); ws3dKick(); };
-  $$("ws3dReset").onclick = ()=>{ Object.assign(ws3d.cam, {yaw:0.6, pitch:0.35, ox:0, oy:0, tx:0, ty:0, tz:0}); ws3dFit(); ws3d.opt.focus = false; ws3dSelect(ws3d.sel); };
+  $$("ws3dReset").onclick = ()=>{ Object.assign(ws3d.cam, {yaw:0.6, pitch:0.35}); ws3dFit(); ws3d.opt.focus = false; ws3dSelect(ws3d.sel); };
   const zoom = f=>{ ws3d.cam.dist = Math.max(250, Math.min(4000, ws3d.cam.dist*f)); ws3dKick(); };
   $$("ws3dZin").onclick = ()=>zoom(0.8); $$("ws3dZout").onclick = ()=>zoom(1.25);
   $$("ws3dShake").onclick = ()=>{ ws3d.pos.clear(); ws3dBuild(); ws3dFit(); ws3dKick(); };

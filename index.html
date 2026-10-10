@@ -352,7 +352,9 @@
   .ws-date.dl{border-color:#7a3b3b;color:#e8a0a0}
   .ws-date.dl.over{border-color:var(--red);color:var(--red)}
   .ws-metachip{color:#ffd37a}
-  .ws-attbtn.has{color:var(--amber)}
+  .ws-attbtn{flex:none;background:#14161a;border:1px solid #3a3f47;color:var(--text);border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .ws-attbtn:hover{border-color:#7a818d;color:#fff}
+  .ws-attbtn.has{color:var(--amber);border-color:rgba(255,176,32,.55)}
   .ws-atts{margin:4px 0 8px 52px;padding-left:8px;border-left:2px solid rgba(255,176,32,.35)}
   .ws-att{background:rgba(255,255,255,.03);border:1px solid #2c3037;border-radius:10px;padding:6px;margin-bottom:6px}
   .ws-att.done .ws-atitle{text-decoration:line-through;color:#6d737e}
@@ -1824,30 +1826,7 @@ function render(){
     const sorted=sortTasksForToday(tasks, key);
     let h=hudHtml();
     h+=wsTodayHtml();
-    const metaTasksAll = [...allGTasks.filter(isMetaTask)].sort((a,b)=>{
-      if(a.deadlineDays===null && b.deadlineDays===null) return 0;
-      if(a.deadlineDays===null) return 1;
-      if(b.deadlineDays===null) return -1;
-      return a.deadlineDays - b.deadlineDays;
-    });
-    const metaTasks = metaTasksAll.slice(0,4);
-    const RANK_COLORS = [
-      {bg:"#4ade80", fg:"#000"}, // 1. dringendster: Grün = machen
-      {bg:"#facc15", fg:"#000"}, // 2.: Gelb
-      {bg:"#f97316", fg:"#fff"}, // 3.: Orange
-      {bg:"#ef4444", fg:"#fff"}  // 4.: Rot
-    ];
-    if(metaTasks.length){
-      h+=`<div class="section-title">🏛️ Dienstliche Metaprojekte</div>`;
-      h+=metaTasks.map((t,i)=>{
-        const {bg,fg}=RANK_COLORS[i];
-        return `<div class="card" style="border-left:5px solid ${bg}">
-          <div class="check" data-gtask="${t.id}">${checkSvg()}</div>
-          <div class="body"><div class="title">${esc(t.title||"(ohne Titel)")}</div></div>
-          <span class="rankchip" style="background:${bg};color:${fg}">${i+1}</span>
-        </div>`;
-      }).join("");
-    }
+    h+=wsMetaTodayHtml();
     if(goalTasks.length){
       const gd=goalTasks.filter(g=>g.completed).length;
       h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goalTasks.length);
@@ -3808,7 +3787,7 @@ function wsNodeHtml(n){
       <span class="ws-nright">
       ${wsNodeChips(n)}
       ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}
-      <button class="ws-mini ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle anhängen">📎${n.att.length?n.att.length:""}</button>
+      <button class="ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle an diesen Punkt anhängen">📎 ${n.att.length?n.att.length:"Anhang"}</button>
       <button class="ws-mini" data-wsact="add-child" title="Unterpunkt anlegen">+</button>
       <button class="ws-mini" data-wsact="del-node" title="Punkt löschen">✕</button>
       </span>
@@ -4056,6 +4035,17 @@ main.addEventListener("click", e=>{
     const d = wsNewDoc("Neues Dokument"); wsDocs.push(d); wsOpenDocId = d.id; localStorage.setItem("wsOpenDoc", d.id);
     wsTouch(d); wsFocusSel = `.ws-doc[data-doc="${d.id}"] .ws-doctitle`; render();
     const t = document.querySelector(".ws-doctitle"); if(t) t.select();
+    return;
+  }
+  if(act==="meta-open"){
+    const hit = wsMetaNodes().find(h=>h.node.id===a.dataset.nid); if(!hit) return;
+    wsOpenDocId = hit.doc.id; localStorage.setItem("wsOpenDoc", wsOpenDocId);
+    wsTab = "docs"; localStorage.setItem("wsTab", wsTab); view = "notes"; render(); return;
+  }
+  if(act==="meta-done"){
+    const hit = wsMetaNodes().find(h=>h.node.id===a.dataset.nid); if(!hit) return;
+    hit.node.done = true; wsTouch(hit.doc); render();
+    if(hit.node.link) wsLinkRun(()=>wsPushDone(hit.doc, hit.node));
     return;
   }
   if(act==="open-doc"){ wsOpenDocId = a.dataset.id; localStorage.setItem("wsOpenDoc", wsOpenDocId); render(); return; }
@@ -4674,6 +4664,38 @@ async function wsReconcileLinks(){
     touched.forEach(d=>wsTouch(d));
     if(touched.size) console.log("  ✓ wsReconcileLinks: Dokumente angepasst:", touched.size);
   }catch(e){ console.error("wsReconcileLinks:", e.message); }
+}
+
+
+/* ============ HEUTE: Dienstliche Metaprojekte aus dem Arbeitsbereich ============ */
+/* Alle als Meta-Projekt markierten, noch nicht abgehakten Punkte; Reihenfolge nach Deadline (oder Ende des Zeitraums), ohne Termin zuletzt. */
+function wsMetaNodes(){
+  const out = [];
+  wsDocs.forEach(doc=>{
+    wsAllNodes(doc).forEach(n=>{ if(n.meta && !n.done) out.push({doc, node:n}); });
+  });
+  return out;
+}
+function wsMetaTodayHtml(){
+  const key = (h)=>{ const sp = wsSpan(h.node); return h.node.dl || (sp ? sp.end : ""); };
+  const list = wsMetaNodes().sort((a,b)=>{
+    const ka = key(a), kb = key(b);
+    if(!ka && !kb) return 0; if(!ka) return 1; if(!kb) return -1;
+    return ka<kb ? -1 : ka>kb ? 1 : 0;
+  }).slice(0,4);
+  if(!list.length) return "";
+  const RANK = [{bg:"#4ade80",fg:"#000"},{bg:"#facc15",fg:"#000"},{bg:"#f97316",fg:"#fff"},{bg:"#ef4444",fg:"#fff"}];
+  const today = todayKey();
+  return `<div class="section-title">🏛️ Dienstliche Metaprojekte</div>` + list.map((h,i)=>{
+    const {bg,fg} = RANK[i], n = h.node, k = key(h);
+    const over = k && k < today;
+    return `<div class="card" style="border-left:5px solid ${bg}">
+      <div class="check" data-wsact="meta-done" data-nid="${n.id}" title="Als erledigt abhaken">${checkSvg()}</div>
+      <div class="body" data-wsact="meta-open" data-nid="${n.id}" style="cursor:pointer"><div class="title">${esc(wsTitleOf(n)||"(ohne Titel)")}</div>
+        ${k?`<div class="muted" style="font-size:12px;${over?"color:var(--red)":""}">${n.dl?"⚑ ":""}${esc(wsShortDate(k))}${over?" · überfällig":""}</div>`:""}</div>
+      <span class="rankchip" style="background:${bg};color:${fg}">${i+1}</span>
+    </div>`;
+  }).join("");
 }
 
 /* ============ EVENTS ============ */

@@ -4899,9 +4899,9 @@ const ws3d = {
   pos:new Map(), sel:"", g:null, byId:new Map(), nb:new Map(), proj:new Map(),
   cv:null, ctx:null, w:0, h:0, alpha:1, raf:0, hits:[], ptr:new Map(), moved:false, thumbs:new Map(), loading:0, hover:"",
   opt:(()=>{ let o = {}; try{ o = JSON.parse(localStorage.getItem("ws3dOpt")||"{}")||{}; }catch(e){}
-    return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, layout:o.layout==="net"?"net":"tree", floor:o.floor!==false, spin:!!o.spin, focus:false, q:""}; })()
+    return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, layout:o.layout==="net"?"net":"tree", floor:o.floor!==false, spin:!!o.spin, edit:o.edit!==false, focus:false, q:""}; })()
 };
-function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels, layout:ws3d.opt.layout, floor:ws3d.opt.floor, spin:ws3d.opt.spin})); }catch(e){} }
+function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels, layout:ws3d.opt.layout, floor:ws3d.opt.floor, spin:ws3d.opt.spin, edit:ws3d.opt.edit})); }catch(e){} }
 function ws3dHtml(){
   const o = ws3d.opt;
   return `<div class="ws3d-bar">
@@ -4912,6 +4912,7 @@ function ws3dHtml(){
     <label class="ws3d-ck"><input type="checkbox" id="ws3dTags"${o.tags?" checked":""}> Tags als Knoten</label>
     <label class="ws3d-ck"><input type="checkbox" id="ws3dLab"${o.labels?" checked":""}> Beschriftung</label>
     <label class="ws3d-ck"><input type="checkbox" id="ws3dFloor"${o.floor?" checked":""}> Boden</label>
+    <label class="ws3d-ck" title="Ein Klick auf einen Eintrag öffnet ihn sofort zum Bearbeiten"><input type="checkbox" id="ws3dEdit"${o.edit?" checked":""}> Klick bearbeitet</label>
     <label class="ws3d-ck"><input type="checkbox" id="ws3dSpin"${o.spin?" checked":""}> Drehen</label>
     <button class="ws-addbtn" id="ws3dReset">Ansicht zurücksetzen</button>
     <button class="ws-addbtn" id="ws3dShake">Neu ordnen</button>
@@ -5270,6 +5271,7 @@ function ws3dMount(){
   $$("ws3dTags").onchange = e=>{ ws3d.opt.tags = e.target.checked; ws3dSaveOpt(); ws3dBuild(); ws3dSelect(ws3d.sel); };
   $$("ws3dLab").onchange = e=>{ ws3d.opt.labels = e.target.checked; ws3dSaveOpt(); ws3dKick(); };
   $$("ws3dFloor").onchange = e=>{ ws3d.opt.floor = e.target.checked; ws3dSaveOpt(); ws3dKick(); };
+  $$("ws3dEdit").onchange = e=>{ ws3d.opt.edit = e.target.checked; ws3dSaveOpt(); };
   $$("ws3dSpin").onchange = e=>{ ws3d.opt.spin = e.target.checked; ws3dSaveOpt(); ws3d.last = 0; ws3dKick(); };
   $$("ws3dReset").onclick = ()=>{ Object.assign(ws3d.cam, {yaw:0.6, pitch:0.4}); ws3dFit(); ws3d.opt.focus = false; ws3dSelect(ws3d.sel); };
   const zoom = f=>{ ws3d.userCam = true; ws3d.cam.dist = Math.max(250, Math.min(4000, ws3d.cam.dist*f)); ws3dKick(); };
@@ -5297,7 +5299,9 @@ function ws3dMount(){
   };
   const up = e=>{
     const p = ws3d.ptr.get(e.pointerId); ws3d.ptr.delete(e.pointerId);
-    if(p && !ws3d.moved && ws3d.ptr.size===0 && e.type==="pointerup"){ const r = rect(); ws3dSelect(ws3dHit(e.clientX-r.left, e.clientY-r.top)); }
+    if(p && !ws3d.moved && ws3d.ptr.size===0 && e.type==="pointerup"){ const r = rect(), id = ws3dHit(e.clientX-r.left, e.clientY-r.top); ws3dSelect(id);
+      const n = id && ws3d.byId.get(id);
+      if(n && ws3d.opt.edit && !document.getElementById("modalBg")){ if(n.kind==="node" || n.kind==="att") ws3dAct("edit"); else if(n.kind==="doc" || n.kind==="block") ws3dAct("goto"); } }
   };
   cv.onpointerup = up; cv.onpointercancel = up;
   cv.ondblclick = e=>{ const r = rect(), id = ws3dHit(e.clientX-r.left, e.clientY-r.top); if(!id) return; ws3dSelect(id);

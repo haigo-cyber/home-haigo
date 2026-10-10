@@ -3295,7 +3295,7 @@ const WS_MAXROWS = 2000;
 /* WS-PURE-START */
 let _wsCnt = 0;
 function wsId(){ return Date.now().toString(36) + (++_wsCnt).toString(36) + Math.random().toString(36).slice(2,5); }
-function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapsed:false, date:"", dur:0, dl:"", meta:false, link:null, aopen:false, att:[], children:[]}; }
+function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapsed:false, date:"", ld:"", dur:0, dl:"", meta:false, link:null, aopen:false, att:[], children:[]}; }
 /* Anhang an einem Punkt: Text (auch als Notiz nutzbar) oder Tabelle; trägt wie ein Punkt Datum, Erledigt-Haken und Verknüpfung */
 function wsNewAtt(type){
   const a = {id:wsId(), type:type, title:"", done:false, date:"", link:null};
@@ -3323,6 +3323,15 @@ function wsNormAtt(a){
 function wsAddDays(d, k){
   const t = new Date(+d.slice(0,4), +d.slice(5,7)-1, +d.slice(8,10)+k);
   return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");
+}
+/* Tag, an dem das verknüpfte ToDo / Tages-Ziel gilt: bei gesetzter Deadline deren Tag (ld), sonst der Start */
+function wsLinkDay(x){ return x.ld || x.date || ""; }
+function wsSetLinkDay(x, d){ if(x.ld || x.dl) x.ld = d; else x.date = d; }
+/* gewünschter Tag der Verknüpfung: neu -> Deadline, sonst Start, sonst heute; bestehend -> folgt einer neuen/geänderten Deadline, ohne Deadline dem Start */
+function wsPlanDay(n, date0, newDl, isLinked, today){
+  if(!isLinked) return newDl || date0 || today;
+  if(newDl) return newDl!==(n.dl||"") ? newDl : wsLinkDay(n);
+  return date0;
 }
 /* Zeitraum eines Punktes: Start + Laufzeit (Kalendertage) ergibt das Ende; ohne Start rückwärts von der Deadline */
 function wsSpan(n){
@@ -3390,7 +3399,7 @@ function wsNewBlock(type){
 function wsNormNodes(a){
   return (Array.isArray(a)?a:[]).filter(n=>n && typeof n==="object").map(n=>({
     id:n.id||wsId(), text:String(n.text||""), done:!!n.done, collapsed:!!n.collapsed,
-    date:wsIsDate(n.date)?n.date:"", dur:(n.dur>0 && n.dur<=3660)?Math.floor(n.dur):0, dl:wsIsDate(n.dl)?n.dl:"", meta:!!n.meta,
+    date:wsIsDate(n.date)?n.date:"", ld:wsIsDate(n.ld)?n.ld:"", dur:(n.dur>0 && n.dur<=3660)?Math.floor(n.dur):0, dl:wsIsDate(n.dl)?n.dl:"", meta:!!n.meta,
     link:wsNormLink(n.link), aopen:!!n.aopen, att:(Array.isArray(n.att)?n.att:[]).map(wsNormAtt).filter(Boolean), children:wsNormNodes(n.children)
   }));
 }
@@ -3743,7 +3752,7 @@ function wsNodeChips(n){
     h += `<button class="ws-date" data-wsact="link-menu" title="Zeitraum rückwärts von der Deadline berechnet">${esc(wsShortDate(sp.start))} ➜</button>`;
   }
   if(!att && n.dl) h += `<button class="ws-date dl${sp && sp.end>n.dl?" over":""}" data-wsact="link-menu" title="Deadline${sp && sp.end>n.dl?": Laufzeit reicht darüber hinaus":""}">⚑ ${esc(wsShortDate(n.dl))}</button>`;
-  if(n.link) h += `<button class="ws-lnk" data-wsact="link-menu" title="${n.link.kind==="goal"?"Verknüpft mit Tages-Ziel":"Verknüpft mit ToDo"}${n.link.cal?" und Kalender":""}">${n.link.kind==="goal"?"🎯":"☑"}${n.link.cal?"📆":""}</button>`;
+  if(n.link) h += `<button class="ws-lnk" data-wsact="link-menu" title="${n.link.kind==="goal"?"Verknüpft mit Tages-Ziel":"Verknüpft mit ToDo"}${wsLinkDay(n)?" am "+wsShortDate(wsLinkDay(n)):""}${n.link.cal?" und Kalender":""}">${n.link.kind==="goal"?"🎯":"☑"}${n.link.cal?"📆":""}${(n.ld && n.ld!==n.date)?" "+esc(wsShortDate(n.ld)):""}</button>`;
   if(!n.date && !n.link && !sp && !(!att && n.meta)) h += `<button class="ws-mini" data-wsact="link-menu" title="Termine setzen oder als ToDo / Tages-Ziel anlegen">📅</button>`;
   return h;
 }
@@ -4326,7 +4335,7 @@ async function wsSyncItem(doc, node, wantCal){
     const t = tasks.find(x=>x.id===L.ref);
     if(!t){ node.link = null; wsTouch(doc); wsRefreshDoc(doc); return; }
     if(title) t.title = title;
-    t.startDate = node.date || "";
+    t.startDate = wsLinkDay(node);
     const wd = parseDate(t.startDate); t.weekday = wd ? String(wd.getDay()) : "";
     t.syncCalendar = !!wantCal;
     await syncCalendar(t);
@@ -4334,14 +4343,14 @@ async function wsSyncItem(doc, node, wantCal){
     await saveTasks();
   }else{
     const listId = defaultGTaskListId || "@default";
-    const body = {notes:GOAL_MARKER}; if(title) body.title = title; if(node.date) body.due = node.date+"T12:00:00.000Z";
+    const body = {notes:GOAL_MARKER}; if(title) body.title = title; if(wsLinkDay(node)) body.due = wsLinkDay(node)+"T12:00:00.000Z";
     try{
       await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(L.ref)}`, {method:"PATCH", body:JSON.stringify(body)});
     }catch(e){
       if(/404/.test(e.message||"")){ node.link = null; wsTouch(doc); wsRefreshDoc(doc); toast("Das verknüpfte Tages-Ziel existiert nicht mehr"); return; }
       throw e;
     }
-    await wsGoalEvent(L, title || "Ziel", node.date, !!wantCal);
+    await wsGoalEvent(L, title || "Ziel", wsLinkDay(node), !!wantCal);
     await loadGTasks();
   }
   wsTouch(doc);
@@ -4376,8 +4385,8 @@ async function wsCreateItem(doc, node, kind, cal){
   if(node.link) return;
   const title = wsTitleOf(node);
   if(kind==="todo"){
-    const wd = parseDate(node.date);
-    const t = {id:uid(), type:"todo", title, scheduleType:"once", startDate:node.date, weekday:wd?String(wd.getDay()):"",
+    const wd = parseDate(wsLinkDay(node));
+    const t = {id:uid(), type:"todo", title, scheduleType:"once", startDate:wsLinkDay(node), weekday:wd?String(wd.getDay()):"",
       syncCalendar:!!cal, calendarEventId:"", notes:"", createdAt:new Date().toISOString(), archived:false,
       calendarId:"", startTime:"", projectId:"", tag:""};
     tasks.push(t);
@@ -4388,9 +4397,9 @@ async function wsCreateItem(doc, node, kind, cal){
     if(!defaultGTaskListId) await loadGTasks();
     if(!defaultGTaskListId){ toast("Google Tasks nicht erreichbar"); return; }
     const res = await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks`,
-      {method:"POST", body:JSON.stringify({title, notes:GOAL_MARKER, due:node.date+"T12:00:00.000Z"})});
+      {method:"POST", body:JSON.stringify({title, notes:GOAL_MARKER, due:wsLinkDay(node)+"T12:00:00.000Z"})});
     node.link = {kind:"goal", ref:res.id, cal:false, evId:"", calId:""};
-    if(cal) await wsGoalEvent(node.link, title, node.date, true);
+    if(cal) await wsGoalEvent(node.link, title, wsLinkDay(node), true);
     await loadGTasks();
   }
   wsTouch(doc);
@@ -4409,26 +4418,30 @@ async function wsApplyMenu(docId, nid, o){
     n.dl = wsIsDate(o.dl) ? o.dl : "";
     n.meta = !!o.meta;
   };
+  const newDl = wsIsAtt(n) ? "" : (wsIsDate(o.dl) ? o.dl : "");
+  const place = (day)=>{ if(newDl){ n.date = date0; n.ld = day; } else { n.date = day; n.ld = ""; } };
   if(!L){
     if(!o.kind){ n.date = date0; setFields(); wsTouch(doc); wsRefreshDoc(doc); return; }
     if(!wsTitleOf(n)){ toast(wsIsAtt(n) ? "Erst einen Titel oder Text eingeben" : "Erst einen Text eingeben"); return; }
-    const date = date0 || today;
+    const day = wsPlanDay(n, date0, newDl, false, today);
     if(o.kind==="goal"){
-      if(date<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
-      if(wsGoalCount(date)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag"); return; }
+      if(day<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
+      if(wsGoalCount(day)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag am "+wsShortDate(day)); return; }
     }
-    n.date = date; setFields(); wsTouch(doc); wsRefreshDoc(doc);
+    setFields(); place(day); wsTouch(doc); wsRefreshDoc(doc);
     await wsLinkRun(()=>wsCreateItem(doc, n, o.kind, !!o.cal));
     return;
   }
+  const oldLd = wsLinkDay(n);
+  const day = wsPlanDay(n, date0, newDl, true, today);
   if(L.kind==="goal"){
-    if(!date0){ toast("Ein Tages-Ziel braucht ein Datum"); return; }
-    if(date0!==n.date){
-      if(date0<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
-      if(wsGoalCount(date0)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag"); return; }
+    if(!day){ toast("Ein Tages-Ziel braucht ein Datum"); return; }
+    if(day!==oldLd){
+      if(day<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
+      if(wsGoalCount(day)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag am "+wsShortDate(day)); return; }
     }
   }
-  n.date = date0; setFields(); wsTouch(doc); wsRefreshDoc(doc);
+  setFields(); place(day); wsTouch(doc); wsRefreshDoc(doc);
   await wsLinkRun(()=>wsSyncItem(doc, n, !!o.cal));
 }
 async function wsUnlink(docId, nid){
@@ -4454,6 +4467,7 @@ function wsOpenLinkMenu(docId, nid){
       ${att?"":`<label>Laufzeit in Tagen (Kalendertage, leer = keine)</label><input type="number" id="wsl_dur" min="0" max="3660" step="1" value="${n.dur||""}" placeholder="z. B. 5">
       <label>Deadline</label><input type="date" id="wsl_dl" value="${esc(n.dl||"")}">
       <div class="muted" style="font-size:12px;margin:4px 0 0" id="wsl_end"></div>
+      <div style="font-size:12.5px;margin:4px 0 0;color:var(--amber)" id="wsl_day"></div>
       <div class="toggle-row"><div><div style="font-size:14px">Meta-Projekt</div>
         <div class="muted" style="font-size:12px">Oberste Ebene im Gantt-Reiter</div></div>
         <button class="switch${n.meta?" on":""}" id="wsl_meta"></button></div>`}
@@ -4470,7 +4484,8 @@ function wsOpenLinkMenu(docId, nid){
   if(kindEl) kindEl.querySelectorAll("button").forEach(b=>b.onclick=()=>{
     kindEl.querySelectorAll("button").forEach(x=>x.classList.remove("sel")); b.classList.add("sel");
     kind = b.dataset.k; $("wsl_calrow").style.display = kind ? "" : "none";
-    if(kind && !$("wsl_date").value) $("wsl_date").value = todayKey();
+    if(kind && !$("wsl_date").value && !($("wsl_dl") && $("wsl_dl").value)) $("wsl_date").value = todayKey();
+    upEnd();
   });
   $("wsl_cal").onclick = ()=>$("wsl_cal").classList.toggle("on");
   if($("wsl_meta")) $("wsl_meta").onclick = ()=>$("wsl_meta").classList.toggle("on");
@@ -4478,6 +4493,13 @@ function wsOpenLinkMenu(docId, nid){
     const el = $("wsl_end"); if(!el) return;
     const tmp = {date:$("wsl_date").value, dur:parseInt($("wsl_dur").value,10)||0, dl:$("wsl_dl").value};
     const sp = wsSpan(tmp);
+    const dayEl = $("wsl_day");
+    if(dayEl){
+      const linked = !!L, chosen = linked || !!kind;
+      const d0 = $("wsl_date").value, dl0 = $("wsl_dl").value;
+      const day = chosen ? wsPlanDay(n, d0, dl0, linked, todayKey()) : "";
+      dayEl.textContent = day ? ((linked ? (L.kind==="goal" ? "Tages-Ziel" : "ToDo") : (kind==="goal" ? "Tages-Ziel" : "ToDo"))+" gilt am "+wsShortDate(day)+(dl0 && day===dl0 ? " (Tag der Deadline)" : "")) : "";
+    }
     el.textContent = sp ? "Zeitraum: "+wsShortDate(sp.start)+" bis "+wsShortDate(sp.end)+(tmp.dl && sp.end>tmp.dl ? " (reicht über die Deadline hinaus)" : "") : "";
   };
   ["wsl_date","wsl_dur","wsl_dl"].forEach(id=>{ if($(id)){ $(id).oninput = upEnd; $(id).onchange = upEnd; } });
@@ -4602,7 +4624,7 @@ function wsOnTodoChanged(t){
   const h = wsFindByLink(wsDocs, "todo", t.id); if(!h) return;
   if(t.type!=="todo" || t.scheduleType==="weekly"){ h.node.link = null; wsTouch(h.doc); toast("Verknüpfung mit dem Arbeitsbereich gelöst: kein einmaliges ToDo mehr"); return; }
   if(t.title) wsSetTitle(h.node, t.title);
-  h.node.date = t.startDate || "";
+  wsSetLinkDay(h.node, t.startDate || "");
   h.node.link.cal = !!t.syncCalendar && !!t.calendarEventId;
   wsTouch(h.doc);
 }
@@ -4610,9 +4632,9 @@ function wsOnGoalChanged(id, title, date){
   if(!wsLoaded) return;
   const h = wsFindByLink(wsDocs, "goal", id); if(!h) return;
   if(title) wsSetTitle(h.node, title);
-  if(date) h.node.date = date;
+  if(date) wsSetLinkDay(h.node, date);
   wsTouch(h.doc);
-  if(h.node.link.evId) wsLinkRun(()=>wsGoalEvent(h.node.link, wsTitleOf(h.node), h.node.date, true).then(()=>wsTouch(h.doc)));
+  if(h.node.link.evId) wsLinkRun(()=>wsGoalEvent(h.node.link, wsTitleOf(h.node), wsLinkDay(h.node), true).then(()=>wsTouch(h.doc)));
 }
 function wsOnItemDeleted(kind, ref){
   if(!wsLoaded) return;
@@ -4636,7 +4658,7 @@ async function wsReconcileLinks(){
           if(!t || t.type!=="todo" || t.scheduleType==="weekly"){ n.link = null; touched.add(doc); return; }
           setN(doc, n, "done", isEverDone(t.id));
           if(t.title && wsTitleOf(n)!==t.title){ wsSetTitle(n, t.title); touched.add(doc); }
-          setN(doc, n, "date", t.startDate || "");
+          { const d = t.startDate || ""; if(wsLinkDay(n)!==d){ wsSetLinkDay(n, d); touched.add(doc); } }
           const cal = !!t.syncCalendar && !!t.calendarEventId;
           if(L.cal!==cal){ L.cal = cal; touched.add(doc); }
         }else{
@@ -4644,7 +4666,7 @@ async function wsReconcileLinks(){
           if(g){
             setN(doc, n, "done", !!g.completed);
             if(g.title && g.title!=="(ohne Titel)" && wsTitleOf(n)!==g.title){ wsSetTitle(n, g.title); touched.add(doc); }
-            if(g.due) setN(doc, n, "date", g.due);
+            if(g.due && wsLinkDay(n)!==g.due){ wsSetLinkDay(n, g.due); touched.add(doc); }
           }else unresolved.push({doc, n});
         }
       });
@@ -4686,7 +4708,7 @@ function wsMetaTodayHtml(){
   if(!list.length) return "";
   const RANK = [{bg:"#4ade80",fg:"#000"},{bg:"#facc15",fg:"#000"},{bg:"#f97316",fg:"#fff"},{bg:"#ef4444",fg:"#fff"}];
   const today = todayKey();
-  return `<div class="section-title">🏛️ Dienstliche Metaprojekte</div>` + list.map((h,i)=>{
+  return `<div class="section-title">🏛️ Metaprojekte</div>` + list.map((h,i)=>{
     const {bg,fg} = RANK[i], n = h.node, k = key(h);
     const over = k && k < today;
     return `<div class="card" style="border-left:5px solid ${bg}">

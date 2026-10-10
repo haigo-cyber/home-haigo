@@ -513,6 +513,11 @@
   .ws3d-zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px}
   .ws3d-zoom button{width:40px;height:40px;border-radius:10px;border:1px solid #3a3f48;background:rgba(30,33,39,.92);color:var(--text);font-size:24px;line-height:1;cursor:pointer}
   .ws3d-zoom button:hover{background:#2a2e36}
+  .ws-implist{max-height:46vh;overflow:auto;border:1px solid #2c3037;border-radius:10px;margin-bottom:10px}
+  .ws-improw{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #22252b;cursor:pointer;font-size:14px}
+  .ws-improw:last-child{border-bottom:0}
+  .ws-improw input{flex:none;width:18px;height:18px}
+  .ws-imptx{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -1529,7 +1534,7 @@ function taskCard(t,{showCheck=true, key=todayKey(), oneTime=false}={}){
   const inboxBadge=inbox?'<span class="badge" style="background:#d4f1c5;color:#000">⚡ unsortiert</span>':'';
   const TAG_COLORS={privat:"#93c5fd", job:"#fca5a5", projekt:"#fcd34d"};
   const TAG_LABELS={privat:"Privat", job:"Job", projekt:"Projekt"};
-  const tagBadge=t.tag&&TAG_LABELS[t.tag]?`<span class="badge" style="background:${TAG_COLORS[t.tag]};color:#000">${TAG_LABELS[t.tag]}</span>`:'';
+  const tagBadge=String(t.tag||"").split(",").map(x=>x.trim()).filter(x=>TAG_LABELS[x]).map(x=>`<span class="badge" style="background:${TAG_COLORS[x]};color:#000">${TAG_LABELS[x]}</span>`).join("");
   return `<div class="card${done?' done':''}">
     ${showCheck?`<div class="check${done?' on':''}" data-toggle="${t.id}" data-key="${toggleKey}">${checkSvg()}</div>`:''}
     <div class="body">
@@ -3035,13 +3040,14 @@ function openForm(type, existing){
         <option value="todo" ${type==="todo"?"selected":""}>ToDo</option>
         <option value="goal" ${type==="goal"?"selected":""}>Tages-Ziel</option>
       </select>`;
-  const curTag = (isEdit && t.tag) ? t.tag : "";
+  const curTag = (existing && existing.tag) ? existing.tag : "";
+  const curTagL = String(curTag).split(",").map(x=>x.trim()).filter(Boolean);
   const tagSelect = (type==="goal") ? "" : `<label style="margin-top:12px">Tag</label>
       <div class="seg" id="f_tag" style="margin-bottom:12px">
-        <button data-tag="" class="${curTag===""?"sel":""}">Kein Tag</button>
-        <button data-tag="privat" class="${curTag==="privat"?"sel":""}">Privat</button>
-        <button data-tag="job" class="${curTag==="job"?"sel":""}">Job</button>
-        <button data-tag="projekt" class="${curTag==="projekt"?"sel":""}">Projekt</button>
+        <button data-tag="" class="${curTagL.length===0?"sel":""}">Kein Tag</button>
+        <button data-tag="privat" class="${curTagL.includes("privat")?"sel":""}">Privat</button>
+        <button data-tag="job" class="${curTagL.includes("job")?"sel":""}">Job</button>
+        <button data-tag="projekt" class="${curTagL.includes("projekt")?"sel":""}">Projekt</button>
       </div>`;
 
   main.insertAdjacentHTML("beforeend",
@@ -3073,8 +3079,11 @@ function openForm(type, existing){
   const tagEl=$("f_tag");
   if(tagEl){
     tagEl.querySelectorAll("button").forEach(b=>b.onclick=()=>{
-      tagEl.querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
-      b.classList.add("sel"); selectedTag=b.dataset.tag;
+      if(b.dataset.tag===""){ tagEl.querySelectorAll("button").forEach(x=>x.classList.remove("sel")); b.classList.add("sel"); selectedTag=""; return; }
+      b.classList.toggle("sel");
+      const on=[...tagEl.querySelectorAll("button[data-tag]")].filter(x=>x.dataset.tag && x.classList.contains("sel")).map(x=>x.dataset.tag);
+      tagEl.querySelector('button[data-tag=""]').classList.toggle("sel", on.length===0);
+      selectedTag=on.join(",");
     });
   }
 
@@ -3638,7 +3647,7 @@ function wsNodeShown(n, f, today, inh){
   if(n.hid && !f.showHid) return false;
   if(f.hideDone && wsAllDone(n)) return false;
   if(!wsHasCrit(f)) return true;
-  const eff = n.tag || inh || "";
+  const eff = wsTagUnion(inh, n.tag);
   if(!(n.text||"").trim() && !n.children.length && wsTagMatch(eff, f.tag)) return true;
   if(wsNodeMatch(n, f, today, eff)) return true;
   return n.children.some(c=>wsNodeShown(c, f, today, eff));
@@ -3646,7 +3655,7 @@ function wsNodeShown(n, f, today, inh){
 function wsSubCount(n){ return 1 + n.children.reduce((s,c)=>s+wsSubCount(c), 0); }
 function wsHiddenCount(items, f, today, inh){
   let k = 0;
-  for(const n of items){ const eff = n.tag || inh || ""; if(!wsNodeShown(n, f, today, inh)) k += wsSubCount(n); else k += wsHiddenCount(n.children, f, today, eff); }
+  for(const n of items){ const eff = wsTagUnion(inh, n.tag); if(!wsNodeShown(n, f, today, inh)) k += wsSubCount(n); else k += wsHiddenCount(n.children, f, today, eff); }
   return k;
 }
 
@@ -3668,15 +3677,22 @@ function wsDeadlineItems(docs, today){
 }
 
 /* ---- Tags (rein) ---- */
-function wsNormTag(s){ return String(s||"").replace(/\s+/g," ").trim().slice(0,30); }
+/* Ein Eintrag kann mehrere Tags tragen (Text mit Komma getrennt); Tags darunter kommen zu den geerbten dazu */
+function wsTagList(s){
+  const seen = new Set(), out = [];
+  String(s||"").split(",").forEach(p=>{ const t = p.replace(/\s+/g," ").trim().slice(0,30), k = t.toLowerCase(); if(t && !seen.has(k)){ seen.add(k); out.push(t); } });
+  return out;
+}
+function wsNormTag(s){ return wsTagList(s).slice(0,4).join(", "); }
 function wsTagKey(s){ return wsNormTag(s).toLowerCase(); }
-function wsTagMatch(eff, sel){ if(!sel) return true; const k = wsTagKey(eff); return sel==="!none" ? k==="" : k===sel; }
+function wsTagUnion(a, b){ return wsTagList(String(a||"")+","+String(b||"")).slice(0,8).join(", "); }
+function wsTagMatch(eff, sel){ if(!sel) return true; const l = wsTagList(eff).map(t=>t.toLowerCase()); return sel==="!none" ? l.length===0 : l.includes(sel); }
 /* Tag eines Blocks: Überschrift gilt für sich und alle folgenden Blöcke bis zur nächsten Überschrift; sonst der Tag des Dokuments */
 function wsBlockTags(doc){
-  const out = {}; let sec = "";
+  const out = {}; let base = wsNormTag(doc.tag);
   doc.blocks.forEach(b=>{
-    if(b.type==="heading"){ sec = b.tag||""; out[b.id] = sec || doc.tag || ""; }
-    else out[b.id] = b.tag || sec || doc.tag || "";
+    if(b.type==="heading"){ base = wsTagUnion(doc.tag, b.tag); out[b.id] = base; }
+    else out[b.id] = wsTagUnion(base, b.tag);
   });
   return out;
 }
@@ -3685,7 +3701,7 @@ function wsEffTags(docs){
   const map = new Map();
   docs.forEach(doc=>{
     const bt = wsBlockTags(doc);
-    const walk = (items, inh)=>items.forEach(n=>{ const e = n.tag||inh||""; map.set(n.id, e); walk(n.children, e); });
+    const walk = (items, inh)=>items.forEach(n=>{ const e = wsTagUnion(inh, n.tag); map.set(n.id, e); walk(n.children, e); });
     doc.blocks.forEach(b=>{ if(b.type==="outline") walk(b.items, bt[b.id]); });
   });
   return map;
@@ -3693,7 +3709,7 @@ function wsEffTags(docs){
 function wsTagShownNode(n, sel, em){ return wsTagMatch(em.get(n.id), sel) || n.children.some(c=>wsTagShownNode(c, sel, em)); }
 function wsAllTags(docs){
   const seen = new Map();
-  const add = t=>{ const k = wsTagKey(t); if(k && !seen.has(k)) seen.set(k, wsNormTag(t)); };
+  const add = t=>{ wsTagList(t).forEach(x=>{ const k = x.toLowerCase(); if(!seen.has(k)) seen.set(k, x); }); };
   const walk = items=>items.forEach(n=>{ add(n.tag); (n.att||[]).forEach(a=>add(a.tag)); walk(n.children); });
   docs.forEach(d=>{ add(d.tag); d.blocks.forEach(b=>{ add(b.tag); if(b.type==="outline") walk(b.items); }); });
   return [...seen.values()].sort((a,b)=>a.localeCompare(b, "de"));
@@ -3827,10 +3843,12 @@ function wsGraph(docs, o){
   const add = n=>{ if(nodes.length>=max){ cut = true; return null; } nodes.push(n); idx.set(n.id, n); return n; };
   const link = (a, b, kind)=>{ if(a && b && idx.has(a) && idx.has(b)) links.push({a, b, kind:kind||"tree"}); };
   const ownTag = (id, tag)=>{
-    const t = wsNormTag(tag); if(!t || o.tags===false) return;
-    const tid = "t:"+wsTagKey(t);
-    if(!idx.has(tid)) add({id:tid, kind:"tag", label:"#"+t, doc:"", ref:t, eff:t, done:false});
-    link(id, tid, "tag");
+    if(o.tags===false) return;
+    wsTagList(tag).forEach(t=>{
+      const tid = "t:"+t.toLowerCase();
+      if(!idx.has(tid)) add({id:tid, kind:"tag", label:"#"+t, doc:"", ref:t, eff:t, done:false});
+      link(id, tid, "tag");
+    });
   };
   const first = t=>{ const s = String(t||"").trim().split("\n")[0]; return s.length>60 ? s.slice(0,60)+"…" : s; };
   docs.forEach(doc=>{
@@ -3849,7 +3867,7 @@ function wsGraph(docs, o){
         if(a.done && !o.showDone) return;
         const aid = "a:"+a.id;
         const label = wsTitleOf(a) || (a.type==="table" ? "Tabelle" : a.type==="file" ? "Datei" : a.type==="link" ? "Link" : "Notiz");
-        if(!add({id:aid, kind:"att", type:a.type, label:first(label), doc:doc.id, ref:a.id, eff:a.tag||eff, done:!!a.done, fileId:a.fileId||"", mime:a.mime||"", url:a.url||""})) return;
+        if(!add({id:aid, kind:"att", type:a.type, label:first(label), doc:doc.id, ref:a.id, eff:wsTagUnion(eff, a.tag), done:!!a.done, fileId:a.fileId||"", mime:a.mime||"", url:a.url||""})) return;
         link(id, aid); ownTag(aid, a.tag);
       });
       walk(n.children, id);
@@ -4051,19 +4069,19 @@ function wsAttHtml(a, eff){
       <button class="ws-tog" data-wsact="fold" title="${open?"Einklappen":"Aufklappen"}">${open?"▾":"▸"}</button>
       <button class="ws-chk${a.done?" on":""}" data-wsact="done" title="Erledigt">${a.done?"✓":""}</button>
       <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":a.type==="link"?"Bezeichnung des Links (optional)":a.type==="file"?(a.name||"Bezeichnung (optional)"):"Titel der Tabelle"}">
-      <span class="ws-nright">${wsNodeChips(a)}${wsAttTagBtn(a, a.tag||eff||"", "tag-att", "diesen Anhang")}<button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
+      <span class="ws-nright">${wsNodeChips(a)}${wsAttTagBtn(a, wsTagUnion(eff, a.tag), "tag-att", "diesen Anhang")}<button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
     </div>
     <div class="ws-abody"${open?"":' data-wsact="fold"'}>${body}</div>
   </div>`;
 }
 function wsAttsHtml(n, eff){
-  const list = n.att.filter(a=>!wsF.tag || wsTagMatch(a.tag||eff||"", wsF.tag));
+  const list = n.att.filter(a=>!wsF.tag || wsTagMatch(wsTagUnion(eff, a.tag), wsF.tag));
   return `<div class="ws-atts">${list.map(a=>wsAttHtml(a, eff)).join("")}
     <div class="ws-add"><button class="ws-addbtn" data-wsact="add-att" data-type="text">+ Text / Notiz</button><button class="ws-addbtn" data-wsact="add-att" data-type="table">+ Tabelle</button><button class="ws-addbtn" data-wsact="add-att" data-type="link">+ Link</button><button class="ws-addbtn" data-wsact="add-file" title="Bild oder PDF in deinen Google-Drive-Ordner hochladen">+ Bild / PDF</button></div></div>`;
 }
 function wsNodeHtml(n, depth, inh){
   depth = depth||0;
-  const eff = n.tag || inh || "";
+  const eff = wsTagUnion(inh, n.tag);
   const shown = (wsF.manual ? n.children : wsUrgSort(n.children)).filter(c=>wsVis(c, eff));
   const hasKids = shown.length>0;
   const coll = wsEffCollapsed(n, depth);
@@ -4102,7 +4120,7 @@ function wsBlockHtml(b, eff){
     const open = wsFoldOpen(b.id, "outline");
     body = wsFoldBtn(open, "Gliederung · "+b.items.length+(b.items.length===1?" Punkt":" Punkte"))
       + (open ? `${(b.items.length && !vis.length)?`<div class="ws-meta">Alle Punkte sind durch die Ansicht ausgeblendet.</div>`:""}<ul class="ws-tree">${vis.map(n=>wsNodeHtml(n, 0, eff)).join("")}</ul>
-      <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button>` : "");
+      <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button><button class="ws-addbtn" data-wsact="import-root" title="Offene ToDos oder Tages-Ziele der ToDo-App als verknüpfte Punkte einfügen">+ ToDo / Ziel</button>` : "");
   }else if(b.type==="table"){
     const open = wsFoldOpen(b.id, "table");
     body = wsFoldBtn(open, "Tabelle · "+b.rows.length+(b.rows.length===1?" Zeile":" Zeilen")) + (open ? wsTableBody(b, true) : "");
@@ -4339,6 +4357,7 @@ function wsWkCardHtml(it, em){
     <input type="text" class="ws-in ws-wkin" data-wk="text" value="${esc(n.text)}">
     <div class="ws-wkmeta">${chips.join("")}<span class="ws-wkdoc">${esc(it.doc.title||"Ohne Titel")}</span>
       <button class="ws-mini" data-wsact="wk-edit" title="Bearbeiten: Text, Tag, Termine, ToDo/Ziel">✎</button>
+      <button class="ws-mini" data-wsact="wk-tag" title="Tags setzen">🏷</button>
       <button class="ws-mini" data-wsact="wk-move" title="Auf anderen Tag verschieben">⇄</button>
       <button class="ws-mini" data-wsact="wk-open" title="Im Dokument öffnen">↗</button></div>
   </div>`;
@@ -4353,7 +4372,8 @@ function wsWkXCardHtml(x){
     <button class="ws-chk${x.done?" on":""}" data-wsact="wk-xdone" title="Erledigt">${x.done?"✓":""}</button>
     <span class="ws-wkxt">${esc(x.title)}</span>
     <div class="ws-wkmeta">${chips.join("")}<span class="ws-wkdoc">ToDo-App</span>
-      <button class="ws-mini" data-wsact="wk-xedit" title="Bearbeiten">✎</button>
+      <button class="ws-mini" data-wsact="wk-xedit" title="Bearbeiten (hier lässt sich auch ToDo und Ziel umwandeln)">✎</button>
+      <button class="ws-mini" data-wsact="wk-ximport" title="In ein Dokument des Arbeitsbereichs einfügen">⤓</button>
       <button class="ws-mini" data-wsact="wk-move" title="Auf anderen Tag verschieben">⇄</button></div>
   </div>`;
 }
@@ -4454,7 +4474,7 @@ function wsWeekAdd(text, day){
   if(wsF.tag && wsF.tag!=="!none"){
     const disp = wsAllTags(wsDocs).find(t=>wsTagKey(t)===wsF.tag);
     const beff = wsBlockTags(doc)[block.id] || "";
-    if(disp && wsTagKey(beff)!==wsF.tag) n.tag = disp;
+    if(disp && !wsTagMatch(beff, wsF.tag)) n.tag = disp;
   }
   block.items.push(n); wsTouch(doc);
   return {doc, node:n};
@@ -4618,6 +4638,7 @@ main.addEventListener("click", e=>{
       else{ const g = allOpenGoals.concat(goalTasks).find(x=>x.id===id); if(g) openForm("goal", g); }
       return;
     }
+    if(act==="wk-ximport"){ wsOpenImport({pick:{kind, id}}); return; }
     if(act==="wk-xdone"){
       if(kind==="todo") toggleDone(id, "once");
       else{ const g = allOpenGoals.concat(goalTasks).find(x=>x.id===id); if(g && g.completed) uncompleteGTask(id); else completeGTask(id); }
@@ -4636,6 +4657,7 @@ main.addEventListener("click", e=>{
     return;
   }
   if(act==="wk-edit"){ wsOpenLinkMenu(doc.id, r.node.id); return; }
+  if(act==="wk-tag"){ wsOpenTagMenu(doc.id, "node", r.node.id); return; }
   if(act==="wk-move"){ wsOpenMoveMenu(doc.id, r.node.id); return; }
   if(act==="wk-open"){
     wsOpenDocId = doc.id; localStorage.setItem("wsOpenDoc", doc.id);
@@ -4794,7 +4816,7 @@ function ws3dHtml(){
     <div class="ws3d-hint">Ziehen: drehen · Mausrad oder zwei Finger: zoomen · Umschalt+Ziehen oder zwei Finger ziehen: verschieben · Klick auf Knoten: Details</div></div>
   <div class="ws3d-info" id="ws3dInfo"></div>`;
 }
-function ws3dHue(t){ let h = 0; const k = wsTagKey(t); for(let i=0;i<k.length;i++) h = (h*31 + k.charCodeAt(i))%360; return h; }
+function ws3dHue(t){ let h = 0; const k = (wsTagList(t)[0]||"").toLowerCase(); for(let i=0;i<k.length;i++) h = (h*31 + k.charCodeAt(i))%360; return h; }
 function ws3dColor(n){ return n.eff ? `hsl(${ws3dHue(n.eff)},48%,60%)` : "#8b93a1"; }
 function ws3dColorHi(n){ return n.eff ? `hsl(${ws3dHue(n.eff)},55%,84%)` : "#d3d8e0"; }
 /* Geordnetes Layout: Dokumente verteilt im Raum, Unterpunkte in Kegeln nach außen, Tags im Schwerpunkt ihrer Elemente */
@@ -5053,10 +5075,10 @@ function ws3dInfoHtml(){
   if(!n) return `<div class="muted" style="font-size:13px">Tippe oder klicke einen Knoten an: Dokumente (Kästen), Punkte (Kreise), Überschriften und Blöcke (Quadrate), Anhänge (Symbole, Bilder, PDF) und Tags (orange Kapseln). Die Farbe zeigt den wirksamen Tag.</div>`;
   const btn = (a, t)=>`<button class="ws-addbtn" data-w3="${a}">${t}</button>`;
   let b = "";
-  if(n.kind==="doc") b += btn("goto","Dokument öffnen");
-  else if(n.kind==="node") b += btn("edit","Bearbeiten") + btn("goto","Im Dokument");
-  else if(n.kind==="att") b += btn("edit","Bearbeiten") + (n.type==="file" ? btn("view","Ansehen") : "") + (n.type==="link" && n.url ? btn("url","Link öffnen") : "") + btn("goto","Im Dokument");
-  else if(n.kind==="block") b += btn("goto","Im Dokument");
+  if(n.kind==="doc") b += btn("tags","Tags") + btn("import","ToDo/Ziel einfügen") + btn("goto","Dokument öffnen");
+  else if(n.kind==="node") b += btn("edit","Bearbeiten") + btn("tags","Tags") + btn("import","ToDo/Ziel einfügen") + btn("goto","Im Dokument");
+  else if(n.kind==="att") b += btn("edit","Bearbeiten") + btn("tags","Tags") + (n.type==="file" ? btn("view","Ansehen") : "") + (n.type==="link" && n.url ? btn("url","Link öffnen") : "") + btn("goto","Im Dokument");
+  else if(n.kind==="block") b += btn("tags","Tags") + btn("goto","Im Dokument");
   b += btn("focus", ws3d.opt.focus ? "Alles zeigen" : "Nur Umgebung zeigen") + btn("center","Zentrieren");
   const nb = ws3d.nb.get(n.id).size;
   return `<div class="ws3d-card"><div><b>${esc(n.label)}</b> <span class="muted">· ${esc(ws3dKindName(n))}${n.eff&&n.kind!=="tag"?" · 🏷 "+esc(n.eff):""} · ${nb} Verbindung${nb===1?"":"en"}${n.done?" · erledigt":""}</span></div><div class="ws3d-btns">${b}</div></div>`;
@@ -5068,6 +5090,8 @@ function ws3dAct(act){
   const n = ws3d.byId.get(ws3d.sel); if(!n) return;
   if(act==="goto") wsGoToDoc(n.doc);
   else if(act==="edit"){ if(n.kind==="node") wsEditNode(n.ref); else wsOpenLinkMenu(n.doc, n.ref); }
+  else if(act==="tags"){ wsOpenTagMenu(n.doc, n.kind==="doc" ? "doc" : n.kind==="block" ? "block" : n.kind==="att" ? "att" : "node", n.kind==="doc" ? n.doc : n.ref); }
+  else if(act==="import"){ wsOpenImport(n.kind==="doc" ? {docId:n.doc} : {docId:n.doc, parent:n.ref}); }
   else if(act==="view"){ const d = wsGet(n.doc), a = d && wsFindAny(d, n.ref); if(a) wsOpenFileView(a); }
   else if(act==="url"){ const u = wsNormUrl(n.url); if(u) window.open(u, "_blank", "noopener,noreferrer"); }
   else if(act==="focus"){ ws3d.opt.focus = !ws3d.opt.focus; ws3dSelect(ws3d.sel); }
@@ -5337,6 +5361,7 @@ main.addEventListener("click", e=>{
   if(act==="del-block" && block){
     wsDeleteBlockFlow(doc, block); return;
   }
+  if(act==="import-root" && block){ wsOpenImport({docId:doc.id, blockId:block.id}); return; }
   if(act==="add-root-node" && block){
     const n = wsNewNode(""); block.items.push(n); wsTouch(doc);
     wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-nid="${n.id}"] > .ws-nrow .ws-nin`; wsRerender(doc.id); return;
@@ -5700,7 +5725,8 @@ async function wsApplyMenu(docId, nid, o){
   if(o.hid!==undefined && !wsIsAtt(n)) n.hid = !!o.hid;
   wsTouch(doc);
   await wsApplyMenuCore(docId, nid, o);
-  if(n.link && n.done!==wasDone) wsLinkRun(()=>wsPushDone(doc, n));
+  if(o.convert && n.link && n.link.kind!==o.convert) await wsLinkRun(()=>wsConvertLink(doc, n, o.convert, !!o.cal));
+  else if(n.link && n.done!==wasDone) wsLinkRun(()=>wsPushDone(doc, n));
   if(!(view==="notes" && wsTab==="docs")) render();
 }
 function wsTitleOfRaw(x){ return wsIsAtt(x) ? (x.title||"") : (x.text||""); }
@@ -5761,7 +5787,7 @@ function wsOpenTagMenu(docId, kind, id){
   const known = []; const seen = new Set();
   wsAllTags(wsDocs).concat(["Privat","Job","Projekt"]).forEach(t=>{ const k = wsTagKey(t); if(!seen.has(k)){ seen.add(k); known.push(t); } });
   const what = kind==="doc" ? "das ganze Dokument" : kind==="att" ? "diesen Anhang" : kind==="block" ? (obj.type==="heading" ? "diese Überschrift und alle Blöcke bis zur nächsten Überschrift" : "diesen Block und alles darin") : "diesen Punkt samt allen Unterpunkten und Anhängen";
-  /* Einträge darunter mit eigenem (abweichendem) Tag: auf Wunsch zurücksetzen, damit sie den neuen Tag erben */
+  /* Einträge darunter mit eigenen Tags: auf Wunsch zurücksetzen */
   const own = [];
   const grabNodes = nodes=>nodes.forEach(n=>{ if(n!==obj && n.tag) own.push(n); (n.att||[]).forEach(x=>{ if(x!==obj && x.tag) own.push(x); }); });
   const grab = blocks=>blocks.forEach(b=>{ if(b!==obj && b.tag) own.push(b); if(b.type==="outline") grabNodes(wsAllNodes({blocks:[b]})); });
@@ -5771,19 +5797,21 @@ function wsOpenTagMenu(docId, kind, id){
     else if(obj.type==="outline") grabNodes(wsAllNodes({blocks:[obj]}));
   }
   else if(kind==="node") grabNodes([obj].concat(wsAllNodes({blocks:[{type:"outline", items:obj.children}]})));
-  const inh = (kind==="node" && !obj.tag) ? (wsEffTags(wsDocs).get(obj.id)||"") : "";
+  const ownKeys = new Set(wsTagList(obj.tag).map(t=>t.toLowerCase()));
+  const effAll = kind==="doc" ? wsNormTag(doc.tag) : kind==="block" ? (wsBlockTags(doc)[obj.id]||"") : kind==="att" ? wsTagUnion((wsAttOwner(doc, obj.id) ? wsEffMap().get(wsAttOwner(doc, obj.id).id) : "")||"", obj.tag) : (wsEffMap().get(obj.id)||"");
+  const inh = wsTagList(effAll).filter(t=>!ownKeys.has(t.toLowerCase())).join(", ");
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
-      <h2>Tag</h2>
-      <p class="muted" style="font-size:13px;margin-bottom:10px">Der Tag gilt für ${what}. Ohne eigenen Tag wird der Tag des übergeordneten Punkts, der Überschrift oder des Dokuments übernommen.${inh?` Aktuell geerbt: ${esc(inh)}.`:""}</p>
-      <input type="text" id="wst_in" maxlength="30" value="${esc(obj.tag||"")}" placeholder="z. B. Job" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px">
+      <h2>Tags</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">Die Tags gelten für ${what}. Mehrere Tags trennst du mit Komma oder tippst sie unten an. Sie kommen zu den geerbten Tags dazu.${inh?` Geerbt: ${esc(inh)}.`:""}</p>
+      <input type="text" id="wst_in" maxlength="140" value="${esc(obj.tag||"")}" placeholder="z. B. Job, Projekt" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px">
       <div class="ws-frow" style="margin-bottom:12px">${known.map(t=>`<button class="ws-fc" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div>
-      ${own.length?`<div class="toggle-row"><div><div style="font-size:14px">Eigene Tags darunter ersetzen</div>
-        <div class="muted" style="font-size:12px">${own.length} ${own.length===1?"Eintrag hat":"Einträge haben"} einen eigenen Tag. Aus: sie behalten ihn. An: sie übernehmen den Tag von hier.</div></div>
+      ${own.length?`<div class="toggle-row"><div><div style="font-size:14px">Eigene Tags darunter entfernen</div>
+        <div class="muted" style="font-size:12px">${own.length} ${own.length===1?"Eintrag hat":"Einträge haben"} eigene Tags. Aus: sie behalten sie. An: sie werden gelöscht, die Einträge erben nur noch von hier.</div></div>
         <button class="switch" id="wst_over"></button></div>`:""}
       <div class="modal-actions">
         <button class="btn-ghost" id="wst_cancel">Abbrechen</button>
-        ${obj.tag?`<button class="btn-ghost" id="wst_clear">Tag entfernen</button>`:""}
+        ${obj.tag?`<button class="btn-ghost" id="wst_clear">Alle entfernen</button>`:""}
         <button class="btn-primary" id="wst_ok">OK</button>
       </div></div></div>`);
   const close = ()=>{ const mb = $("modalBg"); if(mb) mb.remove(); };
@@ -5793,9 +5821,15 @@ function wsOpenTagMenu(docId, kind, id){
     if(over) own.forEach(o=>{ o.tag = ""; });
     wsTouch(doc); close(); render();
   };
+  const mark = ()=>{ const have = new Set(wsTagList($("wst_in").value).map(t=>t.toLowerCase())); document.querySelectorAll("#modalBg .ws-fc").forEach(b=>b.classList.toggle("on", have.has(b.dataset.v.toLowerCase()))); };
   $("wst_cancel").onclick = close;
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
-  document.querySelectorAll("#modalBg .ws-fc").forEach(b=>{ b.onclick = ()=>{ $("wst_in").value = b.dataset.v; }; });
+  document.querySelectorAll("#modalBg .ws-fc").forEach(b=>{ b.onclick = ()=>{
+    const l = wsTagList($("wst_in").value), k = b.dataset.v.toLowerCase(), i = l.findIndex(t=>t.toLowerCase()===k);
+    if(i>=0) l.splice(i,1); else l.push(b.dataset.v);
+    $("wst_in").value = l.join(", "); mark();
+  }; });
+  $("wst_in").addEventListener("input", mark); mark();
   if($("wst_over")) $("wst_over").onclick = ()=>$("wst_over").classList.toggle("on");
   if($("wst_clear")) $("wst_clear").onclick = ()=>apply("");
   $("wst_ok").onclick = ()=>apply($("wst_in").value);
@@ -5826,17 +5860,19 @@ function wsOpenLinkMenu(docId, nid){
   const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;
   if(document.getElementById("modalBg")) return;
   const L = n.link, att = wsIsAtt(n);
-  const inhTag = (()=>{ if(n.tag) return ""; if(att){ const ow = wsAttOwner(doc, n.id); return ow ? (wsEffMap().get(ow.id)||"") : ""; } return wsEffMap().get(n.id)||""; })();
+  const inhTag = (()=>{ const own = new Set(wsTagList(n.tag).map(t=>t.toLowerCase())); const base = att ? ((wsAttOwner(doc, n.id) ? wsEffMap().get(wsAttOwner(doc, n.id).id) : "")||"") : (wsEffMap().get(n.id)||""); return wsTagList(base).filter(t=>!own.has(t.toLowerCase())).join(", "); })();
   const defKind = (!L && !n.date && !n.ld && !n.dl && !n.meta) ? "todo" : "";      // neuer Termin: standardmäßig ein ToDo
   const kindRow = L
-    ? `<p class="muted" style="font-size:13px;margin-bottom:10px">Verknüpft mit ${L.kind==="goal"?"einem Tages-Ziel":"einem ToDo"}. Titel, Datum und Erledigt-Status werden in beide Richtungen abgeglichen.</p>`
+    ? `<p class="muted" style="font-size:13px;margin-bottom:10px">Verknüpft mit ${L.kind==="goal"?"einem Tages-Ziel":"einem ToDo"}. Titel, Datum und Erledigt-Status werden in beide Richtungen abgeglichen.</p>
+       <label>Typ (zum Umwandeln den anderen wählen)</label><div class="seg" id="wsl_conv"><button data-k="todo"${L.kind==="todo"?' class="sel"':""}>ToDo</button><button data-k="goal"${L.kind==="goal"?' class="sel"':""}>Tages-Ziel</button></div>
+       <div class="muted" style="font-size:12px;margin:4px 0 10px">Beim Umwandeln wird der neue Eintrag angelegt und der alte gelöscht.</div>`
     : `<label>Anlegen als</label><div class="seg" id="wsl_kind"><button data-k=""${defKind?"":' class="sel"'}>Nur Datum</button><button data-k="todo"${defKind?' class="sel"':""}>ToDo</button><button data-k="goal">Tages-Ziel</button></div>
        <div class="muted" style="font-size:12px;margin:4px 0 0">Ein gesetzter Termin wird standardmäßig als ToDo angelegt. Bei Meta-Projekt bleibt es beim Datum.</div>`;
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${esc(wsTitleOf(n)||(att?"Anhang":"Punkt"))}</h2>
       <label>${att?"Titel":"Text"}</label><textarea id="wsl_text" rows="2" maxlength="2000" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px;resize:vertical">${esc(att?(n.title||""):(n.text||""))}</textarea>
-      <label>Tag</label><input type="text" id="wsl_tag" maxlength="30" list="wsl_tags" value="${esc(n.tag||"")}" placeholder="${esc(inhTag?"geerbt: "+inhTag:"z. B. Job")}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px">
+      <label>Tag</label><input type="text" id="wsl_tag" maxlength="140" list="wsl_tags" value="${esc(n.tag||"")}" placeholder="${esc(inhTag?"geerbt: "+inhTag+", hier weitere mit Komma":"z. B. Job, Projekt")}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px">
       <datalist id="wsl_tags">${wsAllTags(wsDocs).concat(["Privat","Job","Projekt"]).filter((t,i,a)=>a.findIndex(x=>wsTagKey(x)===wsTagKey(t))===i).map(t=>`<option value="${esc(t)}">`).join("")}</datalist>
       <div class="toggle-row"><div><div style="font-size:14px">Erledigt</div></div><button class="switch${n.done?" on":""}" id="wsl_done"></button></div>
       ${att?"":`<div class="toggle-row"><div><div style="font-size:14px">Ausblenden</div><div class="muted" style="font-size:12px">Nur sichtbar, wenn Ausgeblendete gezeigt werden</div></div><button class="switch${n.hid?" on":""}" id="wsl_hid"></button></div>`}
@@ -5855,11 +5891,18 @@ function wsOpenLinkMenu(docId, nid){
       <div class="modal-actions" style="flex-wrap:wrap">
         <button class="btn-ghost" id="wsl_cancel">Abbrechen</button>
         <button class="btn-ghost" id="wsl_open">Im Dokument</button>
+        ${att?"":`<button class="btn-ghost" id="wsl_import">ToDo/Ziel einfügen</button>`}
         <button class="btn-ghost" id="wsl_del">Löschen</button>
         ${L?`<button class="btn-ghost" id="wsl_unlink">Verknüpfung lösen</button>`:""}
         <button class="btn-primary" id="wsl_ok">Übernehmen</button>
       </div></div></div>`);
-  let kind = defKind, touched = false;
+  let kind = defKind, touched = false, conv = L ? L.kind : "";
+  const convEl = $("wsl_conv");
+  if(convEl) convEl.querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    convEl.querySelectorAll("button").forEach(x=>x.classList.remove("sel")); b.classList.add("sel"); conv = b.dataset.k;
+    if(conv==="goal" && !$("wsl_date").value && !($("wsl_dl") && $("wsl_dl").value)) $("wsl_date").value = todayKey();
+    upEnd();
+  });
   const kindEl = $("wsl_kind");
   if(kindEl) kindEl.querySelectorAll("button").forEach(b=>b.onclick=()=>{
     kindEl.querySelectorAll("button").forEach(x=>x.classList.remove("sel")); b.classList.add("sel");
@@ -5871,6 +5914,7 @@ function wsOpenLinkMenu(docId, nid){
   $("wsl_done").onclick = ()=>$("wsl_done").classList.toggle("on");
   if($("wsl_hid")) $("wsl_hid").onclick = ()=>$("wsl_hid").classList.toggle("on");
   $("wsl_open").onclick = ()=>{ $("modalBg").remove(); wsGoToDoc(docId); };
+  if($("wsl_import")) $("wsl_import").onclick = ()=>{ $("modalBg").remove(); wsOpenImport({docId, parent:nid}); };
   $("wsl_del").onclick = async ()=>{
     $("modalBg").remove();
     if(att) await wsDeleteAttFlow(doc, n); else await wsDeleteNodeFlow(doc, nid);
@@ -5904,9 +5948,118 @@ function wsOpenLinkMenu(docId, nid){
     }
     const o = {date:$("wsl_date").value, kind:k, cal:$("wsl_cal").classList.contains("on"),
       dur:$("wsl_dur")?$("wsl_dur").value:0, dl:$("wsl_dl")?$("wsl_dl").value:"", meta:$("wsl_meta")?$("wsl_meta").classList.contains("on"):false,
+      convert:(L && conv && conv!==L.kind) ? conv : "",
       text:$("wsl_text").value, tag:$("wsl_tag").value, done:$("wsl_done").classList.contains("on"), hid:$("wsl_hid")?$("wsl_hid").classList.contains("on"):undefined};
     $("modalBg").remove(); wsApplyMenu(docId, nid, o);
   };
+}
+
+/* ---- ToDo <-> Tages-Ziel umwandeln (verknüpfter Punkt) ---- */
+async function wsConvertLink(doc, n, toKind, cal){
+  const old = n.link; if(!old || old.kind===toKind) return;
+  if(!wsLinkDay(n)) n.date = todayKey();
+  const day = wsLinkDay(n), today = todayKey();
+  if(toKind==="goal"){
+    if(day<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
+    if(wsGoalCount(day)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag am "+wsShortDate(day)); return; }
+  }
+  const oldCopy = Object.assign({}, old);
+  n.link = null;
+  try{ await wsCreateItem(doc, n, toKind, !!cal); }
+  catch(e){ console.warn("Umwandeln fehlgeschlagen:", e); }
+  if(!n.link){ n.link = old; wsTouch(doc); toast("Umwandeln fehlgeschlagen, der alte Eintrag bleibt"); wsRenderIfSafe(); return; }
+  await wsReleaseLinks([oldCopy], true);
+  wsTouch(doc);
+  toast(toKind==="goal" ? "In Tages-Ziel umgewandelt" : "In ToDo umgewandelt");
+  wsRenderIfSafe();
+}
+
+/* ---- ToDos und Tages-Ziele der ToDo-App als verknüpfte Punkte in ein Dokument einfügen ---- */
+const WS_TAGLBL = {privat:"Privat", job:"Job", projekt:"Projekt"};
+function wsImportCandidates(){
+  const linked = wsWkLinkedSet(), out = [];
+  tasks.forEach(t=>{
+    if(!t || t.type!=="todo" || t.archived || t.scheduleType==="weekly" || isEverDone(t.id) || !(t.title||"").trim() || linked.has("todo:"+t.id)) return;
+    out.push({kind:"todo", id:t.id, title:t.title, day:wsIsDate(t.startDate)?t.startDate:"", cal:!!t.calendarEventId,
+      tag:String(t.tag||"").split(",").map(x=>WS_TAGLBL[x.trim()]).filter(Boolean).join(", ")});
+  });
+  const seen = new Set();
+  allOpenGoals.concat(goalTasks).forEach(g=>{
+    if(!g || !g.id || seen.has(g.id)) return; seen.add(g.id);
+    if(g.completed || !(g.title||"").trim() || g.title==="(ohne Titel)" || linked.has("goal:"+g.id)) return;
+    out.push({kind:"goal", id:g.id, title:g.title, day:wsIsDate(g.due)?g.due:"", cal:false, tag:""});
+  });
+  out.sort((a,b)=>(a.day?0:1)-(b.day?0:1) || (a.day<b.day?-1:a.day>b.day?1:0) || a.title.localeCompare(b.title, "de"));
+  return out;
+}
+function wsInsertLinked(doc, items, blockId, parentNid){
+  let list = null;
+  if(parentNid){ const r = wsFindNode(doc, parentNid); if(r){ list = r.node.children; r.node.collapsed = false; } }
+  if(!list){
+    let block = blockId ? wsBlock(doc, blockId) : doc.blocks.find(b=>b.type==="outline");
+    if(!block || block.type!=="outline"){ block = wsNewBlock("outline"); block.items = []; doc.blocks.push(block); }
+    list = block.items;
+  }
+  items.forEach(x=>{
+    const n = wsNewNode(x.title); n.date = x.day||""; n.tag = wsNormTag(x.tag);
+    n.link = {kind:x.kind, ref:x.id, cal:!!x.cal, evId:"", calId:""};
+    list.push(n);
+  });
+  wsTouch(doc);
+  return items.length;
+}
+/* o: {docId?, parent?, blockId?, pick?:{kind,id}} - ohne docId wählt man Dokument und Stelle im Dialog */
+function wsOpenImport(o){
+  if(document.getElementById("modalBg")) return;
+  if(!wsLoaded){ toast("Arbeitsbereich noch nicht geladen"); return; }
+  const cands = wsImportCandidates();
+  if(!cands.length){ toast("Keine freien ToDos oder Tages-Ziele zum Einfügen"); return; }
+  const fixed = !!o.docId;
+  const chosen = new Set(); cands.forEach((c,i)=>{ if(o.pick && o.pick.kind===c.kind && o.pick.id===c.id) chosen.add(i); });
+  const docOpts = ()=>wsDocs.map(d=>`<option value="${esc(d.id)}"${d.id===(o.docId||(wsCurrentDoc()||{}).id)?" selected":""}>${esc(d.title||"(ohne Titel)")}</option>`).join("");
+  const parOpts = docId=>{
+    const d = wsGet(docId); if(!d) return `<option value="">Oberste Ebene</option>`;
+    const out = [`<option value="">Oberste Ebene</option>`];
+    const walk = (items, dep)=>items.forEach(n=>{ if(out.length>250) return; out.push(`<option value="${esc(n.id)}">${"· ".repeat(dep)}${esc((n.text||"(leer)").slice(0,50))}</option>`); walk(n.children, dep+1); });
+    d.blocks.forEach(b=>{ if(b.type==="outline") walk(b.items, 0); });
+    return out.join("");
+  };
+  const fixedDoc = fixed ? wsGet(o.docId) : null;
+  const fixedPar = fixed && o.parent ? wsFindNode(fixedDoc, o.parent) : null;
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>ToDo oder Ziel einfügen</h2>
+      ${fixed
+        ? `<p class="muted" style="font-size:13px;margin-bottom:10px">Einfügen ${fixedPar?"unter dem Punkt „"+esc((fixedPar.node.text||"").slice(0,50))+"“":"in „"+esc(fixedDoc?fixedDoc.title||"(ohne Titel)":"")+"“"}. Die Einträge werden verknüpft: Titel, Datum und Erledigt-Status bleiben abgeglichen.</p>`
+        : `<label>Dokument</label><select id="wsi_doc" style="width:100%;padding:10px;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;margin-bottom:8px">${docOpts()}</select>
+           <label>Einfügen unter</label><select id="wsi_par" style="width:100%;padding:10px;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;margin-bottom:8px">${parOpts(o.docId||(wsCurrentDoc()||{}).id)}</select>`}
+      <input type="search" id="wsi_q" class="ws-in" placeholder="Suchen" style="width:100%;font-size:16px;margin-bottom:8px">
+      <div class="ws-implist" id="wsi_list"></div>
+      <div class="modal-actions"><button class="btn-ghost" id="wsi_cancel">Abbrechen</button><button class="btn-primary" id="wsi_ok">Einfügen</button></div>
+    </div></div>`);
+  const upBtn = ()=>{ $("wsi_ok").textContent = chosen.size ? "Einfügen ("+chosen.size+")" : "Einfügen"; };
+  const draw = ()=>{
+    const q = ($("wsi_q").value||"").trim().toLowerCase();
+    $("wsi_list").innerHTML = cands.map((c,i)=>({c,i})).filter(z=>!q || z.c.title.toLowerCase().includes(q)).map(z=>
+      `<label class="ws-improw"><input type="checkbox" data-i="${z.i}"${chosen.has(z.i)?" checked":""}><span class="ws-wkchip">${z.c.kind==="goal"?"🎯 Ziel":"☑ ToDo"}</span><span class="ws-imptx">${esc(z.c.title)}</span><span class="muted">${z.c.day?esc(wsShortDate(z.c.day)):"ohne Datum"}</span></label>`).join("") || `<div class="muted center" style="padding:10px">Nichts gefunden.</div>`;
+    upBtn();
+  };
+  $("wsi_list").onchange = e=>{ const cb = e.target.closest("input[data-i]"); if(!cb) return; const i = +cb.dataset.i; if(cb.checked) chosen.add(i); else chosen.delete(i); upBtn(); };
+  $("wsi_q").oninput = draw; draw();
+  if($("wsi_doc")) $("wsi_doc").onchange = ()=>{ $("wsi_par").innerHTML = parOpts($("wsi_doc").value); };
+  $("wsi_cancel").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  $("wsi_ok").onclick = ()=>{
+    if(!chosen.size){ toast("Erst Einträge ankreuzen"); return; }
+    const docId = fixed ? o.docId : $("wsi_doc").value, parent = fixed ? (o.parent||"") : $("wsi_par").value;
+    const doc = wsGet(docId); if(!doc) return;
+    const items = [...chosen].sort((a,b)=>a-b).map(i=>cands[i]);
+    $("modalBg").remove();
+    const k = wsInsertLinked(doc, items, o.blockId||"", parent);
+    toast(k+(k===1?" Eintrag":" Einträge")+" in „"+(doc.title||"Ohne Titel")+"“ eingefügt");
+    if(view==="notes" && wsTab==="docs") wsRerender(doc.id); else render();
+  };
+  setTimeout(()=>{ const q = $("wsi_q"); if(q) q.focus(); }, 40);
 }
 
 /* ---- Löschen: Rückfrage, was mit verknüpften Einträgen geschehen soll ---- */

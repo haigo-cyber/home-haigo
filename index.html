@@ -329,11 +329,20 @@
   .ws-sub{margin-left:18px;border-left:1px solid #2c3037;padding-left:6px}
   .ws-nrow{display:flex;align-items:center;gap:3px;padding:2px 0;border-radius:8px}
   .ws-nin{flex:1;padding:6px 8px;font-size:14px}
+  .ws-nright{display:contents}
   .ws-node.done > .ws-nrow .ws-nin{text-decoration:line-through;color:#6d737e}
   .ws-tog{flex:none;width:22px;background:none;border:none;color:#9aa3b2;cursor:pointer;font-size:14px;padding:4px 0}
   .ws-chk{flex:none;width:22px;height:22px;border-radius:6px;border:2px solid #5b6270;background:rgba(0,0,0,.4);color:#04210f;font-size:13px;font-weight:800;cursor:pointer;padding:0;line-height:1}
   .ws-chk.on{background:linear-gradient(145deg,#4be08d,#1fa75c);border-color:#4be08d}
   .ws-cnt{flex:none;font:600 11px var(--mono);color:var(--muted);background:#101216;border:1px solid #2c3037;border-radius:999px;padding:2px 7px}
+  .ws-date{flex:none;background:#101216;border:1px solid #3a3f47;color:#c9d0db;border-radius:999px;padding:3px 8px;font:600 11px var(--mono);cursor:pointer;white-space:nowrap}
+  .ws-date:hover{border-color:#7a818d;color:#fff}
+  .ws-date.over{border-color:var(--red);color:var(--red)}
+  .ws-node.done > .ws-nrow .ws-date{opacity:.5}
+  .ws-lnk{flex:none;background:rgba(255,176,32,.12);border:1px solid rgba(255,176,32,.45);color:var(--amber);border-radius:8px;padding:2px 6px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .ws-lnk:hover{background:rgba(255,176,32,.22)}
+  .ws-pd{font:600 11px var(--mono);color:var(--muted);white-space:nowrap}
+  .ws-pd.over{color:var(--red)}
   .ws-addbtn{background:none;border:1px dashed #3a3f47;color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12.5px;cursor:pointer;margin:6px 6px 0 0}
   .ws-addbtn:hover{color:#fff;border-color:#7a818d}
   .ws-add{display:flex;flex-wrap:wrap;align-items:center;margin-top:6px}
@@ -369,6 +378,9 @@
   .g-today{position:absolute;top:0;bottom:0;width:2px;background:var(--red);opacity:.8;z-index:1}
   @media(max-width:480px){
     .ws-card{padding:10px}
+    .ws-nrow{flex-wrap:wrap}
+    .ws-nin{flex:1 1 0;min-width:120px}
+    .ws-nright{display:flex;flex:1 0 100%;padding-left:50px;gap:3px;align-items:center;justify-content:flex-start}
     .ws-toolbar{flex-wrap:wrap}
     .ws-doctitle{flex:1 0 100%}
   }
@@ -716,6 +728,7 @@ async function loadGTasks(){
 /* ---- Ziel als Google Task anlegen (Standardliste, Fälligkeit heute, mit Marker) ---- */
 async function addGoalTask(title, dueDate){
   dueDate=dueDate||todayKey();
+  if(wsGoalCount(dueDate)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag"); return; }
   setSync("busy");
   try{
     if(!defaultGTaskListId){ await loadGTasks(); }
@@ -742,6 +755,7 @@ async function updateGoalTask(id, title, dueDate){
       method:"PATCH",
       body:JSON.stringify({title:title, notes:GOAL_MARKER, due:due})
     });
+    wsOnGoalChanged(id, title, dueDate);
     await loadGTasks();
     setSync("on"); render(); toast("Ziel aktualisiert");
   }catch(e){
@@ -838,6 +852,7 @@ async function completeGTask(taskId){
         await saveLogs();
       }
     }
+    wsOnItemDone("goal", taskId, true);
     await loadGTasks();
     render(); setSync("on");
   }catch(e){
@@ -855,6 +870,7 @@ async function uncompleteGTask(taskId){
     await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`, {
       method:"PATCH", body:JSON.stringify({status:"needsAction", completed:null})
     });
+    wsOnItemDone("goal", taskId, false);
     await loadGTasks();
     render(); setSync("on");
   }catch(e){
@@ -870,6 +886,7 @@ async function deleteGTask(taskId){
   try{
     const listId=defaultGTaskListId||"@default";
     await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`, {method:"DELETE"});
+    wsOnItemDeleted("goal", taskId);
     await loadGTasks();
     render(); setSync("on");
   }catch(e){
@@ -1189,6 +1206,7 @@ async function updateTask(id, data){
   Object.assign(t,data);
   await moveCalendarIfNeeded(t, oldCalId, oldEventId);
   await syncCalendar(t);
+  wsOnTodoChanged(t);
   await saveTasks();
   setSync("on"); render();
 }
@@ -1203,6 +1221,7 @@ async function deleteTask(id){
   setSync("busy");
   const t=tasks.find(x=>x.id===id);
   if(t) await deleteCalendar(t);
+  wsOnItemDeleted("todo", id);
   tasks=tasks.filter(x=>x.id!==id);
   logs=logs.filter(l=>l.itemId!==id);
   await saveTasks(); await saveLogs();
@@ -1339,6 +1358,7 @@ async function toggleDone(id, key){
     if(isDone(id,key)) logs=logs.filter(l=>!(l.itemId===id&&l.date===key));
     else logs.push({itemId:id,date:key,doneAt:new Date().toISOString()});
   }
+  if(key==="once") wsOnItemDone("todo", id, isEverDone(id));
   render();
   await saveLogs();
   setSync("on");
@@ -1978,7 +1998,7 @@ function render(){
   }
   else if(view==="goals"){
     const doneCount=goalTasks.filter(g=>g.completed).length;
-    let h=goalTasks.length?goalTasks.map(goalTaskCard).join(""):empty("Noch keine Tages-Ziele. Bis zu 4 mit + anlegen.");
+    let h=goalTasks.length?goalTasks.map(goalTaskCard).join(""):empty("Noch keine Tages-Ziele. Bis zu "+GOAL_MAX+" mit + anlegen.");
     if(goalTasks.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,goalTasks.length);
     
     // Vorschau kommender Tage (nächste 10 Tage)
@@ -2358,7 +2378,7 @@ function render(){
       };
     });
     const mtg=$("minTaskGoalInput"); if(mtg) mtg.onchange=()=>{ minTaskGoal=parseInt(mtg.value)||18; localStorage.setItem("minTaskGoal",minTaskGoal); toast("Mindest-Ziel gesetzt: "+minTaskGoal); };
-    $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); setSync("on"); render(); toast("Aktualisiert"); };
+    $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); await wsReconcileLinks(); setSync("on"); render(); toast("Aktualisiert"); };
     $("signoutBtn").onclick=signOut;
     $("btnDoBackupTodo").onclick=doBackupTodo;
     $("btnDoRestoreTodo").onclick=doRestoreTodo;
@@ -3276,7 +3296,37 @@ const WS_MAXROWS = 2000;
 /* WS-PURE-START */
 let _wsCnt = 0;
 function wsId(){ return Date.now().toString(36) + (++_wsCnt).toString(36) + Math.random().toString(36).slice(2,5); }
-function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapsed:false, children:[]}; }
+function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapsed:false, date:"", link:null, children:[]}; }
+function wsIsDate(s){ return typeof s==="string" && /^\d{4}-\d{2}-\d{2}$/.test(s); }
+/* link: Verknüpfung mit einem ToDo (Sheet-Zeile) oder Tages-Ziel (Google Task); evId/calId: vom Punkt selbst angelegter Kalendertermin (nur Ziele) */
+function wsNormLink(l){
+  if(!l || typeof l!=="object") return null;
+  if((l.kind!=="todo" && l.kind!=="goal") || !l.ref) return null;
+  return {kind:l.kind, ref:String(l.ref), cal:!!l.cal, evId:String(l.evId||""), calId:String(l.calId||"")};
+}
+function wsShortDate(d){
+  if(!wsIsDate(d)) return "";
+  const dt = new Date(+d.slice(0,4), +d.slice(5,7)-1, +d.slice(8,10));
+  return ["So","Mo","Di","Mi","Do","Fr","Sa"][dt.getDay()] + " " + d.slice(8,10) + "." + d.slice(5,7) + ".";
+}
+function wsCollectLinkedNodes(list, out){
+  out = out || [];
+  (list||[]).forEach(n=>{ if(n.link) out.push(n); wsCollectLinkedNodes(n.children, out); });
+  return out;
+}
+function wsDocLinkedNodes(doc){
+  const out = [];
+  doc.blocks.forEach(b=>{ if(b.type==="outline") wsCollectLinkedNodes(b.items, out); });
+  return out;
+}
+function wsFindByLink(docs, kind, ref){
+  for(const doc of docs){
+    for(const n of wsDocLinkedNodes(doc)){
+      if(n.link.kind===kind && n.link.ref===ref) return {doc, node:n};
+    }
+  }
+  return null;
+}
 function wsNewDoc(title){
   const now = new Date().toISOString();
   return {id:wsId(), title:title||"Neues Dokument", pinned:false, createdAt:now, updatedAt:now, blocks:[]};
@@ -3290,7 +3340,8 @@ function wsNewBlock(type){
 }
 function wsNormNodes(a){
   return (Array.isArray(a)?a:[]).filter(n=>n && typeof n==="object").map(n=>({
-    id:n.id||wsId(), text:String(n.text||""), done:!!n.done, collapsed:!!n.collapsed, children:wsNormNodes(n.children)
+    id:n.id||wsId(), text:String(n.text||""), done:!!n.done, collapsed:!!n.collapsed,
+    date:wsIsDate(n.date)?n.date:"", link:wsNormLink(n.link), children:wsNormNodes(n.children)
   }));
 }
 function wsNormalizeDocs(arr){
@@ -3432,7 +3483,8 @@ function wsCount(node){
 }
 function wsAllDone(n){ return n.done && n.children.every(wsAllDone); }
 /* Nächste offene Schritte: Blätter bzw. Knoten, deren Unterpunkte alle erledigt sind, in Dokumentreihenfolge */
-function wsNextOpen(doc, max){
+function wsNextOpen(doc, max){ return wsNextOpenItems(doc, max).map(n=>n.text.trim()); }
+function wsNextOpenItems(doc, max){
   const out = [];
   const walk = (items)=>{
     for(const n of items){
@@ -3440,7 +3492,7 @@ function wsNextOpen(doc, max){
       if(n.done) continue;
       const open = n.children.filter(c=>!wsAllDone(c));
       if(n.children.length && open.length) walk(n.children);
-      else if((n.text||"").trim()) out.push(n.text.trim());
+      else if((n.text||"").trim()) out.push(n);
     }
   };
   doc.blocks.filter(b=>b.type==="outline").forEach(b=>walk(b.items));
@@ -3599,6 +3651,14 @@ async function wsRefreshIfIdle(){
 function wsDateTime(iso){
   try{ return new Date(iso).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}); }catch(e){ return ""; }
 }
+function wsNodeChips(n){
+  const over = n.date && !n.done && n.date < todayKey();
+  let h = "";
+  if(n.date) h += `<button class="ws-date${over?" over":""}" data-wsact="link-menu" title="Datum, ToDo oder Tages-Ziel einstellen">${esc(wsShortDate(n.date))}</button>`;
+  if(n.link) h += `<button class="ws-lnk" data-wsact="link-menu" title="${n.link.kind==="goal"?"Verknüpft mit Tages-Ziel":"Verknüpft mit ToDo"}${n.link.cal?" und Kalender":""}">${n.link.kind==="goal"?"🎯":"☑"}${n.link.cal?"📆":""}</button>`;
+  if(!n.date && !n.link) h += `<button class="ws-mini" data-wsact="link-menu" title="Datum setzen oder als ToDo / Tages-Ziel anlegen">📅</button>`;
+  return h;
+}
 function wsNodeHtml(n){
   const hasKids = n.children.length>0;
   const cnt = hasKids ? wsCount(n) : null;
@@ -3609,9 +3669,12 @@ function wsNodeHtml(n){
       <button class="ws-tog" data-wsact="toggle" title="${hasKids?(n.collapsed?"Aufklappen":"Zuklappen"):""}">${hasKids?(n.collapsed?"▸":"▾"):"·"}</button>
       <button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <input type="text" class="ws-in ws-nin" data-wsf="node" value="${esc(n.text)}" placeholder="Punkt">
+      <span class="ws-nright">
+      ${wsNodeChips(n)}
       ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}
       <button class="ws-mini" data-wsact="add-child" title="Unterpunkt anlegen">+</button>
       <button class="ws-mini" data-wsact="del-node" title="Punkt löschen">✕</button>
+      </span>
     </div>${sub}
   </li>`;
 }
@@ -3667,10 +3730,10 @@ function wsTodayInner(doc){
     <span class="ws-caret">${open?"▲ zuklappen":"▼ öffnen"}</span>
   </div>`;
   if(!open){
-    const next = wsNextOpen(doc, 4);
+    const next = wsNextOpenItems(doc, 4);
     h += `<div data-wsact="today-toggle" style="cursor:pointer">`;
     if(next.length){
-      h += `<ul class="ws-prev">${next.map((t,i)=>`<li class="${i===0?"first":""}">${esc(t)}</li>`).join("")}</ul>`;
+      h += `<ul class="ws-prev">${next.map((n,i)=>`<li class="${i===0?"first":""}">${esc(n.text.trim())}${n.date?` <span class="ws-pd${n.date<todayKey()?" over":""}">${esc(wsShortDate(n.date))}</span>`:""}${n.link?` <span class="ws-pd">${n.link.kind==="goal"?"🎯":"☑"}</span>`:""}</li>`).join("")}</ul>`;
     }else{
       const lines = doc.blocks.filter(b=>(b.type==="text"||b.type==="heading") && (b.text||"").trim()).slice(0,3).map(b=>(b.text||"").trim().split("\n")[0]);
       h += lines.length ? `<ul class="ws-prev plain">${lines.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>`
@@ -3779,6 +3842,11 @@ main.addEventListener("change", e=>{
     const doc = docEl ? wsGet(docEl.dataset.doc) : null;
     if(chip && doc) chip.textContent = (doc.pinned?"📌 ":"") + (doc.title||"Ohne Titel");
   }
+  if(el.dataset && el.dataset.wsf==="node"){
+    const docEl = el.closest(".ws-doc"); const doc = docEl ? wsGet(docEl.dataset.doc) : null;
+    const nodeEl = el.closest(".ws-node"); const r = (doc && nodeEl) ? wsFindNode(doc, nodeEl.dataset.nid) : null;
+    if(r && r.node.link) wsLinkRun(()=>wsSyncItem(doc, r.node, r.node.link.cal));
+  }
   if(el.id==="wsGanttSel"){ ganttSel = el.value; localStorage.setItem("ganttSel", ganttSel); wsGanttDraw(); }
 });
 main.addEventListener("keydown", e=>{
@@ -3798,7 +3866,7 @@ main.addEventListener("keydown", e=>{
       }
     }else if(e.key==="Backspace" && el.value===""){
       const r = wsFindNode(doc, nid);
-      if(r && r.node.children.length===0){
+      if(r && r.node.children.length===0 && !r.node.link){
         e.preventDefault();
         const all = [...docEl.querySelectorAll(".ws-nin")]; const i = all.indexOf(el);
         const prev = i>0 ? all[i-1].closest(".ws-node").dataset.nid : null;
@@ -3853,12 +3921,7 @@ main.addEventListener("click", e=>{
     wsDocs.forEach(d=>{ if(d.pinned){ d.pinned = false; wsTouch(d); } });
     doc.pinned = !was; wsTouch(doc); render(); return;
   }
-  if(act==="del-doc"){
-    if(!confirm('Dokument "'+(doc.title||"Ohne Titel")+'" mit allen Blöcken löschen?')) return;
-    wsDocs = wsDocs.filter(d=>d.id!==doc.id); wsDirty.delete(doc.id); wsDeleted.set(doc.id, ++wsRev);
-    if(wsOpenDocId===doc.id){ wsOpenDocId = null; localStorage.removeItem("wsOpenDoc"); }
-    wsScheduleSave(); render(); return;
-  }
+  if(act==="del-doc"){ wsDeleteDocFlow(doc); return; }
   if(act==="add-block"){
     const b = wsNewBlock(a.dataset.type); if(!b) return;
     doc.blocks.push(b); wsTouch(doc);
@@ -3867,9 +3930,7 @@ main.addEventListener("click", e=>{
   const blockEl = a.closest(".ws-block");
   const block = blockEl ? wsBlock(doc, blockEl.dataset.bid) : null;
   if(act==="del-block" && block){
-    const empty = block.type==="table" ? block.rows.every(r=>r.every(c=>!c)) : block.type==="outline" ? !wsOpenCount(doc) && !JSON.stringify(block.items).includes('"text":"') : !(block.text||"").trim();
-    if(!empty && !confirm("Diesen Block mit Inhalt löschen?")) return;
-    doc.blocks = doc.blocks.filter(b=>b.id!==block.id); wsTouch(doc); wsRerender(doc.id); return;
+    wsDeleteBlockFlow(doc, block); return;
   }
   if(act==="add-root-node" && block){
     const n = wsNewNode(""); block.items.push(n); wsTouch(doc);
@@ -3879,16 +3940,17 @@ main.addEventListener("click", e=>{
   if(nodeEl){
     const nid = nodeEl.dataset.nid, r = wsFindNode(doc, nid); if(!r) return;
     if(act==="toggle"){ if(r.node.children.length){ r.node.collapsed = !r.node.collapsed; wsTouch(doc); wsRerender(doc.id); } return; }
-    if(act==="done"){ r.node.done = !r.node.done; wsTouch(doc); wsRerender(doc.id); return; }
+    if(act==="done"){
+      r.node.done = !r.node.done; wsTouch(doc); wsRerender(doc.id);
+      if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+      return;
+    }
+    if(act==="link-menu"){ wsOpenLinkMenu(doc.id, nid); return; }
     if(act==="add-child"){
       const n = wsAddChild(doc, nid); wsTouch(doc);
       wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-nid="${n.id}"] > .ws-nrow .ws-nin`; wsRerender(doc.id); return;
     }
-    if(act==="del-node"){
-      const c = wsCount(r.node);
-      if(c.total>0 && !confirm("Diesen Punkt samt "+c.total+" Unterpunkten löschen?")) return;
-      wsDeleteNode(doc, nid); wsTouch(doc); wsRerender(doc.id); return;
-    }
+    if(act==="del-node"){ wsDeleteNodeFlow(doc, nid); return; }
   }
   if(block && block.type==="table"){
     if(act==="add-row"){ const i = wsAddRow(block); wsTouch(doc); wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-bid="${block.id}"] input[data-wsf="cell"][data-ri="${i}"][data-ci="0"]`; wsRerender(doc.id); return; }
@@ -4124,12 +4186,374 @@ function wsGanttDraw(){
     </div>` + gGanttHtml(gGanttItems(proj.root), box.clientWidth || 520, new Date());
 }
 
+/* ============ PUNKT <-> TODO / TAGES-ZIEL ============ */
+/* Jeder Punkt der Gliederung kann ein Datum tragen und als ToDo (Zeile im Tabellenblatt Tasks) oder Tages-Ziel (Google Task)
+   angelegt werden. Titel, Datum und Erledigt-Status werden in beide Richtungen abgeglichen; Kalender ist optional (Standard: aus). */
+const GOAL_MAX = 6;                                   // Tages-Ziele pro Tag
+let wsLinkQueue = Promise.resolve();
+function wsLinkRun(fn){
+  const run = wsLinkQueue.then(fn);
+  wsLinkQueue = run.catch(e=>{ console.error("❌ Verknüpfung:", e && e.message); toast("Verknüpfung: Abgleich fehlgeschlagen"); });
+  return wsLinkQueue;
+}
+function wsGoalCount(date){
+  if(date===todayKey()) return goalTasks.length;
+  return allOpenGoals.filter(g=>g.due===date).length;
+}
+/* Oberfläche nach Hintergrundarbeit auffrischen, ohne Eingaben zu stören */
+function wsRefreshDoc(doc){
+  if(!document.querySelector('.ws-mount[data-doc="'+doc.id+'"]')) return;
+  const ae = document.activeElement;
+  if(ae && ae.classList && ae.classList.contains("ws-nin")){
+    const li = ae.closest(".ws-node");
+    if(li) wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-nid="${li.dataset.nid}"] > .ws-nrow .ws-nin`;
+  }
+  wsRerender(doc.id);
+}
+function wsRenderIfSafe(){
+  const ae = document.activeElement;
+  if(ae && (ae.tagName==="INPUT" || ae.tagName==="TEXTAREA" || ae.tagName==="SELECT")) return;
+  if(document.getElementById("modalBg")) return;
+  if(view==="notes"){ wsDocs.forEach(wsRefreshDoc); return; }
+  render();
+}
+
+/* ---- Kalendertermin, den ein verknüpftes Tages-Ziel selbst besitzt ---- */
+async function wsGoalEvent(L, title, date, want){
+  const calId = L.calId || defaultCalId || "primary";
+  try{
+    if(want){
+      const body = JSON.stringify({summary:title, start:{date}, end:{date:nextDayKey(date)}});
+      if(L.evId) await api(`${calUrl(calId)}/${L.evId}`, {method:"PUT", body});
+      else{ const ev = await api(calUrl(calId), {method:"POST", body}); L.evId = ev.id; L.calId = calId; }
+      L.cal = true;
+    }else{
+      if(L.evId) await api(`${calUrl(calId)}/${L.evId}`, {method:"DELETE"});
+      L.evId = ""; L.cal = false;
+    }
+  }catch(e){
+    console.warn("Kalendertermin (Ziel) fehlgeschlagen:", e);
+    toast("Kalender-Eintrag fehlgeschlagen");
+    L.cal = !!L.evId;
+  }
+}
+
+/* ---- Punkt -> Eintrag: Titel, Datum, Kalender übertragen ---- */
+async function wsSyncItem(doc, node, wantCal){
+  const L = node.link; if(!L) return;
+  const title = (node.text||"").trim();
+  if(L.kind==="todo"){
+    const t = tasks.find(x=>x.id===L.ref);
+    if(!t){ node.link = null; wsTouch(doc); wsRefreshDoc(doc); return; }
+    if(title) t.title = title;
+    t.startDate = node.date || "";
+    const wd = parseDate(t.startDate); t.weekday = wd ? String(wd.getDay()) : "";
+    t.syncCalendar = !!wantCal;
+    await syncCalendar(t);
+    L.cal = !!t.syncCalendar && !!t.calendarEventId;
+    await saveTasks();
+  }else{
+    const listId = defaultGTaskListId || "@default";
+    const body = {notes:GOAL_MARKER}; if(title) body.title = title; if(node.date) body.due = node.date+"T12:00:00.000Z";
+    try{
+      await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(L.ref)}`, {method:"PATCH", body:JSON.stringify(body)});
+    }catch(e){
+      if(/404/.test(e.message||"")){ node.link = null; wsTouch(doc); wsRefreshDoc(doc); toast("Das verknüpfte Tages-Ziel existiert nicht mehr"); return; }
+      throw e;
+    }
+    await wsGoalEvent(L, title || node.text, node.date, !!wantCal);
+    await loadGTasks();
+  }
+  wsTouch(doc);
+  wsRenderIfSafe();
+}
+/* ---- Punkt abgehakt -> Eintrag erledigt (und zurück) ---- */
+async function wsPushDone(doc, node){
+  const L = node.link; if(!L) return;
+  const done = node.done;
+  if(L.kind==="todo"){
+    const t = tasks.find(x=>x.id===L.ref);
+    if(!t){ node.link = null; wsTouch(doc); wsRefreshDoc(doc); return; }
+    if(done){ if(!isEverDone(t.id)) logs.push({itemId:t.id, date:todayKey(), doneAt:new Date().toISOString()}); }
+    else logs = logs.filter(l=>l.itemId!==t.id);
+    await saveLogs();
+  }else{
+    const listId = defaultGTaskListId || "@default";
+    try{
+      await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(L.ref)}`,
+        {method:"PATCH", body:JSON.stringify(done ? {status:"completed"} : {status:"needsAction", completed:null})});
+    }catch(e){
+      if(/404/.test(e.message||"")){ node.link = null; wsTouch(doc); wsRefreshDoc(doc); toast("Das verknüpfte Tages-Ziel existiert nicht mehr"); return; }
+      throw e;
+    }
+    if(done && !logs.some(l=>l.itemId===L.ref)){ logs.push({itemId:L.ref, date:todayKey(), doneAt:new Date().toISOString()}); await saveLogs(); }
+    await loadGTasks();
+  }
+  wsRenderIfSafe();
+}
+/* ---- Neuen Eintrag aus einem Punkt anlegen ---- */
+async function wsCreateItem(doc, node, kind, cal){
+  if(node.link) return;
+  const title = (node.text||"").trim();
+  if(kind==="todo"){
+    const wd = parseDate(node.date);
+    const t = {id:uid(), type:"todo", title, scheduleType:"once", startDate:node.date, weekday:wd?String(wd.getDay()):"",
+      syncCalendar:!!cal, calendarEventId:"", notes:"", createdAt:new Date().toISOString(), archived:false,
+      calendarId:"", startTime:"", projectId:"", tag:""};
+    tasks.push(t);
+    if(t.syncCalendar) await syncCalendar(t);
+    await saveTasks();
+    node.link = {kind:"todo", ref:t.id, cal:!!t.syncCalendar && !!t.calendarEventId, evId:"", calId:""};
+  }else{
+    if(!defaultGTaskListId) await loadGTasks();
+    if(!defaultGTaskListId){ toast("Google Tasks nicht erreichbar"); return; }
+    const res = await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks`,
+      {method:"POST", body:JSON.stringify({title, notes:GOAL_MARKER, due:node.date+"T12:00:00.000Z"})});
+    node.link = {kind:"goal", ref:res.id, cal:false, evId:"", calId:""};
+    if(cal) await wsGoalEvent(node.link, title, node.date, true);
+    await loadGTasks();
+  }
+  wsTouch(doc);
+  if(node.done) await wsPushDone(doc, node);
+  toast(kind==="goal" ? "Als Tages-Ziel angelegt" : "Als ToDo angelegt");
+  wsRenderIfSafe();
+}
+async function wsApplyMenu(docId, nid, o){
+  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r) return;
+  const n = r.node, L = n.link, today = todayKey();
+  const date0 = wsIsDate(o.date) ? o.date : "";
+  if(!L){
+    if(!o.kind){ n.date = date0; wsTouch(doc); wsRefreshDoc(doc); return; }
+    if(!(n.text||"").trim()){ toast("Erst einen Text eingeben"); return; }
+    const date = date0 || today;
+    if(o.kind==="goal"){
+      if(date<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
+      if(wsGoalCount(date)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag"); return; }
+    }
+    n.date = date; wsTouch(doc); wsRefreshDoc(doc);
+    await wsLinkRun(()=>wsCreateItem(doc, n, o.kind, !!o.cal));
+    return;
+  }
+  if(L.kind==="goal"){
+    if(!date0){ toast("Ein Tages-Ziel braucht ein Datum"); return; }
+    if(date0!==n.date){
+      if(date0<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
+      if(wsGoalCount(date0)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag"); return; }
+    }
+  }
+  n.date = date0; wsTouch(doc); wsRefreshDoc(doc);
+  await wsLinkRun(()=>wsSyncItem(doc, n, !!o.cal));
+}
+async function wsUnlink(docId, nid){
+  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r || !r.node.link) return;
+  const L = r.node.link; r.node.link = null; wsTouch(doc); wsRefreshDoc(doc);
+  if(L.kind==="goal" && L.evId) await wsLinkRun(()=>wsGoalEvent(L, "", "", false));
+  toast("Verknüpfung gelöst, "+(L.kind==="goal"?"das Ziel":"das ToDo")+" bleibt bestehen");
+}
+
+/* ---- Menü je Punkt: Datum, ToDo, Tages-Ziel, Kalender ---- */
+function wsOpenLinkMenu(docId, nid){
+  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r) return;
+  if(document.getElementById("modalBg")) return;
+  const n = r.node, L = n.link;
+  const kindRow = L
+    ? `<p class="muted" style="font-size:13px;margin-bottom:10px">Verknüpft mit ${L.kind==="goal"?"einem Tages-Ziel":"einem ToDo"}. Titel, Datum und Erledigt-Status werden in beide Richtungen abgeglichen.</p>`
+    : `<label>Anlegen als</label><div class="seg" id="wsl_kind"><button data-k="" class="sel">Nur Datum</button><button data-k="todo">ToDo</button><button data-k="goal">Tages-Ziel</button></div>`;
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>${esc(n.text||"Punkt")}</h2>
+      ${kindRow}
+      <label>Datum</label><input type="date" id="wsl_date" value="${esc(n.date||"")}">
+      <div class="toggle-row" id="wsl_calrow" style="${L?"":"display:none"}"><div><div style="font-size:14px">In Google Calendar</div>
+        <div class="muted" style="font-size:12px">Ganztägiger Termin am Datum</div></div>
+        <button class="switch${L&&L.cal?" on":""}" id="wsl_cal"></button></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="wsl_cancel">Abbrechen</button>
+        ${L?`<button class="btn-ghost" id="wsl_unlink">Verknüpfung lösen</button>`:""}
+        <button class="btn-primary" id="wsl_ok">Übernehmen</button>
+      </div></div></div>`);
+  let kind = "";
+  const kindEl = $("wsl_kind");
+  if(kindEl) kindEl.querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    kindEl.querySelectorAll("button").forEach(x=>x.classList.remove("sel")); b.classList.add("sel");
+    kind = b.dataset.k; $("wsl_calrow").style.display = kind ? "" : "none";
+    if(kind && !$("wsl_date").value) $("wsl_date").value = todayKey();
+  });
+  $("wsl_cal").onclick = ()=>$("wsl_cal").classList.toggle("on");
+  $("wsl_cancel").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  if($("wsl_unlink")) $("wsl_unlink").onclick = ()=>{ $("modalBg").remove(); wsUnlink(docId, nid); };
+  $("wsl_ok").onclick = ()=>{
+    const o = {date:$("wsl_date").value, kind, cal:$("wsl_cal").classList.contains("on")};
+    $("modalBg").remove(); wsApplyMenu(docId, nid, o);
+  };
+}
+
+/* ---- Löschen: Rückfrage, was mit verknüpften Einträgen geschehen soll ---- */
+function wsAskLinks(links, what){
+  return new Promise(resolve=>{
+    if(document.getElementById("modalBg")){ resolve(null); return; }
+    const nt = links.filter(l=>l.kind==="todo").length, ng = links.length - nt, parts = [];
+    if(nt) parts.push(nt+(nt>1?" ToDos":" ToDo"));
+    if(ng) parts.push(ng+(ng>1?" Tages-Ziele":" Tages-Ziel"));
+    document.body.insertAdjacentHTML("beforeend",
+      `<div class="modal-bg" id="modalBg"><div class="modal">
+        <h2>Verknüpfte Einträge</h2>
+        <p style="font-size:14px;margin-bottom:12px">${esc(what)} ${/^Dokument|^Block/.test(what)?"enthält":"hat"} ${esc(parts.join(" und "))} verknüpft. Was soll damit geschehen?</p>
+        <div class="modal-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+          <button class="btn-ghost" id="wsq_keep">Nur hier löschen, ${links.length>1?"die Einträge bleiben":"der Eintrag bleibt"} bestehen</button>
+          <button class="btn-primary" id="wsq_del">Auch ${links.length>1?"die verknüpften Einträge":"den verknüpften Eintrag"} löschen</button>
+          <button class="btn-ghost" id="wsq_cancel">Abbrechen</button>
+        </div></div></div>`);
+    const done = v=>{ const m = $("modalBg"); if(m) m.remove(); resolve(v); };
+    $("wsq_keep").onclick = ()=>done("keep");
+    $("wsq_del").onclick = ()=>done("delete");
+    $("wsq_cancel").onclick = ()=>done(null);
+    $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") done(null); };
+  });
+}
+async function wsReleaseLinks(links, del){
+  let tasksChanged = false, goalsChanged = false;
+  for(const L of links){
+    if(L.kind==="todo"){
+      if(!del) continue;
+      const t = tasks.find(x=>x.id===L.ref); if(!t) continue;
+      await deleteCalendar(t);
+      tasks = tasks.filter(x=>x.id!==t.id); logs = logs.filter(l=>l.itemId!==t.id); tasksChanged = true;
+    }else{
+      if(L.evId){ try{ await api(`${calUrl(L.calId || defaultCalId || "primary")}/${L.evId}`, {method:"DELETE"}); }catch(e){} }
+      if(del){
+        try{ await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId||"@default")}/tasks/${encodeURIComponent(L.ref)}`, {method:"DELETE"}); }
+        catch(e){ if(!/404/.test(e.message||"")) throw e; }
+        goalsChanged = true;
+      }
+    }
+  }
+  if(tasksChanged){ await saveTasks(); await saveLogs(); }
+  if(goalsChanged) await loadGTasks();
+  if(tasksChanged || goalsChanged) wsRenderIfSafe();
+}
+const wsLinkCopies = nodes=>wsCollectLinkedNodes(nodes).map(n=>Object.assign({}, n.link));
+async function wsDeleteNodeFlow(doc, nid){
+  const r = wsFindNode(doc, nid); if(!r) return;
+  const c = wsCount(r.node), links = wsLinkCopies([r.node]);
+  let mode = "keep";
+  if(links.length){
+    mode = await wsAskLinks(links, "Dieser Punkt"+(c.total?" samt "+c.total+" Unterpunkten":""));
+    if(!mode) return;
+  }else if(c.total>0 && !confirm("Diesen Punkt samt "+c.total+" Unterpunkten löschen?")) return;
+  if(!wsFindNode(doc, nid)) return;
+  wsDeleteNode(doc, nid); wsTouch(doc); wsRerender(doc.id);
+  if(links.length) wsLinkRun(()=>wsReleaseLinks(links, mode==="delete"));
+}
+async function wsDeleteBlockFlow(doc, block){
+  const links = block.type==="outline" ? wsLinkCopies(block.items) : [];
+  let mode = "keep";
+  if(links.length){
+    mode = await wsAskLinks(links, "Dieser Block");
+    if(!mode) return;
+  }else{
+    const empty = block.type==="table" ? block.rows.every(r=>r.every(c=>!c)) : block.type==="outline" ? !wsOpenCount(doc) && !JSON.stringify(block.items).includes('"text":"') : !(block.text||"").trim();
+    if(!empty && !confirm("Diesen Block mit Inhalt löschen?")) return;
+  }
+  doc.blocks = doc.blocks.filter(b=>b.id!==block.id); wsTouch(doc); wsRerender(doc.id);
+  if(links.length) wsLinkRun(()=>wsReleaseLinks(links, mode==="delete"));
+}
+async function wsDeleteDocFlow(doc){
+  if(!confirm('Dokument "'+(doc.title||"Ohne Titel")+'" mit allen Blöcken löschen?')) return;
+  const links = wsDocLinkedNodes(doc).map(n=>Object.assign({}, n.link));
+  let mode = "keep";
+  if(links.length){
+    mode = await wsAskLinks(links, "Dokument");
+    if(!mode) return;
+  }
+  wsDocs = wsDocs.filter(d=>d.id!==doc.id); wsDirty.delete(doc.id); wsDeleted.set(doc.id, ++wsRev);
+  if(wsOpenDocId===doc.id){ wsOpenDocId = null; localStorage.removeItem("wsOpenDoc"); }
+  wsScheduleSave(); render();
+  if(links.length) wsLinkRun(()=>wsReleaseLinks(links, mode==="delete"));
+}
+
+/* ---- Eintrag -> Punkt: Änderungen aus den übrigen Ansichten der App ---- */
+function wsOnItemDone(kind, ref, done){
+  if(!wsLoaded) return;
+  const h = wsFindByLink(wsDocs, kind, ref); if(!h || h.node.done===done) return;
+  h.node.done = done; wsTouch(h.doc);
+}
+function wsOnTodoChanged(t){
+  if(!wsLoaded) return;
+  const h = wsFindByLink(wsDocs, "todo", t.id); if(!h) return;
+  if(t.type!=="todo" || t.scheduleType==="weekly"){ h.node.link = null; wsTouch(h.doc); toast("Verknüpfung mit dem Arbeitsbereich gelöst: kein einmaliges ToDo mehr"); return; }
+  if(t.title) h.node.text = t.title;
+  h.node.date = t.startDate || "";
+  h.node.link.cal = !!t.syncCalendar && !!t.calendarEventId;
+  wsTouch(h.doc);
+}
+function wsOnGoalChanged(id, title, date){
+  if(!wsLoaded) return;
+  const h = wsFindByLink(wsDocs, "goal", id); if(!h) return;
+  if(title) h.node.text = title;
+  if(date) h.node.date = date;
+  wsTouch(h.doc);
+  if(h.node.link.evId) wsLinkRun(()=>wsGoalEvent(h.node.link, h.node.text, h.node.date, true).then(()=>wsTouch(h.doc)));
+}
+function wsOnItemDeleted(kind, ref){
+  if(!wsLoaded) return;
+  const h = wsFindByLink(wsDocs, kind, ref); if(!h) return;
+  const L = h.node.link; h.node.link = null; wsTouch(h.doc);
+  if(kind==="goal" && L.evId) wsLinkRun(()=>wsGoalEvent(L, "", "", false));
+}
+
+/* ---- Abgleich beim Start: der Eintrag gilt, wenn Punkt und Eintrag auseinanderlaufen ---- */
+async function wsReconcileLinks(){
+  try{
+    if(!wsLoaded) return;
+    const touched = new Set(), unresolved = [];
+    const setN = (doc, n, key, val)=>{ if(n[key]!==val){ n[key] = val; touched.add(doc); } };
+    wsDocs.forEach(doc=>{
+      wsDocLinkedNodes(doc).forEach(n=>{
+        const L = n.link;
+        if(L.kind==="todo"){
+          if(!tasks.length) return;                                    // Tasks nicht geladen: nichts verändern
+          const t = tasks.find(x=>x.id===L.ref);
+          if(!t || t.type!=="todo" || t.scheduleType==="weekly"){ n.link = null; touched.add(doc); return; }
+          setN(doc, n, "done", isEverDone(t.id));
+          if(t.title) setN(doc, n, "text", t.title);
+          setN(doc, n, "date", t.startDate || "");
+          const cal = !!t.syncCalendar && !!t.calendarEventId;
+          if(L.cal!==cal){ L.cal = cal; touched.add(doc); }
+        }else{
+          const g = allOpenGoals.find(x=>x.id===L.ref) || goalTasks.find(x=>x.id===L.ref);
+          if(g){
+            setN(doc, n, "done", !!g.completed);
+            if(g.title && g.title!=="(ohne Titel)") setN(doc, n, "text", g.title);
+            if(g.due) setN(doc, n, "date", g.due);
+          }else unresolved.push({doc, n});
+        }
+      });
+    });
+    // Ziele, die nicht in den geladenen Listen stehen (früher erledigt oder gelöscht): einzeln nachfragen
+    if(unresolved.length && defaultGTaskListId){
+      for(const {doc, n} of unresolved.slice(0, 30)){
+        try{
+          const res = await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks/${encodeURIComponent(n.link.ref)}`);
+          if(!res || res.deleted){ n.link = null; touched.add(doc); }
+          else if(res.status==="completed") setN(doc, n, "done", true);
+        }catch(e){
+          if(/404/.test(e.message||"")){ n.link = null; touched.add(doc); }
+        }
+      }
+    }
+    touched.forEach(d=>wsTouch(d));
+    if(touched.size) console.log("  ✓ wsReconcileLinks: Dokumente angepasst:", touched.size);
+  }catch(e){ console.error("wsReconcileLinks:", e.message); }
+}
+
 /* ============ EVENTS ============ */
 $("nav").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b){ view=b.dataset.view; render(); }});
 $("fabQuick").addEventListener("click",openQuickAdd);
 $("fab").addEventListener("click",()=>{
   if(view==="goals"){
-    if(goalTasks.length>=4){ toast("Maximal 4 Tages-Ziele"); return; }
+    if(goalTasks.length>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele"); return; }
     return openForm("goal");
   }
   if(view==="distractions") return openDistractionForm();
@@ -4305,6 +4729,7 @@ async function bootData(){
     
     console.log("  ✓ checkGoalsPenalty...");
     checkGoalsPenalty();
+    await wsReconcileLinks();
     
     setSync("on");
     $("acctBtn").textContent="Verbunden";

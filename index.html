@@ -3514,6 +3514,43 @@ function wsMoveNode(doc, nid, targetId, pos){
   else tgt.list.splice(tgt.index + (pos==="after"?1:0), 0, node);
   return true;
 }
+/* Abschnitte eines Dokuments: jede Gliederung mit der Überschrift davor; Überschriften ohne Gliederung bieten "neue Gliederung anlegen" */
+function wsSections(doc){
+  const secs = [{head:null, outs:[]}];
+  doc.blocks.forEach(b=>{ if(b.type==="heading") secs.push({head:b, outs:[]}); else if(b.type==="outline") secs[secs.length-1].outs.push(b); });
+  const out = [];
+  secs.forEach(s=>{
+    const hl = s.head ? ((s.head.text||"").trim() || "(Überschrift ohne Text)") : "(vor der ersten Überschrift)";
+    if(s.outs.length) s.outs.forEach((b,i)=>out.push({id:b.id, headId:s.head?s.head.id:"", label:hl+" › Gliederung"+(s.outs.length>1?" "+(i+1):"")}));
+    else if(s.head || secs.length===1) out.push({id:"", headId:s.head?s.head.id:"", label:hl+" › neue Gliederung anlegen"});
+  });
+  return out;
+}
+/* Punkt (samt Unterpunkten) oder Anhang in einen anderen Block, unter eine andere Überschrift oder in ein anderes Dokument verschieben.
+   tgt: {block: Gliederungs-ID oder "" (= neue Gliederung hinter der Überschrift headId), mode: "top"|"end"|"child", parent: Punkt-ID} */
+function wsMoveTo(srcDoc, dstDoc, id, tgt){
+  const src = wsFindNode(srcDoc, id);
+  if(!src){
+    const ow = wsAttOwner(srcDoc, id); if(!ow) return false;
+    const t = tgt.parent ? wsFindNode(dstDoc, tgt.parent) : null;
+    if(!t || t.node===ow) return false;
+    const i = ow.att.findIndex(a=>a.id===id), [a] = ow.att.splice(i, 1);
+    t.node.att.push(a); t.node.aopen = true; return true;
+  }
+  let blk = tgt.block ? dstDoc.blocks.find(b=>b.id===tgt.block && b.type==="outline") : null;
+  if(tgt.mode==="child"){
+    if(!tgt.parent || wsContains(src.node, tgt.parent) || !wsFindNode(dstDoc, tgt.parent)) return false;
+  }else if(tgt.block && !blk) return false;
+  src.list.splice(src.index, 1);
+  if(tgt.mode==="child"){ const t = wsFindNode(dstDoc, tgt.parent); t.node.children.push(src.node); t.node.collapsed = false; return true; }
+  if(!blk){
+    blk = {id:wsId(), type:"outline", items:[], tag:""};
+    let at = 0; if(tgt.headId){ const hi = dstDoc.blocks.findIndex(b=>b.id===tgt.headId); at = hi<0 ? dstDoc.blocks.length : hi+1; }
+    dstDoc.blocks.splice(at, 0, blk);
+  }
+  if(tgt.mode==="top") blk.items.unshift(src.node); else blk.items.push(src.node);
+  return true;
+}
 function wsIndent(doc, nid){
   const src = wsFindNode(doc, nid); if(!src || src.index===0) return false;
   const prev = src.list[src.index-1];
@@ -4086,7 +4123,7 @@ function wsAttHtml(a, eff){
       <button class="ws-tog" data-wsact="fold" title="${open?"Einklappen":"Aufklappen"}">${open?"▾":"▸"}</button>
       <button class="ws-chk${a.done?" on":""}" data-wsact="done" title="Erledigt">${a.done?"✓":""}</button>
       <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":a.type==="link"?"Bezeichnung des Links (optional)":a.type==="file"?(a.name||"Bezeichnung (optional)"):"Titel der Tabelle"}">
-      <span class="ws-nright">${wsNodeChips(a)}${wsAttTagBtn(a, wsTagUnion(eff, a.tag), "tag-att", "diesen Anhang")}<button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
+      <span class="ws-nright">${wsNodeChips(a)}${wsAttTagBtn(a, wsTagUnion(eff, a.tag), "tag-att", "diesen Anhang")}<button class="ws-mini" data-wsact="move-att" title="Zu einem anderen Punkt, Block oder Dokument verschieben">⇄</button><button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
     </div>
     <div class="ws-abody"${open?"":' data-wsact="fold"'}>${body}</div>
   </div>`;
@@ -4116,6 +4153,7 @@ function wsNodeHtml(n, depth, inh){
       ${wsF.noAtt?"":`<button class="ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle an diesen Punkt anhängen">📎 ${n.att.length?n.att.length:"Anhang"}</button>`}
       <button class="ws-mini ws-tagb${n.tag?" on":(eff?" inh":"")}" data-wsact="tag-node" title="${n.tag?"Eigener Tag, gilt auch für alle Unterpunkte und Anhänge":(eff?"Tag geerbt von oben, hier änderbar":"Tag setzen (gilt auch für alle Unterpunkte und Anhänge)")}">🏷${eff?" "+esc(eff):""}</button>
       <button class="ws-mini ws-eye${n.hid?" on":""}" data-wsact="hide-node" title="${n.hid?"Wieder einblenden":"Ausblenden (unter Ansicht wieder einblendbar)"}">${n.hid?"🙈":"👁"}</button>
+      <button class="ws-mini" data-wsact="move-node" title="In einen anderen Block, unter eine andere Überschrift oder in ein anderes Dokument verschieben">⇄</button>
       <button class="ws-mini" data-wsact="add-child" title="Unterpunkt anlegen">+</button>
       <button class="ws-mini" data-wsact="del-node" title="Punkt löschen">✕</button>
       </span>
@@ -5261,8 +5299,8 @@ function ws3dInfoHtml(){
   const btn = (a, t)=>`<button class="ws-addbtn" data-w3="${a}">${t}</button>`;
   let b = "";
   if(n.kind==="doc") b += btn("goto","Öffnen") + btn("tags","Tags") + btn("import","ToDo/Ziel einfügen");
-  else if(n.kind==="node") b += btn("goto","Öffnen") + btn("edit","Bearbeiten") + btn("tags","Tags") + btn("import","ToDo/Ziel einfügen");
-  else if(n.kind==="att") b += (n.type==="file" ? btn("view","Ansehen") : n.type==="link" && n.url ? btn("url","Link öffnen") : "") + btn("goto", n.type==="file"||n.type==="link" ? "Im Dokument" : "Öffnen") + btn("edit","Bearbeiten") + btn("tags","Tags");
+  else if(n.kind==="node") b += btn("goto","Öffnen") + btn("edit","Bearbeiten") + btn("move","Verschieben") + btn("tags","Tags") + btn("import","ToDo/Ziel einfügen");
+  else if(n.kind==="att") b += (n.type==="file" ? btn("view","Ansehen") : n.type==="link" && n.url ? btn("url","Link öffnen") : "") + btn("goto", n.type==="file"||n.type==="link" ? "Im Dokument" : "Öffnen") + btn("edit","Bearbeiten") + btn("move","Verschieben") + btn("tags","Tags");
   else if(n.kind==="block") b += btn("goto","Öffnen") + btn("tags","Tags");
   b += btn("focus", ws3d.opt.focus ? "Alles zeigen" : "Nur Umgebung zeigen") + btn("center","Zentrieren");
   const nb = ws3d.nb.get(n.id).size;
@@ -5275,6 +5313,7 @@ function ws3dAct(act){
   const n = ws3d.byId.get(ws3d.sel); if(!n) return;
   if(act==="goto"){ if(ws3d.full){ ws3d.resumeFull = true; ws3dSetFull(false); } wsGoToItem(n.doc, n.kind==="doc"?"doc":n.kind, n.ref, true); return; }
   if(act==="edit"){ if(n.kind==="node") wsEditNode(n.ref); else wsOpenLinkMenu(n.doc, n.ref); }
+  else if(act==="move"){ wsOpenMove(n.doc, n.ref); }
   else if(act==="tags"){ wsOpenTagMenu(n.doc, n.kind==="doc" ? "doc" : n.kind==="block" ? "block" : n.kind==="att" ? "att" : "node", n.kind==="doc" ? n.doc : n.ref); }
   else if(act==="import"){ wsOpenImport(n.kind==="doc" ? {docId:n.doc} : {docId:n.doc, parent:n.ref}); }
   else if(act==="view"){ const d = wsGet(n.doc), a = d && wsFindAny(d, n.ref); if(a) wsOpenFileView(a); }
@@ -5580,6 +5619,7 @@ main.addEventListener("click", e=>{
     if(act==="tag-att"){ wsOpenTagMenu(doc.id, "att", att.id); return; }
     if(act==="file-view"){ wsOpenFileView(att); return; }
     if(act==="del-att"){ wsDeleteAttFlow(doc, att); return; }
+    if(act==="move-att"){ wsOpenMove(doc.id, att.id); return; }
     if(att.type==="table" && wsTableAct(doc, att, `[data-aid="${att.id}"]`, act, a)) return;
     return;
   }
@@ -5620,6 +5660,7 @@ main.addEventListener("click", e=>{
       wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-nid="${n.id}"] > .ws-nrow .ws-nin`; wsRerender(doc.id); return;
     }
     if(act==="del-node"){ wsDeleteNodeFlow(doc, nid); return; }
+    if(act==="move-node"){ wsOpenMove(doc.id, nid); return; }
   }
   if(block && block.type==="table"){ if(wsTableAct(doc, block, `[data-bid="${block.id}"]`, act, a)) return; }
 });
@@ -6127,6 +6168,7 @@ function wsOpenLinkMenu(docId, nid){
       <div class="modal-actions" style="flex-wrap:wrap">
         <button class="btn-ghost" id="wsl_cancel">Abbrechen</button>
         <button class="btn-ghost" id="wsl_open">Im Dokument</button>
+        <button class="btn-ghost" id="wsl_move">Verschieben</button>
         ${att?"":`<button class="btn-ghost" id="wsl_import">ToDo/Ziel einfügen</button>`}
         <button class="btn-ghost" id="wsl_del">Löschen</button>
         ${L?`<button class="btn-ghost" id="wsl_unlink">Verknüpfung lösen</button>`:""}
@@ -6150,6 +6192,7 @@ function wsOpenLinkMenu(docId, nid){
   $("wsl_done").onclick = ()=>$("wsl_done").classList.toggle("on");
   if($("wsl_hid")) $("wsl_hid").onclick = ()=>$("wsl_hid").classList.toggle("on");
   $("wsl_open").onclick = ()=>{ $("modalBg").remove(); wsGoToDoc(docId); };
+  $("wsl_move").onclick = ()=>{ $("modalBg").remove(); wsOpenMove(docId, nid); };
   if($("wsl_import")) $("wsl_import").onclick = ()=>{ $("modalBg").remove(); wsOpenImport({docId, parent:nid}); };
   $("wsl_del").onclick = async ()=>{
     $("modalBg").remove();
@@ -6245,6 +6288,57 @@ function wsInsertLinked(doc, items, blockId, parentNid){
   return items.length;
 }
 /* o: {docId?, parent?, blockId?, pick?:{kind,id}} - ohne docId wählt man Dokument und Stelle im Dialog */
+function wsOpenMove(docId, id){
+  if(document.getElementById("modalBg")) return;
+  const doc = wsGet(docId), item = doc && wsFindAny(doc, id); if(!item) return;
+  const isAtt = wsIsAtt(item);
+  const label = (isAtt ? (item.title||item.name||item.url||"Anhang") : (item.text||"Punkt")).slice(0,60);
+  const sel = "width:100%;padding:10px;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;margin-bottom:8px";
+  const owner = isAtt ? wsAttOwner(doc, id) : null;
+  const secOpts = d=>wsSections(d).map((s,i)=>`<option value="${i}">${esc(s.label)}</option>`).join("") || `<option value="">(keine Gliederung)</option>`;
+  const parOpts = (d, si)=>{
+    const sec = wsSections(d)[si], blk = sec && sec.id ? d.blocks.find(b=>b.id===sec.id) : null;
+    const out = [];
+    if(!isAtt) out.push(`<option value="top">Ganz oben im Block</option>`, `<option value="end">Am Ende des Blocks</option>`);
+    const walk = (items, dep)=>items.forEach(n=>{
+      if(!isAtt && n.id===id) return;                 // der Punkt selbst und sein Teilbaum
+      if(out.length<300 && !(isAtt && owner && n.id===owner.id)) out.push(`<option value="${isAtt?"":"c:"}${esc(n.id)}">${isAtt?"an: ":"als Unterpunkt von: "}${"· ".repeat(dep)}${esc((n.text||"(leer)").slice(0,50))}</option>`);
+      walk(n.children, dep+1);
+    });
+    if(blk) walk(blk.items, 0);
+    if(!out.length) out.push(`<option value="">(in diesem Block gibt es keinen Punkt)</option>`);
+    return out.join("");
+  };
+  const curSec = (()=>{ const own = isAtt ? (owner && wsFindNode(doc, owner.id)) : wsFindNode(doc, id); const bl = own && own.block; const ss = wsSections(doc); const i = bl ? ss.findIndex(s=>s.id===bl.id) : 0; return Math.max(0, i); })();
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>${isAtt?"Anhang":"Punkt"} verschieben</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">„${esc(label)}“${isAtt?"":" wandert samt Unterpunkten und Anhängen."}</p>
+      <label>Dokument</label><select id="wsm_doc" style="${sel}">${wsDocs.map(d=>`<option value="${esc(d.id)}"${d.id===docId?" selected":""}>${esc(d.title||"(ohne Titel)")}</option>`).join("")}</select>
+      <label>Überschrift und Block</label><select id="wsm_sec" style="${sel}">${secOpts(doc)}</select>
+      <label>${isAtt?"Zu welchem Punkt":"Position"}</label><select id="wsm_par" style="${sel}"></select>
+      <div class="modal-actions"><button class="btn-ghost" id="wsm_cancel">Abbrechen</button><button class="btn-primary" id="wsm_ok">Verschieben</button></div>
+    </div></div>`);
+  const fillPar = ()=>{ const d = wsGet($("wsm_doc").value); $("wsm_par").innerHTML = d ? parOpts(d, +$("wsm_sec").value) : ""; };
+  $("wsm_sec").value = String(curSec); fillPar();
+  $("wsm_doc").onchange = ()=>{ const d = wsGet($("wsm_doc").value); $("wsm_sec").innerHTML = d ? secOpts(d) : ""; fillPar(); };
+  $("wsm_sec").onchange = fillPar;
+  $("wsm_cancel").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  $("wsm_ok").onclick = ()=>{
+    const dst = wsGet($("wsm_doc").value); if(!dst) return;
+    const sec = wsSections(dst)[+$("wsm_sec").value], v = $("wsm_par").value;
+    if(!sec || (!v && isAtt) || (!v && !isAtt)){ toast("Dort ist kein Ziel auswählbar"); return; }
+    const tgt = {block:sec.id, headId:sec.headId};
+    if(isAtt) Object.assign(tgt, {mode:"child", parent:v});
+    else if(v.startsWith("c:")) Object.assign(tgt, {mode:"child", parent:v.slice(2)});
+    else tgt.mode = v;
+    const ok = wsMoveTo(doc, dst, id, tgt);
+    if(!ok){ toast(isAtt ? "Dort liegt der Anhang schon" : "Dorthin lässt sich der Punkt nicht verschieben"); return; }
+    wsTouch(doc); if(dst!==doc) wsTouch(dst);
+    $("modalBg").remove(); toast("Verschoben nach „"+(dst.title||"(ohne Titel)")+"“ · "+sec.label); render();
+  };
+}
 function wsOpenImport(o){
   if(document.getElementById("modalBg")) return;
   if(!wsLoaded){ toast("Arbeitsbereich noch nicht geladen"); return; }

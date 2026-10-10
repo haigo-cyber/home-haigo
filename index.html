@@ -526,6 +526,15 @@
   .ws-thumb{display:none;height:44px;max-width:64px;object-fit:cover;border-radius:5px;border:1px solid #3a3f48;background:#fff}
   .ws-thumb.on{display:inline-block}
   .ws-thumb.on + .ws-thico{display:none}
+  .ws3d-back{display:none}
+  .ws3d-root.full{position:fixed;inset:0;z-index:250;background:#0b0d10;display:flex;flex-direction:column;padding:10px;overflow:hidden}
+  .ws3d-root.full .ws3d-back{display:inline-flex;font-weight:700}
+  .ws3d-root.full #ws3dFull{display:none}
+  .ws3d-root.full .ws3d-wrap{flex:1;min-height:0;border-radius:10px}
+  .ws3d-root.full .ws3d-info{max-height:30vh;overflow:auto}
+  body.ws3d-fs{overflow:hidden}
+  body.ws3d-fs .modal-bg{z-index:400}
+  body.ws3d-fs .toast{z-index:500}
 </style>
 </head>
 <body>
@@ -4890,7 +4899,7 @@ async function wsOpenFileView(a){
     else body.innerHTML = `<div class="muted center">Für diesen Dateityp gibt es keine Vorschau. Nutze „Neuer Tab“ oder „In Drive“.</div>`;
   }catch(e){ const body = document.getElementById("wsFvBody"); if(body) body.innerHTML = `<div class="center" style="color:var(--red)">Datei konnte nicht geladen werden: ${esc(e.message)}</div>`; }
 }
-document.addEventListener("keydown", e=>{ if(e.key==="Escape") wsCloseFileView(); });
+document.addEventListener("keydown", e=>{ if(e.key==="Escape"){ if(document.getElementById("wsFv")) e.__wsEsc = true; wsCloseFileView(); } });
 
 /* ============ 3D-ANSICHT ============ */
 /* Eigene kleine 3D-Darstellung auf Canvas (ohne Bibliothek, funktioniert offline): Kraft-Layout im Raum, Drehen/Zoomen/Verschieben. */
@@ -4904,7 +4913,8 @@ const ws3d = {
 function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels, layout:ws3d.opt.layout, floor:ws3d.opt.floor, spin:ws3d.opt.spin, edit:ws3d.opt.edit})); }catch(e){} }
 function ws3dHtml(){
   const o = ws3d.opt;
-  return `<div class="ws3d-bar">
+  return `<div class="ws3d-root${ws3d.full?" full":""}" id="ws3dRoot"><div class="ws3d-bar">
+    <button class="ws-addbtn ws3d-back" id="ws3dBack" title="Vollbild beenden (Esc)">← Zurück zur App</button>
     <select id="ws3dDoc" class="ws-in"><option value="">Alle Dokumente</option>${wsDocs.map(d=>`<option value="${esc(d.id)}"${o.doc===d.id?" selected":""}>${esc(d.title||"(ohne Titel)")}</option>`).join("")}</select>
     <input id="ws3dQ" class="ws-in" type="search" placeholder="Suchen" value="${esc(o.q)}">
     <select id="ws3dLay" class="ws-in" title="Anordnung"><option value="tree"${o.layout==="tree"?" selected":""}>Baum (geordnet)</option><option value="net"${o.layout==="net"?" selected":""}>Netz (frei)</option></select>
@@ -4916,12 +4926,26 @@ function ws3dHtml(){
     <label class="ws3d-ck"><input type="checkbox" id="ws3dSpin"${o.spin?" checked":""}> Drehen</label>
     <button class="ws-addbtn" id="ws3dReset">Ansicht zurücksetzen</button>
     <button class="ws-addbtn" id="ws3dShake">Neu ordnen</button>
+    <button class="ws-addbtn" id="ws3dFull" title="3D-Ansicht im Vollbild zeigen">⛶ Vollbild</button>
   </div>
   <div class="ws3d-wrap" id="ws3dWrap"><canvas id="ws3dCv" aria-label="3D-Übersicht der Dokumente, Punkte, Anhänge und Tags"></canvas>
     <div class="ws3d-zoom"><button type="button" id="ws3dZin" title="Vergrößern" aria-label="Vergrößern">+</button><button type="button" id="ws3dZout" title="Verkleinern" aria-label="Verkleinern">-</button></div>
     <div class="ws3d-hint">Ziehen: drehen · Mausrad oder zwei Finger: zoomen · Umschalt+Ziehen oder zwei Finger ziehen: verschieben · Klick auf Knoten: Details · Doppelklick: öffnen</div></div>
-  <div class="ws3d-info" id="ws3dInfo"></div>`;
+  <div class="ws3d-info" id="ws3dInfo"></div></div>`;
 }
+/* Vollbild: die 3D-Ansicht legt sich über die ganze Seite; die App darunter bleibt unverändert und offen */
+function ws3dSetFull(on, keepBrowserFs){
+  ws3d.full = !!on;
+  document.body.classList.toggle("ws3d-fs", ws3d.full);
+  const root = document.getElementById("ws3dRoot"); if(root) root.classList.toggle("full", ws3d.full);
+  try{
+    if(ws3d.full && !document.fullscreenElement && document.documentElement.requestFullscreen){ ws3d.fsOwn = true; const p = document.documentElement.requestFullscreen(); if(p && p.catch) p.catch(()=>{ ws3d.fsOwn = false; }); }
+    else if(!ws3d.full && !keepBrowserFs && document.fullscreenElement && ws3d.fsOwn){ ws3d.fsOwn = false; const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); }
+  }catch(e){ ws3d.fsOwn = false; }
+  requestAnimationFrame(()=>{ ws3dResize(); if(ws3d.opt && ws3d.g && ws3d.g.nodes.length && !ws3d.userCam) ws3dFit(); ws3dKick(); });
+}
+document.addEventListener("fullscreenchange", ()=>{ if(!document.fullscreenElement && ws3d.full && ws3d.fsOwn){ ws3d.fsOwn = false; ws3dSetFull(false, true); } });
+document.addEventListener("keydown", e=>{ if(e.key==="Escape" && ws3d.full && !e.__wsEsc && !document.getElementById("modalBg") && !document.getElementById("wsFv")) ws3dSetFull(false); });
 function ws3dHue(t){ let h = 0; const k = (wsTagList(t)[0]||"").toLowerCase(); for(let i=0;i<k.length;i++) h = (h*31 + k.charCodeAt(i))%360; return h; }
 function ws3dColor(n){ return n.eff ? `hsl(${ws3dHue(n.eff)},48%,60%)` : "#8b93a1"; }
 function ws3dColorHi(n){ return n.eff ? `hsl(${ws3dHue(n.eff)},55%,84%)` : "#d3d8e0"; }
@@ -5221,7 +5245,7 @@ function ws3dKick(){
 }
 function ws3dResize(){
   const cv = ws3d.cv, wrap = cv && cv.parentElement; if(!wrap) return;
-  const dpr = window.devicePixelRatio||1, w = Math.max(280, wrap.clientWidth), h = Math.round(Math.max(380, Math.min(760, window.innerHeight*0.62)));
+  const dpr = window.devicePixelRatio||1, w = Math.max(280, wrap.clientWidth), h = ws3d.full ? Math.max(200, wrap.clientHeight) : Math.round(Math.max(380, Math.min(760, window.innerHeight*0.62)));
   ws3d.w = w; ws3d.h = h; cv.style.width = w+"px"; cv.style.height = h+"px";
   cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
   ws3d.ctx = cv.getContext("2d"); ws3d.ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -5249,8 +5273,8 @@ function ws3dSelect(id){
 }
 function ws3dAct(act){
   const n = ws3d.byId.get(ws3d.sel); if(!n) return;
-  if(act==="goto") wsGoToItem(n.doc, n.kind==="doc"?"doc":n.kind, n.ref, true);
-  else if(act==="edit"){ if(n.kind==="node") wsEditNode(n.ref); else wsOpenLinkMenu(n.doc, n.ref); }
+  if(act==="goto"){ if(ws3d.full){ ws3d.resumeFull = true; ws3dSetFull(false); } wsGoToItem(n.doc, n.kind==="doc"?"doc":n.kind, n.ref, true); return; }
+  if(act==="edit"){ if(n.kind==="node") wsEditNode(n.ref); else wsOpenLinkMenu(n.doc, n.ref); }
   else if(act==="tags"){ wsOpenTagMenu(n.doc, n.kind==="doc" ? "doc" : n.kind==="block" ? "block" : n.kind==="att" ? "att" : "node", n.kind==="doc" ? n.doc : n.ref); }
   else if(act==="import"){ wsOpenImport(n.kind==="doc" ? {docId:n.doc} : {docId:n.doc, parent:n.ref}); }
   else if(act==="view"){ const d = wsGet(n.doc), a = d && wsFindAny(d, n.ref); if(a) wsOpenFileView(a); }
@@ -5260,6 +5284,9 @@ function ws3dAct(act){
 }
 function ws3dMount(){
   const cv = document.getElementById("ws3dCv"); if(!cv) return;
+  document.body.classList.toggle("ws3d-fs", !!ws3d.full);
+  document.getElementById("ws3dFull").onclick = ()=>ws3dSetFull(true);
+  document.getElementById("ws3dBack").onclick = ()=>ws3dSetFull(false);
   ws3d.cv = cv; ws3dResize(); ws3dBuild();
   const info = document.getElementById("ws3dInfo"); info.innerHTML = ws3dInfoHtml();
   info.onclick = e=>{ const b = e.target.closest("[data-w3]"); if(b) ws3dAct(b.dataset.w3); };
@@ -5322,7 +5349,7 @@ function wsAutosizeEl(el){ el.style.height = "auto"; el.style.height = (el.scrol
 function wsAfterRender(){
   document.querySelectorAll(".ws-ta,.ws-nta").forEach(wsAutosizeEl);
   if(view==="notes" && wsTab==="gantt") wsGanttDraw();
-  if(view==="notes" && wsTab==="3d") ws3dMount();
+  if(view==="notes" && wsTab==="3d") ws3dMount(); else if(document.body.classList.contains("ws3d-fs")){ ws3d.full = false; document.body.classList.remove("ws3d-fs"); }
   wsHydrateFiles();
   if(wsFocusSel){
     const el = document.querySelector(wsFocusSel); wsFocusSel = null;
@@ -5444,7 +5471,7 @@ main.addEventListener("keydown", e=>{
 /* ---- Klicks ---- */
 main.addEventListener("click", e=>{
   const bk = e.target.closest("[data-wsback]");
-  if(bk){ wsBack = null; wsTab = "3d"; localStorage.setItem("wsTab", "3d"); render(); return; }
+  if(bk){ wsBack = null; if(ws3d.resumeFull){ ws3d.resumeFull = false; ws3d.full = true; } wsTab = "3d"; localStorage.setItem("wsTab", "3d"); render(); return; }
   const tab = e.target.closest("[data-wstab]");
   if(tab){ wsBack = null; wsTab = tab.dataset.wstab; localStorage.setItem("wsTab", wsTab); render(); return; }
   const a = e.target.closest("[data-wsact]"); if(!a) return;

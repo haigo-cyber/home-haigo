@@ -3397,7 +3397,7 @@ function wsFindByLink(docs, kind, ref){
 }
 function wsNewDoc(title){
   const now = new Date().toISOString();
-  return {id:wsId(), title:title||"Neues Dokument", pinned:false, tag:"", createdAt:now, updatedAt:now, blocks:[]};
+  return {id:wsId(), title:title||"Neues Dokument", pinned:false, tag:"", inbox:false, seen:[], createdAt:now, updatedAt:now, blocks:[]};
 }
 function wsNewBlock(type){
   if(type==="text") return {id:wsId(), type:"text", text:"", tag:""};
@@ -3417,6 +3417,7 @@ function wsNormalizeDocs(arr){
   if(!Array.isArray(arr)) return [];
   return arr.filter(d=>d && typeof d==="object").map(d=>{
     const doc = {id:d.id||wsId(), title:String(d.title||""), pinned:!!d.pinned, tag:wsNormTag(d.tag),
+      inbox:!!d.inbox, seen:(Array.isArray(d.seen)?d.seen:[]).filter(k=>typeof k==="string").slice(-3000),
       createdAt:d.createdAt||new Date().toISOString(), updatedAt:d.updatedAt||d.createdAt||new Date().toISOString(), blocks:[]};
     (Array.isArray(d.blocks)?d.blocks:[]).forEach(b=>{
       if(!b || typeof b!=="object") return;
@@ -4109,6 +4110,7 @@ async function loadWorkspace(){
     wsDocs = wsFixPinned(wsLoaded ? wsMergeDocs(wsDocs, s.docs, wsDirty, wsDeleted) : s.docs);
     wsTrash = wsMergeTrash(wsTrash, s.trash, wsTrashAdd, wsTrashGone, Date.now());
     wsLoaded = true; wsLoadError = ""; wsLastLoad = Date.now();
+    wsInboxKick();
   }catch(e){
     console.error("❌ loadWorkspace FEHLER:", e.message);
     if(!wsLoaded) wsLoadError = e.message;
@@ -4191,6 +4193,7 @@ function wsRefreshChips(){
 function wsChipsInner(cur){
   return wsDocs.map(d=>`<button class="ws-chip${cur&&cur.id===d.id?" sel":""}" data-wsact="open-doc" data-id="${d.id}">${d.pinned?"📌 ":""}${esc(d.title||"Ohne Titel")}</button>`).join("")
     + `<button class="ws-chip new" data-wsact="new-doc">+ Neu</button>`
+    + `<button class="ws-trashbtn" data-wsact="inbox-toggle" title="Neue ToDos und Tagesziele automatisch im Dokument ToDo-Eingang ablegen">${wsInboxOn()?"📥 Auto-Eingang: an":"📥 Auto-Eingang: aus"}</button>`
     + `<button class="ws-trashbtn" data-wsact="open-trash" title="Gelöschte Einträge, 3 Tage lang wiederherstellbar">🗑 Papierkorb${wsTrashCount()?" ("+wsTrashCount()+")":""}</button>`;
 }
 /* Beim Zurückkehren in die App (z. B. am Handy) den Stand neu holen, solange nichts ungespeichert ist */
@@ -5699,6 +5702,11 @@ main.addEventListener("click", e=>{
   }
   if(act==="retry-load"){ setSync("busy"); loadWorkspace().then(()=>{ setSync("on"); render(); }); return; }
   if(act==="open-trash"){ wsOpenTrash(); return; }
+  if(act==="inbox-toggle"){
+    const on = !wsInboxOn(); try{ localStorage.setItem("wsInboxAuto", on?"1":"0"); }catch(e){}
+    toast(on ? "Auto-Eingang an: neue ToDos und Ziele landen im Dokument ToDo-Eingang" : "Auto-Eingang aus");
+    wsRefreshChips(); if(on) wsInboxSync(); return;
+  }
   if(act==="new-doc"){
     if(!wsLoaded){ toast("Arbeitsbereich nicht geladen"); return; }
     const d = wsNewDoc("Neues Dokument"); wsDocs.push(d); wsOpenDocId = d.id; localStorage.setItem("wsOpenDoc", d.id);
@@ -6424,6 +6432,39 @@ function wsImportCandidates(){
   out.sort((a,b)=>(a.day?0:1)-(b.day?0:1) || (a.day<b.day?-1:a.day>b.day?1:0) || a.title.localeCompare(b.title, "de"));
   return out;
 }
+/* ---- Auto-Eingang: jedes neue ToDo und Tagesziel landet als verknüpfter Punkt im Dokument "ToDo-Eingang" ---- */
+function wsInboxOn(){ try{ return localStorage.getItem("wsInboxAuto")!=="0"; }catch(e){ return true; } }
+let wsInboxTimer = null;
+function wsInboxKick(){
+  if(!wsLoaded || !wsInboxOn()) return;
+  clearTimeout(wsInboxTimer); wsInboxTimer = setTimeout(wsInboxSync, 400);
+}
+function wsInboxSync(){
+  try{
+    if(!wsLoaded || !wsInboxOn() || !Array.isArray(tasks)) return;
+    let doc = wsDocs.find(d=>d.inbox);
+    let made = false;
+    try{ made = localStorage.getItem("wsInboxMade")==="1"; }catch(e){}
+    if(!doc && made) return;                                   // wurde bewusst gelöscht: nicht neu anlegen
+    const cands = wsImportCandidates().filter(x=>!doc || !doc.seen.includes(x.kind+":"+x.id));
+    if(!doc){
+      if(!cands.length) return;
+      doc = wsNewDoc("ToDo-Eingang"); doc.inbox = true; doc.seen = [];
+      const tx = wsNewBlock("text"); tx.text = "Hier landen automatisch alle neuen ToDos und Tagesziele. Mit „Verschieben“ ordnest du sie anderen Dokumenten oder Überschriften zu, die Verknüpfung bleibt erhalten.";
+      doc.blocks.push(tx);
+      const ol = wsNewBlock("outline"); ol.items = []; doc.blocks.push(ol);
+      wsDocs.push(doc);
+      try{ localStorage.setItem("wsInboxMade", "1"); }catch(e){}
+    }
+    if(!cands.length) return;
+    wsInsertLinked(doc, cands, null, null);
+    cands.forEach(x=>doc.seen.push(x.kind+":"+x.id));
+    if(doc.seen.length>3000) doc.seen = doc.seen.slice(-3000);
+    wsTouch(doc);
+    wsRefreshChips();
+    if(view==="notes") render();
+  }catch(e){ console.error("wsInboxSync:", e); }
+}
 function wsInsertLinked(doc, items, blockId, parentNid){
   let list = null;
   if(parentNid){ const r = wsFindNode(doc, parentNid); if(r){ list = r.node.children; r.node.collapsed = false; } }
@@ -6765,6 +6806,7 @@ function wsWideUpdate(){
   if(app) app.classList.toggle("ws-wide", view==="notes" && wsTab==="week" && !!wsWk.wide);
 }
 function wsTopBarUpdate(){
+  wsInboxKick();
   wsWideUpdate();
   let el = document.getElementById("wsTopBar");
   if(!el){

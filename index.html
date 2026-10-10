@@ -343,6 +343,22 @@
   .ws-lnk:hover{background:rgba(255,176,32,.22)}
   .ws-pd{font:600 11px var(--mono);color:var(--muted);white-space:nowrap}
   .ws-pd.over{color:var(--red)}
+  .g-bar.meta{background:#f59e0b;color:#1a1200}
+  .g-bar.agg{opacity:.55}
+  .g-bar.late{outline:2px solid var(--red);outline-offset:-1px}
+  .g-metarow{background:rgba(245,158,11,.07)}
+  .g-metarow .g-title{font-weight:700}
+  .g-dl{position:absolute;top:3px;bottom:3px;width:3px;background:var(--red);border-radius:2px;z-index:1}
+  .ws-date.dl{border-color:#7a3b3b;color:#e8a0a0}
+  .ws-date.dl.over{border-color:var(--red);color:var(--red)}
+  .ws-metachip{color:#ffd37a}
+  .ws-attbtn.has{color:var(--amber)}
+  .ws-atts{margin:4px 0 8px 52px;padding-left:8px;border-left:2px solid rgba(255,176,32,.35)}
+  .ws-att{background:rgba(255,255,255,.03);border:1px solid #2c3037;border-radius:10px;padding:6px;margin-bottom:6px}
+  .ws-att.done .ws-atitle{text-decoration:line-through;color:#6d737e}
+  .ws-arow{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+  .ws-atitle{flex:1 1 120px;min-width:100px;font-weight:600}
+  .ws-abody{margin-top:6px}
   .ws-addbtn{background:none;border:1px dashed #3a3f47;color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12.5px;cursor:pointer;margin:6px 6px 0 0}
   .ws-addbtn:hover{color:#fff;border-color:#7a818d}
   .ws-add{display:flex;flex-wrap:wrap;align-items:center;margin-top:6px}
@@ -372,18 +388,22 @@
   .g-title{flex:none;padding:6px 6px;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:sticky;left:0;z-index:2;background:#0e0f12;border-right:1px solid #2c3037}
   .g-headrow .g-title{background:#14161a;font-weight:700}
   .g-chart{flex:none;position:relative;height:34px;margin-right:10px}
-  .g-bar{position:absolute;top:6px;height:22px;border-radius:5px;color:#fff;font-size:11.5px;font-weight:700;padding:0 5px;line-height:22px;overflow:hidden;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+  .g-bar{background:#3b82f6;position:absolute;top:6px;height:22px;border-radius:5px;color:#fff;font-size:11.5px;font-weight:700;padding:0 5px;line-height:22px;overflow:hidden;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4)}
   .g-tick{position:absolute;top:0;bottom:0;border-left:1px solid #2c3037;font-size:10.5px;color:var(--muted)}
   .g-tick span{position:absolute;top:9px;left:3px;white-space:nowrap}
   .g-today{position:absolute;top:0;bottom:0;width:2px;background:var(--red);opacity:.8;z-index:1}
   @media(max-width:480px){
     .ws-card{padding:10px}
     .ws-nrow{flex-wrap:wrap}
+    .ws-atts{margin-left:14px}
     .ws-nin{flex:1 1 0;min-width:120px}
-    .ws-nright{display:flex;flex:1 0 100%;padding-left:50px;gap:3px;align-items:center;justify-content:flex-start}
+    .ws-nright{display:flex;flex-wrap:wrap;flex:1 0 100%;min-width:0;padding-left:50px;gap:3px;align-items:center;justify-content:flex-start}
     .ws-toolbar{flex-wrap:wrap}
     .ws-doctitle{flex:1 0 100%}
   }
+
+  .modal input[type=number]{width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:12px}
+  .modal{max-height:92vh;overflow-y:auto}
 </style>
 </head>
 <body>
@@ -3287,7 +3307,7 @@ function openLinkForm(existing){
 
 /* ============ ARBEITSBEREICH (ehemals Notizen-Reiter) ============ */
 /* Dokumente aus Blöcken (Text, Überschrift, Gliederung, Tabelle), Fokus-Notiz in der Heute-Ansicht,
-   Gantt-Leseansicht auf Basis der Projektdateien des Projekt-Visualisierers.
+   Gantt-Ansicht direkt aus den Punkten (Start, Laufzeit, Deadline, Meta-Projekt).
    Speicherung: Tabellenblatt "Workspace" in der ToDo-Tabelle, JSON auf mehrere Zellen verteilt (Zellgrenze 50000 Zeichen). */
 const WS_TAB = "Workspace";
 const WS_CHUNK = 40000;
@@ -3296,7 +3316,57 @@ const WS_MAXROWS = 2000;
 /* WS-PURE-START */
 let _wsCnt = 0;
 function wsId(){ return Date.now().toString(36) + (++_wsCnt).toString(36) + Math.random().toString(36).slice(2,5); }
-function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapsed:false, date:"", link:null, children:[]}; }
+function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapsed:false, date:"", dur:0, dl:"", meta:false, link:null, aopen:false, att:[], children:[]}; }
+/* Anhang an einem Punkt: Text (auch als Notiz nutzbar) oder Tabelle; trägt wie ein Punkt Datum, Erledigt-Haken und Verknüpfung */
+function wsNewAtt(type){
+  const a = {id:wsId(), type:type, title:"", done:false, date:"", link:null};
+  if(type==="table"){ a.cols = ["Spalte 1","Spalte 2"]; a.rows = [["",""],["",""]]; } else a.text = "";
+  return a;
+}
+function wsIsAtt(x){ return !!x && !Array.isArray(x.children) && typeof x.done==="boolean" && (x.type==="text" || x.type==="table"); }   // Blöcke haben kein done
+function wsTitleOf(x){
+  if(!x) return "";
+  if(!wsIsAtt(x)) return (x.text||"").trim();
+  if((x.title||"").trim()) return x.title.trim();
+  return x.type==="text" ? (x.text||"").trim().split("\n")[0].slice(0,80) : "";
+}
+function wsSetTitle(x, v){ if(wsIsAtt(x)) x.title = v; else x.text = v; }
+function wsNormAtt(a){
+  if(!a || typeof a!=="object" || (a.type!=="text" && a.type!=="table")) return null;
+  const o = {id:a.id||wsId(), type:a.type, title:String(a.title||""), done:!!a.done, date:wsIsDate(a.date)?a.date:"", link:wsNormLink(a.link)};
+  if(a.type==="text") o.text = String(a.text||"");
+  else{
+    o.cols = (Array.isArray(a.cols) && a.cols.length) ? a.cols.map(String) : ["Spalte 1"];
+    o.rows = (Array.isArray(a.rows)?a.rows:[]).map(r=>{ const row=(Array.isArray(r)?r:[]).map(String); while(row.length<o.cols.length) row.push(""); return row.slice(0,o.cols.length); });
+  }
+  return o;
+}
+function wsAddDays(d, k){
+  const t = new Date(+d.slice(0,4), +d.slice(5,7)-1, +d.slice(8,10)+k);
+  return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");
+}
+/* Zeitraum eines Punktes: Start + Laufzeit (Kalendertage) ergibt das Ende; ohne Start rückwärts von der Deadline */
+function wsSpan(n){
+  const s = n.date||"", dl = n.dl||"", dur = n.dur>0 ? Math.floor(n.dur) : 0;
+  if(s && dur) return {start:s, end:wsAddDays(s,dur-1), dl};
+  if(s) return {start:s, end:(dl && dl>=s) ? dl : s, dl};
+  if(dl && dur) return {start:wsAddDays(dl,-(dur-1)), end:dl, dl};
+  if(dl) return {start:dl, end:dl, dl};
+  return null;
+}
+function wsAllNodes(doc){
+  const out = [];
+  const walk = (items)=>items.forEach(n=>{ out.push(n); walk(n.children); });
+  doc.blocks.forEach(b=>{ if(b.type==="outline") walk(b.items); });
+  return out;
+}
+/* Punkt oder Anhang anhand der ID */
+function wsFindAny(doc, id){
+  const r = wsFindNode(doc, id); if(r) return r.node;
+  for(const n of wsAllNodes(doc)){ const a = n.att.find(x=>x.id===id); if(a) return a; }
+  return null;
+}
+function wsAttOwner(doc, aid){ return wsAllNodes(doc).find(n=>n.att.some(a=>a.id===aid)) || null; }
 function wsIsDate(s){ return typeof s==="string" && /^\d{4}-\d{2}-\d{2}$/.test(s); }
 /* link: Verknüpfung mit einem ToDo (Sheet-Zeile) oder Tages-Ziel (Google Task); evId/calId: vom Punkt selbst angelegter Kalendertermin (nur Ziele) */
 function wsNormLink(l){
@@ -3311,7 +3381,7 @@ function wsShortDate(d){
 }
 function wsCollectLinkedNodes(list, out){
   out = out || [];
-  (list||[]).forEach(n=>{ if(n.link) out.push(n); wsCollectLinkedNodes(n.children, out); });
+  (list||[]).forEach(n=>{ if(n.link) out.push(n); (n.att||[]).forEach(a=>{ if(a.link) out.push(a); }); wsCollectLinkedNodes(n.children, out); });
   return out;
 }
 function wsDocLinkedNodes(doc){
@@ -3341,7 +3411,8 @@ function wsNewBlock(type){
 function wsNormNodes(a){
   return (Array.isArray(a)?a:[]).filter(n=>n && typeof n==="object").map(n=>({
     id:n.id||wsId(), text:String(n.text||""), done:!!n.done, collapsed:!!n.collapsed,
-    date:wsIsDate(n.date)?n.date:"", link:wsNormLink(n.link), children:wsNormNodes(n.children)
+    date:wsIsDate(n.date)?n.date:"", dur:(n.dur>0 && n.dur<=3660)?Math.floor(n.dur):0, dl:wsIsDate(n.dl)?n.dl:"", meta:!!n.meta,
+    link:wsNormLink(n.link), aopen:!!n.aopen, att:(Array.isArray(n.att)?n.att:[]).map(wsNormAtt).filter(Boolean), children:wsNormNodes(n.children)
   }));
 }
 function wsNormalizeDocs(arr){
@@ -3505,6 +3576,35 @@ function wsOpenCount(doc){
   return n;
 }
 
+/* ---- Gantt-Zeilen aus der Gliederung ---- */
+function wsGanttRows(roots){
+  const rows = [];
+  const walk = (n, level)=>{
+    if(wsAllDone(n)) return null;
+    const own = wsSpan(n);
+    const row = {id:n.id, title:(n.text||"").trim()||"(ohne Titel)", level, meta:!!n.meta, own, start:null, end:null, agg:false, dl:n.dl||"", late:false};
+    rows.push(row);
+    let lo = own ? own.start : null, hi = own ? own.end : null;
+    n.children.forEach(c=>{
+      const r = walk(c, level+1);
+      if(r && r.start){ if(!lo || r.start<lo) lo = r.start; if(!hi || r.end>hi) hi = r.end; }
+    });
+    if(lo){ row.start = lo; row.end = hi; row.agg = !own || lo!==own.start || hi!==own.end; }
+    if(row.dl && row.end && row.end>row.dl) row.late = true;
+    if(!row.start && !row.meta){ rows.splice(rows.indexOf(row), 1); return null; }
+    return row;
+  };
+  roots.forEach(n=>walk(n, 0));
+  return rows;
+}
+/* oberste Meta-Projekte (nicht verschachtelt gesammelt) aus allen Dokumenten */
+function wsMetaRoots(docs){
+  const out = [];
+  const walk = (items)=>items.forEach(n=>{ if(n.meta) out.push(n); else walk(n.children); });
+  docs.forEach(d=>d.blocks.forEach(b=>{ if(b.type==="outline") walk(b.items); }));
+  return out;
+}
+
 /* ---- Blöcke und Tabellen ---- */
 function wsMoveBlock(doc, bid, targetBid, pos){
   if(bid===targetBid) return false;
@@ -3652,12 +3752,48 @@ function wsDateTime(iso){
   try{ return new Date(iso).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}); }catch(e){ return ""; }
 }
 function wsNodeChips(n){
-  const over = n.date && !n.done && n.date < todayKey();
+  const att = wsIsAtt(n);
+  const sp = att ? null : wsSpan(n);
+  const today = todayKey();
   let h = "";
-  if(n.date) h += `<button class="ws-date${over?" over":""}" data-wsact="link-menu" title="Datum, ToDo oder Tages-Ziel einstellen">${esc(wsShortDate(n.date))}</button>`;
+  if(!att && n.meta) h += `<button class="ws-lnk ws-metachip" data-wsact="link-menu" title="Meta-Projekt (oberste Ebene im Gantt)">★</button>`;
+  if(n.date){
+    const over = !n.done && (sp ? sp.end : n.date) < today;
+    h += `<button class="ws-date${over?" over":""}" data-wsact="link-menu" title="Termine und Verknüpfung einstellen">${esc(wsShortDate(n.date))}${(!att && n.dur)?" +"+n.dur+"T":""}</button>`;
+  }else if(sp){
+    h += `<button class="ws-date" data-wsact="link-menu" title="Zeitraum rückwärts von der Deadline berechnet">${esc(wsShortDate(sp.start))} ➜</button>`;
+  }
+  if(!att && n.dl) h += `<button class="ws-date dl${sp && sp.end>n.dl?" over":""}" data-wsact="link-menu" title="Deadline${sp && sp.end>n.dl?": Laufzeit reicht darüber hinaus":""}">⚑ ${esc(wsShortDate(n.dl))}</button>`;
   if(n.link) h += `<button class="ws-lnk" data-wsact="link-menu" title="${n.link.kind==="goal"?"Verknüpft mit Tages-Ziel":"Verknüpft mit ToDo"}${n.link.cal?" und Kalender":""}">${n.link.kind==="goal"?"🎯":"☑"}${n.link.cal?"📆":""}</button>`;
-  if(!n.date && !n.link) h += `<button class="ws-mini" data-wsact="link-menu" title="Datum setzen oder als ToDo / Tages-Ziel anlegen">📅</button>`;
+  if(!n.date && !n.link && !sp && !(!att && n.meta)) h += `<button class="ws-mini" data-wsact="link-menu" title="Termine setzen oder als ToDo / Tages-Ziel anlegen">📅</button>`;
   return h;
+}
+function wsTableBody(b, drag){
+  return `<div class="ws-tablewrap"><table class="ws-table"><thead><tr><th class="ws-rh"></th>`
+    + b.cols.map((c,ci)=>`<th><div class="ws-colhead"><input type="text" class="ws-in" data-wsf="col" data-ci="${ci}" value="${esc(c)}" placeholder="Spalte">`
+      + (b.cols.length>1?`<button class="ws-mini" data-wsact="del-col" data-ci="${ci}" title="Spalte löschen">✕</button>`:"") + `</div></th>`).join("")
+    + `<th class="ws-rh"><button class="ws-mini" data-wsact="add-col" title="Spalte anfügen">+</button></th></tr></thead><tbody>`
+    + b.rows.map((r,ri)=>`<tr data-ri="${ri}"><td class="ws-rh">${drag?`<span class="ws-handle sm" draggable="true" data-wsdrag="row" title="Ziehen: Zeile verschieben">⠿</span>`:""}</td>`
+      + r.map((c,ci)=>`<td><input type="text" class="ws-in" data-wsf="cell" data-ri="${ri}" data-ci="${ci}" value="${esc(c)}"></td>`).join("")
+      + `<td class="ws-rh"><button class="ws-mini" data-wsact="del-row" data-ri="${ri}" title="Zeile löschen">✕</button></td></tr>`).join("")
+    + `</tbody></table></div><button class="ws-addbtn" data-wsact="add-row">+ Zeile</button>`;
+}
+function wsAttHtml(a){
+  const body = a.type==="text"
+    ? `<textarea class="ws-in ws-ta" data-wsf="atext" rows="1" placeholder="Text oder Notiz">${esc(a.text)}</textarea>`
+    : wsTableBody(a, false);
+  return `<div class="ws-att${a.done?" done":""}" data-aid="${a.id}" data-kind="${a.type}">
+    <div class="ws-arow">
+      <button class="ws-chk${a.done?" on":""}" data-wsact="done" title="Erledigt">${a.done?"✓":""}</button>
+      <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":"Titel der Tabelle"}">
+      <span class="ws-nright">${wsNodeChips(a)}<button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
+    </div>
+    <div class="ws-abody">${body}</div>
+  </div>`;
+}
+function wsAttsHtml(n){
+  return `<div class="ws-atts">${n.att.map(wsAttHtml).join("")}
+    <div class="ws-add"><button class="ws-addbtn" data-wsact="add-att" data-type="text">+ Text / Notiz</button><button class="ws-addbtn" data-wsact="add-att" data-type="table">+ Tabelle</button></div></div>`;
 }
 function wsNodeHtml(n){
   const hasKids = n.children.length>0;
@@ -3672,10 +3808,11 @@ function wsNodeHtml(n){
       <span class="ws-nright">
       ${wsNodeChips(n)}
       ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}
+      <button class="ws-mini ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle anhängen">📎${n.att.length?n.att.length:""}</button>
       <button class="ws-mini" data-wsact="add-child" title="Unterpunkt anlegen">+</button>
       <button class="ws-mini" data-wsact="del-node" title="Punkt löschen">✕</button>
       </span>
-    </div>${sub}
+    </div>${n.aopen?wsAttsHtml(n):""}${sub}
   </li>`;
 }
 function wsBlockHtml(b){
@@ -3688,14 +3825,7 @@ function wsBlockHtml(b){
     body = `<ul class="ws-tree">${b.items.map(wsNodeHtml).join("")}</ul>
       <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button>`;
   }else if(b.type==="table"){
-    body = `<div class="ws-tablewrap"><table class="ws-table"><thead><tr><th class="ws-rh"></th>`
-      + b.cols.map((c,ci)=>`<th><div class="ws-colhead"><input type="text" class="ws-in" data-wsf="col" data-ci="${ci}" value="${esc(c)}" placeholder="Spalte">`
-        + (b.cols.length>1?`<button class="ws-mini" data-wsact="del-col" data-ci="${ci}" title="Spalte löschen">✕</button>`:"") + `</div></th>`).join("")
-      + `<th class="ws-rh"><button class="ws-mini" data-wsact="add-col" title="Spalte anfügen">+</button></th></tr></thead><tbody>`
-      + b.rows.map((r,ri)=>`<tr data-ri="${ri}"><td class="ws-rh"><span class="ws-handle sm" draggable="true" data-wsdrag="row" title="Ziehen: Zeile verschieben">⠿</span></td>`
-        + r.map((c,ci)=>`<td><input type="text" class="ws-in" data-wsf="cell" data-ri="${ri}" data-ci="${ci}" value="${esc(c)}"></td>`).join("")
-        + `<td class="ws-rh"><button class="ws-mini" data-wsact="del-row" data-ri="${ri}" title="Zeile löschen">✕</button></td></tr>`).join("")
-      + `</tbody></table></div><button class="ws-addbtn" data-wsact="add-row">+ Zeile</button>`;
+    body = wsTableBody(b, true);
   }
   return `<div class="ws-block" data-bid="${b.id}" data-kind="${b.type}">
     <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
@@ -3807,9 +3937,7 @@ function wsViewHtml(){
 function wsAutosizeEl(el){ el.style.height = "auto"; el.style.height = (el.scrollHeight+2)+"px"; }
 function wsAfterRender(){
   document.querySelectorAll(".ws-ta").forEach(wsAutosizeEl);
-  if(view==="notes" && wsTab==="gantt"){
-    if(ganttState==="idle") wsLoadGantt(); else wsGanttDraw();
-  }
+  if(view==="notes" && wsTab==="gantt") wsGanttDraw();
   if(wsFocusSel){
     const el = document.querySelector(wsFocusSel); wsFocusSel = null;
     if(el){ el.focus(); try{ const n = el.value.length; el.setSelectionRange(n, n); }catch(e){} }
@@ -3824,6 +3952,12 @@ function wsRerender(docId){
 }
 
 /* ---- Eingaben ---- */
+/* Tabelle eines Eingabefelds: Anhang-Tabelle oder Tabellenblock */
+function wsTableOf(doc, el){
+  const ae = el.closest(".ws-att");
+  if(ae) return wsFindAny(doc, ae.dataset.aid);
+  const be = el.closest(".ws-block"); return be ? wsBlock(doc, be.dataset.bid) : null;
+}
 main.addEventListener("input", e=>{
   const el = e.target, f = el.dataset && el.dataset.wsf; if(!f) return;
   const docEl = el.closest(".ws-doc"); if(!docEl) return;
@@ -3831,8 +3965,10 @@ main.addEventListener("input", e=>{
   if(f==="title") doc.title = el.value;
   else if(f==="text"){ const b = wsBlock(doc, el.closest(".ws-block").dataset.bid); if(b) b.text = el.value; if(el.tagName==="TEXTAREA") wsAutosizeEl(el); }
   else if(f==="node"){ const r = wsFindNode(doc, el.closest(".ws-node").dataset.nid); if(r) r.node.text = el.value; }
-  else if(f==="col"){ const b = wsBlock(doc, el.closest(".ws-block").dataset.bid); if(b) b.cols[+el.dataset.ci] = el.value; }
-  else if(f==="cell"){ const b = wsBlock(doc, el.closest(".ws-block").dataset.bid); if(b && b.rows[+el.dataset.ri]) b.rows[+el.dataset.ri][+el.dataset.ci] = el.value; }
+  else if(f==="atitle"){ const a = wsFindAny(doc, el.closest(".ws-att").dataset.aid); if(a) a.title = el.value; }
+  else if(f==="atext"){ const a = wsFindAny(doc, el.closest(".ws-att").dataset.aid); if(a) a.text = el.value; if(el.tagName==="TEXTAREA") wsAutosizeEl(el); }
+  else if(f==="col"){ const b = wsTableOf(doc, el); if(b) b.cols[+el.dataset.ci] = el.value; }
+  else if(f==="cell"){ const b = wsTableOf(doc, el); if(b && b.rows[+el.dataset.ri]) b.rows[+el.dataset.ri][+el.dataset.ci] = el.value; }
   wsTouch(doc);
 });
 main.addEventListener("change", e=>{
@@ -3841,6 +3977,16 @@ main.addEventListener("change", e=>{
     const docEl = el.closest(".ws-doc"); const chip = document.querySelector('.ws-chip[data-id="'+(docEl?docEl.dataset.doc:"")+'"]');
     const doc = docEl ? wsGet(docEl.dataset.doc) : null;
     if(chip && doc) chip.textContent = (doc.pinned?"📌 ":"") + (doc.title||"Ohne Titel");
+  }
+  if(el.dataset && el.dataset.wsf==="atitle"){
+    const docEl = el.closest(".ws-doc"); const doc = docEl ? wsGet(docEl.dataset.doc) : null;
+    const a = doc ? wsFindAny(doc, el.closest(".ws-att").dataset.aid) : null;
+    if(a && a.link) wsLinkRun(()=>wsSyncItem(doc, a, a.link.cal));
+  }
+  if(el.dataset && el.dataset.wsf==="atext"){
+    const docEl = el.closest(".ws-doc"); const doc = docEl ? wsGet(docEl.dataset.doc) : null;
+    const a = doc ? wsFindAny(doc, el.closest(".ws-att").dataset.aid) : null;
+    if(a && a.link && !(a.title||"").trim()) wsLinkRun(()=>wsSyncItem(doc, a, a.link.cal));
   }
   if(el.dataset && el.dataset.wsf==="node"){
     const docEl = el.closest(".ws-doc"); const doc = docEl ? wsGet(docEl.dataset.doc) : null;
@@ -3881,10 +4027,10 @@ main.addEventListener("keydown", e=>{
     }
   }else if(f==="cell" && e.key==="Enter"){
     e.preventDefault();
-    const b = wsBlock(doc, el.closest(".ws-block").dataset.bid); if(!b) return;
+    const b = wsTableOf(doc, el); if(!b) return;
     const ri = +el.dataset.ri, ci = +el.dataset.ci;
     if(ri>=b.rows.length-1){ wsAddRow(b); wsTouch(doc); }
-    wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-bid="${b.id}"] input[data-wsf="cell"][data-ri="${ri+1}"][data-ci="${ci}"]`;
+    wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-${wsIsAtt(b)?"aid":"bid"}="${b.id}"] input[data-wsf="cell"][data-ri="${ri+1}"][data-ci="${ci}"]`;
     wsRerender(doc.id);
   }
 });
@@ -3905,7 +4051,6 @@ main.addEventListener("click", e=>{
     if(doc) wsRerender(doc.id); return;
   }
   if(act==="retry-load"){ setSync("busy"); loadWorkspace().then(()=>{ setSync("on"); render(); }); return; }
-  if(act==="gantt-reload"){ wsLoadGantt(true); return; }
   if(act==="new-doc"){
     if(!wsLoaded){ toast("Arbeitsbereich nicht geladen"); return; }
     const d = wsNewDoc("Neues Dokument"); wsDocs.push(d); wsOpenDocId = d.id; localStorage.setItem("wsOpenDoc", d.id);
@@ -3936,6 +4081,19 @@ main.addEventListener("click", e=>{
     const n = wsNewNode(""); block.items.push(n); wsTouch(doc);
     wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-nid="${n.id}"] > .ws-nrow .ws-nin`; wsRerender(doc.id); return;
   }
+  const attEl = a.closest(".ws-att");
+  if(attEl){
+    const att = wsFindAny(doc, attEl.dataset.aid); if(!att) return;
+    if(act==="done"){
+      att.done = !att.done; wsTouch(doc); wsRerender(doc.id);
+      if(att.link) wsLinkRun(()=>wsPushDone(doc, att));
+      return;
+    }
+    if(act==="link-menu"){ wsOpenLinkMenu(doc.id, att.id); return; }
+    if(act==="del-att"){ wsDeleteAttFlow(doc, att); return; }
+    if(att.type==="table" && wsTableAct(doc, att, `[data-aid="${att.id}"]`, act, a)) return;
+    return;
+  }
   const nodeEl = a.closest(".ws-node");
   if(nodeEl){
     const nid = nodeEl.dataset.nid, r = wsFindNode(doc, nid); if(!r) return;
@@ -3946,27 +4104,35 @@ main.addEventListener("click", e=>{
       return;
     }
     if(act==="link-menu"){ wsOpenLinkMenu(doc.id, nid); return; }
+    if(act==="att-toggle"){ r.node.aopen = !r.node.aopen; wsTouch(doc); wsRerender(doc.id); return; }
+    if(act==="add-att"){
+      const at = wsNewAtt(a.dataset.type); if(!at) return;
+      r.node.att.push(at); r.node.aopen = true; wsTouch(doc);
+      wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-aid="${at.id}"] .ws-abody .ws-in`; wsRerender(doc.id); return;
+    }
     if(act==="add-child"){
       const n = wsAddChild(doc, nid); wsTouch(doc);
       wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-nid="${n.id}"] > .ws-nrow .ws-nin`; wsRerender(doc.id); return;
     }
     if(act==="del-node"){ wsDeleteNodeFlow(doc, nid); return; }
   }
-  if(block && block.type==="table"){
-    if(act==="add-row"){ const i = wsAddRow(block); wsTouch(doc); wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-bid="${block.id}"] input[data-wsf="cell"][data-ri="${i}"][data-ci="0"]`; wsRerender(doc.id); return; }
-    if(act==="del-row"){
-      const ri = +a.dataset.ri;
-      if(block.rows[ri] && block.rows[ri].some(c=>c) && !confirm("Zeile mit Inhalt löschen?")) return;
-      block.rows.splice(ri, 1); wsTouch(doc); wsRerender(doc.id); return;
-    }
-    if(act==="add-col"){ wsAddCol(block); wsTouch(doc); wsRerender(doc.id); return; }
-    if(act==="del-col"){
-      const ci = +a.dataset.ci;
-      if(block.rows.some(r=>r[ci]) && !confirm("Spalte mit Inhalt löschen?")) return;
-      if(wsDelCol(block, ci)){ wsTouch(doc); wsRerender(doc.id); } return;
-    }
-  }
+  if(block && block.type==="table"){ if(wsTableAct(doc, block, `[data-bid="${block.id}"]`, act, a)) return; }
 });
+function wsTableAct(doc, tbl, scope, act, a){
+  if(act==="add-row"){ const i = wsAddRow(tbl); wsTouch(doc); wsFocusSel = `.ws-doc[data-doc="${doc.id}"] ${scope} input[data-wsf="cell"][data-ri="${i}"][data-ci="0"]`; wsRerender(doc.id); return true; }
+  if(act==="del-row"){
+    const ri = +a.dataset.ri;
+    if(tbl.rows[ri] && tbl.rows[ri].some(c=>c) && !confirm("Zeile mit Inhalt löschen?")) return true;
+    tbl.rows.splice(ri, 1); wsTouch(doc); wsRerender(doc.id); return true;
+  }
+  if(act==="add-col"){ wsAddCol(tbl); wsTouch(doc); wsRerender(doc.id); return true; }
+  if(act==="del-col"){
+    const ci = +a.dataset.ci;
+    if(tbl.rows.some(r=>r[ci]) && !confirm("Spalte mit Inhalt löschen?")) return true;
+    if(wsDelCol(tbl, ci)){ wsTouch(doc); wsRerender(doc.id); } return true;
+  }
+  return false;
+}
 
 /* ---- Ziehen und Ablegen mit der Maus ---- */
 function wsClearDropMarks(){
@@ -4045,69 +4211,21 @@ document.addEventListener("visibilitychange", ()=>{
 });
 window.addEventListener("pagehide", ()=>{ if(wsDirty.size || wsDeleted.size) wsFlush(); });
 
-/* ============ GANTT (nur Lesen) – gleiche Projektdateien und gleiche Auswahlregeln wie im Projekt-Visualisierer ============ */
-const GANTT_FOLDER = "Projekt-Fortschritt";
-const G_HEAD_RE = /^(#{1,6})\s+(.*)$/;
-const G_META_RE = /<!--\s*(status|due|gt|archived|upd|done|dl|sd|meta):([^>]*?)-->/g;
-let ganttProjects = [], ganttState = "idle", ganttMsg = "";                 // idle | loading | ok | nofolder | err
-let ganttSel = localStorage.getItem("ganttSel") || "";
-
-/* GANTT-PURE-START */
-function gParseHeadingLine(line){
-  const m = line.match(G_HEAD_RE);
-  if(!m) return null;
-  const level = m[1].length;
-  let rest = m[2];
-  const meta = {status:"offen", archived:false, deadline:null, startDate:null};
-  rest = rest.replace(G_META_RE, (whole, key, val)=>{
-    val = (val||"").trim();
-    if(key==="status"){ if(val==="offen" || val==="fertig") meta.status = val; }
-    else if(key==="archived"){ meta.archived = (val==="1"||val==="true"); }
-    else if(key==="dl"){ meta.deadline = val || null; }
-    else if(key==="sd"){ meta.startDate = val || null; }
-    return "";
-  });
-  return {level, title:rest.trim(), status:meta.status, archived:meta.archived, deadline:meta.deadline, startDate:meta.startDate};
-}
-function gParseMarkdown(text){
-  const lines = (text||"").split(/\r?\n/);
-  const root = {level:0, title:"", status:"offen", archived:false, deadline:null, startDate:null, children:[]};
-  const stack = [root];
-  for(const line of lines){
-    const h = gParseHeadingLine(line);
-    if(!h) continue;
-    const node = {level:h.level, title:h.title, status:h.status, archived:h.archived, deadline:h.deadline, startDate:h.startDate, children:[]};
-    while(stack.length && stack[stack.length-1].level >= node.level) stack.pop();
-    stack[stack.length-1].children.push(node);
-    stack.push(node);
-  }
-  return root;
-}
-/* gleiche Auswahl wie renderGantt im Visualizer: Start- und Enddatum vorhanden, nicht erledigt */
-function gGanttItems(root){
-  const items = [];
-  const walk = (node)=>{
-    if(node.level>0 && node.startDate && node.deadline && node.status!=="fertig"){
-      items.push({title:node.title, level:node.level, start:new Date(node.startDate+"T00:00:00"), end:new Date(node.deadline+"T00:00:00")});
-    }
-    node.children.forEach(walk);
-  };
-  walk(root);
-  items.sort((a,b)=>a.start-b.start);
-  return items;
-}
-/* GANTT-PURE-END */
-function gGanttHtml(items, boxW, today){
-  if(!items.length) return `<div class="empty">Keine Einträge mit Start- und Enddatum. Datumsangaben setzt du im Projekt-Visualisierer in den Projektdetails.</div>`;
-  const dayMs = 86400000;
-  const minD = Math.min(...items.map(i=>i.start.getTime()));
-  const maxD = Math.max(...items.map(i=>i.end.getTime()));
+/* ============ GANTT (aus den Dokumenten des Arbeitsbereichs) ============ */
+/* Zeilen: Punkte mit Zeitraum (Start + Laufzeit oder Deadline). Meta-Projekte bilden die oberste Ebene. */
+let ganttSel = localStorage.getItem("ganttSel") || "meta";
+function gGanttHtml(rows, boxW, today){
+  const dayMs = 86400000, D = s=>new Date(s+"T00:00:00");
+  const dated = rows.filter(r=>r.start);
+  if(!dated.length) return `<div class="empty">Keine Punkte mit Zeitraum. Im Menü 📅 eines Punkts legst du Start, Laufzeit und Deadline fest.</div>`;
+  const allT = [];
+  dated.forEach(r=>{ allT.push(D(r.start).getTime(), D(r.end).getTime()); if(r.dl) allT.push(D(r.dl).getTime()); });
+  const minD = Math.min(...allT), maxD = Math.max(...allT);
   const rangeDays = Math.round((maxD-minD)/dayMs) + 1;
-  const titleW = boxW<480 ? 118 : 210;
+  const titleW = boxW<480 ? 118 : 220;
   const px = Math.max(6, (Math.max(boxW, 320) - titleW - 10) / rangeDays);
   const chartW = Math.round(px*rangeDays);
   const fmt = (d)=>d.getDate()+"."+(d.getMonth()+1)+".";
-  // Kopfzeile: Montage als Markierung, Beschriftung nur so oft, wie sie lesbar bleibt
   const weekStep = Math.max(1, Math.ceil(46/(px*7)));
   let ticks = "", wk = 0;
   for(let i=0;i<rangeDays;i++){
@@ -4124,66 +4242,38 @@ function gGanttHtml(items, boxW, today){
     if(t>=0 && t<rangeDays) todayLine = `<div class="g-today" style="left:${Math.round(t*px)}px"></div>`;
   }
   let h = `<div class="g-wrap"><div class="g-inner" style="width:${titleW+chartW+10}px">`;
-  h += `<div class="g-row g-headrow"><div class="g-title" style="width:${titleW}px">Eintrag</div><div class="g-chart" style="width:${chartW}px">${ticks}</div></div>`;
-  items.forEach(it=>{
-    const off = (it.start.getTime()-minD)/dayMs, dur = (it.end.getTime()-it.start.getTime())/dayMs + 1;
-    const bw = Math.max(8, Math.round(dur*px)), bl = Math.round(off*px);
-    const color = it.level===2 ? "#f97316" : "#3b82f6";
-    const tip = `${it.title} · ${it.start.toLocaleDateString("de-DE")} bis ${it.end.toLocaleDateString("de-DE")}`;
-    h += `<div class="g-row"><div class="g-title" style="width:${titleW}px;padding-left:${6+Math.max(0,it.level-2)*10}px" title="${esc(tip)}">${esc(it.title)}</div>
-      <div class="g-chart" style="width:${chartW}px">${todayLine}<div class="g-bar" style="left:${bl}px;width:${bw}px;background:${color}" title="${esc(tip)}">${bw>70?esc(it.title.slice(0,Math.floor(bw/7))):""}</div></div></div>`;
+  h += `<div class="g-row g-headrow"><div class="g-title" style="width:${titleW}px">Punkt</div><div class="g-chart" style="width:${chartW}px">${ticks}</div></div>`;
+  rows.forEach(it=>{
+    const pad = 6 + it.level*10;
+    const tt = it.start ? `${it.title} · ${D(it.start).toLocaleDateString("de-DE")} bis ${D(it.end).toLocaleDateString("de-DE")}${it.dl?" · Deadline "+D(it.dl).toLocaleDateString("de-DE"):""}` : it.title;
+    let bar = "";
+    if(it.start){
+      const off = (D(it.start).getTime()-minD)/dayMs, dur = (D(it.end).getTime()-D(it.start).getTime())/dayMs + 1;
+      const bw = Math.max(8, Math.round(dur*px)), bl = Math.round(off*px);
+      const cls = "g-bar"+(it.meta?" meta":"")+(it.agg?" agg":"")+(it.late?" late":"");
+      bar = `<div class="${cls}" style="left:${bl}px;width:${bw}px" title="${esc(tt)}">${bw>70?esc(it.title.slice(0,Math.floor(bw/7))):""}</div>`;
+    }
+    let dl = "";
+    if(it.dl){ const o = Math.round((D(it.dl).getTime()-minD)/dayMs); dl = `<div class="g-dl" style="left:${Math.round((o+1)*px)-2}px" title="Deadline ${esc(D(it.dl).toLocaleDateString("de-DE"))}"></div>`; }
+    h += `<div class="g-row${it.meta?" g-metarow":""}"><div class="g-title" style="width:${titleW}px;padding-left:${pad}px" title="${esc(tt)}">${it.meta?"★ ":""}${esc(it.title)}</div>
+      <div class="g-chart" style="width:${chartW}px">${todayLine}${bar}${dl}</div></div>`;
   });
   return h + `</div></div>`;
 }
-async function gDrive(url, retried){
-  const r = await fetch(url, {headers:{Authorization:"Bearer "+accessToken}});
-  if(r.status===401 && !retried){
-    try{ await requestToken(false); }catch(e){ await requestToken(true); }
-    return gDrive(url, true);
-  }
-  if(!r.ok) throw new Error("Drive "+r.status+": "+(await r.text()).slice(0,200));
-  return r;
-}
-async function wsLoadGantt(force){
-  if(ganttState==="loading") return;
-  if(ganttState==="ok" && !force){ wsGanttDraw(); return; }
-  ganttState = "loading"; wsGanttDraw();
-  try{
-    const q = encodeURIComponent(`name='${GANTT_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-    const f = await (await gDrive(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`)).json();
-    if(!f.files || !f.files.length){ ganttProjects = []; ganttState = "nofolder"; return; }
-    const q2 = encodeURIComponent(`'${f.files[0].id}' in parents and trashed=false and mimeType='text/markdown'`);
-    const l = await (await gDrive(`https://www.googleapis.com/drive/v3/files?q=${q2}&fields=files(id,name,modifiedTime)&pageSize=200`)).json();
-    ganttProjects = await Promise.all((l.files||[]).map(async fi=>{
-      const txt = await (await gDrive(`https://www.googleapis.com/drive/v3/files/${fi.id}?alt=media`)).text();
-      const root = gParseMarkdown(txt);
-      const title = (root.children[0] && root.children[0].title) || fi.name.replace(/\.md$/,"");
-      const archived = !!(root.children[0] && root.children[0].archived);
-      return {fileId:fi.id, name:fi.name, title, root, archived};
-    }));
-    ganttProjects.sort((a,b)=>a.title.localeCompare(b.title,"de"));
-    ganttState = "ok";
-  }catch(e){
-    console.error("❌ Gantt laden:", e.message);
-    ganttState = "err"; ganttMsg = e.message;
-  }finally{
-    wsGanttDraw();
-  }
-}
 function wsGanttDraw(){
   const box = $("wsGanttBox"); if(!box) return;
-  if(ganttState==="idle" || ganttState==="loading"){ box.innerHTML = `<div class="empty">Projekte werden geladen …</div>`; return; }
-  if(ganttState==="nofolder"){ box.innerHTML = `<div class="empty">Der Ordner "${GANTT_FOLDER}" wurde in Google Drive nicht gefunden. Er entsteht, sobald du im Projekt-Visualisierer ein Projekt anlegst.</div>`; return; }
-  if(ganttState==="err"){ box.innerHTML = `<div class="empty">Projekte konnten nicht geladen werden.<br><span class="muted" style="font-size:12px">${esc(ganttMsg)}</span><br><br><button class="btn-ghost" style="flex:none;padding:10px 18px" data-wsact="gantt-reload">Erneut versuchen</button></div>`; return; }
-  const list = ganttProjects.filter(p=>!p.archived);
-  if(!list.length){ box.innerHTML = `<div class="empty">Keine aktiven Projekte gefunden.</div>`; return; }
-  if(!list.some(p=>p.fileId===ganttSel)) ganttSel = list[0].fileId;
-  const proj = list.find(p=>p.fileId===ganttSel);
-  box.innerHTML = `<div class="g-bar-top">
-      <select id="wsGanttSel">${list.map(p=>`<option value="${p.fileId}"${p.fileId===ganttSel?" selected":""}>${esc(p.title)}</option>`).join("")}</select>
-      <button class="mini" data-wsact="gantt-reload" title="Neu laden">↻</button>
-      <a class="mini" href="./index-projektvisualizer.html" style="text-decoration:none" title="Im Projekt-Visualisierer bearbeiten">↗</a>
-    </div>` + gGanttHtml(gGanttItems(proj.root), box.clientWidth || 520, new Date());
+  if(!wsLoaded){ box.innerHTML = `<div class="empty">Der Arbeitsbereich ist nicht geladen.</div>`; return; }
+  const hasMeta = wsMetaRoots(wsDocs).length>0;
+  const opts = [{v:"meta", t:"Alle Meta-Projekte"}].concat(wsDocs.map(d=>({v:d.id, t:d.title||"Ohne Titel"})));
+  if(!opts.some(o=>o.v===ganttSel)) ganttSel = hasMeta ? "meta" : (wsDocs[0] ? wsDocs[0].id : "meta");
+  let roots;
+  if(ganttSel==="meta") roots = wsMetaRoots(wsDocs);
+  else{ const d = wsGet(ganttSel); roots = []; if(d) d.blocks.forEach(b=>{ if(b.type==="outline") roots.push(...b.items); }); }
+  const rows = wsGanttRows(roots);
+  box.innerHTML = `<div class="g-bar-top"><select id="wsGanttSel">${opts.map(o=>`<option value="${esc(o.v)}"${o.v===ganttSel?" selected":""}>${esc(o.t)}</option>`).join("")}</select></div>`
+    + (ganttSel==="meta" && !roots.length
+        ? `<div class="empty">Noch kein Meta-Projekt. Im Menü 📅 eines Punktes den Schalter Meta-Projekt einschalten.</div>`
+        : gGanttHtml(rows, box.clientWidth || 520, new Date()));
 }
 
 /* ============ PUNKT <-> TODO / TAGES-ZIEL ============ */
@@ -4241,7 +4331,7 @@ async function wsGoalEvent(L, title, date, want){
 /* ---- Punkt -> Eintrag: Titel, Datum, Kalender übertragen ---- */
 async function wsSyncItem(doc, node, wantCal){
   const L = node.link; if(!L) return;
-  const title = (node.text||"").trim();
+  const title = wsTitleOf(node);
   if(L.kind==="todo"){
     const t = tasks.find(x=>x.id===L.ref);
     if(!t){ node.link = null; wsTouch(doc); wsRefreshDoc(doc); return; }
@@ -4261,7 +4351,7 @@ async function wsSyncItem(doc, node, wantCal){
       if(/404/.test(e.message||"")){ node.link = null; wsTouch(doc); wsRefreshDoc(doc); toast("Das verknüpfte Tages-Ziel existiert nicht mehr"); return; }
       throw e;
     }
-    await wsGoalEvent(L, title || node.text, node.date, !!wantCal);
+    await wsGoalEvent(L, title || "Ziel", node.date, !!wantCal);
     await loadGTasks();
   }
   wsTouch(doc);
@@ -4294,7 +4384,7 @@ async function wsPushDone(doc, node){
 /* ---- Neuen Eintrag aus einem Punkt anlegen ---- */
 async function wsCreateItem(doc, node, kind, cal){
   if(node.link) return;
-  const title = (node.text||"").trim();
+  const title = wsTitleOf(node);
   if(kind==="todo"){
     const wd = parseDate(node.date);
     const t = {id:uid(), type:"todo", title, scheduleType:"once", startDate:node.date, weekday:wd?String(wd.getDay()):"",
@@ -4319,18 +4409,25 @@ async function wsCreateItem(doc, node, kind, cal){
   wsRenderIfSafe();
 }
 async function wsApplyMenu(docId, nid, o){
-  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r) return;
-  const n = r.node, L = n.link, today = todayKey();
+  const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;
+  const L = n.link, today = todayKey();
   const date0 = wsIsDate(o.date) ? o.date : "";
+  const setFields = ()=>{
+    if(wsIsAtt(n)) return;
+    const dur = parseInt(o.dur, 10);
+    n.dur = (dur>0 && dur<=3660) ? dur : 0;
+    n.dl = wsIsDate(o.dl) ? o.dl : "";
+    n.meta = !!o.meta;
+  };
   if(!L){
-    if(!o.kind){ n.date = date0; wsTouch(doc); wsRefreshDoc(doc); return; }
-    if(!(n.text||"").trim()){ toast("Erst einen Text eingeben"); return; }
+    if(!o.kind){ n.date = date0; setFields(); wsTouch(doc); wsRefreshDoc(doc); return; }
+    if(!wsTitleOf(n)){ toast(wsIsAtt(n) ? "Erst einen Titel oder Text eingeben" : "Erst einen Text eingeben"); return; }
     const date = date0 || today;
     if(o.kind==="goal"){
       if(date<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
       if(wsGoalCount(date)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag"); return; }
     }
-    n.date = date; wsTouch(doc); wsRefreshDoc(doc);
+    n.date = date; setFields(); wsTouch(doc); wsRefreshDoc(doc);
     await wsLinkRun(()=>wsCreateItem(doc, n, o.kind, !!o.cal));
     return;
   }
@@ -4341,29 +4438,35 @@ async function wsApplyMenu(docId, nid, o){
       if(wsGoalCount(date0)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag"); return; }
     }
   }
-  n.date = date0; wsTouch(doc); wsRefreshDoc(doc);
+  n.date = date0; setFields(); wsTouch(doc); wsRefreshDoc(doc);
   await wsLinkRun(()=>wsSyncItem(doc, n, !!o.cal));
 }
 async function wsUnlink(docId, nid){
-  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r || !r.node.link) return;
-  const L = r.node.link; r.node.link = null; wsTouch(doc); wsRefreshDoc(doc);
+  const doc = wsGet(docId), nn = doc && wsFindAny(doc, nid); if(!nn || !nn.link) return;
+  const L = nn.link; nn.link = null; wsTouch(doc); wsRefreshDoc(doc);
   if(L.kind==="goal" && L.evId) await wsLinkRun(()=>wsGoalEvent(L, "", "", false));
   toast("Verknüpfung gelöst, "+(L.kind==="goal"?"das Ziel":"das ToDo")+" bleibt bestehen");
 }
 
 /* ---- Menü je Punkt: Datum, ToDo, Tages-Ziel, Kalender ---- */
 function wsOpenLinkMenu(docId, nid){
-  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r) return;
+  const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;
   if(document.getElementById("modalBg")) return;
-  const n = r.node, L = n.link;
+  const L = n.link, att = wsIsAtt(n);
   const kindRow = L
     ? `<p class="muted" style="font-size:13px;margin-bottom:10px">Verknüpft mit ${L.kind==="goal"?"einem Tages-Ziel":"einem ToDo"}. Titel, Datum und Erledigt-Status werden in beide Richtungen abgeglichen.</p>`
     : `<label>Anlegen als</label><div class="seg" id="wsl_kind"><button data-k="" class="sel">Nur Datum</button><button data-k="todo">ToDo</button><button data-k="goal">Tages-Ziel</button></div>`;
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
-      <h2>${esc(n.text||"Punkt")}</h2>
+      <h2>${esc(wsTitleOf(n)||(att?"Anhang":"Punkt"))}</h2>
       ${kindRow}
-      <label>Datum</label><input type="date" id="wsl_date" value="${esc(n.date||"")}">
+      <label>${att?"Datum":"Start"}</label><input type="date" id="wsl_date" value="${esc(n.date||"")}">
+      ${att?"":`<label>Laufzeit in Tagen (Kalendertage, leer = keine)</label><input type="number" id="wsl_dur" min="0" max="3660" step="1" value="${n.dur||""}" placeholder="z. B. 5">
+      <label>Deadline</label><input type="date" id="wsl_dl" value="${esc(n.dl||"")}">
+      <div class="muted" style="font-size:12px;margin:4px 0 0" id="wsl_end"></div>
+      <div class="toggle-row"><div><div style="font-size:14px">Meta-Projekt</div>
+        <div class="muted" style="font-size:12px">Oberste Ebene im Gantt-Reiter</div></div>
+        <button class="switch${n.meta?" on":""}" id="wsl_meta"></button></div>`}
       <div class="toggle-row" id="wsl_calrow" style="${L?"":"display:none"}"><div><div style="font-size:14px">In Google Calendar</div>
         <div class="muted" style="font-size:12px">Ganztägiger Termin am Datum</div></div>
         <button class="switch${L&&L.cal?" on":""}" id="wsl_cal"></button></div>
@@ -4380,11 +4483,21 @@ function wsOpenLinkMenu(docId, nid){
     if(kind && !$("wsl_date").value) $("wsl_date").value = todayKey();
   });
   $("wsl_cal").onclick = ()=>$("wsl_cal").classList.toggle("on");
+  if($("wsl_meta")) $("wsl_meta").onclick = ()=>$("wsl_meta").classList.toggle("on");
+  const upEnd = ()=>{
+    const el = $("wsl_end"); if(!el) return;
+    const tmp = {date:$("wsl_date").value, dur:parseInt($("wsl_dur").value,10)||0, dl:$("wsl_dl").value};
+    const sp = wsSpan(tmp);
+    el.textContent = sp ? "Zeitraum: "+wsShortDate(sp.start)+" bis "+wsShortDate(sp.end)+(tmp.dl && sp.end>tmp.dl ? " (reicht über die Deadline hinaus)" : "") : "";
+  };
+  ["wsl_date","wsl_dur","wsl_dl"].forEach(id=>{ if($(id)){ $(id).oninput = upEnd; $(id).onchange = upEnd; } });
+  upEnd();
   $("wsl_cancel").onclick = ()=>$("modalBg").remove();
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
   if($("wsl_unlink")) $("wsl_unlink").onclick = ()=>{ $("modalBg").remove(); wsUnlink(docId, nid); };
   $("wsl_ok").onclick = ()=>{
-    const o = {date:$("wsl_date").value, kind, cal:$("wsl_cal").classList.contains("on")};
+    const o = {date:$("wsl_date").value, kind, cal:$("wsl_cal").classList.contains("on"),
+      dur:$("wsl_dur")?$("wsl_dur").value:0, dl:$("wsl_dl")?$("wsl_dl").value:"", meta:$("wsl_meta")?$("wsl_meta").classList.contains("on"):false};
     $("modalBg").remove(); wsApplyMenu(docId, nid, o);
   };
 }
@@ -4437,13 +4550,28 @@ const wsLinkCopies = nodes=>wsCollectLinkedNodes(nodes).map(n=>Object.assign({},
 async function wsDeleteNodeFlow(doc, nid){
   const r = wsFindNode(doc, nid); if(!r) return;
   const c = wsCount(r.node), links = wsLinkCopies([r.node]);
+  const nAtt = wsAllNodes({blocks:[{type:"outline", items:[r.node]}]}).reduce((k,x)=>k+x.att.length, 0);
   let mode = "keep";
   if(links.length){
     mode = await wsAskLinks(links, "Dieser Punkt"+(c.total?" samt "+c.total+" Unterpunkten":""));
     if(!mode) return;
-  }else if(c.total>0 && !confirm("Diesen Punkt samt "+c.total+" Unterpunkten löschen?")) return;
+  }else if((c.total>0 || nAtt>0) && !confirm("Diesen Punkt samt "+c.total+" Unterpunkten"+(nAtt?" und "+nAtt+" Anhängen":"")+" löschen?")) return;
   if(!wsFindNode(doc, nid)) return;
   wsDeleteNode(doc, nid); wsTouch(doc); wsRerender(doc.id);
+  if(links.length) wsLinkRun(()=>wsReleaseLinks(links, mode==="delete"));
+}
+async function wsDeleteAttFlow(doc, att){
+  const links = att.link ? [Object.assign({}, att.link)] : [];
+  let mode = "keep";
+  if(links.length){
+    mode = await wsAskLinks(links, "Dieser Anhang");
+    if(!mode) return;
+  }else{
+    const empty = att.type==="table" ? att.rows.every(r=>r.every(c=>!c)) : !(att.text||"").trim();
+    if(!empty && !confirm("Diesen Anhang mit Inhalt löschen?")) return;
+  }
+  const owner = wsAttOwner(doc, att.id); if(!owner) return;
+  owner.att = owner.att.filter(x=>x.id!==att.id); wsTouch(doc); wsRerender(doc.id);
   if(links.length) wsLinkRun(()=>wsReleaseLinks(links, mode==="delete"));
 }
 async function wsDeleteBlockFlow(doc, block){
@@ -4483,7 +4611,7 @@ function wsOnTodoChanged(t){
   if(!wsLoaded) return;
   const h = wsFindByLink(wsDocs, "todo", t.id); if(!h) return;
   if(t.type!=="todo" || t.scheduleType==="weekly"){ h.node.link = null; wsTouch(h.doc); toast("Verknüpfung mit dem Arbeitsbereich gelöst: kein einmaliges ToDo mehr"); return; }
-  if(t.title) h.node.text = t.title;
+  if(t.title) wsSetTitle(h.node, t.title);
   h.node.date = t.startDate || "";
   h.node.link.cal = !!t.syncCalendar && !!t.calendarEventId;
   wsTouch(h.doc);
@@ -4491,10 +4619,10 @@ function wsOnTodoChanged(t){
 function wsOnGoalChanged(id, title, date){
   if(!wsLoaded) return;
   const h = wsFindByLink(wsDocs, "goal", id); if(!h) return;
-  if(title) h.node.text = title;
+  if(title) wsSetTitle(h.node, title);
   if(date) h.node.date = date;
   wsTouch(h.doc);
-  if(h.node.link.evId) wsLinkRun(()=>wsGoalEvent(h.node.link, h.node.text, h.node.date, true).then(()=>wsTouch(h.doc)));
+  if(h.node.link.evId) wsLinkRun(()=>wsGoalEvent(h.node.link, wsTitleOf(h.node), h.node.date, true).then(()=>wsTouch(h.doc)));
 }
 function wsOnItemDeleted(kind, ref){
   if(!wsLoaded) return;
@@ -4517,7 +4645,7 @@ async function wsReconcileLinks(){
           const t = tasks.find(x=>x.id===L.ref);
           if(!t || t.type!=="todo" || t.scheduleType==="weekly"){ n.link = null; touched.add(doc); return; }
           setN(doc, n, "done", isEverDone(t.id));
-          if(t.title) setN(doc, n, "text", t.title);
+          if(t.title && wsTitleOf(n)!==t.title){ wsSetTitle(n, t.title); touched.add(doc); }
           setN(doc, n, "date", t.startDate || "");
           const cal = !!t.syncCalendar && !!t.calendarEventId;
           if(L.cal!==cal){ L.cal = cal; touched.add(doc); }
@@ -4525,7 +4653,7 @@ async function wsReconcileLinks(){
           const g = allOpenGoals.find(x=>x.id===L.ref) || goalTasks.find(x=>x.id===L.ref);
           if(g){
             setN(doc, n, "done", !!g.completed);
-            if(g.title && g.title!=="(ohne Titel)") setN(doc, n, "text", g.title);
+            if(g.title && g.title!=="(ohne Titel)" && wsTitleOf(n)!==g.title){ wsSetTitle(n, g.title); touched.add(doc); }
             if(g.due) setN(doc, n, "date", g.due);
           }else unresolved.push({doc, n});
         }
@@ -4751,7 +4879,7 @@ async function signIn(){
 }
 function signOut(){
   if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
-  accessToken=null; wsDocs=[]; wsLoaded=false; wsTabOk=false; wsDirty.clear(); wsDeleted.clear(); ganttProjects=[]; ganttState="idle"; tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[]; todayCalendarEvents=[];
+  accessToken=null; wsDocs=[]; wsLoaded=false; wsTabOk=false; wsDirty.clear(); wsDeleted.clear(); tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[]; todayCalendarEvents=[];
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";
   $("acctBtn").textContent="Anmelden"; setSync("");

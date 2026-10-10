@@ -491,7 +491,7 @@
   .g-tg{font-size:10px;color:var(--amber);white-space:nowrap}
   .ws-tgc{font-size:11px;color:var(--amber)}
   /* Dateien (Bild, PDF) und 3D-Ansicht */
-  .ws-fimg{display:block;max-width:100%;max-height:260px;border-radius:8px;border:1px solid #30343b;cursor:zoom-in;background:#101216;min-height:40px}
+  .ws-fimg{display:block;max-width:min(100%,260px);max-height:130px;object-fit:contain;border-radius:8px;border:1px solid #30343b;cursor:zoom-in;background:#101216;min-height:40px}
   .ws-frow2{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;font-size:13px}
   .ws-ficon{display:inline-block;padding:4px 8px;border-radius:6px;border:1.5px solid var(--text);font-weight:700;font-size:11px}
   .ws-ficon.pdf{border-color:#ef4444;color:#ef4444}
@@ -518,6 +518,14 @@
   .ws-improw:last-child{border-bottom:0}
   .ws-improw input{flex:none;width:18px;height:18px}
   .ws-imptx{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+  .ws-backbar{position:sticky;top:0;z-index:20;padding:8px 0;background:var(--bg,#0d0f12)}
+  .ws-backbar .ws-addbtn{font-weight:700}
+  @keyframes wsflash{0%,60%{box-shadow:0 0 0 3px #ffb020;background:rgba(255,176,32,.18)}100%{box-shadow:0 0 0 0 transparent;background:transparent}}
+  .ws-flash{animation:wsflash 2.6s ease-out;border-radius:8px}
+  .ws-thwrap{display:inline-flex;align-items:center;vertical-align:middle}
+  .ws-thumb{display:none;height:44px;max-width:64px;object-fit:cover;border-radius:5px;border:1px solid #3a3f48;background:#fff}
+  .ws-thumb.on{display:inline-block}
+  .ws-thumb.on + .ws-thico{display:none}
 </style>
 </head>
 <body>
@@ -4056,7 +4064,7 @@ function wsAttTagBtn(x, eff, act, what){
 function wsAttHtml(a, eff){
   const open = wsFoldOpen(a.id, a.type);
   const body = !open
-    ? `<div class="ws-fp ws-fpv">${a.type==="text" ? (esc(wsFirstLine(a.text)) || "(leer)") : a.type==="link" ? (esc(a.url) || "(kein Link)") : a.type==="file" ? ((wsIsPdf(a)?"📄 ":wsIsImg(a)?"🖼 ":"📎 ")+esc(a.name)+(a.size?" · "+wsSizeText(a.size):"")) : "Tabelle · "+a.rows.length+" Zeilen"}</div>`
+    ? `<div class="ws-fp ws-fpv">${a.type==="text" ? (esc(wsFirstLine(a.text)) || "(leer)") : a.type==="link" ? (esc(a.url) || "(kein Link)") : a.type==="file" ? (wsThumbHtml(a, wsIsPdf(a)?"📄":wsIsImg(a)?"🖼":"📎")+" "+esc(a.name)+(a.size?" · "+wsSizeText(a.size):"")) : "Tabelle · "+a.rows.length+" Zeilen"}</div>`
     : a.type==="link"
       ? `<div class="ws-linkrow"><input type="url" class="ws-in" data-wsf="aurl" value="${esc(a.url)}" placeholder="https://…" inputmode="url" autocapitalize="off" autocomplete="off">
           <a class="ws-lnkgo" target="_blank" rel="noopener noreferrer" href="${esc(wsNormUrl(a.url)||"#")}"${wsNormUrl(a.url)?"":' style="display:none"'}>Öffnen ↗</a></div>`
@@ -4672,6 +4680,7 @@ function wsViewHtml(){
     <button data-wstab="3d" class="${wsTab==="3d"?"sel":""}">3D</button>
     <button data-wstab="notes" class="${wsTab==="notes"?"sel":""}">Notizen</button>
   </div>`;
+  if(wsBack==="3d" && wsTab==="docs") h += `<div class="ws-backbar"><button class="ws-addbtn" data-wsback="3d">← Zurück zur 3D-Ansicht</button></div>`;
   if(wsTab==="docs") h += wsDocsTabHtml();
   else if(wsTab==="week") h += wsWeekHtml();
   else if(wsTab==="gantt") h += wsTagBarHtml() + `<div id="wsGanttBox"></div>`;
@@ -4732,7 +4741,100 @@ async function wsFileUrl(fileId){
   if(wsUrls.has(fileId)) return wsUrls.get(fileId);
   const u = URL.createObjectURL(await wsFileBlob(fileId)); wsUrls.set(fileId, u); return u;
 }
+/* Vorschaubilder: Bilder direkt, PDFs über pdf.js (wird erst bei Bedarf aus dem Internet geladen); Ergebnis wird im Browser zwischengespeichert */
+const WS_PDFJS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js";
+const WS_PDFJS_WORKER = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+let wsPdfP = null;
+function wsPdfLib(){
+  if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if(!wsPdfP) wsPdfP = new Promise((res, rej)=>{
+    const sc = document.createElement("script"); sc.src = WS_PDFJS;
+    sc.onload = ()=>{ if(window.pdfjsLib){ window.pdfjsLib.GlobalWorkerOptions.workerSrc = WS_PDFJS_WORKER; res(window.pdfjsLib); } else { wsPdfP = null; rej(new Error("pdf.js fehlt")); } };
+    sc.onerror = ()=>{ wsPdfP = null; rej(new Error("pdf.js konnte nicht geladen werden")); };
+    document.head.appendChild(sc);
+  });
+  return wsPdfP;
+}
+const WS_THMAX = 220, WS_THKEEP = 40;
+const wsThumbDone = new Map();       // fileId -> {c: Canvas, url: dataURL} oder "err"
+const wsThumbProm = new Map(), wsThumbQ = []; let wsThumbActive = 0;
+function wsThumbSet(id, c){
+  const url = c.toDataURL("image/jpeg", 0.78);
+  wsThumbDone.set(id, {c, url});
+  try{
+    localStorage.setItem("wsTh:"+id, url);
+    let idx = []; try{ idx = JSON.parse(localStorage.getItem("wsThIdx")||"[]")||[]; }catch(e){}
+    idx = idx.filter(x=>x!==id); idx.push(id);
+    while(idx.length>WS_THKEEP){ localStorage.removeItem("wsTh:"+idx.shift()); }
+    localStorage.setItem("wsThIdx", JSON.stringify(idx));
+  }catch(e){}
+  return wsThumbDone.get(id);
+}
+function wsThumbFromUrl(id){
+  let url = null; try{ url = localStorage.getItem("wsTh:"+id); }catch(e){}
+  if(!url) return Promise.resolve(null);
+  return new Promise(res=>{
+    const im = new Image();
+    im.onload = ()=>{ const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext("2d").drawImage(im,0,0); const r = {c, url}; wsThumbDone.set(id, r); res(r); };
+    im.onerror = ()=>res(null); im.src = url;
+  });
+}
+function wsThumbScaled(w, h){
+  const k = Math.min(1, WS_THMAX/Math.max(w, h)), c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w*k)); c.height = Math.max(1, Math.round(h*k));
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0,0,c.width,c.height);
+  return {c, x, k};
+}
+async function wsThumbMake(a){
+  const cached = await wsThumbFromUrl(a.fileId); if(cached) return cached;
+  const blob = await wsFileBlob(a.fileId);
+  if(wsIsImg(a)){
+    const bm = await createImageBitmap(blob), t = wsThumbScaled(bm.width, bm.height);
+    t.x.drawImage(bm, 0, 0, t.c.width, t.c.height); if(bm.close) bm.close();
+    return wsThumbSet(a.fileId, t.c);
+  }
+  if(wsIsPdf(a)){
+    const lib = await wsPdfLib();
+    const pdf = await lib.getDocument({data:new Uint8Array(await blob.arrayBuffer())}).promise;
+    try{
+      const page = await pdf.getPage(1), v1 = page.getViewport({scale:1}), t = wsThumbScaled(v1.width, v1.height);
+      await page.render({canvasContext:t.x, viewport:page.getViewport({scale:t.k})}).promise;
+      return wsThumbSet(a.fileId, t.c);
+    }finally{ try{ pdf.destroy(); }catch(e){} }
+  }
+  return null;
+}
+function wsThumbPump(){
+  while(wsThumbActive<2 && wsThumbQ.length){
+    const j = wsThumbQ.shift(); wsThumbActive++;
+    wsThumbMake(j.a).then(r=>{ if(!r) wsThumbDone.set(j.a.fileId, "err"); j.res(r||null); })
+      .catch(()=>{ wsThumbDone.set(j.a.fileId, "err"); j.res(null); })
+      .finally(()=>{ wsThumbActive--; wsThumbPump(); });
+  }
+}
+/* a: {fileId, mime, name}; liefert {c,url} oder null */
+function wsThumb(a){
+  const id = a && a.fileId; if(!id || !(wsIsImg(a) || wsIsPdf(a))) return Promise.resolve(null);
+  const d = wsThumbDone.get(id); if(d) return Promise.resolve(d==="err" ? null : d);
+  if(!wsThumbProm.has(id)){ wsThumbProm.set(id, new Promise(res=>{ wsThumbQ.push({a:{fileId:id, mime:a.mime, name:a.name}, res}); wsThumbPump(); }).then(r=>{ wsThumbProm.delete(id); return r; })); }
+  return wsThumbProm.get(id);
+}
+function wsThumbHtml(a, ico){
+  if(!a.fileId || !(wsIsImg(a) || wsIsPdf(a))) return ico;
+  return `<span class="ws-thwrap"><img class="ws-thumb" data-wsth="${esc(a.fileId)}" data-mime="${esc(a.mime||"")}" data-name="${esc(a.name||"")}" alt=""><span class="ws-thico">${ico}</span></span>`;
+}
+function wsHydrateThumbs(){
+  document.querySelectorAll("img[data-wsth]:not([data-h])").forEach(im=>{
+    im.dataset.h = "1";
+    const d = wsThumbDone.get(im.dataset.wsth);
+    if(d && d!=="err"){ im.src = d.url; im.classList.add("on"); return; }
+    wsThumb({fileId:im.dataset.wsth, mime:im.dataset.mime, name:im.dataset.name}).then(r=>{
+      if(r) document.querySelectorAll('img[data-wsth="'+im.dataset.wsth+'"]').forEach(x=>{ x.src = r.url; x.classList.add("on"); });
+    });
+  });
+}
 function wsHydrateFiles(){
+  wsHydrateThumbs();
   document.querySelectorAll("img[data-wsfid]:not([data-h])").forEach(img=>{
     img.dataset.h = "1";
     wsFileUrl(img.dataset.wsfid).then(u=>{ img.src = u; }).catch(()=>{ img.dataset.h = "err"; img.alt = "Bild konnte nicht geladen werden"; });
@@ -4748,7 +4850,8 @@ function wsFileBodyHtml(a){
   const links = `<button class="ws-addbtn" data-wsact="file-view">Ansehen</button><a class="ws-lnkgo" target="_blank" rel="noopener noreferrer" href="${esc(wsDriveLink(a.fileId))}">In Drive ↗</a>`;
   if(!a.fileId) return `<div class="ws-fp ws-fpv">(keine Datei)</div>`;
   if(wsIsImg(a)) return `<img class="ws-fimg" data-wsfid="${esc(a.fileId)}" data-wsact="file-view" alt="${esc(a.name)}"><div class="ws-frow2"><span class="muted">${meta}</span>${links}</div>`;
-  return `<div class="ws-frow2"><span class="ws-ficon${wsIsPdf(a)?" pdf":""}">${wsIsPdf(a)?"PDF":"DATEI"}</span><span>${meta}</span>${links}</div>`;
+  if(wsIsPdf(a)) return `<div class="ws-frow2"><span data-wsact="file-view" style="cursor:zoom-in">${wsThumbHtml(a, '<span class="ws-ficon pdf">PDF</span>')}</span><span>${meta}</span>${links}</div>`;
+  return `<div class="ws-frow2"><span class="ws-ficon">DATEI</span><span>${meta}</span>${links}</div>`;
 }
 async function wsAddFiles(doc, owner){
   const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.accept = "image/*,application/pdf";
@@ -4792,13 +4895,13 @@ document.addEventListener("keydown", e=>{ if(e.key==="Escape") wsCloseFileView()
 /* ============ 3D-ANSICHT ============ */
 /* Eigene kleine 3D-Darstellung auf Canvas (ohne Bibliothek, funktioniert offline): Kraft-Layout im Raum, Drehen/Zoomen/Verschieben. */
 const ws3d = {
-  cam:{yaw:0.6, pitch:0.35, dist:900, ox:0, oy:0, tx:0, ty:0, tz:0},
+  cam:{yaw:0.6, pitch:0.4, dist:900, F:700, ox:0, oy:0, tx:0, ty:0, tz:0},
   pos:new Map(), sel:"", g:null, byId:new Map(), nb:new Map(), proj:new Map(),
   cv:null, ctx:null, w:0, h:0, alpha:1, raf:0, hits:[], ptr:new Map(), moved:false, thumbs:new Map(), loading:0, hover:"",
   opt:(()=>{ let o = {}; try{ o = JSON.parse(localStorage.getItem("ws3dOpt")||"{}")||{}; }catch(e){}
-    return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, layout:o.layout==="net"?"net":"tree", focus:false, q:""}; })()
+    return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, layout:o.layout==="net"?"net":"tree", floor:o.floor!==false, spin:!!o.spin, focus:false, q:""}; })()
 };
-function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels, layout:ws3d.opt.layout})); }catch(e){} }
+function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels, layout:ws3d.opt.layout, floor:ws3d.opt.floor, spin:ws3d.opt.spin})); }catch(e){} }
 function ws3dHtml(){
   const o = ws3d.opt;
   return `<div class="ws3d-bar">
@@ -4808,12 +4911,14 @@ function ws3dHtml(){
     <label class="ws3d-ck"><input type="checkbox" id="ws3dDone"${o.showDone?" checked":""}> Erledigte</label>
     <label class="ws3d-ck"><input type="checkbox" id="ws3dTags"${o.tags?" checked":""}> Tags als Knoten</label>
     <label class="ws3d-ck"><input type="checkbox" id="ws3dLab"${o.labels?" checked":""}> Beschriftung</label>
+    <label class="ws3d-ck"><input type="checkbox" id="ws3dFloor"${o.floor?" checked":""}> Boden</label>
+    <label class="ws3d-ck"><input type="checkbox" id="ws3dSpin"${o.spin?" checked":""}> Drehen</label>
     <button class="ws-addbtn" id="ws3dReset">Ansicht zurücksetzen</button>
     <button class="ws-addbtn" id="ws3dShake">Neu ordnen</button>
   </div>
   <div class="ws3d-wrap" id="ws3dWrap"><canvas id="ws3dCv" aria-label="3D-Übersicht der Dokumente, Punkte, Anhänge und Tags"></canvas>
     <div class="ws3d-zoom"><button type="button" id="ws3dZin" title="Vergrößern" aria-label="Vergrößern">+</button><button type="button" id="ws3dZout" title="Verkleinern" aria-label="Verkleinern">-</button></div>
-    <div class="ws3d-hint">Ziehen: drehen · Mausrad oder zwei Finger: zoomen · Umschalt+Ziehen oder zwei Finger ziehen: verschieben · Klick auf Knoten: Details</div></div>
+    <div class="ws3d-hint">Ziehen: drehen · Mausrad oder zwei Finger: zoomen · Umschalt+Ziehen oder zwei Finger ziehen: verschieben · Klick auf Knoten: Details · Doppelklick: öffnen</div></div>
   <div class="ws3d-info" id="ws3dInfo"></div>`;
 }
 function ws3dHue(t){ let h = 0; const k = (wsTagList(t)[0]||"").toLowerCase(); for(let i=0;i<k.length;i++) h = (h*31 + k.charCodeAt(i))%360; return h; }
@@ -4873,6 +4978,7 @@ function ws3dBuild(){
   if(fresh){
     const all = fresh===g.nodes.length;
     if(all && ws3d.opt.layout==="tree") ws3dTreeLayout();
+    ws3d.refit = false;
     ws3d.alpha = all ? (ws3d.opt.layout==="tree" ? 0.3 : 1) : 0.5;
     if(g.nodes.length<=400){ while(ws3d.alpha>0.05) ws3dStep(); }       // kleine Graphen sofort fertig anordnen
     if(!ws3d.fitted && g.nodes.length){ ws3d.fitted = true; ws3dFit(); }
@@ -4908,10 +5014,23 @@ function ws3dStep(){
 /* Zoom so wählen, dass alle Knoten ins Bild passen */
 function ws3dFit(){
   const ns = ws3d.g.nodes; if(!ns.length) return;
+  const cam = ws3d.cam;
+  const pct = (a, q)=>{ const b = a.slice().sort((x,y)=>x-y); return b[Math.min(b.length-1, Math.floor(b.length*q))]; };
+  const q = ns.length>=30 ? 0.97 : 1;      // einzelne Ausreißer dürfen am Rand liegen (herauszoomen zeigt sie)
   let cx=0, cy=0, cz=0; ns.forEach(n=>{ const p = ws3d.pos.get(n.id); cx+=p.x; cy+=p.y; cz+=p.z; }); cx/=ns.length; cy/=ns.length; cz/=ns.length;
-  let R = 100; ns.forEach(n=>{ const p = ws3d.pos.get(n.id); R = Math.max(R, Math.hypot(p.x-cx, p.y-cy, p.z-cz)); });
-  const half = Math.max(160, Math.min(ws3d.w||700, ws3d.h||600)/2);
-  Object.assign(ws3d.cam, {tx:cx, ty:cy, tz:cz, ox:0, oy:0, dist:Math.max(300, Math.min(3500, (R+90)*900/(half*0.92)))});
+  const R = Math.max(100, pct(ns.map(n=>{ const p = ws3d.pos.get(n.id); return Math.hypot(p.x-cx, p.y-cy, p.z-cz); }), q));
+  // Kamera relativ nah: starke Perspektive (nahe Knoten groß, ferne klein). Brennweite so, dass fast alles ins Bild passt.
+  const dist = Math.max(300, Math.min(3500, (R+60)*1.9));
+  const W = ws3d.w||700, H = ws3d.h||600;
+  const cy_ = Math.cos(cam.yaw), sy_ = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const ex = [], ey = [];
+  ns.forEach(n=>{ const p = ws3d.pos.get(n.id); const x = p.x-cx, y = p.y-cy, z = p.z-cz;
+    const x1 = x*cy_ + z*sy_, z1 = -x*sy_ + z*cy_, y2 = y*cp - z1*sp, z2 = Math.max(80, y*sp + z1*cp + dist);
+    ex.push(Math.abs(x1)/z2); ey.push(Math.abs(y2)/z2); });
+  const mx = Math.max(0.01, pct(ex, q)), my = Math.max(0.01, pct(ey, q));
+  const F = Math.min((W/2-60)/mx, (H/2-50)/my);
+  ws3d.userCam = false;
+  Object.assign(cam, {tx:cx, ty:cy, tz:cz, ox:0, oy:0, dist, F:Math.max(250, Math.min(2500, F))});
 }
 function ws3dVisible(){
   const g = ws3d.g, q = ws3d.opt.q.trim().toLowerCase();
@@ -4924,25 +5043,20 @@ function ws3dVisible(){
   return {vis, hit};
 }
 function ws3dThumb(n){
-  if(!n.fileId || !/^image\//.test(n.mime)) return null;
-  const t = ws3d.thumbs.get(n.fileId);
-  if(t) return (t==="err" || t==="load") ? null : t;
-  if(ws3d.loading<3){
-    ws3d.loading++; ws3d.thumbs.set(n.fileId, "load");
-    wsFileBlob(n.fileId).then(b=>createImageBitmap(b)).then(bm=>{
-      const k = Math.min(1, 192/Math.max(bm.width, bm.height)), c = document.createElement("canvas");
-      c.width = Math.max(1,Math.round(bm.width*k)); c.height = Math.max(1,Math.round(bm.height*k));
-      c.getContext("2d").drawImage(bm, 0, 0, c.width, c.height); if(bm.close) bm.close();
-      ws3d.thumbs.set(n.fileId, c);
-    }).catch(()=>ws3d.thumbs.set(n.fileId, "err")).finally(()=>{ ws3d.loading--; ws3dKick(); });
-  }
+  const o = {fileId:n.fileId, mime:n.mime, name:n.label};
+  if(!n.fileId || !(wsIsImg(o) || wsIsPdf(o))) return null;
+  const d = wsThumbDone.get(n.fileId);
+  if(d) return d==="err" ? null : d.c;
+  wsThumb(o).then(()=>ws3dKick());
   return null;
 }
 function ws3dRR(c, x, y, w, h, r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
 function ws3dDraw(){
   const c = ws3d.ctx; if(!c || !ws3d.g) return;
-  const W = ws3d.w, H = ws3d.h, cam = ws3d.cam, F = 900;
-  c.clearRect(0,0,W,H);
+  const W = ws3d.w, H = ws3d.h, cam = ws3d.cam, F = cam.F || 700;
+  c.globalAlpha = 1; c.clearRect(0,0,W,H);
+  const bg = c.createLinearGradient(0,0,0,H); bg.addColorStop(0,"#161a22"); bg.addColorStop(0.55,"#0e1015"); bg.addColorStop(1,"#08090b");
+  c.fillStyle = bg; c.fillRect(0,0,W,H);
   const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
   const {vis, hit} = ws3dVisible();
   const items = [];
@@ -4958,12 +5072,54 @@ function ws3dDraw(){
     const it = {n, s, x:sx, y:syy, z:z2};
     items.push(it); ws3d.proj.set(n.id, it);
   });
+  // Tiefe: 0 = vorn, 1 = hinten (nur über die sichtbaren Knoten)
+  let zmin = Infinity, zmax = -Infinity; items.forEach(it=>{ if(it.z<zmin) zmin = it.z; if(it.z>zmax) zmax = it.z; });
+  const zr = Math.max(1, zmax-zmin); items.forEach(it=>{ it.t = (it.z-zmin)/zr; });
+  const P3 = (x,y,z)=>{
+    const dx = x-cam.tx, dy = y-cam.ty, dz = z-cam.tz;
+    const x1 = dx*cy + dz*sy, z1 = -dx*sy + dz*cy, y2 = dy*cp - z1*sp, z2 = dy*sp + z1*cp + cam.dist;
+    return z2<60 ? null : {x:W/2 + cam.ox + x1*F/z2, y:H/2 + cam.oy + y2*F/z2, s:F/z2, z:z2};
+  };
+  if(items.length){
+    let fy = -Infinity, x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    items.forEach(it=>{ const p = ws3d.pos.get(it.n.id); if(p.y>fy) fy = p.y; if(p.x<x0) x0 = p.x; if(p.x>x1) x1 = p.x; if(p.z<z0) z0 = p.z; if(p.z>z1) z1 = p.z; });
+    fy += 55; {
+      const showShadow = ws3d.opt.floor;
+      if(showShadow){
+        const step = Math.max(80, Math.round(Math.max(x1-x0, z1-z0, 400)/10/20)*20), gx0 = Math.floor((x0-step)/step)*step, gx1 = Math.ceil((x1+step)/step)*step, gz0 = Math.floor((z0-step)/step)*step, gz1 = Math.ceil((z1+step)/step)*step;
+        const mx = (gx0+gx1)/2, mz = (gz0+gz1)/2, rad = Math.max(gx1-gx0, gz1-gz0)/2 + step;
+        c.lineWidth = 1;
+        const seg = (ax,az,bx,bz)=>{
+          const a = P3(ax,fy,az), b = P3(bx,fy,bz); if(!a || !b) return;
+          const d = Math.hypot((ax+bx)/2-mx, (az+bz)/2-mz) / rad;
+          c.strokeStyle = `rgba(120,150,200,${Math.max(0, 0.30*(1-d*d)).toFixed(3)})`;
+          c.beginPath(); c.moveTo(a.x,a.y); c.lineTo(b.x,b.y); c.stroke();
+        };
+        const sub = 4;
+        for(let gx=gx0; gx<=gx1; gx+=step) for(let k=0;k<(gz1-gz0)/step*sub;k++) seg(gx, gz0+k*step/sub, gx, gz0+(k+1)*step/sub);
+        for(let gz=gz0; gz<=gz1; gz+=step) for(let k=0;k<(gx1-gx0)/step*sub;k++) seg(gx0+k*step/sub, gz, gx0+(k+1)*step/sub, gz);
+        // Schatten und Lot unter den Knoten
+        const few = items.length<=160;
+        items.forEach(it=>{
+          const p = ws3d.pos.get(it.n.id), g = P3(p.x, fy, p.z); if(!g) return;
+          const k = it.n.kind, r = (k==="doc" ? 26 : k==="tag" ? 14 : 9)*g.s, sel = it.n.id===ws3d.sel || it.n.id===ws3d.hover;
+          if(few || sel || k==="doc"){
+            c.strokeStyle = `rgba(190,205,230,${sel ? 0.5 : 0.13})`; c.lineWidth = sel ? 1.4 : 1; c.setLineDash([3,4]);
+            c.beginPath(); c.moveTo(it.x, it.y); c.lineTo(g.x, g.y); c.stroke(); c.setLineDash([]);
+          }
+          c.fillStyle = `rgba(0,0,0,${(0.42*(1-it.t*0.5)).toFixed(3)})`;
+          c.beginPath(); c.ellipse(g.x, g.y, r*1.5, Math.max(1.5, r*0.55*Math.max(0.3, Math.sin(Math.abs(cam.pitch)+0.2))), 0, 0, 6.2832); c.fill();
+        });
+      }
+    }
+  }
   c.lineWidth = 1;
   ws3d.g.links.forEach(l=>{
     const a = ws3d.proj.get(l.a), b = ws3d.proj.get(l.b); if(!a || !b) return;
-    const al = Math.max(0.08, Math.min(0.7, 1.3 - ((a.z+b.z)/2)/(cam.dist*2.2)));
+    const tm = (a.t+b.t)/2, al = 0.75 - 0.55*tm;
     const mine = ws3d.sel && (l.a===ws3d.sel || l.b===ws3d.sel), mute = ws3d.sel && !mine ? 0.45 : 1;
-    c.lineWidth = mine ? 2 : 1;
+    const sm = Math.max(0.5, Math.min(2.6, (a.s+b.s)/2*(900/F)*1.0));
+    c.lineWidth = (mine ? 2.2 : 1.1)*sm;
     c.strokeStyle = mine ? "rgba(255,255,255,.8)" : l.kind==="tag" ? `rgba(255,176,32,${al*0.4*mute})` : `rgba(150,160,180,${al*0.5*mute})`;
     c.beginPath(); c.moveTo(a.x,a.y); c.lineTo(b.x,b.y); c.stroke();
   });
@@ -4972,7 +5128,7 @@ function ws3dDraw(){
   const lab = ws3d.opt.labels, labs = [];
   items.forEach(it=>{
     const n = it.n, s = it.s, col = ws3dColor(n), colHi = ws3dColorHi(n), dim = (hit && !hit.has(n.id)) ? 0.18 : (n.done ? 0.45 : 1);
-    const depthA = Math.max(0.35, Math.min(1, 1.5 - it.z/(cam.dist*2.4)));
+    const depthA = 1 - 0.55*it.t;
     c.globalAlpha = dim*depthA;
     let hw = 8*s, hh = 8*s, text = true, tx = it.x + 10*s, ty = it.y, align = "left", fs = 12*s, bold = false;
     if(n.kind==="doc"){
@@ -5054,8 +5210,12 @@ function ws3dKick(){
     ws3d.raf = 0;
     if(!ws3d.cv || !document.body.contains(ws3d.cv)) return;
     if(ws3d.alpha>0.02 && ws3d.g){ ws3dStep(); if(ws3d.g.nodes.length<350) ws3dStep(); }
+    const now = performance.now();
+    if(ws3d.opt.spin && ws3d.ptr.size===0){ if(ws3d.last) ws3d.cam.yaw += Math.min(60, now-ws3d.last)*0.00035; }
+    ws3d.last = ws3d.opt.spin ? now : 0;
+    if(ws3d.alpha<=0.02 && !ws3d.refit && !ws3d.userCam && ws3d.g && ws3d.g.nodes.length){ ws3d.refit = true; ws3dFit(); }
     ws3dDraw();
-    if(ws3d.alpha>0.02) ws3dKick();
+    if(ws3d.alpha>0.02 || ws3d.opt.spin) ws3dKick();
   });
 }
 function ws3dResize(){
@@ -5075,10 +5235,10 @@ function ws3dInfoHtml(){
   if(!n) return `<div class="muted" style="font-size:13px">Tippe oder klicke einen Knoten an: Dokumente (Kästen), Punkte (Kreise), Überschriften und Blöcke (Quadrate), Anhänge (Symbole, Bilder, PDF) und Tags (orange Kapseln). Die Farbe zeigt den wirksamen Tag.</div>`;
   const btn = (a, t)=>`<button class="ws-addbtn" data-w3="${a}">${t}</button>`;
   let b = "";
-  if(n.kind==="doc") b += btn("tags","Tags") + btn("import","ToDo/Ziel einfügen") + btn("goto","Dokument öffnen");
-  else if(n.kind==="node") b += btn("edit","Bearbeiten") + btn("tags","Tags") + btn("import","ToDo/Ziel einfügen") + btn("goto","Im Dokument");
-  else if(n.kind==="att") b += btn("edit","Bearbeiten") + btn("tags","Tags") + (n.type==="file" ? btn("view","Ansehen") : "") + (n.type==="link" && n.url ? btn("url","Link öffnen") : "") + btn("goto","Im Dokument");
-  else if(n.kind==="block") b += btn("tags","Tags") + btn("goto","Im Dokument");
+  if(n.kind==="doc") b += btn("goto","Öffnen") + btn("tags","Tags") + btn("import","ToDo/Ziel einfügen");
+  else if(n.kind==="node") b += btn("goto","Öffnen") + btn("edit","Bearbeiten") + btn("tags","Tags") + btn("import","ToDo/Ziel einfügen");
+  else if(n.kind==="att") b += (n.type==="file" ? btn("view","Ansehen") : n.type==="link" && n.url ? btn("url","Link öffnen") : "") + btn("goto", n.type==="file"||n.type==="link" ? "Im Dokument" : "Öffnen") + btn("edit","Bearbeiten") + btn("tags","Tags");
+  else if(n.kind==="block") b += btn("goto","Öffnen") + btn("tags","Tags");
   b += btn("focus", ws3d.opt.focus ? "Alles zeigen" : "Nur Umgebung zeigen") + btn("center","Zentrieren");
   const nb = ws3d.nb.get(n.id).size;
   return `<div class="ws3d-card"><div><b>${esc(n.label)}</b> <span class="muted">· ${esc(ws3dKindName(n))}${n.eff&&n.kind!=="tag"?" · 🏷 "+esc(n.eff):""} · ${nb} Verbindung${nb===1?"":"en"}${n.done?" · erledigt":""}</span></div><div class="ws3d-btns">${b}</div></div>`;
@@ -5088,7 +5248,7 @@ function ws3dSelect(id){
 }
 function ws3dAct(act){
   const n = ws3d.byId.get(ws3d.sel); if(!n) return;
-  if(act==="goto") wsGoToDoc(n.doc);
+  if(act==="goto") wsGoToItem(n.doc, n.kind==="doc"?"doc":n.kind, n.ref, true);
   else if(act==="edit"){ if(n.kind==="node") wsEditNode(n.ref); else wsOpenLinkMenu(n.doc, n.ref); }
   else if(act==="tags"){ wsOpenTagMenu(n.doc, n.kind==="doc" ? "doc" : n.kind==="block" ? "block" : n.kind==="att" ? "att" : "node", n.kind==="doc" ? n.doc : n.ref); }
   else if(act==="import"){ wsOpenImport(n.kind==="doc" ? {docId:n.doc} : {docId:n.doc, parent:n.ref}); }
@@ -5109,12 +5269,15 @@ function ws3dMount(){
   $$("ws3dDone").onchange = e=>{ ws3d.opt.showDone = e.target.checked; ws3dSaveOpt(); ws3dBuild(); ws3dSelect(ws3d.sel); };
   $$("ws3dTags").onchange = e=>{ ws3d.opt.tags = e.target.checked; ws3dSaveOpt(); ws3dBuild(); ws3dSelect(ws3d.sel); };
   $$("ws3dLab").onchange = e=>{ ws3d.opt.labels = e.target.checked; ws3dSaveOpt(); ws3dKick(); };
-  $$("ws3dReset").onclick = ()=>{ Object.assign(ws3d.cam, {yaw:0.6, pitch:0.35}); ws3dFit(); ws3d.opt.focus = false; ws3dSelect(ws3d.sel); };
-  const zoom = f=>{ ws3d.cam.dist = Math.max(250, Math.min(4000, ws3d.cam.dist*f)); ws3dKick(); };
+  $$("ws3dFloor").onchange = e=>{ ws3d.opt.floor = e.target.checked; ws3dSaveOpt(); ws3dKick(); };
+  $$("ws3dSpin").onchange = e=>{ ws3d.opt.spin = e.target.checked; ws3dSaveOpt(); ws3d.last = 0; ws3dKick(); };
+  $$("ws3dReset").onclick = ()=>{ Object.assign(ws3d.cam, {yaw:0.6, pitch:0.4}); ws3dFit(); ws3d.opt.focus = false; ws3dSelect(ws3d.sel); };
+  const zoom = f=>{ ws3d.userCam = true; ws3d.cam.dist = Math.max(250, Math.min(4000, ws3d.cam.dist*f)); ws3dKick(); };
   $$("ws3dZin").onclick = ()=>zoom(0.8); $$("ws3dZout").onclick = ()=>zoom(1.25);
   $$("ws3dShake").onclick = ()=>{ ws3d.pos.clear(); ws3dBuild(); ws3dFit(); ws3dKick(); };
   const rect = ()=>cv.getBoundingClientRect();
   cv.onpointerdown = e=>{
+    ws3d.userCam = true;
     cv.setPointerCapture(e.pointerId); ws3d.ptr.set(e.pointerId, {x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY, pan:e.shiftKey||e.button===1||e.button===2});
     ws3d.moved = false;
   };
@@ -5137,8 +5300,13 @@ function ws3dMount(){
     if(p && !ws3d.moved && ws3d.ptr.size===0 && e.type==="pointerup"){ const r = rect(); ws3dSelect(ws3dHit(e.clientX-r.left, e.clientY-r.top)); }
   };
   cv.onpointerup = up; cv.onpointercancel = up;
-  cv.ondblclick = e=>{ const r = rect(), id = ws3dHit(e.clientX-r.left, e.clientY-r.top); if(id){ ws3d.sel = id; ws3dAct("center"); ws3dSelect(id); } };
-  cv.onwheel = e=>{ e.preventDefault(); ws3d.cam.dist = Math.max(250, Math.min(4000, ws3d.cam.dist*Math.exp(e.deltaY*0.0012))); ws3dKick(); };
+  cv.ondblclick = e=>{ const r = rect(), id = ws3dHit(e.clientX-r.left, e.clientY-r.top); if(!id) return; ws3dSelect(id);
+    const n = ws3d.byId.get(id);
+    if(n.kind==="tag") ws3dAct("center");
+    else if(n.kind==="att" && n.type==="file") ws3dAct("view");
+    else if(n.kind==="att" && n.type==="link" && n.url) ws3dAct("url");
+    else ws3dAct("goto"); };
+  cv.onwheel = e=>{ e.preventDefault(); ws3d.userCam = true; ws3d.cam.dist = Math.max(250, Math.min(4000, ws3d.cam.dist*Math.exp(e.deltaY*0.0012))); ws3dKick(); };
   cv.oncontextmenu = e=>e.preventDefault();
   cv.style.cursor = "grab"; cv.style.touchAction = "none";
   if(window.ResizeObserver){ if(ws3d.ro) ws3d.ro.disconnect(); ws3d.ro = new ResizeObserver(()=>ws3dResize()); ws3d.ro.observe(cv.parentElement); }
@@ -5271,8 +5439,10 @@ main.addEventListener("keydown", e=>{
 
 /* ---- Klicks ---- */
 main.addEventListener("click", e=>{
+  const bk = e.target.closest("[data-wsback]");
+  if(bk){ wsBack = null; wsTab = "3d"; localStorage.setItem("wsTab", "3d"); render(); return; }
   const tab = e.target.closest("[data-wstab]");
-  if(tab){ wsTab = tab.dataset.wstab; localStorage.setItem("wsTab", wsTab); render(); return; }
+  if(tab){ wsBack = null; wsTab = tab.dataset.wstab; localStorage.setItem("wsTab", wsTab); render(); return; }
   const a = e.target.closest("[data-wsact]"); if(!a) return;
   const act = a.dataset.wsact;
   const mount = a.closest(".ws-mount");
@@ -5850,6 +6020,41 @@ function wsFindNodeAnyDoc(nid){
 }
 function wsEditNode(nid){
   const h = wsFindNodeAnyDoc(nid); if(h) wsOpenLinkMenu(h.doc.id, nid);
+}
+let wsBack = null;      // "3d": Rücksprung zur 3D-Ansicht, solange man von dort aus geöffnet hat
+function wsNodePath(items, id, path){
+  for(const n of items){ if(n.id===id) return path; const r = wsNodePath(n.children, id, path.concat(n)); if(r) return r; }
+  return null;
+}
+/* Eintrag im Dokument öffnen: Dokument wählen, Zweige aufklappen, hinscrollen und kurz hervorheben */
+function wsGoToItem(docId, kind, ref, from3d){
+  const doc = wsGet(docId); if(!doc) return;
+  wsBack = from3d ? "3d" : null;
+  wsOpenDocId = docId; try{ localStorage.setItem("wsOpenDoc", docId); }catch(e){}
+  if(wsF.tag){ wsF = wsFNorm({...wsF, tag:""}); wsFSave(); }
+  let sel = `.ws-doc[data-doc="${docId}"] .ws-doctitle`;
+  if(kind==="node" || kind==="att"){
+    const owner = kind==="att" ? wsAttOwner(doc, ref) : null, nid = kind==="att" ? (owner && owner.id) : ref;
+    let path = null; for(const b of doc.blocks){ if(b.type==="outline"){ path = wsNodePath(b.items, nid, []); if(path) break; } }
+    if(path){
+      let ch = false;
+      path.forEach(p=>{ if(wsFiltered()) wsColl.set(p.id, false); else if(p.collapsed){ p.collapsed = false; ch = true; } });
+      if(ch) wsTouch(doc);
+    }
+    const tn = kind==="att" ? owner : wsFindAny(doc, nid);
+    if(kind==="att" && tn){ if(!tn.aopen){ tn.aopen = true; wsTouch(doc); } wsOpenMap.set(ref, true); }
+    sel = kind==="att" ? `.ws-doc[data-doc="${docId}"] [data-aid="${ref}"]` : `.ws-doc[data-doc="${docId}"] [data-nid="${ref}"] > .ws-nrow`;
+  }else if(kind==="block") sel = `.ws-doc[data-doc="${docId}"] [data-bid="${ref}"]`;
+  wsTab = "docs"; try{ localStorage.setItem("wsTab", "docs"); }catch(e){}
+  view = "notes"; render();
+  let tries = 0;
+  const seek = ()=>{
+    const el = document.querySelector(sel);
+    if(!el){ if(++tries<15) setTimeout(seek, 70); else toast("Der Eintrag ist durch einen aktiven Filter ausgeblendet."); return; }
+    el.scrollIntoView({block:"center", behavior:"smooth"});
+    el.classList.add("ws-flash"); setTimeout(()=>el.classList.remove("ws-flash"), 2600);
+  };
+  setTimeout(seek, 60);
 }
 function wsGoToDoc(docId){
   if(!wsGet(docId)) return;

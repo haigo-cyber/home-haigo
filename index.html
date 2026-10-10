@@ -330,6 +330,16 @@
   .ws-nrow{display:flex;align-items:center;gap:3px;padding:2px 0;border-radius:8px}
   .ws-nin{flex:1;padding:6px 8px;font-size:14px}
   .ws-nright{display:contents}
+  .ws-node.hid > .ws-nrow{opacity:.5}
+  .ws-eye{opacity:.7}
+  .ws-fbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  .ws-fhint{font:600 11px var(--mono);color:var(--muted)}
+  .ws-fpanel{background:#101216;border:1px solid #2c3037;border-radius:10px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:8px}
+  .ws-frow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .ws-fl{flex:0 0 52px;font:600 11px var(--mono);color:var(--muted)}
+  .ws-frow .ws-in{flex:1 1 160px;padding:8px;font-size:16px}
+  .ws-fc{background:#14161a;border:1px solid #30343b;color:var(--text);border-radius:999px;padding:8px 12px;font-size:13px;cursor:pointer}
+  .ws-fc.on{background:var(--metal-hi);border-color:#7a818d;color:#fff}
   .ws-node.done > .ws-nrow .ws-nin{text-decoration:line-through;color:#6d737e}
   .ws-tog{flex:none;width:22px;background:none;border:none;color:#9aa3b2;cursor:pointer;font-size:14px;padding:4px 0}
   .ws-chk{flex:none;width:22px;height:22px;border-radius:6px;border:2px solid #5b6270;background:rgba(0,0,0,.4);color:#04210f;font-size:13px;font-weight:800;cursor:pointer;padding:0;line-height:1}
@@ -406,6 +416,10 @@
 
   .modal input[type=number]{width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:12px}
   .modal{max-height:92vh;overflow-y:auto}
+
+  .ws-tagbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
+  .ws-tagb.on{color:var(--amber);border-color:rgba(255,176,32,.45)}
+  .ws-x.ws-tagb{width:auto;padding:0 8px;font-size:12px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -547,8 +561,7 @@ function taskStreak(){
 
 function parseDeadlineFromNotes(notes){
   if(!notes) return null;
-  const match=(notes+"").match(/\| DL:(\d{4}-\d{2}-\d{2})/);
-  return match?match[1]:null;
+  return null; // Deadlines kommen nur noch aus den Punkten des Arbeitsbereichs
 }
 
 function daysUntilDeadline(deadline){
@@ -1850,29 +1863,7 @@ function render(){
         </div>`;
       });
     }
-    // Dringende Deadlines (≤5 Tage)
-    const urgentDeadlines=allGTasks.filter(t => t.deadlineDays !== null && t.deadlineDays >= 0 && t.deadlineDays <= 5 && !isMetaTask(t));
-    if(urgentDeadlines.length){
-      h+=`<div class="section-title">⏱️ DRINGENDE DEADLINES</div>`;
-      const sortedUD=[...urgentDeadlines].sort((a,b)=>a.deadlineDays - b.deadlineDays);
-      const MAX_URGENT=7;
-      sortedUD.slice(0,MAX_URGENT).forEach(t=>{
-        const dlColor=deadlineColor(t.deadlineDays);
-        const dlLabel=deadlineLabel(t.deadlineDays);
-        const cleanNotes=(t.notes||"").replace(GOAL_MARKER,"").replace(/\| DL:.*$/,"").trim();
-        h+=`<div class="card" style="border-left:4px solid ${dlColor}">
-          <div class="check" data-gtask="${t.id}">${checkSvg()}</div>
-          <div class="body">
-            <div class="title" style="color:#000;font-weight:bold">${esc(t.title||"(ohne Titel)")}</div>
-            ${cleanNotes?`<div class="note-text" style="color:#666;font-size:13px">${esc(cleanNotes)}</div>`:""}
-            <div style="font-size:12px;margin-top:6px;padding:4px 8px;background:${dlColor};color:#fff;border-radius:4px;display:inline-block;font-weight:bold">${dlLabel}</div>
-          </div>
-        </div>`;
-      });
-      if(sortedUD.length>MAX_URGENT){
-        h+=`<div class="muted center" style="padding:6px;font-size:13px">+${sortedUD.length-MAX_URGENT} weitere · vollständige Liste unter Deadlines</div>`;
-      }
-    }
+    h+=wsUrgentDeadlinesHtml();
     if(todayCalendarEvents.length){
       const completedCalEvents = JSON.parse(localStorage.getItem("completedCalEvents") || "[]");
       const visibleEvents = todayCalendarEvents.filter(e => !completedCalEvents.includes(e.id));
@@ -2163,117 +2154,7 @@ function render(){
   else if(view==="deadlines"){
     let h=`<div class="section-title">⏱ Deadlines</div>`;
 
-    // Deadlines: Alle Tasks/gtasks mit Deadline, sortiert nach Dringlichkeit
-    const allDeadlines = [];
-
-    // Google Tasks mit Deadline (nutze allGTasks, nicht gtasks!)
-    allGTasks.forEach(t => {
-      if(t.deadline && !isMetaTask(t)){
-        const daysLeft = daysUntilDeadline(t.deadline);
-        allDeadlines.push({
-          type: 'gtask',
-          id: t.id,
-          title: t.title,
-          due: t.due.slice(0,10),
-          deadline: t.deadline,
-          daysLeft: daysLeft,
-          notes: t.notes,
-          isGoal: isGoalTask(t)
-        });
-      }
-    });
-
-    // Reguläre Tasks mit Termin (alle typen)
-    tasks.filter(t=>t.startDate).forEach(t => {
-      // Prüfe ob dieser Task eine Deadline hat (via Google Tasks oder lokal)
-      // Vorerst nur die aus gtasks verwenden, da reguläre Tasks keine Deadline-Info haben
-      const gtask = gtasks.find(gt => gt.id === t.id);
-      if(gtask){
-        const deadline = parseDeadlineFromNotes(gtask.notes);
-        if(deadline && !allDeadlines.find(d => d.id === t.id)){
-          const daysLeft = daysUntilDeadline(deadline);
-          allDeadlines.push({
-            type: 'task',
-            id: t.id,
-            title: t.title,
-            due: t.startDate,
-            deadline: deadline,
-            daysLeft: daysLeft,
-            taskType: t.type,
-            projectId: t.projectId
-          });
-        }
-      }
-    });
-
-    // Sortiere nach daysLeft (dringende zuerst)
-    allDeadlines.sort((a,b) => {
-      if(a.daysLeft === null && b.daysLeft === null) return 0;
-      if(a.daysLeft === null) return 1;
-      if(b.daysLeft === null) return -1;
-      return a.daysLeft - b.daysLeft;
-    });
-
-    if(!allDeadlines.length){
-      h+=`<div class="muted center" style="padding:8px">Keine Deadlines vorhanden</div>`;
-    } else {
-      allDeadlines.forEach(d => {
-        const color = deadlineColor(d.daysLeft);
-        const label = deadlineLabel(d.daysLeft);
-        const dueStr = new Date(d.due).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
-        const dlStr = new Date(d.deadline).toLocaleDateString("de-DE",{day:"numeric",month:"short"});
-        const typeLabel = d.type === 'gtask' ? (d.isGoal ? '🎯 Ziel' : '⭐ Google Task') : `📋 ${d.taskType}`;
-
-        // Stärker sichtbar machen basierend auf Dringlichkeit
-        let bgColor = color + '22'; // Hintergrund schwach gefärbt
-        let textColor = '#000';
-        let borderWidth = '2px';
-        let fontWeight = '400';
-
-        if(d.daysLeft !== null && d.daysLeft < 0){
-          // Rot: ÜBERFÄLLIG - maximale Aufmerksamkeit
-          bgColor = '#ef4444';
-          textColor = '#fff';
-          borderWidth = '4px';
-          fontWeight = '700';
-        } else if(d.daysLeft !== null && d.daysLeft <= 3){
-          // Rot: AB 3 TAGE VOR DEADLINE - sehr deutlich
-          bgColor = '#ef4444';
-          textColor = '#fff';
-          borderWidth = '3px';
-          fontWeight = '600';
-        } else if(d.daysLeft !== null && d.daysLeft <= 7){
-          // Orange: 4-7 Tage - deutlich
-          bgColor = '#fff';
-          textColor = '#000';
-          borderWidth = '2px';
-          fontWeight = '500';
-        } else if(d.daysLeft !== null && d.daysLeft > 7){
-          // Grün: Weit weg
-          bgColor = '#bbf7d0';
-          textColor = '#000';
-          borderWidth = '1px';
-        }
-
-        const isTaskType = d.type === 'task';
-        const doneAlready = isTaskType ? isDone(d.id, d.due) : false;
-        const checkHtml = isTaskType
-          ? `<div class="check${doneAlready?' on':''}" data-toggle="${d.id}" data-key="${d.due}">${checkSvg()}</div>`
-          : `<div class="check" data-gtask="${d.id}">${checkSvg()}</div>`;
-
-        h+=`<div class="card${doneAlready?' done':''}" style="border-left:${borderWidth} solid ${color};background:${bgColor};color:${textColor}">
-          ${checkHtml}
-          <div class="body">
-            <div class="title" style="color:${textColor};font-weight:${fontWeight};font-size:16px">${esc(d.title)}</div>
-            <div class="sub" style="color:${textColor};font-size:12px;margin-top:4px">${typeLabel} · Fällig: ${dueStr}</div>
-            <div class="sub" style="color:${textColor};font-size:12px;opacity:0.9">Deadline: ${dlStr}</div>
-            <div style="font-size:14px;margin-top:8px;padding:6px 10px;background:${color};color:#fff;border-radius:4px;font-weight:bold;display:inline-block">
-              ${d.daysLeft === null ? '–' : (d.daysLeft < 0 ? `⚠️ ÜBERFÄLLIG ${Math.abs(d.daysLeft)}d` : `${label}`)}
-            </div>
-          </div>
-        </div>`;
-      });
-    }
+    h+=wsDeadlinesViewHtml();
     main.innerHTML=h;
   }
   else if(view==="settings"){
@@ -3295,7 +3176,7 @@ const WS_MAXROWS = 2000;
 /* WS-PURE-START */
 let _wsCnt = 0;
 function wsId(){ return Date.now().toString(36) + (++_wsCnt).toString(36) + Math.random().toString(36).slice(2,5); }
-function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapsed:false, date:"", ld:"", dur:0, dl:"", meta:false, link:null, aopen:false, att:[], children:[]}; }
+function wsNewNode(text){ return {id:wsId(), text:text||"", done:false, collapsed:false, date:"", ld:"", dur:0, dl:"", meta:false, hid:false, tag:"", link:null, aopen:false, att:[], children:[]}; }
 /* Anhang an einem Punkt: Text (auch als Notiz nutzbar) oder Tabelle; trägt wie ein Punkt Datum, Erledigt-Haken und Verknüpfung */
 function wsNewAtt(type){
   const a = {id:wsId(), type:type, title:"", done:false, date:"", link:null};
@@ -3387,11 +3268,11 @@ function wsFindByLink(docs, kind, ref){
 }
 function wsNewDoc(title){
   const now = new Date().toISOString();
-  return {id:wsId(), title:title||"Neues Dokument", pinned:false, createdAt:now, updatedAt:now, blocks:[]};
+  return {id:wsId(), title:title||"Neues Dokument", pinned:false, tag:"", createdAt:now, updatedAt:now, blocks:[]};
 }
 function wsNewBlock(type){
   if(type==="text") return {id:wsId(), type:"text", text:""};
-  if(type==="heading") return {id:wsId(), type:"heading", text:""};
+  if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:""};
   if(type==="outline") return {id:wsId(), type:"outline", items:[wsNewNode("")]};
   if(type==="table") return {id:wsId(), type:"table", cols:["Spalte 1","Spalte 2","Spalte 3"], rows:[["","",""],["","",""]]};
   return null;
@@ -3399,19 +3280,20 @@ function wsNewBlock(type){
 function wsNormNodes(a){
   return (Array.isArray(a)?a:[]).filter(n=>n && typeof n==="object").map(n=>({
     id:n.id||wsId(), text:String(n.text||""), done:!!n.done, collapsed:!!n.collapsed,
-    date:wsIsDate(n.date)?n.date:"", ld:wsIsDate(n.ld)?n.ld:"", dur:(n.dur>0 && n.dur<=3660)?Math.floor(n.dur):0, dl:wsIsDate(n.dl)?n.dl:"", meta:!!n.meta,
+    date:wsIsDate(n.date)?n.date:"", ld:wsIsDate(n.ld)?n.ld:"", dur:(n.dur>0 && n.dur<=3660)?Math.floor(n.dur):0, dl:wsIsDate(n.dl)?n.dl:"", meta:!!n.meta, hid:!!n.hid, tag:wsNormTag(n.tag),
     link:wsNormLink(n.link), aopen:!!n.aopen, att:(Array.isArray(n.att)?n.att:[]).map(wsNormAtt).filter(Boolean), children:wsNormNodes(n.children)
   }));
 }
 function wsNormalizeDocs(arr){
   if(!Array.isArray(arr)) return [];
   return arr.filter(d=>d && typeof d==="object").map(d=>{
-    const doc = {id:d.id||wsId(), title:String(d.title||""), pinned:!!d.pinned,
+    const doc = {id:d.id||wsId(), title:String(d.title||""), pinned:!!d.pinned, tag:wsNormTag(d.tag),
       createdAt:d.createdAt||new Date().toISOString(), updatedAt:d.updatedAt||d.createdAt||new Date().toISOString(), blocks:[]};
     (Array.isArray(d.blocks)?d.blocks:[]).forEach(b=>{
       if(!b || typeof b!=="object") return;
       const id = b.id||wsId();
-      if(b.type==="text" || b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||"")});
+      if(b.type==="text") doc.blocks.push({id, type:b.type, text:String(b.text||"")});
+      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag)});
       else if(b.type==="outline") doc.blocks.push({id, type:"outline", items:wsNormNodes(b.items)});
       else if(b.type==="table"){
         const cols = (Array.isArray(b.cols) && b.cols.length) ? b.cols.map(String) : ["Spalte 1"];
@@ -3543,12 +3425,13 @@ function wsCount(node){
 function wsAllDone(n){ return n.done && n.children.every(wsAllDone); }
 /* Nächste offene Schritte: Blätter bzw. Knoten, deren Unterpunkte alle erledigt sind, in Dokumentreihenfolge */
 function wsNextOpen(doc, max){ return wsNextOpenItems(doc, max).map(n=>n.text.trim()); }
-function wsNextOpenItems(doc, max){
+function wsNextOpenItems(doc, max, vis){
   const out = [];
   const walk = (items)=>{
     for(const n of items){
       if(out.length>=max) return;
       if(n.done) continue;
+      if(vis && !vis(n)) continue;
       const open = n.children.filter(c=>!wsAllDone(c));
       if(n.children.length && open.length) walk(n.children);
       else if((n.text||"").trim()) out.push(n);
@@ -3565,10 +3448,11 @@ function wsOpenCount(doc){
 }
 
 /* ---- Gantt-Zeilen aus der Gliederung ---- */
-function wsGanttRows(roots){
+function wsGanttRows(roots, sel, em){
   const rows = [];
   const walk = (n, level)=>{
     if(wsAllDone(n)) return null;
+    if(sel && !wsTagShownNode(n, sel, em)) return null;
     const own = wsSpan(n);
     const row = {id:n.id, title:(n.text||"").trim()||"(ohne Titel)", level, meta:!!n.meta, own, start:null, end:null, agg:false, dl:n.dl||"", late:false};
     rows.push(row);
@@ -3620,11 +3504,118 @@ function wsAddRow(block, after){
   const idx = (after===undefined || after===null) ? block.rows.length : after+1;
   block.rows.splice(idx, 0, row); return idx;
 }
+
+/* ---- Ansicht: Ausblenden und Filtern (rein) ---- */
+function wsFNorm(f){
+  f = (f && typeof f==="object") ? f : {};
+  return {lvl:(f.lvl>=1 && f.lvl<=3)?Math.floor(f.lvl):0, hideDone:!!f.hideDone, dated:!!f.dated,
+    due:(f.due==="today"||f.due==="week")?f.due:"", meta:!!f.meta, noAtt:!!f.noAtt, q:String(f.q||"").trim().slice(0,80), showHid:!!f.showHid,
+    tag:(f.tag==="!none") ? "!none" : wsTagKey(f.tag).slice(0,40)};
+}
+function wsHasCrit(f){ return !!(f.dated || f.due || f.meta || f.q || f.tag); }
+function wsFActive(f){ return (f.lvl?1:0)+(f.hideDone?1:0)+(f.dated?1:0)+(f.due?1:0)+(f.meta?1:0)+(f.noAtt?1:0)+(f.q?1:0)+(f.showHid?1:0); }
+function wsNodeDue(n){ return n.dl || n.ld || n.date || ""; }
+function wsNodeMatch(n, f, today, eff){
+  if(f.tag && !wsTagMatch(eff, f.tag)) return false;
+  if(f.dated && !(n.date || n.ld || n.dl || n.dur)) return false;
+  if(f.meta && !n.meta) return false;
+  if(f.due){
+    if(n.done) return false;
+    const d = wsNodeDue(n); if(!d) return false;
+    const lim = f.due==="today" ? today : wsAddDays(today, 7);
+    if(d>lim) return false;
+  }
+  if(f.q){
+    const q = f.q.toLowerCase();
+    let hay = (n.text||"")+" "+(n.att||[]).map(a=>(a.title||"")+" "+(a.text||"")).join(" ");
+    if(!hay.toLowerCase().includes(q)) return false;
+  }
+  return true;
+}
+function wsNodeShown(n, f, today, inh){
+  if(n.hid && !f.showHid) return false;
+  if(f.hideDone && wsAllDone(n)) return false;
+  if(!wsHasCrit(f)) return true;
+  const eff = n.tag || inh || "";
+  if(!(n.text||"").trim() && !n.children.length && wsTagMatch(eff, f.tag)) return true;
+  if(wsNodeMatch(n, f, today, eff)) return true;
+  return n.children.some(c=>wsNodeShown(c, f, today, eff));
+}
+function wsSubCount(n){ return 1 + n.children.reduce((s,c)=>s+wsSubCount(c), 0); }
+function wsHiddenCount(items, f, today, inh){
+  let k = 0;
+  for(const n of items){ const eff = n.tag || inh || ""; if(!wsNodeShown(n, f, today, inh)) k += wsSubCount(n); else k += wsHiddenCount(n.children, f, today, eff); }
+  return k;
+}
+
+/* ---- Deadlines aus den Punkten des Arbeitsbereichs (rein) ---- */
+function wsDayDiff(from, to){
+  const p = s=>{ const a = s.split("-").map(Number); return Date.UTC(a[0], a[1]-1, a[2]); };
+  return Math.round((p(to)-p(from))/86400000);
+}
+function wsDeadlineItems(docs, today){
+  const out = [];
+  docs.forEach(doc=>{
+    wsAllNodes(doc).forEach(n=>{
+      if(!n.dl || n.done) return;
+      out.push({doc, node:n, dl:n.dl, days:wsDayDiff(today, n.dl)});
+    });
+  });
+  out.sort((a,b)=> a.days-b.days || (a.node.text||"").localeCompare(b.node.text||""));
+  return out;
+}
+
+/* ---- Tags (rein) ---- */
+function wsNormTag(s){ return String(s||"").replace(/\s+/g," ").trim().slice(0,30); }
+function wsTagKey(s){ return wsNormTag(s).toLowerCase(); }
+function wsTagMatch(eff, sel){ if(!sel) return true; const k = wsTagKey(eff); return sel==="!none" ? k==="" : k===sel; }
+/* Tag eines Blocks: Überschrift gilt für sich und alle folgenden Blöcke bis zur nächsten Überschrift; sonst der Tag des Dokuments */
+function wsBlockTags(doc){
+  const out = {}; let sec = "";
+  doc.blocks.forEach(b=>{
+    if(b.type==="heading"){ sec = b.tag||""; out[b.id] = sec || doc.tag || ""; }
+    else out[b.id] = sec || doc.tag || "";
+  });
+  return out;
+}
+/* Wirksamer Tag jedes Punkts: eigener Tag, sonst der des übergeordneten Punkts, sonst der des Blocks */
+function wsEffTags(docs){
+  const map = new Map();
+  docs.forEach(doc=>{
+    const bt = wsBlockTags(doc);
+    const walk = (items, inh)=>items.forEach(n=>{ const e = n.tag||inh||""; map.set(n.id, e); walk(n.children, e); });
+    doc.blocks.forEach(b=>{ if(b.type==="outline") walk(b.items, bt[b.id]); });
+  });
+  return map;
+}
+function wsTagShownNode(n, sel, em){ return wsTagMatch(em.get(n.id), sel) || n.children.some(c=>wsTagShownNode(c, sel, em)); }
+function wsAllTags(docs){
+  const seen = new Map();
+  const add = t=>{ const k = wsTagKey(t); if(k && !seen.has(k)) seen.set(k, wsNormTag(t)); };
+  const walk = items=>items.forEach(n=>{ add(n.tag); walk(n.children); });
+  docs.forEach(d=>{ add(d.tag); d.blocks.forEach(b=>{ if(b.type==="heading") add(b.tag); if(b.type==="outline") walk(b.items); }); });
+  return [...seen.values()].sort((a,b)=>a.localeCompare(b, "de"));
+}
+function wsDocHasTag(doc, sel){
+  const bt = wsBlockTags(doc), em = wsEffTags([doc]);
+  return doc.blocks.some(b=> b.type==="outline" ? b.items.some(n=>wsTagShownNode(n, sel, em)) : wsTagMatch(bt[b.id], sel));
+}
 /* WS-PURE-END */
 
 /* ---- Zustand ---- */
 let wsDocs = [];
 let wsLoaded = false, wsLoadError = "", wsTabOk = false, wsLastLoad = 0;
+let wsF = (()=>{ try{ return wsFNorm(JSON.parse(localStorage.getItem("wsFilter")||"null")); }catch(e){ return wsFNorm(null); } })();
+let wsFOpen = (()=>{ try{ return localStorage.getItem("wsFOpen")==="1"; }catch(e){ return false; } })();
+const wsColl = new Map();   // nur für diese Sitzung: Auf-/Zuklappen, solange ein Filter aktiv ist
+function wsFSave(){ try{ localStorage.setItem("wsFilter", JSON.stringify(wsF)); }catch(e){} wsColl.clear(); }
+function wsVis(n, inh){ return wsNodeShown(n, wsF, todayKey(), inh); }
+function wsFiltered(){ return !!wsF.lvl || wsHasCrit(wsF); }
+function wsEffCollapsed(n, depth){
+  if(!wsFiltered()) return !!n.collapsed;
+  if(wsColl.has(n.id)) return wsColl.get(n.id);
+  return !!(wsF.lvl && depth+1>=wsF.lvl);
+}
 let wsTab = localStorage.getItem("wsTab") || "docs";                 // docs | gantt | notes
 if(!["docs","gantt","notes"].includes(wsTab)) wsTab = "docs";
 let wsOpenDocId = localStorage.getItem("wsOpenDoc") || null;
@@ -3783,34 +3774,43 @@ function wsAttsHtml(n){
   return `<div class="ws-atts">${n.att.map(wsAttHtml).join("")}
     <div class="ws-add"><button class="ws-addbtn" data-wsact="add-att" data-type="text">+ Text / Notiz</button><button class="ws-addbtn" data-wsact="add-att" data-type="table">+ Tabelle</button></div></div>`;
 }
-function wsNodeHtml(n){
-  const hasKids = n.children.length>0;
-  const cnt = hasKids ? wsCount(n) : null;
-  const sub = (hasKids && !n.collapsed) ? `<ul class="ws-tree ws-sub">${n.children.map(wsNodeHtml).join("")}</ul>` : "";
-  return `<li class="ws-node${n.done?" done":""}" data-nid="${n.id}">
+function wsNodeHtml(n, depth, inh){
+  depth = depth||0;
+  const eff = n.tag || inh || "";
+  const shown = n.children.filter(c=>wsVis(c, eff));
+  const hasKids = shown.length>0;
+  const coll = wsEffCollapsed(n, depth);
+  const cnt = n.children.length ? wsCount(n) : null;
+  const sub = (hasKids && !coll) ? `<ul class="ws-tree ws-sub">${shown.map(c=>wsNodeHtml(c, depth+1, eff)).join("")}</ul>` : "";
+  return `<li class="ws-node${n.done?" done":""}${n.hid?" hid":""}" data-nid="${n.id}">
     <div class="ws-nrow">
       <span class="ws-handle sm" draggable="true" data-wsdrag="node" title="Ziehen: Punkt samt Unterpunkten verschieben">⠿</span>
-      <button class="ws-tog" data-wsact="toggle" title="${hasKids?(n.collapsed?"Aufklappen":"Zuklappen"):""}">${hasKids?(n.collapsed?"▸":"▾"):"·"}</button>
+      <button class="ws-tog" data-wsact="toggle" title="${hasKids?(coll?"Aufklappen":"Zuklappen"):""}">${hasKids?(coll?"▸":"▾"):"·"}</button>
       <button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <input type="text" class="ws-in ws-nin" data-wsf="node" value="${esc(n.text)}" placeholder="Punkt">
       <span class="ws-nright">
       ${wsNodeChips(n)}
       ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}
-      <button class="ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle an diesen Punkt anhängen">📎 ${n.att.length?n.att.length:"Anhang"}</button>
+      ${wsF.noAtt?"":`<button class="ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle an diesen Punkt anhängen">📎 ${n.att.length?n.att.length:"Anhang"}</button>`}
+      <button class="ws-mini ws-tagb${n.tag?" on":""}" data-wsact="tag-node" title="Tag setzen (gilt auch für alle Unterpunkte und Anhänge)">🏷${n.tag?" "+esc(n.tag):""}</button>
+      <button class="ws-mini ws-eye${n.hid?" on":""}" data-wsact="hide-node" title="${n.hid?"Wieder einblenden":"Ausblenden (unter Ansicht wieder einblendbar)"}">${n.hid?"🙈":"👁"}</button>
       <button class="ws-mini" data-wsact="add-child" title="Unterpunkt anlegen">+</button>
       <button class="ws-mini" data-wsact="del-node" title="Punkt löschen">✕</button>
       </span>
-    </div>${n.aopen?wsAttsHtml(n):""}${sub}
+    </div>${(n.aopen && !wsF.noAtt)?wsAttsHtml(n):""}${sub}
   </li>`;
 }
-function wsBlockHtml(b){
+function wsBlockHtml(b, eff){
   let body = "";
+  if(wsF.tag && b.type!=="outline" && !wsTagMatch(eff, wsF.tag)) return "";
   if(b.type==="text"){
     body = `<textarea class="ws-in ws-ta" data-wsf="text" rows="1" placeholder="Text">${esc(b.text)}</textarea>`;
   }else if(b.type==="heading"){
     body = `<input type="text" class="ws-in ws-h" data-wsf="text" value="${esc(b.text)}" placeholder="Überschrift">`;
   }else if(b.type==="outline"){
-    body = `<ul class="ws-tree">${b.items.map(wsNodeHtml).join("")}</ul>
+    const vis = b.items.filter(n=>wsVis(n, eff));
+    if(wsF.tag && !vis.length) return "";
+    body = `${(b.items.length && !vis.length)?`<div class="ws-meta">Alle Punkte sind durch die Ansicht ausgeblendet.</div>`:""}<ul class="ws-tree">${vis.map(n=>wsNodeHtml(n, 0, eff)).join("")}</ul>
       <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button>`;
   }else if(b.type==="table"){
     body = wsTableBody(b, true);
@@ -3818,20 +3818,53 @@ function wsBlockHtml(b){
   return `<div class="ws-block" data-bid="${b.id}" data-kind="${b.type}">
     <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
     <div class="ws-bbody">${body}</div>
+    ${b.type==="heading"?`<button class="ws-x ws-tagb${b.tag?" on":""}" data-wsact="tag-block" title="Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)">🏷${b.tag?" "+esc(b.tag):""}</button>`:""}
     <button class="ws-x" data-wsact="del-block" title="Block löschen">✕</button>
   </div>`;
+}
+function wsFilterHtml(docs){
+  if(!docs.some(d=>d.blocks.some(b=>b.type==="outline"))) return "";
+  const act = wsFActive(wsF), today = todayKey();
+  const hid = docs.reduce((s,d)=>{ const bt = wsBlockTags(d); return s + d.blocks.filter(b=>b.type==="outline").reduce((k,b)=>k+wsHiddenCount(b.items, wsF, today, bt[b.id]), 0); }, 0);
+  const ch = (k,v,label,on)=>`<button class="ws-fc${on?" on":""}" data-wsact="f-set" data-k="${k}" data-v="${v}">${label}</button>`;
+  let h = `<div class="ws-fbar"><button class="ws-tb${act?" on":""}" data-wsact="f-open">🔍 Ansicht${act?" · "+act:""} ${wsFOpen?"▲":"▼"}</button>`;
+  if(hid) h += `<span class="ws-fhint">${hid} ausgeblendet</span>`;
+  if(act) h += `<button class="ws-tb" data-wsact="f-reset">Zurücksetzen</button>`;
+  h += `</div>`;
+  if(wsFOpen){
+    h += `<div class="ws-fpanel">
+      <div class="ws-frow"><span class="ws-fl">Schnell</span>
+        <button class="ws-fc" data-wsact="f-preset" data-p="all">Alles</button>
+        <button class="ws-fc" data-wsact="f-preset" data-p="over">Überblick</button>
+        <button class="ws-fc" data-wsact="f-preset" data-p="today">Heute fällig</button>
+        <button class="ws-fc" data-wsact="f-preset" data-p="week">Diese Woche</button>
+        <button class="ws-fc" data-wsact="f-preset" data-p="meta">Meta-Projekte</button></div>
+      <div class="ws-frow"><span class="ws-fl">Suche</span><input type="search" id="wsq" data-wsq="1" class="ws-in" value="${esc(wsF.q)}" placeholder="Text in Punkten und Anhängen"></div>
+      <div class="ws-frow"><span class="ws-fl">Ebenen</span>
+        ${ch("lvl",0,"alle",!wsF.lvl)}${ch("lvl",1,"1",wsF.lvl===1)}${ch("lvl",2,"1-2",wsF.lvl===2)}${ch("lvl",3,"1-3",wsF.lvl===3)}</div>
+      <div class="ws-frow"><span class="ws-fl">Zeigen</span>
+        ${ch("hideDone",1,"Erledigte aus",wsF.hideDone)}${ch("dated",1,"Nur mit Termin",wsF.dated)}
+        ${ch("due","today","Heute fällig",wsF.due==="today")}${ch("due","week","Diese Woche",wsF.due==="week")}
+        ${ch("meta",1,"Nur Meta",wsF.meta)}${ch("noAtt",1,"Anhänge aus",wsF.noAtt)}${ch("showHid",1,"Ausgeblendete zeigen",wsF.showHid)}</div>
+    </div>`;
+  }
+  return h;
 }
 function wsEditorHtml(doc, mode){
   let h = `<div class="ws-doc" data-doc="${doc.id}">`;
   if(mode==="tab"){
     h += `<div class="ws-toolbar">
       <input type="text" class="ws-in ws-doctitle" data-wsf="title" value="${esc(doc.title)}" placeholder="Titel des Dokuments">
+      <button class="ws-tb${doc.tag?" on":""}" data-wsact="tag-doc" title="Tag für das ganze Dokument">🏷 ${doc.tag?esc(doc.tag):"Tag"}</button>
       <button class="ws-tb${doc.pinned?" on":""}" data-wsact="pin" title="${doc.pinned?"Fokus in Heute aufheben":"Als Fokus-Notiz in Heute anzeigen"}">📌 ${doc.pinned?"Fokus":"anheften"}</button>
       <button class="ws-tb" data-wsact="del-doc" title="Dokument löschen">🗑</button>
     </div>
     <div class="ws-meta">geändert ${esc(wsDateTime(doc.updatedAt))} · <span class="ws-status"></span></div>`;
   }
-  h += `<div class="ws-blocks">${doc.blocks.length ? doc.blocks.map(wsBlockHtml).join("") : `<div class="ws-empty">Noch leer. Unten einen Block hinzufügen.</div>`}</div>
+  if(mode==="today" || !wsF.tag) h += wsFilterHtml([doc]);
+  const bt = wsBlockTags(doc);
+  const parts = doc.blocks.map(b=>wsBlockHtml(b, bt[b.id])).filter(Boolean);
+  h += `<div class="ws-blocks">${parts.length ? parts.join("") : (doc.blocks.length ? `<div class="ws-empty">In diesem Dokument ist nichts für diese Ansicht.</div>` : `<div class="ws-empty">Noch leer. Unten einen Block hinzufügen.</div>`)}</div>
     <div class="ws-add">
       <button class="ws-addbtn" data-wsact="add-block" data-type="text">+ Text</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="heading">+ Überschrift</button>
@@ -3848,7 +3881,8 @@ function wsTodayInner(doc){
     <span class="ws-caret">${open?"▲ zuklappen":"▼ öffnen"}</span>
   </div>`;
   if(!open){
-    const next = wsNextOpenItems(doc, 4);
+    const em = wsEffTags([doc]);
+    const next = wsNextOpenItems(doc, 4, n=>wsVis(n, em.get(n.id)));
     h += `<div data-wsact="today-toggle" style="cursor:pointer">`;
     if(next.length){
       h += `<ul class="ws-prev">${next.map((n,i)=>`<li class="${i===0?"first":""}">${esc(n.text.trim())}${n.date?` <span class="ws-pd${n.date<todayKey()?" over":""}">${esc(wsShortDate(n.date))}</span>`:""}${n.link?` <span class="ws-pd">${n.link.kind==="goal"?"🎯":"☑"}</span>`:""}</li>`).join("")}</ul>`;
@@ -3869,12 +3903,24 @@ function wsTodayHtml(){
   const d = wsPinned(); if(!d) return "";
   return `<div class="section-title">📌 Fokus</div><div class="ws-card ws-mount" data-doc="${d.id}" data-mode="today">${wsTodayInner(d)}</div>`;
 }
+function wsTagBarHtml(){
+  const tags = wsAllTags(wsDocs);
+  if(!tags.length && !wsF.tag) return "";
+  const chip = (k, label)=>`<button class="ws-fc${wsF.tag===k?" on":""}" data-wsact="tag-sel" data-t="${esc(k)}">${label}</button>`;
+  return `<div class="ws-tagbar"><span class="ws-fl">Tag</span>${chip("", "Alle")}${tags.map(t=>chip(wsTagKey(t), "🏷 "+esc(t))).join("")}${chip("!none", "ohne Tag")}</div>`;
+}
 function wsDocsTabHtml(){
   if(!wsLoaded){
     return `<div class="empty">Der Arbeitsbereich konnte nicht geladen werden.${wsLoadError?`<br><span class="muted" style="font-size:12px">${esc(wsLoadError.slice(0,200))}</span>`:""}<br><br><button class="btn-ghost" style="flex:none;padding:10px 18px" data-wsact="retry-load">Erneut versuchen</button></div>`;
   }
+  if(wsF.tag){
+    const list = wsDocs.filter(d=>wsDocHasTag(d, wsF.tag));
+    return wsTagBarHtml() + wsFilterHtml(list)
+      + (list.length ? list.map(d=>`<div class="ws-card ws-mount" data-doc="${d.id}" data-mode="tab">${wsEditorHtml(d, "tab")}</div>`).join("")
+                     : `<div class="empty">Kein Dokument hat Einträge mit diesem Tag.</div>`);
+  }
   const cur = wsCurrentDoc();
-  let h = `<div class="ws-chips">${wsChipsInner(cur)}</div>`;
+  let h = wsTagBarHtml() + `<div class="ws-chips">${wsChipsInner(cur)}</div>`;
   if(!cur) return h + `<div class="empty">Noch kein Dokument. Mit "+ Neu" anlegen.</div>`;
   return h + `<div class="ws-card ws-mount" data-doc="${cur.id}" data-mode="tab">${wsEditorHtml(cur, "tab")}</div>`;
 }
@@ -3916,7 +3962,7 @@ function wsViewHtml(){
     <button data-wstab="notes" class="${wsTab==="notes"?"sel":""}">Notizen</button>
   </div>`;
   if(wsTab==="docs") h += wsDocsTabHtml();
-  else if(wsTab==="gantt") h += `<div id="wsGanttBox"></div>`;
+  else if(wsTab==="gantt") h += wsTagBarHtml() + `<div id="wsGanttBox"></div>`;
   else h += wsOldNotesHtml();
   return h;
 }
@@ -3932,6 +3978,7 @@ function wsAfterRender(){
   }
 }
 function wsRerender(docId){
+  if(wsF.tag && view==="notes" && wsTab==="docs"){ render(); return; }
   const doc = wsGet(docId);
   const mounts = document.querySelectorAll('.ws-mount[data-doc="'+docId+'"]');
   if(!doc || !mounts.length){ render(); return; }
@@ -3958,6 +4005,12 @@ main.addEventListener("input", e=>{
   else if(f==="col"){ const b = wsTableOf(doc, el); if(b) b.cols[+el.dataset.ci] = el.value; }
   else if(f==="cell"){ const b = wsTableOf(doc, el); if(b && b.rows[+el.dataset.ri]) b.rows[+el.dataset.ri][+el.dataset.ci] = el.value; }
   wsTouch(doc);
+});
+let wsQTimer = null;
+main.addEventListener("input", e=>{
+  const el = e.target; if(!(el.dataset && el.dataset.wsq)) return;
+  clearTimeout(wsQTimer);
+  wsQTimer = setTimeout(()=>{ wsF = wsFNorm({...wsF, q:el.value}); wsFSave(); wsFocusSel = "#wsq"; render(); }, 350);
 });
 main.addEventListener("change", e=>{
   const el = e.target;
@@ -4038,6 +4091,25 @@ main.addEventListener("click", e=>{
     wsTodayExpanded = !wsTodayExpanded; localStorage.setItem("wsTodayExp", wsTodayExpanded?"1":"0");
     if(doc) wsRerender(doc.id); return;
   }
+  if(act==="f-open"){ wsFOpen = !wsFOpen; try{ localStorage.setItem("wsFOpen", wsFOpen?"1":"0"); }catch(err){} render(); return; }
+  if(act==="tag-sel"){ wsF = wsFNorm({...wsF, tag:(wsF.tag===a.dataset.t)?"":a.dataset.t}); wsFSave(); render(); return; }
+  if(act==="f-reset"){ wsF = wsFNorm(null); wsFSave(); render(); return; }
+  if(act==="f-preset"){
+    const p = a.dataset.p, keep = {showHid:wsF.showHid, tag:wsF.tag};
+    if(p==="all") wsF = wsFNorm(keep);
+    else if(p==="over") wsF = wsFNorm({...keep, lvl:1, hideDone:true, noAtt:true});
+    else if(p==="today") wsF = wsFNorm({...keep, due:"today", hideDone:true});
+    else if(p==="week") wsF = wsFNorm({...keep, due:"week", hideDone:true});
+    else if(p==="meta") wsF = wsFNorm({...keep, meta:true, hideDone:true});
+    wsFSave(); render(); return;
+  }
+  if(act==="f-set"){
+    const k = a.dataset.k, v = a.dataset.v, nf = {...wsF};
+    if(k==="lvl") nf.lvl = +v;
+    else if(k==="due") nf.due = (nf.due===v)?"":v;
+    else nf[k] = !nf[k];
+    wsF = wsFNorm(nf); wsFSave(); render(); return;
+  }
   if(act==="retry-load"){ setSync("busy"); loadWorkspace().then(()=>{ setSync("on"); render(); }); return; }
   if(act==="new-doc"){
     if(!wsLoaded){ toast("Arbeitsbereich nicht geladen"); return; }
@@ -4057,9 +4129,21 @@ main.addEventListener("click", e=>{
     if(hit.node.link) wsLinkRun(()=>wsPushDone(hit.doc, hit.node));
     return;
   }
+  if(act==="dl-open"){
+    if(!wsGet(a.dataset.did)) return;
+    wsOpenDocId = a.dataset.did; localStorage.setItem("wsOpenDoc", wsOpenDocId);
+    wsTab = "docs"; localStorage.setItem("wsTab", wsTab); view = "notes"; render(); return;
+  }
+  if(act==="dl-done"){
+    const d = wsGet(a.dataset.did), r = d ? wsFindNode(d, a.dataset.nid) : null; if(!r) return;
+    r.node.done = true; wsTouch(d); render();
+    if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(d, node)); }
+    return;
+  }
   if(act==="open-doc"){ wsOpenDocId = a.dataset.id; localStorage.setItem("wsOpenDoc", wsOpenDocId); render(); return; }
   if(!doc) return;
 
+  if(act==="tag-doc"){ wsOpenTagMenu(doc.id, "doc", doc.id); return; }
   if(act==="pin"){
     const was = doc.pinned;
     wsDocs.forEach(d=>{ if(d.pinned){ d.pinned = false; wsTouch(d); } });
@@ -4073,6 +4157,7 @@ main.addEventListener("click", e=>{
   }
   const blockEl = a.closest(".ws-block");
   const block = blockEl ? wsBlock(doc, blockEl.dataset.bid) : null;
+  if(act==="tag-block" && block){ wsOpenTagMenu(doc.id, "block", block.id); return; }
   if(act==="del-block" && block){
     wsDeleteBlockFlow(doc, block); return;
   }
@@ -4096,7 +4181,21 @@ main.addEventListener("click", e=>{
   const nodeEl = a.closest(".ws-node");
   if(nodeEl){
     const nid = nodeEl.dataset.nid, r = wsFindNode(doc, nid); if(!r) return;
-    if(act==="toggle"){ if(r.node.children.length){ r.node.collapsed = !r.node.collapsed; wsTouch(doc); wsRerender(doc.id); } return; }
+    if(act==="toggle"){
+      if(r.node.children.length){
+        if(wsFiltered()){
+          let depth = 0, p = nodeEl.parentElement; while(p){ if(p.classList && p.classList.contains("ws-node")) depth++; p = p.parentElement; }
+          wsColl.set(nid, !wsEffCollapsed(r.node, depth)); wsRerender(doc.id);
+        }else{ r.node.collapsed = !r.node.collapsed; wsTouch(doc); wsRerender(doc.id); }
+      }
+      return;
+    }
+    if(act==="tag-node"){ wsOpenTagMenu(doc.id, "node", nid); return; }
+    if(act==="hide-node"){
+      r.node.hid = !r.node.hid; wsTouch(doc); wsRerender(doc.id);
+      if(r.node.hid && !wsF.showHid) toast("Ausgeblendet. Unter Ansicht kannst du es wieder einblenden.");
+      return;
+    }
     if(act==="done"){
       r.node.done = !r.node.done; wsTouch(doc); wsRerender(doc.id);
       if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
@@ -4110,7 +4209,7 @@ main.addEventListener("click", e=>{
       wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-aid="${at.id}"] .ws-abody .ws-in`; wsRerender(doc.id); return;
     }
     if(act==="add-child"){
-      const n = wsAddChild(doc, nid); wsTouch(doc);
+      const n = wsAddChild(doc, nid); wsTouch(doc); wsColl.set(nid, false);
       wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-nid="${n.id}"] > .ws-nrow .ws-nin`; wsRerender(doc.id); return;
     }
     if(act==="del-node"){ wsDeleteNodeFlow(doc, nid); return; }
@@ -4268,7 +4367,7 @@ function wsGanttDraw(){
   let roots;
   if(ganttSel==="meta") roots = wsMetaRoots(wsDocs);
   else{ const d = wsGet(ganttSel); roots = []; if(d) d.blocks.forEach(b=>{ if(b.type==="outline") roots.push(...b.items); }); }
-  const rows = wsGanttRows(roots);
+  const rows = wsGanttRows(roots, wsF.tag, wsF.tag ? wsEffTags(wsDocs) : null);
   box.innerHTML = `<div class="g-bar-top"><select id="wsGanttSel">${opts.map(o=>`<option value="${esc(o.v)}"${o.v===ganttSel?" selected":""}>${esc(o.t)}</option>`).join("")}</select></div>`
     + (ganttSel==="meta" && !roots.length
         ? `<div class="empty">Noch kein Meta-Projekt. Im Menü 📅 eines Punktes den Schalter Meta-Projekt einschalten.</div>`
@@ -4452,6 +4551,38 @@ async function wsUnlink(docId, nid){
 }
 
 /* ---- Menü je Punkt: Datum, ToDo, Tages-Ziel, Kalender ---- */
+
+function wsOpenTagMenu(docId, kind, id){
+  const doc = wsGet(docId); if(!doc || document.getElementById("modalBg")) return;
+  let obj = null;
+  if(kind==="doc") obj = doc;
+  else if(kind==="block") obj = wsBlock(doc, id);
+  else { const r = wsFindNode(doc, id); obj = r ? r.node : null; }
+  if(!obj) return;
+  const known = []; const seen = new Set();
+  wsAllTags(wsDocs).concat(["Privat","Job","Projekt"]).forEach(t=>{ const k = wsTagKey(t); if(!seen.has(k)){ seen.add(k); known.push(t); } });
+  const what = kind==="doc" ? "das ganze Dokument" : kind==="block" ? "diese Überschrift und alle Blöcke bis zur nächsten Überschrift" : "diesen Punkt samt allen Unterpunkten und Anhängen";
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>Tag</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">Der Tag gilt für ${what}. Ohne eigenen Tag wird der Tag des übergeordneten Punkts, der Überschrift oder des Dokuments übernommen.</p>
+      <input type="text" id="wst_in" maxlength="30" value="${esc(obj.tag||"")}" placeholder="z. B. Job" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px">
+      <div class="ws-frow" style="margin-bottom:12px">${known.map(t=>`<button class="ws-fc" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="wst_cancel">Abbrechen</button>
+        ${obj.tag?`<button class="btn-ghost" id="wst_clear">Tag entfernen</button>`:""}
+        <button class="btn-primary" id="wst_ok">OK</button>
+      </div></div></div>`);
+  const close = ()=>{ const mb = $("modalBg"); if(mb) mb.remove(); };
+  const apply = v=>{ obj.tag = wsNormTag(v); wsTouch(doc); close(); render(); };
+  $("wst_cancel").onclick = close;
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+  document.querySelectorAll("#modalBg .ws-fc").forEach(b=>{ b.onclick = ()=>{ $("wst_in").value = b.dataset.v; }; });
+  if($("wst_clear")) $("wst_clear").onclick = ()=>apply("");
+  $("wst_ok").onclick = ()=>apply($("wst_in").value);
+  $("wst_in").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); apply($("wst_in").value); } });
+  $("wst_in").focus();
+}
 function wsOpenLinkMenu(docId, nid){
   const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;
   if(document.getElementById("modalBg")) return;
@@ -4697,6 +4828,41 @@ function wsMetaNodes(){
     wsAllNodes(doc).forEach(n=>{ if(n.meta && !n.done) out.push({doc, node:n}); });
   });
   return out;
+}
+
+/* ---- Deadlines: Anzeige (Heute und Ansicht Deadlines) ---- */
+function wsDlLabel(days){ return days<0 ? "⚠️ überfällig "+Math.abs(days)+"d" : deadlineLabel(days); }
+function wsDlCard(it, full){
+  const n = it.node, color = deadlineColor(it.days);
+  const url = esc(wsShortDate(it.dl));
+  let style = `border-left:4px solid ${color}`, tc = "";
+  if(full){
+    if(it.days<=3){ style = `border-left:3px solid ${color};background:#ef4444;color:#fff`; tc = "color:#fff"; }
+    else if(it.days<=7){ style = `border-left:2px solid ${color};background:#fff;color:#000`; tc = "color:#000"; }
+    else { style = `border-left:1px solid ${color};background:#bbf7d0;color:#000`; tc = "color:#000"; }
+  }
+  return `<div class="card" style="${style}">
+    <div class="check" data-wsact="dl-done" data-did="${it.doc.id}" data-nid="${n.id}" title="Als erledigt abhaken">${checkSvg()}</div>
+    <div class="body" data-wsact="dl-open" data-did="${it.doc.id}" data-nid="${n.id}" style="cursor:pointer">
+      <div class="title" style="${full?tc:"color:#000"};font-weight:bold">${esc(wsTitleOf(n)||"(ohne Titel)")}${n.hid?" 🙈":""}</div>
+      <div class="sub" style="${tc};font-size:12px;margin-top:2px">${n.meta?"🏛️ Metaprojekt · ":""}${esc(it.doc.title||"Ohne Titel")} · ⚑ ${url}</div>
+      <div style="font-size:${full?14:12}px;margin-top:6px;padding:${full?"6px 10px":"4px 8px"};background:${color};color:#fff;border-radius:4px;display:inline-block;font-weight:bold">${wsDlLabel(it.days)}</div>
+    </div></div>`;
+}
+function wsUrgentDeadlinesHtml(){
+  if(!wsLoaded) return "";
+  const list = wsDeadlineItems(wsDocs, todayKey()).filter(it=>it.days<=5 && !it.node.meta && !it.node.hid);
+  if(!list.length) return "";
+  const MAX = 7;
+  let h = `<div class="section-title">⏱️ DRINGENDE DEADLINES</div>` + list.slice(0, MAX).map(it=>wsDlCard(it, false)).join("");
+  if(list.length>MAX) h += `<div class="muted center" style="padding:6px;font-size:13px">+${list.length-MAX} weitere · vollständige Liste unter Deadlines</div>`;
+  return h;
+}
+function wsDeadlinesViewHtml(){
+  if(!wsLoaded) return `<div class="muted center" style="padding:8px">Der Arbeitsbereich konnte nicht geladen werden.</div>`;
+  const list = wsDeadlineItems(wsDocs, todayKey());
+  if(!list.length) return `<div class="muted center" style="padding:8px">Keine Deadlines vorhanden. Eine Deadline setzt du im Reiter Arbeit über das Datumssymbol eines Punktes.</div>`;
+  return list.map(it=>wsDlCard(it, true)).join("");
 }
 function wsMetaTodayHtml(){
   const key = (h)=>{ const sp = wsSpan(h.node); return h.node.dl || (sp ? sp.end : ""); };

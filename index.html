@@ -457,6 +457,11 @@
   .ws-wkadd{padding:6px;font-size:14px}
   .ws-wkover{background:#101216;border:1px solid var(--red);border-radius:10px;padding:6px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
   .ws-wkdayhint{font:600 11px var(--mono);color:var(--red)}
+  .ws-wkevs{display:flex;flex-direction:column;gap:2px}
+  .ws-wkev{font-size:12px;line-height:1.3;border-left:3px solid #5b8def;background:#161a22;border-radius:4px;padding:2px 6px;color:#aab1bd}
+  .ws-wkevt{font:600 11px var(--mono);color:var(--muted)}
+  .ws-wkxt{flex:1 1 90px;min-width:0;font-size:14px;padding:5px 6px;overflow-wrap:anywhere}
+  .ws-wkx{border-style:dashed}
   @media(max-width:700px){ .ws-wkgrid{grid-template-columns:1fr} .ws-wksel{max-width:100%} }
 </style>
 </head>
@@ -3697,11 +3702,11 @@ function wsKW(d){
 }
 /* Aufgaben für die Woche: Blätter und alle terminierten Punkte; Tag = Tag der Verknüpfung (Deadline-Tag) oder Start */
 function wsWeekTasks(docs, o){
-  const days = []; for(let i=0;i<7;i++) days.push(wsAddDays(o.start, i));
+  const days = []; for(let i=0;i<(o.n||7);i++) days.push(wsAddDays(o.start, i));
   const byDay = {}; days.forEach(d=>{ byDay[d] = []; });
   const pool = [], overdue = [];
   const em = wsEffTags(docs), q = (o.q||"").trim().toLowerCase();
-  const showOver = o.start >= wsMonday(o.today);
+  const showOver = o.start >= (o.overFrom || wsMonday(o.today));
   docs.forEach(doc=>{
     if(o.doc && o.doc!=="all" && doc.id!==o.doc) return;
     wsAllNodes(doc).forEach(n=>{
@@ -3721,6 +3726,43 @@ function wsWeekTasks(docs, o){
   overdue.sort((a,b)=>a.day<b.day?-1:a.day>b.day?1:0);
   const keyed = pool.map((x,i)=>({x,i,k:wsUrgKey(x.node)})).sort((a,b)=>(a.k?0:1)-(b.k?0:1) || (a.k<b.k?-1:a.k>b.k?1:0) || a.i-b.i);
   return {days, byDay, pool:keyed.map(z=>z.x), overdue};
+}
+/* ToDos und Tages-Ziele der ToDo-App, die in keinem Punkt des Arbeitsbereichs verknüpft sind (rein) */
+function wsWeekExternal(todos, goals, o){
+  const days = o.days, byDay = {}; days.forEach(d=>{ byDay[d] = []; });
+  const overdue = [], q = (o.q||"").trim().toLowerCase();
+  if(o.docAll===false) return {byDay, overdue};
+  const showOver = o.start >= (o.overFrom || o.today);
+  const push = it=>{
+    if(o.linked && o.linked.has(it.kind+":"+it.id)) return;
+    if(!(it.title||"").trim()) return;
+    if(q && !it.title.toLowerCase().includes(q)) return;
+    if(!wsTagMatch(it.tag||"", o.tag||"")) return;
+    if(it.done){ if(o.showDone && byDay[it.day]) byDay[it.day].push(it); return; }
+    if(byDay[it.day]) byDay[it.day].push(it);
+    else if(showOver && it.day<o.today && it.day<days[0]) overdue.push(it);
+  };
+  (todos||[]).forEach(t=>{
+    if(!t || t.type!=="todo" || t.archived || t.scheduleType==="weekly" || !wsIsDate(t.startDate)) return;
+    push({kind:"todo", id:t.id, title:t.title||"", day:t.startDate, done:!!(o.isDone && o.isDone(t.id)), time:t.startTime||"", tag:t.tag||""});
+  });
+  (goals||[]).forEach(g=>{
+    if(!g || !wsIsDate(g.due)) return;
+    push({kind:"goal", id:g.id, title:g.title==="(ohne Titel)"?"":(g.title||""), day:g.due, done:!!g.completed, time:"", tag:""});
+  });
+  days.forEach(d=>{ byDay[d] = byDay[d].map((x,i)=>({x,i})).sort((a,b)=>(a.x.done?1:0)-(b.x.done?1:0) || ((a.x.time?0:1)-(b.x.time?0:1)) || (a.x.time<b.x.time?-1:a.x.time>b.x.time?1:0) || a.i-b.i).map(z=>z.x); });
+  overdue.sort((a,b)=>a.day<b.day?-1:a.day>b.day?1:0);
+  return {byDay, overdue};
+}
+/* Kalendertermine auf die Tage verteilen (rein): Ganztägige über alle Tage, Zeitgebundene am Starttag */
+function wsWeekEvents(evs, days){
+  const byDay = {}; days.forEach(d=>{ byDay[d] = []; });
+  (evs||[]).forEach(e=>{
+    if(e.allDay){ days.forEach(d=>{ if(e.sd<=d && d<(e.ed || wsAddDays(e.sd, 1))) byDay[d].push(e); }); }
+    else if(byDay[e.sd]) byDay[e.sd].push(e);
+  });
+  days.forEach(d=>{ byDay[d].sort((a,b)=>(a.allDay?0:1)-(b.allDay?0:1) || (a.st<b.st?-1:a.st>b.st?1:0) || (a.title<b.title?-1:a.title>b.title?1:0)); });
+  return byDay;
 }
 /* WS-PURE-END */
 
@@ -4104,11 +4146,79 @@ function wsOldNotesHtml(){
 }
 
 /* ============ WOCHENÜBERSICHT ============ */
-let wsWk = (()=>{ try{ const o = JSON.parse(localStorage.getItem("wsWk")||"null")||{}; return {doc:String(o.doc||"all"), q:String(o.q||""), showDone:o.showDone!==false}; }catch(e){ return {doc:"all", q:"", showDone:true}; } })();
+/* Fünf Tage ab heute: Punkte des Arbeitsbereichs, ToDos und Tages-Ziele der ToDo-App sowie Termine ausgewählter Kalender */
+const WK_DAYS = 5;
+let wsWk = (()=>{ try{ const o = JSON.parse(localStorage.getItem("wsWk")||"null")||{}; return {doc:String(o.doc||"all"), q:String(o.q||""), showDone:o.showDone!==false, ev:o.ev!==false}; }catch(e){ return {doc:"all", q:"", showDone:true, ev:true}; } })();
 let wsWkStart = null, wsPoolAll = false, wsWkDrag = null;
+let wsWkCals = (()=>{ try{ const r = localStorage.getItem("wsWkCals"); if(r===null) return null; const a = JSON.parse(r); return Array.isArray(a) ? a.map(String) : null; }catch(e){ return null; } })();
+const wsWkEv = {key:"", list:[], busy:false, err:""};
 function wsWkSave(){ try{ localStorage.setItem("wsWk", JSON.stringify(wsWk)); }catch(e){} }
-function wsWkMonday(){ if(!wsWkStart) wsWkStart = wsMonday(todayKey()); return wsWkStart; }
-function wsWkData(){ return wsWeekTasks(wsDocs, {start:wsWkMonday(), today:todayKey(), doc:wsWk.doc, tag:wsF.tag==="!none"?"!none":wsF.tag, q:wsWk.q, showDone:wsWk.showDone}); }
+function wsWkFirst(){ return wsWkStart || todayKey(); }
+function wsWkDays(){ const f = wsWkFirst(), a = []; for(let i=0;i<WK_DAYS;i++) a.push(wsAddDays(f, i)); return a; }
+function wsWkCalList(){ return (allCalendars && allCalendars.length) ? allCalendars : calendars; }
+/* Ohne eigene Auswahl: Kalender, deren Name nach Stundenplan klingt */
+function wsWkCalIds(){
+  const list = wsWkCalList();
+  if(wsWkCals) return wsWkCals.filter(id=>list.some(c=>c.id===id));
+  return list.filter(c=>/stundenplan|schulmanager|evt|herder/i.test(c.summary||"")).map(c=>c.id);
+}
+function wsWkLinkedSet(){ const s = new Set(); wsDocs.forEach(doc=>wsDocLinkedNodes(doc).forEach(n=>s.add(n.link.kind+":"+n.link.ref))); return s; }
+function wsWkOwnEvents(){
+  const s = new Set();
+  tasks.forEach(t=>{ if(t.calendarEventId) s.add(t.calendarEventId); });
+  wsDocs.forEach(doc=>wsDocLinkedNodes(doc).forEach(n=>{ if(n.link.evId) s.add(n.link.evId); }));
+  return s;
+}
+function wsWkData(){
+  const days = wsWkDays(), today = todayKey(), tag = wsF.tag;
+  const D = wsWeekTasks(wsDocs, {start:days[0], n:WK_DAYS, overFrom:today, today, doc:wsWk.doc, tag, q:wsWk.q, showDone:wsWk.showDone});
+  const goals = new Map(); allOpenGoals.concat(goalTasks).forEach(g=>{ if(g && g.id && !goals.has(g.id)) goals.set(g.id, g); });
+  const X = wsWeekExternal(tasks, Array.from(goals.values()), {days, start:days[0], today, overFrom:today, linked:wsWkLinkedSet(), isDone:isEverDone, showDone:wsWk.showDone, tag, q:wsWk.q, docAll:wsWk.doc==="all"});
+  let E = null;
+  if(wsWk.ev){
+    const own = wsWkOwnEvents();
+    E = wsWeekEvents(wsWkEv.list.filter(e=>!own.has(e.id)), days);
+  }
+  return {D, X, E, days};
+}
+/* ---- Kalendertermine laden ---- */
+function wsWkEvKey(){ return wsWkFirst()+"|"+WK_DAYS+"|"+wsWkCalIds().join(","); }
+async function wsWkLoadEvents(force){
+  if(wsWkEv.busy) return;
+  const key = wsWkEvKey(); if(!force && wsWkEv.key===key) return;
+  const ids = wsWkCalIds(), days = wsWkDays(), list = [], bad = [];
+  const L = k=>new Date(+k.slice(0,4), +k.slice(5,7)-1, +k.slice(8,10));
+  const hm = d=>String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+  wsWkEv.busy = true;
+  try{
+    const tMin = L(days[0]).toISOString(), tMax = L(wsAddDays(days[days.length-1], 1)).toISOString();
+    for(const id of ids){
+      const cal = wsWkCalList().find(c=>c.id===id); if(!cal) continue;
+      try{
+        const res = await api(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(id)}/events?timeMin=${encodeURIComponent(tMin)}&timeMax=${encodeURIComponent(tMax)}&singleEvents=true&orderBy=startTime&maxResults=250`);
+        ((res && res.items) || []).forEach(e=>{
+          if(!e || e.status==="cancelled" || !e.start) return;
+          if((e.attendees||[]).some(a=>a.self && a.responseStatus==="declined")) return;
+          const allDay = !e.start.dateTime;
+          const o = {id:e.id, title:e.summary||"(ohne Titel)", calId:id, calendarName:cal.summary||"", allDay, sd:"", ed:"", st:"", et:""};
+          if(allDay){ o.sd = e.start.date; o.ed = (e.end && e.end.date) || wsAddDays(o.sd, 1); }
+          else{
+            const s = new Date(e.start.dateTime), t = new Date((e.end && e.end.dateTime) || e.start.dateTime);
+            o.sd = dateKey(s); o.ed = dateKey(t); o.st = hm(s); o.et = hm(t);
+          }
+          list.push(o);
+        });
+      }catch(err){ bad.push(cal.summary||id); }
+    }
+  }catch(err){ bad.push("?"); }
+  wsWkEv.list = list; wsWkEv.key = key; wsWkEv.err = bad.length ? "Nicht lesbar: "+bad.join(", ") : ""; wsWkEv.busy = false;
+  if(view==="notes" && wsTab==="week") wsRenderIfSafe();
+}
+function wsWkEvHue(id){ let h = 0; for(let i=0;i<id.length;i++) h = (h*31 + id.charCodeAt(i)) % 360; return h; }
+function wsWkEvHtml(e){
+  const t = e.allDay ? "ganztägig" : (e.st + (e.et && e.et!==e.st ? "–"+e.et : ""));
+  return `<div class="ws-wkev" style="border-left-color:hsl(${wsWkEvHue(e.calId)},60%,58%)" title="${esc(e.calendarName)}"><span class="ws-wkevt">${esc(t)}</span> ${esc(e.title)}</div>`;
+}
 function wsWkCardHtml(it, em){
   const n = it.node, today = todayKey();
   const chips = [];
@@ -4125,34 +4235,62 @@ function wsWkCardHtml(it, em){
       <button class="ws-mini" data-wsact="wk-open" title="Im Dokument öffnen">↗</button></div>
   </div>`;
 }
+/* ToDo oder Tages-Ziel aus der ToDo-App, in keinem Punkt verknüpft */
+function wsWkXCardHtml(x){
+  const today = todayKey(), chips = [`<span class="ws-wkchip">${x.kind==="goal"?"🎯 Ziel":"☑ ToDo"}</span>`];
+  if(x.time) chips.push(`<span class="ws-wkchip">${esc(x.time)}</span>`);
+  if(x.tag) chips.push(`<span class="ws-wkchip tg">🏷 ${esc(x.tag)}</span>`);
+  return `<div class="ws-wkcard ws-wkx${x.done?" done":""}${x.day<today&&!x.done?" over":""}" data-xk="${x.kind}" data-xid="${esc(x.id)}">
+    <span class="ws-handle sm" draggable="true" data-wkdrag="1" title="Ziehen: auf einen anderen Tag">⠿</span>
+    <button class="ws-chk${x.done?" on":""}" data-wsact="wk-xdone" title="Erledigt">${x.done?"✓":""}</button>
+    <span class="ws-wkxt">${esc(x.title)}</span>
+    <div class="ws-wkmeta">${chips.join("")}<span class="ws-wkdoc">ToDo-App</span>
+      <button class="ws-mini" data-wsact="wk-move" title="Auf anderen Tag verschieben">⇄</button></div>
+  </div>`;
+}
 function wsWeekHtml(){
   if(!wsLoaded) return `<div class="empty">Der Arbeitsbereich ist nicht geladen.</div>`;
-  const D = wsWkData(), em = wsEffTags(wsDocs), today = todayKey();
-  const first = D.days[0], last = D.days[6];
-  const label = "KW "+wsKW(first)+" · "+first.slice(8,10)+"."+first.slice(5,7)+". bis "+last.slice(8,10)+"."+last.slice(5,7)+".";
+  if(wsWk.ev && wsWkCalIds().length && wsWkEv.key!==wsWkEvKey() && !wsWkEv.busy) setTimeout(()=>wsWkLoadEvents(false), 0);
+  const W = wsWkData(), D = W.D, X = W.X, E = W.E, em = wsEffTags(wsDocs), today = todayKey();
+  const first = W.days[0], last = W.days[W.days.length-1];
+  const label = "KW "+wsKW(first)+" · "+wsShortDate(first)+" bis "+wsShortDate(last);
+  const nCal = wsWkCalIds().length;
   const opts = [`<option value="all">Alle Dokumente</option>`].concat(wsDocs.map(d=>`<option value="${esc(d.id)}"${wsWk.doc===d.id?" selected":""}>${esc(d.title||"Ohne Titel")}</option>`)).join("");
   let h = wsTagBarHtml();
   h += `<div class="ws-wkbar">
-    <button class="ws-tb" data-wsact="wk-prev" title="Vorige Woche">◀</button>
+    <button class="ws-tb" data-wsact="wk-prev" title="Fünf Tage zurück">◀</button>
     <span class="ws-wklabel">${label}</span>
-    <button class="ws-tb" data-wsact="wk-next" title="Nächste Woche">▶</button>
+    <button class="ws-tb" data-wsact="wk-next" title="Fünf Tage weiter">▶</button>
     <button class="ws-tb" data-wsact="wk-today">Heute</button>
   </div>
   <div class="ws-wkbar">
     <select id="wsWkDoc" class="ws-wksel">${opts}</select>
     <input type="search" id="wsWkQ" data-wkq="1" class="ws-in ws-wkq" value="${esc(wsWk.q)}" placeholder="Suche">
     <button class="ws-fc${wsWk.showDone?" on":""}" data-wsact="wk-showdone">Erledigte zeigen</button>
+  </div>
+  <div class="ws-wkbar">
+    <button class="ws-fc${wsWk.ev?" on":""}" data-wsact="wk-ev" title="Kalendertermine ein- oder ausblenden">Kalendertermine</button>
+    <button class="ws-fc" data-wsact="wk-cals" title="Welche Kalender sollen erscheinen?">Kalender wählen (${nCal})</button>
+    <button class="ws-mini" data-wsact="wk-evreload" title="Kalendertermine neu laden">↻</button>
+    ${wsWkEv.busy?`<span class="ws-meta">lädt …</span>`:""}${wsWkEv.err?`<span class="ws-meta" style="color:var(--red)">${esc(wsWkEv.err)}</span>`:""}
   </div>`;
-  if(D.overdue.length){
-    h += `<div class="ws-wkover"><div class="ws-wkhead over">⚠ Überfällig (${D.overdue.length})</div>${D.overdue.map(it=>`<div class="ws-wkdayhint">${esc(wsShortDate(it.day))}</div>`+wsWkCardHtml(it, em)).join("")}</div>`;
+  const over = [];
+  D.overdue.forEach(it=>over.push({day:it.day, html:wsWkCardHtml(it, em)}));
+  X.overdue.forEach(x=>over.push({day:x.day, html:wsWkXCardHtml(x)}));
+  over.sort((a,b)=>a.day<b.day?-1:a.day>b.day?1:0);
+  if(over.length){
+    h += `<div class="ws-wkover"><div class="ws-wkhead over">⚠ Überfällig (${over.length})</div>${over.map(o=>`<div class="ws-wkdayhint">${esc(wsShortDate(o.day))}</div>`+o.html).join("")}</div>`;
   }
   h += `<div class="ws-wkgrid">`;
-  D.days.forEach(d=>{
-    const list = D.byDay[d], isT = d===today;
+  W.days.forEach(d=>{
+    const list = D.byDay[d], xl = X.byDay[d], isT = d===today;
+    const open = list.filter(x=>!x.node.done).length + xl.filter(x=>!x.done).length;
     h += `<div class="ws-wkcol${isT?" today":""}" data-wkday="${d}">
-      <div class="ws-wkhead${isT?" today":""}">${esc(wsShortDate(d))}${list.length?` <span class="ws-wkn">${list.filter(x=>!x.node.done).length}</span>`:""}</div>
+      <div class="ws-wkhead${isT?" today":""}">${esc(wsShortDate(d))}${(list.length+xl.length)?` <span class="ws-wkn">${open}</span>`:""}</div>
+      ${E && E[d].length ? `<div class="ws-wkevs">${E[d].map(wsWkEvHtml).join("")}</div>` : ""}
+      ${xl.map(wsWkXCardHtml).join("")}
       ${list.map(it=>wsWkCardHtml(it, em)).join("")}
-      <input type="text" class="ws-in ws-wkadd" data-wkadd="${d}" placeholder="+ Aufgabe">
+      <input type="text" class="ws-in ws-wkadd" data-wkadd="${d}" placeholder="+ ToDo">
     </div>`;
   });
   const LIM = 40, pl = wsPoolAll ? D.pool : D.pool.slice(0, LIM);
@@ -4163,7 +4301,7 @@ function wsWeekHtml(){
       <input type="text" class="ws-in ws-wkadd" data-wkadd="" placeholder="+ Aufgabe ohne Termin">
     </div></div>`;
   const tgt = wsWeekTargetDoc();
-  h += `<div class="ws-meta" style="margin-top:8px">Neue Aufgaben landen in: ${esc(tgt?tgt.title||"Ohne Titel":"neuem Dokument Aufgaben")}. Ziehen am ⠿ oder ⇄ verschiebt auf einen anderen Tag, in den Taskpool nur ohne ToDo/Ziel-Verknüpfung.</div>`;
+  h += `<div class="ws-meta" style="margin-top:8px">Neue Aufgaben landen in: ${esc(tgt?tgt.title||"Ohne Titel":"neuem Dokument Aufgaben")}. Mit Tag angelegte Aufgaben werden als ToDo angelegt. Ziehen am ⠿ oder ⇄ verschiebt auf einen anderen Tag, in den Taskpool nur Punkte ohne ToDo/Ziel-Verknüpfung.</div>`;
   return h;
 }
 function wsWeekTargetDoc(){
@@ -4171,7 +4309,7 @@ function wsWeekTargetDoc(){
   return wsPinned() || wsDocs[0] || null;
 }
 function wsWeekAdd(text, day){
-  text = String(text||"").trim(); if(!text || !wsLoaded) return false;
+  text = String(text||"").trim(); if(!text || !wsLoaded) return null;
   let doc = wsWeekTargetDoc();
   if(!doc){ doc = wsNewDoc("Aufgaben"); wsDocs.push(doc); }
   let block = doc.blocks.find(b=>b.type==="outline");
@@ -4183,8 +4321,9 @@ function wsWeekAdd(text, day){
     if(disp && wsTagKey(beff)!==wsF.tag) n.tag = disp;
   }
   block.items.push(n); wsTouch(doc);
-  return doc;
+  return {doc, node:n};
 }
+/* Punkt auf einen Tag setzen; ein neuer Termin wird standardmäßig ein ToDo (außer Meta-Projekt) */
 async function wsMoveTask(docId, nid, day){
   const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r) return;
   const n = r.node, L = n.link, today = todayKey();
@@ -4201,24 +4340,71 @@ async function wsMoveTask(docId, nid, day){
   }else{ n.date = day; n.ld = ""; }
   wsTouch(doc); render();
   if(L) wsLinkRun(()=>wsSyncItem(doc, n, L.cal));
+  else if(!n.meta && wsTitleOf(n)) wsLinkRun(()=>wsCreateItem(doc, n, "todo", false));
 }
-function wsOpenMoveMenu(docId, nid){
-  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r || document.getElementById("modalBg")) return;
-  const days = wsWkData().days, cur = wsLinkDay(r.node);
+/* ToDo oder Ziel ohne Punkt im Arbeitsbereich verschieben */
+async function wsMoveExternal(kind, id, day){
+  const today = todayKey();
+  if(!day){ toast("Ein ToDo oder Ziel braucht einen Tag"); return; }
+  if(kind==="todo"){
+    const t = tasks.find(x=>x.id===id); if(!t) return;
+    const wd = parseDate(day);
+    await updateTask(id, {startDate:day, weekday: wd ? String(wd.getDay()) : ""});
+    return;
+  }
+  const g = allOpenGoals.concat(goalTasks).find(x=>x.id===id); if(!g) return;
+  if(day===g.due) return;
+  if(day<today){ toast("Ein Tages-Ziel braucht ein heutiges oder späteres Datum"); return; }
+  if(wsGoalCount(day)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag am "+wsShortDate(day)); return; }
+  setSync("busy");
+  try{
+    await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId||"@default")}/tasks/${encodeURIComponent(id)}`,
+      {method:"PATCH", body:JSON.stringify({notes:GOAL_MARKER, due:day+"T12:00:00.000Z"})});
+    await loadGTasks();
+  }catch(e){ console.error("❌ Ziel verschieben:", e && e.message); toast("Verschieben fehlgeschlagen"); }
+  setSync("on"); render();
+}
+function wsPickDayMenu(title, cur, allowPool, cb){
+  if(document.getElementById("modalBg")) return;
+  const days = wsWkDays();
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
-      <h2>${esc(r.node.text||"Aufgabe")}</h2>
+      <h2>${esc(title||"Aufgabe")}</h2>
       <p class="muted" style="font-size:13px;margin-bottom:10px">Auf welchen Tag?</p>
       <div class="ws-frow" style="margin-bottom:12px">${days.map(d=>`<button class="ws-fc${d===cur?" on":""}" data-day="${d}">${esc(wsShortDate(d))}</button>`).join("")}
-        <button class="ws-fc${!cur?" on":""}" data-day="">Taskpool</button></div>
+        ${allowPool?`<button class="ws-fc${!cur?" on":""}" data-day="">Taskpool</button>`:""}</div>
       <label>Anderes Datum</label><input type="date" id="wsm_date" value="${esc(cur)}">
       <div class="modal-actions"><button class="btn-ghost" id="wsm_cancel">Abbrechen</button><button class="btn-primary" id="wsm_ok">Datum setzen</button></div>
     </div></div>`);
   const close = ()=>{ const mb = $("modalBg"); if(mb) mb.remove(); };
   $("wsm_cancel").onclick = close;
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
-  document.querySelectorAll("#modalBg [data-day]").forEach(b=>{ b.onclick = ()=>{ close(); wsMoveTask(docId, nid, b.dataset.day); }; });
-  $("wsm_ok").onclick = ()=>{ const v = $("wsm_date").value; close(); if(wsIsDate(v)) wsMoveTask(docId, nid, v); };
+  document.querySelectorAll("#modalBg [data-day]").forEach(b=>{ b.onclick = ()=>{ close(); cb(b.dataset.day); }; });
+  $("wsm_ok").onclick = ()=>{ const v = $("wsm_date").value; close(); if(wsIsDate(v)) cb(v); };
+}
+function wsOpenMoveMenu(docId, nid){
+  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r) return;
+  wsPickDayMenu(r.node.text, wsLinkDay(r.node), true, day=>wsMoveTask(docId, nid, day));
+}
+function wsOpenWkCalMenu(){
+  if(document.getElementById("modalBg")) return;
+  const list = wsWkCalList(), sel = new Set(wsWkCalIds());
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>Kalender in der Woche</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">${list.length ? "Termine dieser Kalender erscheinen in den Tagesspalten, zum Beispiel die Stundenpläne. Ein Stundenplan muss dafür als Kalender in deinem Google-Konto vorhanden sein." : "Es sind keine Kalender geladen."}</p>
+      <div class="ws-frow" style="margin-bottom:12px;flex-direction:column;align-items:stretch">${list.map(c=>`<button class="ws-fc${sel.has(c.id)?" on":""}" data-cal="${esc(c.id)}" style="text-align:left">${esc(c.summary||c.id)}</button>`).join("")}</div>
+      <div class="modal-actions"><button class="btn-ghost" id="wsc_cancel">Abbrechen</button><button class="btn-primary" id="wsc_ok">Übernehmen</button></div>
+    </div></div>`);
+  const close = ()=>{ const mb = $("modalBg"); if(mb) mb.remove(); };
+  $("wsc_cancel").onclick = close;
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+  document.querySelectorAll("#modalBg [data-cal]").forEach(b=>{ b.onclick = ()=>b.classList.toggle("on"); });
+  $("wsc_ok").onclick = ()=>{
+    wsWkCals = Array.from(document.querySelectorAll("#modalBg [data-cal].on")).map(b=>b.dataset.cal);
+    try{ localStorage.setItem("wsWkCals", JSON.stringify(wsWkCals)); }catch(e){}
+    close(); wsWkEv.key = ""; render();
+  };
 }
 let wsWkQTimer = null;
 main.addEventListener("input", e=>{
@@ -4239,14 +4425,17 @@ main.addEventListener("keydown", e=>{
   const el = e.target;
   if(e.key==="Enter" && el.dataset && el.dataset.wkadd!==undefined){
     e.preventDefault();
-    const day = el.dataset.wkadd, doc = wsWeekAdd(el.value, day);
-    if(doc){ wsFocusSel = '.ws-wkadd[data-wkadd="'+day+'"]'; render(); }
+    const day = el.dataset.wkadd, res = wsWeekAdd(el.value, day);
+    if(res){
+      wsFocusSel = '.ws-wkadd[data-wkadd="'+day+'"]'; render();
+      if(day) wsLinkRun(()=>wsCreateItem(res.doc, res.node, "todo", false));
+    }
   }
 });
 main.addEventListener("dragstart", e=>{
   const h = e.target.closest && e.target.closest("[data-wkdrag]"); if(!h) return;
   const card = h.closest(".ws-wkcard"); if(!card) return;
-  wsWkDrag = {did:card.dataset.did, nid:card.dataset.nid, el:card};
+  wsWkDrag = card.dataset.xk ? {xk:card.dataset.xk, xid:card.dataset.xid, el:card} : {did:card.dataset.did, nid:card.dataset.nid, el:card};
   e.dataTransfer.effectAllowed = "move";
   try{ e.dataTransfer.setData("text/plain", "wk"); e.dataTransfer.setDragImage(card, 12, 12); }catch(_){}
   setTimeout(()=>{ if(wsWkDrag) card.classList.add("ws-dragging"); }, 0);
@@ -4264,7 +4453,8 @@ main.addEventListener("drop", e=>{
   e.preventDefault();
   const d = wsWkDrag; wsWkDrag = null;
   document.querySelectorAll(".ws-wkcol.over,.ws-dragging").forEach(x=>x.classList.remove("over","ws-dragging"));
-  wsMoveTask(d.did, d.nid, col.dataset.wkday);
+  if(d.xk) wsMoveExternal(d.xk, d.xid, col.dataset.wkday);
+  else wsMoveTask(d.did, d.nid, col.dataset.wkday);
 });
 main.addEventListener("dragend", ()=>{
   if(!wsWkDrag) return;
@@ -4274,12 +4464,28 @@ main.addEventListener("click", e=>{
   const a = e.target.closest("[data-wsact]"); if(!a) return;
   const act = a.dataset.wsact; if(act.indexOf("wk-")!==0) return;
   const card = a.closest(".ws-wkcard");
-  if(act==="wk-prev"){ wsWkStart = wsAddDays(wsWkMonday(), -7); render(); return; }
-  if(act==="wk-next"){ wsWkStart = wsAddDays(wsWkMonday(), 7); render(); return; }
-  if(act==="wk-today"){ wsWkStart = wsMonday(todayKey()); render(); return; }
+  if(act==="wk-prev"){ wsWkStart = wsAddDays(wsWkFirst(), -WK_DAYS); render(); return; }
+  if(act==="wk-next"){ wsWkStart = wsAddDays(wsWkFirst(), WK_DAYS); render(); return; }
+  if(act==="wk-today"){ wsWkStart = null; render(); return; }
   if(act==="wk-showdone"){ wsWk.showDone = !wsWk.showDone; wsWkSave(); render(); return; }
+  if(act==="wk-ev"){ wsWk.ev = !wsWk.ev; wsWkSave(); render(); return; }
+  if(act==="wk-cals"){ wsOpenWkCalMenu(); return; }
+  if(act==="wk-evreload"){ wsWkEv.key = ""; wsWkLoadEvents(true); render(); return; }
   if(act==="wk-pool-all"){ wsPoolAll = true; render(); return; }
   if(!card) return;
+  if(card.dataset.xk){
+    const kind = card.dataset.xk, id = card.dataset.xid;
+    if(act==="wk-xdone"){
+      if(kind==="todo") toggleDone(id, "once");
+      else{ const g = allOpenGoals.concat(goalTasks).find(x=>x.id===id); if(g && g.completed) uncompleteGTask(id); else completeGTask(id); }
+      return;
+    }
+    if(act==="wk-move"){
+      const cur = kind==="todo" ? ((tasks.find(x=>x.id===id)||{}).startDate||"") : ((allOpenGoals.concat(goalTasks).find(x=>x.id===id)||{}).due||"");
+      wsPickDayMenu(card.querySelector(".ws-wkxt").textContent, cur, false, day=>wsMoveExternal(kind, id, day));
+    }
+    return;
+  }
   const doc = wsGet(card.dataset.did), r = doc && wsFindNode(doc, card.dataset.nid); if(!r) return;
   if(act==="wk-done"){
     r.node.done = !r.node.done; wsTouch(doc); render();
@@ -4944,9 +5150,11 @@ function wsOpenLinkMenu(docId, nid){
   const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;
   if(document.getElementById("modalBg")) return;
   const L = n.link, att = wsIsAtt(n);
+  const defKind = (!L && !n.date && !n.ld && !n.dl && !n.meta) ? "todo" : "";      // neuer Termin: standardmäßig ein ToDo
   const kindRow = L
     ? `<p class="muted" style="font-size:13px;margin-bottom:10px">Verknüpft mit ${L.kind==="goal"?"einem Tages-Ziel":"einem ToDo"}. Titel, Datum und Erledigt-Status werden in beide Richtungen abgeglichen.</p>`
-    : `<label>Anlegen als</label><div class="seg" id="wsl_kind"><button data-k="" class="sel">Nur Datum</button><button data-k="todo">ToDo</button><button data-k="goal">Tages-Ziel</button></div>`;
+    : `<label>Anlegen als</label><div class="seg" id="wsl_kind"><button data-k=""${defKind?"":' class="sel"'}>Nur Datum</button><button data-k="todo"${defKind?' class="sel"':""}>ToDo</button><button data-k="goal">Tages-Ziel</button></div>
+       <div class="muted" style="font-size:12px;margin:4px 0 0">Ein gesetzter Termin wird standardmäßig als ToDo angelegt. Bei Meta-Projekt bleibt es beim Datum.</div>`;
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${esc(wsTitleOf(n)||(att?"Anhang":"Punkt"))}</h2>
@@ -4959,7 +5167,7 @@ function wsOpenLinkMenu(docId, nid){
       <div class="toggle-row"><div><div style="font-size:14px">Meta-Projekt</div>
         <div class="muted" style="font-size:12px">Oberste Ebene im Gantt-Reiter</div></div>
         <button class="switch${n.meta?" on":""}" id="wsl_meta"></button></div>`}
-      <div class="toggle-row" id="wsl_calrow" style="${L?"":"display:none"}"><div><div style="font-size:14px">In Google Calendar</div>
+      <div class="toggle-row" id="wsl_calrow" style="${(L||defKind)?"":"display:none"}"><div><div style="font-size:14px">In Google Calendar</div>
         <div class="muted" style="font-size:12px">Ganztägiger Termin am Datum</div></div>
         <button class="switch${L&&L.cal?" on":""}" id="wsl_cal"></button></div>
       <div class="modal-actions">
@@ -4967,11 +5175,11 @@ function wsOpenLinkMenu(docId, nid){
         ${L?`<button class="btn-ghost" id="wsl_unlink">Verknüpfung lösen</button>`:""}
         <button class="btn-primary" id="wsl_ok">Übernehmen</button>
       </div></div></div>`);
-  let kind = "";
+  let kind = defKind, touched = false;
   const kindEl = $("wsl_kind");
   if(kindEl) kindEl.querySelectorAll("button").forEach(b=>b.onclick=()=>{
     kindEl.querySelectorAll("button").forEach(x=>x.classList.remove("sel")); b.classList.add("sel");
-    kind = b.dataset.k; $("wsl_calrow").style.display = kind ? "" : "none";
+    touched = true; kind = b.dataset.k; $("wsl_calrow").style.display = kind ? "" : "none";
     if(kind && !$("wsl_date").value && !($("wsl_dl") && $("wsl_dl").value)) $("wsl_date").value = todayKey();
     upEnd();
   });
@@ -4983,8 +5191,8 @@ function wsOpenLinkMenu(docId, nid){
     const sp = wsSpan(tmp);
     const dayEl = $("wsl_day");
     if(dayEl){
-      const linked = !!L, chosen = linked || !!kind;
       const d0 = $("wsl_date").value, dl0 = $("wsl_dl").value;
+      const linked = !!L, chosen = linked || (!!kind && (touched || !!d0 || !!dl0));
       const day = chosen ? wsPlanDay(n, d0, dl0, linked, todayKey()) : "";
       dayEl.textContent = day ? ((linked ? (L.kind==="goal" ? "Tages-Ziel" : "ToDo") : (kind==="goal" ? "Tages-Ziel" : "ToDo"))+" gilt am "+wsShortDate(day)+(dl0 && day===dl0 ? " (Tag der Deadline)" : "")) : "";
     }
@@ -4996,7 +5204,13 @@ function wsOpenLinkMenu(docId, nid){
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
   if($("wsl_unlink")) $("wsl_unlink").onclick = ()=>{ $("modalBg").remove(); wsUnlink(docId, nid); };
   $("wsl_ok").onclick = ()=>{
-    const o = {date:$("wsl_date").value, kind, cal:$("wsl_cal").classList.contains("on"),
+    let k = kind;
+    if(k && !touched){                                               // Standardwahl ToDo gilt nur mit Termin und ohne Meta-Projekt
+      const hasDay = !!$("wsl_date").value || ($("wsl_dl") && !!$("wsl_dl").value);
+      const isMeta = $("wsl_meta") && $("wsl_meta").classList.contains("on");
+      if(!hasDay || isMeta || !wsTitleOf(n)) k = "";
+    }
+    const o = {date:$("wsl_date").value, kind:k, cal:$("wsl_cal").classList.contains("on"),
       dur:$("wsl_dur")?$("wsl_dur").value:0, dl:$("wsl_dl")?$("wsl_dl").value:"", meta:$("wsl_meta")?$("wsl_meta").classList.contains("on"):false};
     $("modalBg").remove(); wsApplyMenu(docId, nid, o);
   };

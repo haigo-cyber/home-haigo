@@ -336,7 +336,7 @@
   .ws-fhint{font:600 11px var(--mono);color:var(--muted)}
   .ws-fpanel{background:#101216;border:1px solid #2c3037;border-radius:10px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:8px}
   .ws-frow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .ws-fl{flex:0 0 52px;font:600 11px var(--mono);color:var(--muted)}
+  .ws-fl{flex:0 0 84px;font:600 11px var(--mono);color:var(--muted)}
   .ws-frow .ws-in{flex:1 1 160px;padding:8px;font-size:16px}
   .ws-fc{background:#14161a;border:1px solid #30343b;color:var(--text);border-radius:999px;padding:8px 12px;font-size:13px;cursor:pointer}
   .ws-fc.on{background:var(--metal-hi);border-color:#7a818d;color:#fff}
@@ -420,6 +420,10 @@
   .ws-tagbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
   .ws-tagb.on{color:var(--amber);border-color:rgba(255,176,32,.45)}
   .ws-x.ws-tagb{width:auto;padding:0 8px;font-size:12px;white-space:nowrap}
+
+  #wsTopBar{position:sticky;z-index:4;display:none;gap:6px;overflow-x:auto;padding:6px 14px;background:var(--bg);border-bottom:1px solid #2c3037}
+  .ws-topchip{flex:none;max-width:78vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#14161a;border:2px solid #30343b;color:var(--text);border-radius:999px;padding:4px 10px 4px 4px;font-size:13px;cursor:pointer}
+  .ws-topd{display:inline-block;color:#fff;border-radius:999px;padding:1px 8px;font-weight:700;font-size:12px;margin-right:4px}
 </style>
 </head>
 <body>
@@ -1823,6 +1827,7 @@ function setNavH(){
 window.addEventListener("resize",setNavH);
 function render(){
   gameTick();
+  wsTopBarUpdate();
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   setNavH();
   const titles={today:"Heute",distractions:"Ablenkungen",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",notes:"Arbeitsbereich",settings:"Konto"};
@@ -1838,6 +1843,7 @@ function render(){
     const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const sorted=sortTasksForToday(tasks, key);
     let h=hudHtml();
+    h+=wsUrgentDeadlinesHtml();
     h+=wsTodayHtml();
     h+=wsMetaTodayHtml();
     if(goalTasks.length){
@@ -1863,7 +1869,6 @@ function render(){
         </div>`;
       });
     }
-    h+=wsUrgentDeadlinesHtml();
     if(todayCalendarEvents.length){
       const completedCalEvents = JSON.parse(localStorage.getItem("completedCalEvents") || "[]");
       const visibleEvents = todayCalendarEvents.filter(e => !completedCalEvents.includes(e.id));
@@ -3425,10 +3430,10 @@ function wsCount(node){
 function wsAllDone(n){ return n.done && n.children.every(wsAllDone); }
 /* Nächste offene Schritte: Blätter bzw. Knoten, deren Unterpunkte alle erledigt sind, in Dokumentreihenfolge */
 function wsNextOpen(doc, max){ return wsNextOpenItems(doc, max).map(n=>n.text.trim()); }
-function wsNextOpenItems(doc, max, vis){
+function wsNextOpenItems(doc, max, vis, sort){
   const out = [];
   const walk = (items)=>{
-    for(const n of items){
+    for(const n of (sort ? sort(items) : items)){
       if(out.length>=max) return;
       if(n.done) continue;
       if(vis && !vis(n)) continue;
@@ -3448,7 +3453,7 @@ function wsOpenCount(doc){
 }
 
 /* ---- Gantt-Zeilen aus der Gliederung ---- */
-function wsGanttRows(roots, sel, em){
+function wsGanttRows(roots, sel, em, sort){
   const rows = [];
   const walk = (n, level)=>{
     if(wsAllDone(n)) return null;
@@ -3457,7 +3462,7 @@ function wsGanttRows(roots, sel, em){
     const row = {id:n.id, title:(n.text||"").trim()||"(ohne Titel)", level, meta:!!n.meta, own, start:null, end:null, agg:false, dl:n.dl||"", late:false};
     rows.push(row);
     let lo = own ? own.start : null, hi = own ? own.end : null;
-    n.children.forEach(c=>{
+    (sort ? sort(n.children) : n.children).forEach(c=>{
       const r = walk(c, level+1);
       if(r && r.start){ if(!lo || r.start<lo) lo = r.start; if(!hi || r.end>hi) hi = r.end; }
     });
@@ -3466,7 +3471,7 @@ function wsGanttRows(roots, sel, em){
     if(!row.start && !row.meta){ rows.splice(rows.indexOf(row), 1); return null; }
     return row;
   };
-  roots.forEach(n=>walk(n, 0));
+  (sort ? sort(roots) : roots).forEach(n=>walk(n, 0));
   return rows;
 }
 /* oberste Meta-Projekte (nicht verschachtelt gesammelt) aus allen Dokumenten */
@@ -3510,10 +3515,11 @@ function wsFNorm(f){
   f = (f && typeof f==="object") ? f : {};
   return {lvl:(f.lvl>=1 && f.lvl<=3)?Math.floor(f.lvl):0, hideDone:!!f.hideDone, dated:!!f.dated,
     due:(f.due==="today"||f.due==="week")?f.due:"", meta:!!f.meta, noAtt:!!f.noAtt, q:String(f.q||"").trim().slice(0,80), showHid:!!f.showHid,
+    manual:!!f.manual,
     tag:(f.tag==="!none") ? "!none" : wsTagKey(f.tag).slice(0,40)};
 }
 function wsHasCrit(f){ return !!(f.dated || f.due || f.meta || f.q || f.tag); }
-function wsFActive(f){ return (f.lvl?1:0)+(f.hideDone?1:0)+(f.dated?1:0)+(f.due?1:0)+(f.meta?1:0)+(f.noAtt?1:0)+(f.q?1:0)+(f.showHid?1:0); }
+function wsFActive(f){ return (f.lvl?1:0)+(f.hideDone?1:0)+(f.dated?1:0)+(f.due?1:0)+(f.meta?1:0)+(f.noAtt?1:0)+(f.q?1:0)+(f.showHid?1:0)+(f.manual?1:0); }
 function wsNodeDue(n){ return n.dl || n.ld || n.date || ""; }
 function wsNodeMatch(n, f, today, eff){
   if(f.tag && !wsTagMatch(eff, f.tag)) return false;
@@ -3600,6 +3606,35 @@ function wsDocHasTag(doc, sel){
   const bt = wsBlockTags(doc), em = wsEffTags([doc]);
   return doc.blocks.some(b=> b.type==="outline" ? b.items.some(n=>wsTagShownNode(n, sel, em)) : wsTagMatch(bt[b.id], sel));
 }
+
+/* ---- Dringlichkeit: Sortierung (rein) ---- */
+/* frühester offener Tag im Punkt samt Unterpunkten: Deadline, Termin, Ende der Laufzeit; leer = nichts Terminiertes */
+function wsUrgKey(n){
+  let best = "";
+  const take = d=>{ if(d && (!best || d<best)) best = d; };
+  const walk = x=>{
+    if(!x.done){
+      take(x.dl); take(wsLinkDay(x));
+      const sp = wsSpan(x); if(sp) take(sp.end);
+      (x.att||[]).forEach(a=>{ if(!a.done) take(a.date); });
+    }
+    x.children.forEach(walk);
+  };
+  walk(n);
+  return best;
+}
+/* Dringendstes zuerst; ohne Termin danach, Erledigtes ganz am Ende; bei Gleichstand bleibt die Reihenfolge */
+function wsUrgSort(items){
+  const rank = n=>{ if(wsAllDone(n)) return 2; return wsUrgKey(n) ? 0 : 1; };
+  return items.map((n,i)=>({n, i, r:rank(n), k:wsUrgKey(n)}))
+    .sort((a,b)=> a.r-b.r || (a.r===0 ? (a.k<b.k?-1:a.k>b.k?1:0) : 0) || a.i-b.i)
+    .map(x=>x.n);
+}
+function wsDocUrgKey(doc){
+  let best = "";
+  doc.blocks.forEach(b=>{ if(b.type==="outline") b.items.forEach(n=>{ const k = wsUrgKey(n); if(k && (!best || k<best)) best = k; }); });
+  return best;
+}
 /* WS-PURE-END */
 
 /* ---- Zustand ---- */
@@ -3610,6 +3645,7 @@ let wsFOpen = (()=>{ try{ return localStorage.getItem("wsFOpen")==="1"; }catch(e
 const wsColl = new Map();   // nur für diese Sitzung: Auf-/Zuklappen, solange ein Filter aktiv ist
 function wsFSave(){ try{ localStorage.setItem("wsFilter", JSON.stringify(wsF)); }catch(e){} wsColl.clear(); }
 function wsVis(n, inh){ return wsNodeShown(n, wsF, todayKey(), inh); }
+function wsSorter(){ return wsF.manual ? null : wsUrgSort; }
 function wsFiltered(){ return !!wsF.lvl || wsHasCrit(wsF); }
 function wsEffCollapsed(n, depth){
   if(!wsFiltered()) return !!n.collapsed;
@@ -3777,7 +3813,7 @@ function wsAttsHtml(n){
 function wsNodeHtml(n, depth, inh){
   depth = depth||0;
   const eff = n.tag || inh || "";
-  const shown = n.children.filter(c=>wsVis(c, eff));
+  const shown = (wsF.manual ? n.children : wsUrgSort(n.children)).filter(c=>wsVis(c, eff));
   const hasKids = shown.length>0;
   const coll = wsEffCollapsed(n, depth);
   const cnt = n.children.length ? wsCount(n) : null;
@@ -3808,7 +3844,7 @@ function wsBlockHtml(b, eff){
   }else if(b.type==="heading"){
     body = `<input type="text" class="ws-in ws-h" data-wsf="text" value="${esc(b.text)}" placeholder="Überschrift">`;
   }else if(b.type==="outline"){
-    const vis = b.items.filter(n=>wsVis(n, eff));
+    const vis = (wsF.manual ? b.items : wsUrgSort(b.items)).filter(n=>wsVis(n, eff));
     if(wsF.tag && !vis.length) return "";
     body = `${(b.items.length && !vis.length)?`<div class="ws-meta">Alle Punkte sind durch die Ansicht ausgeblendet.</div>`:""}<ul class="ws-tree">${vis.map(n=>wsNodeHtml(n, 0, eff)).join("")}</ul>
       <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button>`;
@@ -3840,6 +3876,8 @@ function wsFilterHtml(docs){
         <button class="ws-fc" data-wsact="f-preset" data-p="week">Diese Woche</button>
         <button class="ws-fc" data-wsact="f-preset" data-p="meta">Meta-Projekte</button></div>
       <div class="ws-frow"><span class="ws-fl">Suche</span><input type="search" id="wsq" data-wsq="1" class="ws-in" value="${esc(wsF.q)}" placeholder="Text in Punkten und Anhängen"></div>
+      <div class="ws-frow"><span class="ws-fl">Reihenfolge</span>
+        ${ch("manual",0,"Dringendste zuerst",!wsF.manual)}${ch("manual",1,"Eigene Reihenfolge",wsF.manual)}</div>
       <div class="ws-frow"><span class="ws-fl">Ebenen</span>
         ${ch("lvl",0,"alle",!wsF.lvl)}${ch("lvl",1,"1",wsF.lvl===1)}${ch("lvl",2,"1-2",wsF.lvl===2)}${ch("lvl",3,"1-3",wsF.lvl===3)}</div>
       <div class="ws-frow"><span class="ws-fl">Zeigen</span>
@@ -3882,7 +3920,7 @@ function wsTodayInner(doc){
   </div>`;
   if(!open){
     const em = wsEffTags([doc]);
-    const next = wsNextOpenItems(doc, 4, n=>wsVis(n, em.get(n.id)));
+    const next = wsNextOpenItems(doc, 4, n=>wsVis(n, em.get(n.id)), wsSorter());
     h += `<div data-wsact="today-toggle" style="cursor:pointer">`;
     if(next.length){
       h += `<ul class="ws-prev">${next.map((n,i)=>`<li class="${i===0?"first":""}">${esc(n.text.trim())}${n.date?` <span class="ws-pd${n.date<todayKey()?" over":""}">${esc(wsShortDate(n.date))}</span>`:""}${n.link?` <span class="ws-pd">${n.link.kind==="goal"?"🎯":"☑"}</span>`:""}</li>`).join("")}</ul>`;
@@ -3914,7 +3952,8 @@ function wsDocsTabHtml(){
     return `<div class="empty">Der Arbeitsbereich konnte nicht geladen werden.${wsLoadError?`<br><span class="muted" style="font-size:12px">${esc(wsLoadError.slice(0,200))}</span>`:""}<br><br><button class="btn-ghost" style="flex:none;padding:10px 18px" data-wsact="retry-load">Erneut versuchen</button></div>`;
   }
   if(wsF.tag){
-    const list = wsDocs.filter(d=>wsDocHasTag(d, wsF.tag));
+    let list = wsDocs.filter(d=>wsDocHasTag(d, wsF.tag));
+    if(!wsF.manual){ list = list.map((d,i)=>({d,i,k:wsDocUrgKey(d)})).sort((a,b)=> (a.k?0:1)-(b.k?0:1) || (a.k<b.k?-1:a.k>b.k?1:0) || a.i-b.i).map(x=>x.d); }
     return wsTagBarHtml() + wsFilterHtml(list)
       + (list.length ? list.map(d=>`<div class="ws-card ws-mount" data-doc="${d.id}" data-mode="tab">${wsEditorHtml(d, "tab")}</div>`).join("")
                      : `<div class="empty">Kein Dokument hat Einträge mit diesem Tag.</div>`);
@@ -4095,7 +4134,7 @@ main.addEventListener("click", e=>{
   if(act==="tag-sel"){ wsF = wsFNorm({...wsF, tag:(wsF.tag===a.dataset.t)?"":a.dataset.t}); wsFSave(); render(); return; }
   if(act==="f-reset"){ wsF = wsFNorm(null); wsFSave(); render(); return; }
   if(act==="f-preset"){
-    const p = a.dataset.p, keep = {showHid:wsF.showHid, tag:wsF.tag};
+    const p = a.dataset.p, keep = {showHid:wsF.showHid, tag:wsF.tag, manual:wsF.manual};
     if(p==="all") wsF = wsFNorm(keep);
     else if(p==="over") wsF = wsFNorm({...keep, lvl:1, hideDone:true, noAtt:true});
     else if(p==="today") wsF = wsFNorm({...keep, due:"today", hideDone:true});
@@ -4107,6 +4146,7 @@ main.addEventListener("click", e=>{
     const k = a.dataset.k, v = a.dataset.v, nf = {...wsF};
     if(k==="lvl") nf.lvl = +v;
     else if(k==="due") nf.due = (nf.due===v)?"":v;
+    else if(k==="manual") nf.manual = v==="1";
     else nf[k] = !nf[k];
     wsF = wsFNorm(nf); wsFSave(); render(); return;
   }
@@ -4367,7 +4407,7 @@ function wsGanttDraw(){
   let roots;
   if(ganttSel==="meta") roots = wsMetaRoots(wsDocs);
   else{ const d = wsGet(ganttSel); roots = []; if(d) d.blocks.forEach(b=>{ if(b.type==="outline") roots.push(...b.items); }); }
-  const rows = wsGanttRows(roots, wsF.tag, wsF.tag ? wsEffTags(wsDocs) : null);
+  const rows = wsGanttRows(roots, wsF.tag, wsF.tag ? wsEffTags(wsDocs) : null, wsSorter());
   box.innerHTML = `<div class="g-bar-top"><select id="wsGanttSel">${opts.map(o=>`<option value="${esc(o.v)}"${o.v===ganttSel?" selected":""}>${esc(o.t)}</option>`).join("")}</select></div>`
     + (ganttSel==="meta" && !roots.length
         ? `<div class="empty">Noch kein Meta-Projekt. Im Menü 📅 eines Punktes den Schalter Meta-Projekt einschalten.</div>`
@@ -4848,6 +4888,30 @@ function wsDlCard(it, full){
       <div class="sub" style="${tc};font-size:12px;margin-top:2px">${n.meta?"🏛️ Metaprojekt · ":""}${esc(it.doc.title||"Ohne Titel")} · ⚑ ${url}</div>
       <div style="font-size:${full?14:12}px;margin-top:6px;padding:${full?"6px 10px":"4px 8px"};background:${color};color:#fff;border-radius:4px;display:inline-block;font-weight:bold">${wsDlLabel(it.days)}</div>
     </div></div>`;
+}
+
+/* ---- Leiste mit den dringendsten Deadlines, oben in allen Ansichten außer Heute, Deadlines und Konto ---- */
+function wsOpenDeadlineDoc(did){
+  if(!wsGet(did)) return;
+  wsOpenDocId = did; localStorage.setItem("wsOpenDoc", did);
+  wsTab = "docs"; localStorage.setItem("wsTab", "docs"); view = "notes"; render();
+}
+function wsTopBarUpdate(){
+  let el = document.getElementById("wsTopBar");
+  if(!el){
+    el = document.createElement("div"); el.id = "wsTopBar"; main.parentNode.insertBefore(el, main);
+    el.addEventListener("click", e=>{ const b = e.target.closest("[data-did]"); if(b) wsOpenDeadlineDoc(b.dataset.did); });
+  }
+  const show = wsLoaded && accessToken && view!=="today" && view!=="deadlines" && view!=="settings";
+  const list = show ? wsDeadlineItems(wsDocs, todayKey()).filter(it=>!it.node.hid && it.days<=14).slice(0, 3) : [];
+  if(!list.length){ el.style.display = "none"; el.innerHTML = ""; return; }
+  const hd = document.querySelector("header");
+  el.style.top = (hd ? hd.offsetHeight : 48) + "px";
+  el.style.display = "flex";
+  el.innerHTML = list.map(it=>{
+    const color = deadlineColor(it.days);
+    return `<button class="ws-topchip" style="border-color:${color}" data-did="${it.doc.id}" title="Im Arbeitsbereich öffnen"><span class="ws-topd" style="background:${color}">${esc(wsDlLabel(it.days))}</span> ${esc(wsTitleOf(it.node)||"(ohne Titel)")}</button>`;
+  }).join("");
 }
 function wsUrgentDeadlinesHtml(){
   if(!wsLoaded) return "";

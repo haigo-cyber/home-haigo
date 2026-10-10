@@ -327,8 +327,9 @@
   .ws-h{width:100%;font-size:17px;font-weight:700}
   .ws-tree{list-style:none;margin:0;padding:0}
   .ws-sub{margin-left:18px;border-left:1px solid #2c3037;padding-left:6px}
-  .ws-nrow{display:flex;align-items:center;gap:3px;padding:2px 0;border-radius:8px}
-  .ws-nin{flex:1;padding:6px 8px;font-size:14px}
+  .ws-nrow{display:flex;flex-wrap:wrap;align-items:center;gap:3px;padding:2px 0;border-radius:8px}
+  .ws-nin{flex:1 1 220px;min-width:0;padding:6px 8px;font-size:14px}
+  .ws-nta{resize:none;overflow:hidden;line-height:1.35;min-height:34px;font-family:inherit;overflow-wrap:anywhere;display:block}
   .ws-nright{display:contents}
   .ws-node.hid > .ws-nrow{opacity:.5}
   .ws-eye{opacity:.7}
@@ -3990,7 +3991,7 @@ function wsNodeHtml(n, depth, inh){
       <span class="ws-handle sm" draggable="true" data-wsdrag="node" title="Ziehen: Punkt samt Unterpunkten verschieben">⠿</span>
       <button class="ws-tog" data-wsact="toggle" title="${hasKids?(coll?"Aufklappen":"Zuklappen"):""}">${hasKids?(coll?"▸":"▾"):"·"}</button>
       <button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
-      <input type="text" class="ws-in ws-nin" data-wsf="node" value="${esc(n.text)}" placeholder="Punkt">
+      <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
       <span class="ws-nright">
       ${wsNodeChips(n)}
       ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}
@@ -4567,7 +4568,7 @@ function wsViewHtml(){
 /* ---- Nacharbeiten nach dem Rendern ---- */
 function wsAutosizeEl(el){ el.style.height = "auto"; el.style.height = (el.scrollHeight+2)+"px"; }
 function wsAfterRender(){
-  document.querySelectorAll(".ws-ta").forEach(wsAutosizeEl);
+  document.querySelectorAll(".ws-ta,.ws-nta").forEach(wsAutosizeEl);
   if(view==="notes" && wsTab==="gantt") wsGanttDraw();
   if(wsFocusSel){
     const el = document.querySelector(wsFocusSel); wsFocusSel = null;
@@ -4596,7 +4597,10 @@ main.addEventListener("input", e=>{
   const doc = wsGet(docEl.dataset.doc); if(!doc) return;
   if(f==="title") doc.title = el.value;
   else if(f==="text"){ const b = wsBlock(doc, el.closest(".ws-block").dataset.bid); if(b) b.text = el.value; if(el.tagName==="TEXTAREA") wsAutosizeEl(el); }
-  else if(f==="node"){ const r = wsFindNode(doc, el.closest(".ws-node").dataset.nid); if(r) r.node.text = el.value; }
+  else if(f==="node"){
+    if(/[\r\n]/.test(el.value)){ const p = el.selectionStart; el.value = el.value.replace(/\s*[\r\n]+\s*/g, " "); try{ el.setSelectionRange(p, p); }catch(_){} }
+    const r = wsFindNode(doc, el.closest(".ws-node").dataset.nid); if(r) r.node.text = el.value; wsAutosizeEl(el);
+  }
   else if(f==="atitle"){ const a = wsFindAny(doc, el.closest(".ws-att").dataset.aid); if(a) a.title = el.value; }
   else if(f==="aurl"){
     const a = wsFindAny(doc, el.closest(".ws-att").dataset.aid); if(a) a.url = el.value.trim();
@@ -4668,7 +4672,7 @@ main.addEventListener("keydown", e=>{
         if(prev) wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-nid="${prev}"] > .ws-nrow .ws-nin`;
         wsRerender(doc.id);
       }
-    }else if((e.key==="ArrowUp" || e.key==="ArrowDown") && !e.shiftKey && !e.altKey && !e.ctrlKey){
+    }else if((e.key==="ArrowUp" || e.key==="ArrowDown") && !e.shiftKey && !e.altKey && !e.ctrlKey && (e.key==="ArrowUp" ? el.selectionStart===0 : el.selectionStart===el.value.length)){
       const all = [...docEl.querySelectorAll(".ws-nin")]; const i = all.indexOf(el);
       const t = all[i + (e.key==="ArrowUp"?-1:1)];
       if(t){ e.preventDefault(); t.focus(); }

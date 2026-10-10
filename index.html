@@ -424,6 +424,11 @@
   #wsTopBar{position:sticky;z-index:4;display:none;gap:6px;overflow-x:auto;padding:6px 14px;background:var(--bg);border-bottom:1px solid #2c3037}
   .ws-topchip{flex:none;max-width:78vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#14161a;border:2px solid #30343b;color:var(--text);border-radius:999px;padding:4px 10px 4px 4px;font-size:13px;cursor:pointer}
   .ws-topd{display:inline-block;color:#fff;border-radius:999px;padding:1px 8px;font-weight:700;font-size:12px;margin-right:4px}
+
+  .ws-fh{display:flex;align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:var(--muted);font:600 12px var(--mono);padding:4px 2px;cursor:pointer}
+  .ws-fh:hover{color:#fff}
+  .ws-fp{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:13px/1.3 inherit;color:var(--text)}
+  .ws-fpv{color:var(--muted);padding:2px 4px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -3515,11 +3520,11 @@ function wsFNorm(f){
   f = (f && typeof f==="object") ? f : {};
   return {lvl:(f.lvl>=1 && f.lvl<=3)?Math.floor(f.lvl):0, hideDone:!!f.hideDone, dated:!!f.dated,
     due:(f.due==="today"||f.due==="week")?f.due:"", meta:!!f.meta, noAtt:!!f.noAtt, q:String(f.q||"").trim().slice(0,80), showHid:!!f.showHid,
-    manual:!!f.manual,
+    manual:!!f.manual, notes:!!f.notes, noTab:!!f.noTab,
     tag:(f.tag==="!none") ? "!none" : wsTagKey(f.tag).slice(0,40)};
 }
 function wsHasCrit(f){ return !!(f.dated || f.due || f.meta || f.q || f.tag); }
-function wsFActive(f){ return (f.lvl?1:0)+(f.hideDone?1:0)+(f.dated?1:0)+(f.due?1:0)+(f.meta?1:0)+(f.noAtt?1:0)+(f.q?1:0)+(f.showHid?1:0)+(f.manual?1:0); }
+function wsFActive(f){ return (f.lvl?1:0)+(f.hideDone?1:0)+(f.dated?1:0)+(f.due?1:0)+(f.meta?1:0)+(f.noAtt?1:0)+(f.q?1:0)+(f.showHid?1:0)+(f.manual?1:0)+(f.notes?1:0)+(f.noTab?1:0); }
 function wsNodeDue(n){ return n.dl || n.ld || n.date || ""; }
 function wsNodeMatch(n, f, today, eff){
   if(f.tag && !wsTagMatch(eff, f.tag)) return false;
@@ -3645,6 +3650,15 @@ let wsFOpen = (()=>{ try{ return localStorage.getItem("wsFOpen")==="1"; }catch(e
 const wsColl = new Map();   // nur für diese Sitzung: Auf-/Zuklappen, solange ein Filter aktiv ist
 function wsFSave(){ try{ localStorage.setItem("wsFilter", JSON.stringify(wsF)); }catch(e){} wsColl.clear(); }
 function wsVis(n, inh){ return wsNodeShown(n, wsF, todayKey(), inh); }
+const wsOpenMap = new Map();   // nur für diese Sitzung: einzeln auf- oder zugeklappte Notizen, Tabellen und Gliederungen
+function wsFoldOpen(id, kind){
+  if(wsOpenMap.has(id)) return wsOpenMap.get(id);
+  if(kind==="text") return !!wsF.notes;      // Notizen standardmäßig zu
+  if(kind==="table") return !wsF.noTab;
+  return true;
+}
+function wsFoldBtn(open, label){ return `<button class="ws-fh" data-wsact="fold" title="${open?"Einklappen":"Aufklappen"}"><span>${open?"▾":"▸"}</span><span class="ws-fp">${label}</span></button>`; }
+function wsFirstLine(t){ const s = String(t||"").trim().split("\n")[0]; return s.length>90 ? s.slice(0,90)+"…" : s; }
 function wsSorter(){ return wsF.manual ? null : wsUrgSort; }
 function wsFiltered(){ return !!wsF.lvl || wsHasCrit(wsF); }
 function wsEffCollapsed(n, depth){
@@ -3794,16 +3808,20 @@ function wsTableBody(b, drag){
     + `</tbody></table></div><button class="ws-addbtn" data-wsact="add-row">+ Zeile</button>`;
 }
 function wsAttHtml(a){
-  const body = a.type==="text"
-    ? `<textarea class="ws-in ws-ta" data-wsf="atext" rows="1" placeholder="Text oder Notiz">${esc(a.text)}</textarea>`
-    : wsTableBody(a, false);
+  const open = wsFoldOpen(a.id, a.type);
+  const body = !open
+    ? `<div class="ws-fp ws-fpv">${a.type==="text" ? (esc(wsFirstLine(a.text)) || "(leer)") : "Tabelle · "+a.rows.length+" Zeilen"}</div>`
+    : a.type==="text"
+      ? `<textarea class="ws-in ws-ta" data-wsf="atext" rows="1" placeholder="Text oder Notiz">${esc(a.text)}</textarea>`
+      : wsTableBody(a, false);
   return `<div class="ws-att${a.done?" done":""}" data-aid="${a.id}" data-kind="${a.type}">
     <div class="ws-arow">
+      <button class="ws-tog" data-wsact="fold" title="${open?"Einklappen":"Aufklappen"}">${open?"▾":"▸"}</button>
       <button class="ws-chk${a.done?" on":""}" data-wsact="done" title="Erledigt">${a.done?"✓":""}</button>
       <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":"Titel der Tabelle"}">
       <span class="ws-nright">${wsNodeChips(a)}<button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
     </div>
-    <div class="ws-abody">${body}</div>
+    <div class="ws-abody"${open?"":' data-wsact="fold"'}>${body}</div>
   </div>`;
 }
 function wsAttsHtml(n){
@@ -3840,16 +3858,21 @@ function wsBlockHtml(b, eff){
   let body = "";
   if(wsF.tag && b.type!=="outline" && !wsTagMatch(eff, wsF.tag)) return "";
   if(b.type==="text"){
-    body = `<textarea class="ws-in ws-ta" data-wsf="text" rows="1" placeholder="Text">${esc(b.text)}</textarea>`;
+    const open = wsFoldOpen(b.id, "text");
+    body = wsFoldBtn(open, open ? "Notiz" : (esc(wsFirstLine(b.text)) || "(leere Notiz)"))
+      + (open ? `<textarea class="ws-in ws-ta" data-wsf="text" rows="1" placeholder="Text">${esc(b.text)}</textarea>` : "");
   }else if(b.type==="heading"){
     body = `<input type="text" class="ws-in ws-h" data-wsf="text" value="${esc(b.text)}" placeholder="Überschrift">`;
   }else if(b.type==="outline"){
     const vis = (wsF.manual ? b.items : wsUrgSort(b.items)).filter(n=>wsVis(n, eff));
     if(wsF.tag && !vis.length) return "";
-    body = `${(b.items.length && !vis.length)?`<div class="ws-meta">Alle Punkte sind durch die Ansicht ausgeblendet.</div>`:""}<ul class="ws-tree">${vis.map(n=>wsNodeHtml(n, 0, eff)).join("")}</ul>
-      <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button>`;
+    const open = wsFoldOpen(b.id, "outline");
+    body = wsFoldBtn(open, "Gliederung · "+b.items.length+(b.items.length===1?" Punkt":" Punkte"))
+      + (open ? `${(b.items.length && !vis.length)?`<div class="ws-meta">Alle Punkte sind durch die Ansicht ausgeblendet.</div>`:""}<ul class="ws-tree">${vis.map(n=>wsNodeHtml(n, 0, eff)).join("")}</ul>
+      <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button>` : "");
   }else if(b.type==="table"){
-    body = wsTableBody(b, true);
+    const open = wsFoldOpen(b.id, "table");
+    body = wsFoldBtn(open, "Tabelle · "+b.rows.length+(b.rows.length===1?" Zeile":" Zeilen")) + (open ? wsTableBody(b, true) : "");
   }
   return `<div class="ws-block" data-bid="${b.id}" data-kind="${b.type}">
     <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
@@ -3883,7 +3906,7 @@ function wsFilterHtml(docs){
       <div class="ws-frow"><span class="ws-fl">Zeigen</span>
         ${ch("hideDone",1,"Erledigte aus",wsF.hideDone)}${ch("dated",1,"Nur mit Termin",wsF.dated)}
         ${ch("due","today","Heute fällig",wsF.due==="today")}${ch("due","week","Diese Woche",wsF.due==="week")}
-        ${ch("meta",1,"Nur Meta",wsF.meta)}${ch("noAtt",1,"Anhänge aus",wsF.noAtt)}${ch("showHid",1,"Ausgeblendete zeigen",wsF.showHid)}</div>
+        ${ch("meta",1,"Nur Meta",wsF.meta)}${ch("noAtt",1,"Anhänge aus",wsF.noAtt)}${ch("notes",1,"Notizen zeigen",wsF.notes)}${ch("noTab",1,"Tabellen zu",wsF.noTab)}${ch("showHid",1,"Ausgeblendete zeigen",wsF.showHid)}</div>
     </div>`;
   }
   return h;
@@ -4147,6 +4170,7 @@ main.addEventListener("click", e=>{
     if(k==="lvl") nf.lvl = +v;
     else if(k==="due") nf.due = (nf.due===v)?"":v;
     else if(k==="manual") nf.manual = v==="1";
+    else if(k==="notes" || k==="noTab"){ nf[k] = !nf[k]; wsOpenMap.clear(); }
     else nf[k] = !nf[k];
     wsF = wsFNorm(nf); wsFSave(); render(); return;
   }
@@ -4192,11 +4216,15 @@ main.addEventListener("click", e=>{
   if(act==="del-doc"){ wsDeleteDocFlow(doc); return; }
   if(act==="add-block"){
     const b = wsNewBlock(a.dataset.type); if(!b) return;
+    wsOpenMap.set(b.id, true);
     doc.blocks.push(b); wsTouch(doc);
     wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-bid="${b.id}"] .ws-in`; wsRerender(doc.id); return;
   }
   const blockEl = a.closest(".ws-block");
   const block = blockEl ? wsBlock(doc, blockEl.dataset.bid) : null;
+  if(act==="fold" && block && !a.closest(".ws-att") && !a.closest(".ws-node")){
+    wsOpenMap.set(block.id, !wsFoldOpen(block.id, block.type)); wsRerender(doc.id); return;
+  }
   if(act==="tag-block" && block){ wsOpenTagMenu(doc.id, "block", block.id); return; }
   if(act==="del-block" && block){
     wsDeleteBlockFlow(doc, block); return;
@@ -4208,6 +4236,7 @@ main.addEventListener("click", e=>{
   const attEl = a.closest(".ws-att");
   if(attEl){
     const att = wsFindAny(doc, attEl.dataset.aid); if(!att) return;
+    if(act==="fold"){ wsOpenMap.set(att.id, !wsFoldOpen(att.id, att.type)); wsRerender(doc.id); return; }
     if(act==="done"){
       att.done = !att.done; wsTouch(doc); wsRerender(doc.id);
       if(att.link) wsLinkRun(()=>wsPushDone(doc, att));
@@ -4245,6 +4274,7 @@ main.addEventListener("click", e=>{
     if(act==="att-toggle"){ r.node.aopen = !r.node.aopen; wsTouch(doc); wsRerender(doc.id); return; }
     if(act==="add-att"){
       const at = wsNewAtt(a.dataset.type); if(!at) return;
+      wsOpenMap.set(at.id, true);
       r.node.att.push(at); r.node.aopen = true; wsTouch(doc);
       wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-aid="${at.id}"] .ws-abody .ws-in`; wsRerender(doc.id); return;
     }

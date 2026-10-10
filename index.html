@@ -462,7 +462,29 @@
   .ws-wkevt{font:600 11px var(--mono);color:var(--muted)}
   .ws-wkxt{flex:1 1 90px;min-width:0;font-size:14px;padding:5px 6px;overflow-wrap:anywhere}
   .ws-wkx{border-style:dashed}
-  @media(max-width:700px){ .ws-wkgrid{grid-template-columns:1fr} .ws-wksel{max-width:100%} }
+  .app.ws-wide{max-width:none!important}
+  @media(min-width:1100px){ .ws-wkgrid.ws-wide5{grid-template-columns:repeat(6,minmax(0,1fr))} }
+  @media(min-width:700px){ .ws-wkgrid.ws-two{grid-template-columns:repeat(3,minmax(0,1fr))} }
+  .ws-agbody{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .ws-aglist{display:flex;flex-direction:column;gap:8px}
+  .ws-wkcol.ws-agday{display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px;min-height:0}
+  .ws-aghead{display:flex;flex-direction:column;align-items:center;gap:2px;font:700 12px var(--mono);color:var(--muted);padding-top:2px}
+  .ws-aghead.today{color:var(--amber)}
+  .ws-agnum{font-size:22px;line-height:1}
+  .ws-aghead.today .ws-agnum{background:var(--amber);color:#000;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:18px}
+  .ws-agmon{font-size:11px;font-weight:600}
+  .ws-wkcol.ws-agpool{display:flex}
+  .ws-agcal{font-size:11px;color:var(--muted);margin-left:6px}
+  .ws-daygrid{display:grid;grid-template-columns:minmax(0,2fr) minmax(220px,1fr);gap:8px;align-items:start}
+  .ws-dayone{min-height:160px}
+  @media(min-width:700px){
+    :is(.ws-agday,.ws-two .ws-wkcol:not(.pool),.ws-dayone) .ws-wkcard{flex-wrap:nowrap}
+    :is(.ws-agday,.ws-two .ws-wkcol:not(.pool),.ws-dayone) .ws-wkmeta{flex:0 0 auto;padding-left:0}
+    :is(.ws-agday,.ws-two .ws-wkcol:not(.pool),.ws-dayone) :is(.ws-wkin,.ws-wkxt){flex:1 1 auto}
+    :is(.ws-agday,.ws-two .ws-wkcol,.ws-dayone) .ws-wkev{display:flex;gap:10px;align-items:baseline}
+    :is(.ws-agday,.ws-two .ws-wkcol,.ws-dayone) .ws-wkevt{min-width:92px}
+  }
+  @media(max-width:700px){ .ws-wkgrid{grid-template-columns:1fr} .ws-wksel{max-width:100%} .ws-wkcol.ws-agday{grid-template-columns:56px minmax(0,1fr)} .ws-daygrid{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -4147,14 +4169,15 @@ function wsOldNotesHtml(){
 
 /* ============ WOCHENÜBERSICHT ============ */
 /* Fünf Tage ab heute: Punkte des Arbeitsbereichs, ToDos und Tages-Ziele der ToDo-App sowie Termine ausgewählter Kalender */
-const WK_DAYS = 5;
-let wsWk = (()=>{ try{ const o = JSON.parse(localStorage.getItem("wsWk")||"null")||{}; return {doc:String(o.doc||"all"), q:String(o.q||""), showDone:o.showDone!==false, ev:o.ev!==false}; }catch(e){ return {doc:"all", q:"", showDone:true, ev:true}; } })();
+const WK_MODES = {two:{n:2, step:2}, agenda:{n:14, step:7}, week:{n:5, step:5}, day:{n:1, step:1}};
+let wsWk = (()=>{ try{ const o = JSON.parse(localStorage.getItem("wsWk")||"null")||{}; return {doc:String(o.doc||"all"), q:String(o.q||""), showDone:o.showDone!==false, ev:o.ev!==false, mode:WK_MODES[o.mode]?o.mode:"two", wide:o.wide!==false}; }catch(e){ return {doc:"all", q:"", showDone:true, ev:true, mode:"two", wide:true}; } })();
 let wsWkStart = null, wsPoolAll = false, wsWkDrag = null;
 let wsWkCals = (()=>{ try{ const r = localStorage.getItem("wsWkCals"); if(r===null) return null; const a = JSON.parse(r); return Array.isArray(a) ? a.map(String) : null; }catch(e){ return null; } })();
 const wsWkEv = {key:"", list:[], busy:false, err:""};
 function wsWkSave(){ try{ localStorage.setItem("wsWk", JSON.stringify(wsWk)); }catch(e){} }
 function wsWkFirst(){ return wsWkStart || todayKey(); }
-function wsWkDays(){ const f = wsWkFirst(), a = []; for(let i=0;i<WK_DAYS;i++) a.push(wsAddDays(f, i)); return a; }
+function wsWkN(){ return WK_MODES[wsWk.mode].n; }
+function wsWkDays(){ const f = wsWkFirst(), a = []; for(let i=0;i<wsWkN();i++) a.push(wsAddDays(f, i)); return a; }
 function wsWkCalList(){ return (allCalendars && allCalendars.length) ? allCalendars : calendars; }
 /* Ohne eigene Auswahl: Kalender, deren Name nach Stundenplan klingt */
 function wsWkCalIds(){
@@ -4171,7 +4194,7 @@ function wsWkOwnEvents(){
 }
 function wsWkData(){
   const days = wsWkDays(), today = todayKey(), tag = wsF.tag;
-  const D = wsWeekTasks(wsDocs, {start:days[0], n:WK_DAYS, overFrom:today, today, doc:wsWk.doc, tag, q:wsWk.q, showDone:wsWk.showDone});
+  const D = wsWeekTasks(wsDocs, {start:days[0], n:wsWkN(), overFrom:today, today, doc:wsWk.doc, tag, q:wsWk.q, showDone:wsWk.showDone});
   const goals = new Map(); allOpenGoals.concat(goalTasks).forEach(g=>{ if(g && g.id && !goals.has(g.id)) goals.set(g.id, g); });
   const X = wsWeekExternal(tasks, Array.from(goals.values()), {days, start:days[0], today, overFrom:today, linked:wsWkLinkedSet(), isDone:isEverDone, showDone:wsWk.showDone, tag, q:wsWk.q, docAll:wsWk.doc==="all"});
   let E = null;
@@ -4182,7 +4205,7 @@ function wsWkData(){
   return {D, X, E, days};
 }
 /* ---- Kalendertermine laden ---- */
-function wsWkEvKey(){ return wsWkFirst()+"|"+WK_DAYS+"|"+wsWkCalIds().join(","); }
+function wsWkEvKey(){ return wsWkFirst()+"|"+wsWkN()+"|"+wsWkCalIds().join(","); }
 async function wsWkLoadEvents(force){
   if(wsWkEv.busy) return;
   const key = wsWkEvKey(); if(!force && wsWkEv.key===key) return;
@@ -4215,9 +4238,9 @@ async function wsWkLoadEvents(force){
   if(view==="notes" && wsTab==="week") wsRenderIfSafe();
 }
 function wsWkEvHue(id){ let h = 0; for(let i=0;i<id.length;i++) h = (h*31 + id.charCodeAt(i)) % 360; return h; }
-function wsWkEvHtml(e){
+function wsWkEvHtml(e, wide){
   const t = e.allDay ? "ganztägig" : (e.st + (e.et && e.et!==e.st ? "–"+e.et : ""));
-  return `<div class="ws-wkev" style="border-left-color:hsl(${wsWkEvHue(e.calId)},60%,58%)" title="${esc(e.calendarName)}"><span class="ws-wkevt">${esc(t)}</span> ${esc(e.title)}</div>`;
+  return `<div class="ws-wkev" style="border-left-color:hsl(${wsWkEvHue(e.calId)},60%,58%)" title="${esc(e.calendarName)}"><span class="ws-wkevt">${esc(t)}</span> ${esc(e.title)}${wide?` <span class="ws-agcal">${esc(e.calendarName)}</span>`:""}</div>`;
 }
 function wsWkCardHtml(it, em){
   const n = it.node, today = todayKey();
@@ -4248,19 +4271,44 @@ function wsWkXCardHtml(x){
       <button class="ws-mini" data-wsact="wk-move" title="Auf anderen Tag verschieben">⇄</button></div>
   </div>`;
 }
+function wsWkPoolHtml(D, em, cls){
+  const LIM = 40, pl = wsPoolAll ? D.pool : D.pool.slice(0, LIM);
+  return `<div class="ws-wkcol pool${cls||""}" data-wkday="">
+      <div class="ws-wkhead pool">Taskpool <span class="ws-wkn">${D.pool.length}</span></div>
+      <div class="ws-agbody">
+      ${pl.map(it=>wsWkCardHtml(it, em)).join("")}
+      ${D.pool.length>LIM&&!wsPoolAll?`<button class="ws-addbtn" data-wsact="wk-pool-all">${D.pool.length-LIM} weitere zeigen</button>`:""}
+      <input type="text" class="ws-in ws-wkadd" data-wkadd="" placeholder="+ Aufgabe ohne Termin">
+      </div>
+    </div>`;
+}
+/* Inhalt eines Tages: Kalendertermine, ToDo-App-Einträge, Punkte des Arbeitsbereichs */
+function wsWkDayInner(d, W, em, wide){
+  const list = W.D.byDay[d], xl = W.X.byDay[d], E = W.E;
+  return `${E && E[d].length ? `<div class="ws-wkevs">${E[d].map(e=>wsWkEvHtml(e, wide)).join("")}</div>` : ""}
+      ${xl.map(wsWkXCardHtml).join("")}
+      ${list.map(it=>wsWkCardHtml(it, em)).join("")}
+      <input type="text" class="ws-in ws-wkadd" data-wkadd="${d}" placeholder="+ ToDo">`;
+}
+function wsWkOpenCount(d, W){ return W.D.byDay[d].filter(x=>!x.node.done).length + W.X.byDay[d].filter(x=>!x.done).length; }
 function wsWeekHtml(){
   if(!wsLoaded) return `<div class="empty">Der Arbeitsbereich ist nicht geladen.</div>`;
   if(wsWk.ev && wsWkCalIds().length && wsWkEv.key!==wsWkEvKey() && !wsWkEv.busy) setTimeout(()=>wsWkLoadEvents(false), 0);
-  const W = wsWkData(), D = W.D, X = W.X, E = W.E, em = wsEffTags(wsDocs), today = todayKey();
+  const W = wsWkData(), D = W.D, X = W.X, em = wsEffTags(wsDocs), today = todayKey(), mode = wsWk.mode;
   const first = W.days[0], last = W.days[W.days.length-1];
-  const label = "KW "+wsKW(first)+" · "+wsShortDate(first)+" bis "+wsShortDate(last);
+  const label = (mode==="day") ? wsShortDate(first)+" · KW "+wsKW(first) : "KW "+wsKW(first)+" · "+wsShortDate(first)+" bis "+wsShortDate(last);
   const nCal = wsWkCalIds().length;
   const opts = [`<option value="all">Alle Dokumente</option>`].concat(wsDocs.map(d=>`<option value="${esc(d.id)}"${wsWk.doc===d.id?" selected":""}>${esc(d.title||"Ohne Titel")}</option>`)).join("");
+  const mb = (m, t)=>`<button class="ws-fc${mode===m?" on":""}" data-wsact="wk-mode" data-m="${m}">${t}</button>`;
   let h = wsTagBarHtml();
   h += `<div class="ws-wkbar">
-    <button class="ws-tb" data-wsact="wk-prev" title="Fünf Tage zurück">◀</button>
+    ${mb("day","Tag")}${mb("two","2 Tage")}${mb("week","Woche")}${mb("agenda","Terminübersicht")}
+    <button class="ws-fc${wsWk.wide?" on":""}" data-wsact="wk-wide" title="Ansicht auf die ganze Seitenbreite ausdehnen">⇔ Seitenbreite</button>
+  </div>
+  <div class="ws-wkbar">
+    <button class="ws-tb" data-wsact="wk-prev" title="Zurück">◀</button>
     <span class="ws-wklabel">${label}</span>
-    <button class="ws-tb" data-wsact="wk-next" title="Fünf Tage weiter">▶</button>
+    <button class="ws-tb" data-wsact="wk-next" title="Weiter">▶</button>
     <button class="ws-tb" data-wsact="wk-today">Heute</button>
   </div>
   <div class="ws-wkbar">
@@ -4281,25 +4329,27 @@ function wsWeekHtml(){
   if(over.length){
     h += `<div class="ws-wkover"><div class="ws-wkhead over">⚠ Überfällig (${over.length})</div>${over.map(o=>`<div class="ws-wkdayhint">${esc(wsShortDate(o.day))}</div>`+o.html).join("")}</div>`;
   }
-  h += `<div class="ws-wkgrid">`;
-  W.days.forEach(d=>{
-    const list = D.byDay[d], xl = X.byDay[d], isT = d===today;
-    const open = list.filter(x=>!x.node.done).length + xl.filter(x=>!x.done).length;
-    h += `<div class="ws-wkcol${isT?" today":""}" data-wkday="${d}">
-      <div class="ws-wkhead${isT?" today":""}">${esc(wsShortDate(d))}${(list.length+xl.length)?` <span class="ws-wkn">${open}</span>`:""}</div>
-      ${E && E[d].length ? `<div class="ws-wkevs">${E[d].map(wsWkEvHtml).join("")}</div>` : ""}
-      ${xl.map(wsWkXCardHtml).join("")}
-      ${list.map(it=>wsWkCardHtml(it, em)).join("")}
-      <input type="text" class="ws-in ws-wkadd" data-wkadd="${d}" placeholder="+ ToDo">
-    </div>`;
-  });
-  const LIM = 40, pl = wsPoolAll ? D.pool : D.pool.slice(0, LIM);
-  h += `<div class="ws-wkcol pool" data-wkday="">
-      <div class="ws-wkhead pool">Taskpool <span class="ws-wkn">${D.pool.length}</span></div>
-      ${pl.map(it=>wsWkCardHtml(it, em)).join("")}
-      ${D.pool.length>LIM&&!wsPoolAll?`<button class="ws-addbtn" data-wsact="wk-pool-all">${D.pool.length-LIM} weitere zeigen</button>`:""}
-      <input type="text" class="ws-in ws-wkadd" data-wkadd="" placeholder="+ Aufgabe ohne Termin">
-    </div></div>`;
+  const dayHead = d=>{ const n = wsWkOpenCount(d, W); return `<div class="ws-wkhead${d===today?" today":""}">${esc(wsShortDate(d))}${n?` <span class="ws-wkn">${n}</span>`:""}</div>`; };
+  if(mode==="agenda"){
+    h += `<div class="ws-aglist">`;
+    W.days.forEach(d=>{
+      const dt = new Date(+d.slice(0,4), +d.slice(5,7)-1, +d.slice(8,10)), n = wsWkOpenCount(d, W);
+      h += `<div class="ws-wkcol ws-agday${d===today?" today":""}" data-wkday="${d}">
+        <div class="ws-aghead${d===today?" today":""}"><span class="ws-agdow">${["So","Mo","Di","Mi","Do","Fr","Sa"][dt.getDay()]}</span><span class="ws-agnum">${d.slice(8,10)}</span><span class="ws-agmon">${d.slice(5,7)}/${d.slice(2,4)}</span>${n?`<span class="ws-wkn">${n}</span>`:""}</div>
+        <div class="ws-agbody">${wsWkDayInner(d, W, em, true)}</div>
+      </div>`;
+    });
+    h += wsWkPoolHtml(D, em, " ws-agpool") + `</div>`;
+  }else if(mode==="day"){
+    const d = first;
+    h += `<div class="ws-daygrid"><div class="ws-wkcol ws-dayone${d===today?" today":""}" data-wkday="${d}">${dayHead(d)}<div class="ws-agbody">${wsWkDayInner(d, W, em, true)}</div></div>${wsWkPoolHtml(D, em, "")}</div>`;
+  }else{
+    h += `<div class="ws-wkgrid ${mode==="two"?"ws-two":(wsWk.wide?"ws-wide5":"")}">`;
+    W.days.forEach(d=>{
+      h += `<div class="ws-wkcol${d===today?" today":""}" data-wkday="${d}">${dayHead(d)}<div class="ws-agbody">${wsWkDayInner(d, W, em, mode==="two")}</div></div>`;
+    });
+    h += wsWkPoolHtml(D, em, "") + `</div>`;
+  }
   const tgt = wsWeekTargetDoc();
   h += `<div class="ws-meta" style="margin-top:8px">Neue Aufgaben landen in: ${esc(tgt?tgt.title||"Ohne Titel":"neuem Dokument Aufgaben")}. Mit Tag angelegte Aufgaben werden als ToDo angelegt. Ziehen am ⠿ oder ⇄ verschiebt auf einen anderen Tag, in den Taskpool nur Punkte ohne ToDo/Ziel-Verknüpfung.</div>`;
   return h;
@@ -4366,7 +4416,7 @@ async function wsMoveExternal(kind, id, day){
 }
 function wsPickDayMenu(title, cur, allowPool, cb){
   if(document.getElementById("modalBg")) return;
-  const days = wsWkDays();
+  const days = wsWkDays().slice(0, 7);
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${esc(title||"Aufgabe")}</h2>
@@ -4464,9 +4514,11 @@ main.addEventListener("click", e=>{
   const a = e.target.closest("[data-wsact]"); if(!a) return;
   const act = a.dataset.wsact; if(act.indexOf("wk-")!==0) return;
   const card = a.closest(".ws-wkcard");
-  if(act==="wk-prev"){ wsWkStart = wsAddDays(wsWkFirst(), -WK_DAYS); render(); return; }
-  if(act==="wk-next"){ wsWkStart = wsAddDays(wsWkFirst(), WK_DAYS); render(); return; }
+  if(act==="wk-prev"){ wsWkStart = wsAddDays(wsWkFirst(), -WK_MODES[wsWk.mode].step); render(); return; }
+  if(act==="wk-next"){ wsWkStart = wsAddDays(wsWkFirst(), WK_MODES[wsWk.mode].step); render(); return; }
   if(act==="wk-today"){ wsWkStart = null; render(); return; }
+  if(act==="wk-mode"){ wsWk.mode = WK_MODES[a.dataset.m] ? a.dataset.m : "agenda"; wsWkSave(); wsWkEv.key = ""; render(); return; }
+  if(act==="wk-wide"){ wsWk.wide = !wsWk.wide; wsWkSave(); render(); return; }
   if(act==="wk-showdone"){ wsWk.showDone = !wsWk.showDone; wsWkSave(); render(); return; }
   if(act==="wk-ev"){ wsWk.ev = !wsWk.ev; wsWkSave(); render(); return; }
   if(act==="wk-cals"){ wsOpenWkCalMenu(); return; }
@@ -5427,7 +5479,12 @@ function wsOpenDeadlineDoc(did){
   wsOpenDocId = did; localStorage.setItem("wsOpenDoc", did);
   wsTab = "docs"; localStorage.setItem("wsTab", "docs"); view = "notes"; render();
 }
+function wsWideUpdate(){
+  const app = document.querySelector(".app");
+  if(app) app.classList.toggle("ws-wide", view==="notes" && wsTab==="week" && !!wsWk.wide);
+}
 function wsTopBarUpdate(){
+  wsWideUpdate();
   let el = document.getElementById("wsTopBar");
   if(!el){
     el = document.createElement("div"); el.id = "wsTopBar"; main.parentNode.insertBefore(el, main);

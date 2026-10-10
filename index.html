@@ -535,6 +535,8 @@
   body.ws3d-fs{overflow:hidden}
   body.ws3d-fs .modal-bg{z-index:400}
   body.ws3d-fs .toast{z-index:500}
+  .ws-trashbtn{background:transparent;border:1px dashed #4a505a;color:var(--muted,#9aa1ad);border-radius:999px;padding:7px 13px;font-size:13px;cursor:pointer;white-space:nowrap}
+  .ws-trashbtn:hover{color:var(--text);border-color:#7a818d}
 </style>
 </head>
 <body>
@@ -3437,7 +3439,11 @@ function wsNormalizeDocs(arr){
 }
 
 /* ---- Speicherformat: JSON in Stücken zu je WS_CHUNK Zeichen ---- */
-function wsSerialize(docs){ return JSON.stringify({v:1, savedAt:new Date().toISOString(), docs}); }
+function wsSerialize(docs, trash){
+  const o = {v:1, savedAt:new Date().toISOString(), docs};
+  if(trash && trash.length) o.trash = trash;
+  return JSON.stringify(o);
+}
 function wsParse(text){
   if(!text || !text.trim()) return [];
   const data = JSON.parse(text);               // Fehler absichtlich nicht abfangen: kaputte Daten dürfen nie als "leer" gelten
@@ -3459,6 +3465,78 @@ function wsToChunks(json){
   }
   if(!out.length) out.push("[]");
   return out;
+}
+/* ---- Papierkorb: gelöschte Einträge bleiben 3 Tage erhalten ---- */
+const WS_TRASH_MS = 3*24*3600*1000;
+function wsTrashItem(kind, doc, obj, where){
+  let label = "";
+  if(kind==="node") label = obj.text || "(leerer Punkt)";
+  else if(kind==="att") label = obj.title || obj.name || obj.url || String(obj.text||"").split("\n")[0] || "Anhang";
+  else if(kind==="block") label = obj.type==="heading" ? (obj.text||"(Überschrift)") : obj.type==="outline" ? "Gliederung mit "+obj.items.length+" Punkten" : obj.type==="table" ? "Tabelle" : (String(obj.text||"").split("\n")[0] || "(Notiz)");
+  else label = obj.title || "(Dokument)";
+  return {id:wsId(), kind, deletedAt:new Date().toISOString(), docId:doc?doc.id:obj.id, docTitle:doc?(doc.title||""):(obj.title||""), label:String(label).slice(0,80), where:where||{}, data:JSON.parse(JSON.stringify(obj))};
+}
+function wsTrashNorm(arr){
+  const out = [];
+  (Array.isArray(arr)?arr:[]).forEach(i=>{
+    if(!i || typeof i!=="object" || !i.id || !["node","att","block","doc"].includes(i.kind) || !i.data || isNaN(Date.parse(i.deletedAt))) return;
+    let data = null;
+    if(i.kind==="node") data = wsNormNodes([i.data])[0];
+    else if(i.kind==="att") data = wsNormAtt(i.data);
+    else if(i.kind==="block"){ const d = wsNormalizeDocs([{blocks:[i.data]}])[0]; data = d && d.blocks[0]; }
+    else data = wsNormalizeDocs([i.data])[0];
+    if(!data) return;
+    const w = i.where && typeof i.where==="object" ? i.where : {};
+    out.push({id:String(i.id), kind:i.kind, deletedAt:String(i.deletedAt), docId:String(i.docId||""), docTitle:String(i.docTitle||""), label:String(i.label||"").slice(0,80),
+      where:{blockId:String(w.blockId||""), parentId:String(w.parentId||""), ownerId:String(w.ownerId||""), index:Math.max(0, parseInt(w.index,10)||0)}, data});
+  });
+  return out;
+}
+function wsParseTrash(text){
+  if(!text || !text.trim()) return [];
+  const data = JSON.parse(text);
+  return (data && !Array.isArray(data) && Array.isArray(data.trash)) ? wsTrashNorm(data.trash) : [];
+}
+function wsTrashLive(items, now){ return items.filter(i=>Date.parse(i.deletedAt)+WS_TRASH_MS > now); }
+/* Abgleich mit dem Serverstand: Server gewinnt; lokal neu Hinzugekommene (adds) bleiben, lokal Entfernte (gone) bleiben weg; Abgelaufenes fällt heraus */
+function wsMergeTrash(local, server, adds, gone, now){
+  const out = [], seen = new Set();
+  server.forEach(i=>{ if(!gone.has(i.id) && !seen.has(i.id)){ out.push(i); seen.add(i.id); } });
+  local.forEach(i=>{ if(!seen.has(i.id) && adds.has(i.id)){ out.push(i); seen.add(i.id); } });
+  return wsTrashLive(out, now).sort((a,b)=>b.deletedAt.localeCompare(a.deletedAt));
+}
+function wsStripLinks(n){ n.link = null; (n.att||[]).forEach(a=>{ a.link = null; }); (n.children||[]).forEach(wsStripLinks); }
+/* Eintrag zurücklegen. Verknüpfungen mit ToDos/Zielen werden dabei gelöst (sie wurden beim Löschen freigegeben). */
+function wsRestore(docs, item){
+  const data = JSON.parse(JSON.stringify(item.data)), w = item.where || {};
+  if(item.kind==="doc"){
+    if(docs.some(d=>d.id===data.id)) return {ok:false, msg:"Ein Dokument mit dieser Kennung gibt es schon."};
+    data.blocks.forEach(b=>{ if(b.type==="outline") b.items.forEach(wsStripLinks); });
+    docs.push(data); return {ok:true, doc:data, docId:data.id};
+  }
+  const doc = docs.find(d=>d.id===item.docId);
+  if(!doc) return {ok:false, msg:"Das Dokument gibt es nicht mehr. Stelle zuerst das Dokument wieder her."};
+  if(item.kind==="block"){
+    if(doc.blocks.some(b=>b.id===data.id)) return {ok:false, msg:"Der Block ist schon vorhanden."};
+    if(data.type==="outline") data.items.forEach(wsStripLinks);
+    doc.blocks.splice(Math.min(w.index||0, doc.blocks.length), 0, data); return {ok:true, doc, docId:doc.id};
+  }
+  if(item.kind==="att"){
+    if(wsFindAny(doc, data.id)) return {ok:false, msg:"Der Anhang ist schon vorhanden."};
+    const ow = w.ownerId ? wsFindNode(doc, w.ownerId) : null;
+    if(!ow) return {ok:false, msg:"Der Punkt, an dem der Anhang hing, existiert nicht mehr."};
+    data.link = null; ow.node.att.splice(Math.min(w.index||0, ow.node.att.length), 0, data); ow.node.aopen = true;
+    return {ok:true, doc, docId:doc.id};
+  }
+  if(wsFindNode(doc, data.id)) return {ok:false, msg:"Der Punkt ist schon vorhanden."};
+  wsStripLinks(data);
+  const par = w.parentId ? wsFindNode(doc, w.parentId) : null;
+  if(par){ par.node.children.splice(Math.min(w.index||0, par.node.children.length), 0, data); par.node.collapsed = false; return {ok:true, doc, docId:doc.id}; }
+  let blk = w.blockId ? doc.blocks.find(b=>b.id===w.blockId && b.type==="outline") : null;
+  if(!blk) blk = doc.blocks.find(b=>b.type==="outline");
+  if(!blk){ blk = {id:wsId(), type:"outline", items:[], tag:""}; doc.blocks.push(blk); }
+  blk.items.splice(Math.min(w.index||0, blk.items.length), 0, data);
+  return {ok:true, doc, docId:doc.id};
 }
 function wsFromChunks(rows){ return (rows||[]).map(r=>(r && r[0]!==undefined) ? r[0] : "").join(""); }
 
@@ -3905,8 +3983,17 @@ function wsGraph(docs, o){
     });
   };
   const first = t=>{ const s = String(t||"").trim().split("\n")[0]; return s.length>60 ? s.slice(0,60)+"…" : s; };
+  /* o.head: "H:<Überschrift-ID>" oder "S:<Dokument-ID>" (Teil vor der ersten Überschrift) = nur dieser Abschnitt */
+  const sectionOf = doc=>{
+    if(!o.head) return null;
+    const m = /^([HS]):(.*)$/.exec(o.head); if(!m) return null;
+    if(m[1]==="S"){ if(doc.id!==m[2]) return false; const set = new Set(); for(const b of doc.blocks){ if(b.type==="heading") break; set.add(b.id); } return set; }
+    const i = doc.blocks.findIndex(b=>b.id===m[2]); if(i<0) return false;
+    const set = new Set([m[2]]); for(let k=i+1;k<doc.blocks.length && doc.blocks[k].type!=="heading";k++) set.add(doc.blocks[k].id); return set;
+  };
   docs.forEach(doc=>{
     if(o.doc && doc.id!==o.doc) return;
+    const sect = sectionOf(doc); if(sect===false) return;
     const did = "d:"+doc.id;
     if(!add({id:did, kind:"doc", label:doc.title||"(ohne Titel)", doc:doc.id, ref:doc.id, eff:doc.tag||"", done:false})) return;
     ownTag(did, doc.tag);
@@ -3927,6 +4014,7 @@ function wsGraph(docs, o){
       walk(n.children, id);
     });
     doc.blocks.forEach(b=>{
+      if(sect && !sect.has(b.id)){ if(b.type==="heading") parent = did; return; }
       if(b.type==="outline"){ walk(b.items, parent); return; }
       const id = "b:"+b.id;
       const label = b.type==="heading" ? first(b.text) : b.type==="table" ? "Tabelle" : first(b.text);
@@ -4000,10 +4088,13 @@ async function wsEnsureTab(){
 async function wsReadServer(){
   const res = await api(`${SHEETS}/${spreadsheetId}/values/${WS_TAB}!A1:A${WS_MAXROWS}`);
   const rows = res.values || [];
-  return {docs: wsParse(wsFromChunks(rows)), rows: rows.length};
+  const text = wsFromChunks(rows);
+  return {docs: wsParse(text), trash: wsParseTrash(text), rows: rows.length};
 }
+let wsTrash = [];
+const wsTrashAdd = new Set(), wsTrashGone = new Set();
 async function wsWriteServer(docs, rowsOnServer){
-  const chunks = wsToChunks(wsSerialize(docs));
+  const chunks = wsToChunks(wsSerialize(docs, wsTrash));
   if(chunks.length>WS_MAXROWS) throw new Error("Arbeitsbereich zu groß für das Tabellenblatt");
   await api(`${SHEETS}/${spreadsheetId}/values/${WS_TAB}!A1?valueInputOption=RAW`,
     {method:"PUT", body:JSON.stringify({values:chunks.map(c=>[c])})});
@@ -4016,6 +4107,7 @@ async function loadWorkspace(){
     await wsEnsureTab();
     const s = await wsReadServer();
     wsDocs = wsFixPinned(wsLoaded ? wsMergeDocs(wsDocs, s.docs, wsDirty, wsDeleted) : s.docs);
+    wsTrash = wsMergeTrash(wsTrash, s.trash, wsTrashAdd, wsTrashGone, Date.now());
     wsLoaded = true; wsLoadError = ""; wsLastLoad = Date.now();
   }catch(e){
     console.error("❌ loadWorkspace FEHLER:", e.message);
@@ -4034,16 +4126,18 @@ function wsFlush(){
 async function wsSaveNow(){
   if(!wsDirty.size && !wsDeleted.size) return;
   if(!wsLoaded){ toast("Arbeitsbereich nicht geladen: Speichern gesperrt"); return; }
-  const dSnap = new Map(wsDirty), xSnap = new Map(wsDeleted);
+  const dSnap = new Map(wsDirty), xSnap = new Map(wsDeleted), aSnap = new Set(wsTrashAdd), gSnap = new Set(wsTrashGone);
   setSync("busy"); wsSetStatus("speichert …");
   try{
     await wsEnsureTab();
     const s = await wsReadServer();                                     // server-first: erst den Stand der anderen Geräte holen
     wsDocs = wsFixPinned(wsMergeDocs(wsDocs, s.docs, wsDirty, wsDeleted));
+    wsTrash = wsMergeTrash(wsTrash, s.trash, wsTrashAdd, wsTrashGone, Date.now());
     wsRefreshChips();                                                   // Dokumente von anderen Geräten sofort in der Auswahl zeigen
     await wsWriteServer(wsDocs, s.rows);
     dSnap.forEach((rev,id)=>{ if(wsDirty.get(id)===rev) wsDirty.delete(id); });
     xSnap.forEach((rev,id)=>{ if(wsDeleted.get(id)===rev) wsDeleted.delete(id); });
+    aSnap.forEach(id=>wsTrashAdd.delete(id)); gSnap.forEach(id=>wsTrashGone.delete(id));
     wsLastLoad = Date.now();
     setSync("on"); wsSetStatus("gespeichert ✓");
   }catch(e){
@@ -4053,6 +4147,42 @@ async function wsSaveNow(){
     clearTimeout(wsRetryTimer); wsRetryTimer = setTimeout(wsFlush, 15000);
   }
 }
+function wsTrashTouch(){ wsDirty.set("__trash__", ++wsRev); wsScheduleSave(); wsRefreshChips(); }
+function wsTrashPut(item){ wsTrash.unshift(item); wsTrashAdd.add(item.id); wsTrashTouch(); }
+function wsTrashDrop(id){ wsTrash = wsTrash.filter(i=>i.id!==id); wsTrashAdd.delete(id); wsTrashGone.add(id); wsTrashTouch(); }
+function wsTrashCount(){ return wsTrashLive(wsTrash, Date.now()).length; }
+function wsTrashLeft(i){
+  const ms = Date.parse(i.deletedAt)+WS_TRASH_MS-Date.now(), h = Math.max(1, Math.ceil(ms/3600000));
+  return h>=24 ? "noch "+Math.floor(h/24)+" Tg "+(h%24)+" Std" : "noch "+h+" Std";
+}
+function wsOpenTrash(){
+  if(document.getElementById("modalBg")) return;
+  const icon = {node:"☑", att:"📎", block:"▭", doc:"📄"}, kn = {node:"Punkt", att:"Anhang", block:"Block", doc:"Dokument"};
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>🗑 Papierkorb</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:8px">Gelöschte Einträge bleiben hier 3 Tage erhalten. Verknüpfungen mit ToDos oder Zielen werden beim Zurücklegen gelöst.</p>
+    <div class="ws-implist" id="wst_list"></div>
+    <div class="modal-actions"><button class="btn-ghost" id="wst_empty">Papierkorb leeren</button><button class="btn-primary" id="wst_close">Schließen</button></div></div></div>`);
+  const draw = ()=>{
+    const items = wsTrashLive(wsTrash, Date.now());
+    $("wst_list").innerHTML = items.map(i=>`<div class="ws-improw" data-tid="${esc(i.id)}"><span class="ws-wkchip">${icon[i.kind]} ${kn[i.kind]}</span>
+      <span class="ws-imptx">${esc(i.label)}<br><span class="muted" style="font-size:12px">${i.kind==="doc"?"":"aus „"+esc(i.docTitle||"(ohne Titel)")+"“ · "}${esc(wsTrashLeft(i))}</span></span>
+      <button class="ws-addbtn" data-tact="restore">↩ Zurück</button><button class="ws-mini" data-tact="purge" title="Endgültig löschen">✕</button></div>`).join("") || `<div class="muted center" style="padding:14px">Der Papierkorb ist leer.</div>`;
+    $("wst_empty").style.display = items.length ? "" : "none";
+  };
+  draw();
+  $("wst_list").onclick = e=>{
+    const b = e.target.closest("[data-tact]"), row = e.target.closest("[data-tid]"); if(!b || !row) return;
+    const item = wsTrash.find(i=>i.id===row.dataset.tid); if(!item) return;
+    if(b.dataset.tact==="purge"){ if(confirm("Endgültig löschen? Das lässt sich nicht rückgängig machen.")){ wsTrashDrop(item.id); draw(); } return; }
+    const r = wsRestore(wsDocs, item);
+    if(!r.ok){ toast(r.msg); return; }
+    wsDeleted.delete(r.docId); wsTouch(r.doc); wsTrashDrop(item.id); draw();
+    toast("Zurückgelegt: "+item.label.slice(0,40)); render();
+  };
+  $("wst_empty").onclick = ()=>{ if(!confirm("Alle Einträge im Papierkorb endgültig löschen?")) return; wsTrash.slice().forEach(i=>wsTrashDrop(i.id)); draw(); };
+  $("wst_close").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+}
 function wsRefreshChips(){
   const box = document.querySelector(".ws-chips"); if(!box || view!=="notes" || wsTab!=="docs") return;
   const cur = wsCurrentDoc();
@@ -4060,7 +4190,8 @@ function wsRefreshChips(){
 }
 function wsChipsInner(cur){
   return wsDocs.map(d=>`<button class="ws-chip${cur&&cur.id===d.id?" sel":""}" data-wsact="open-doc" data-id="${d.id}">${d.pinned?"📌 ":""}${esc(d.title||"Ohne Titel")}</button>`).join("")
-    + `<button class="ws-chip new" data-wsact="new-doc">+ Neu</button>`;
+    + `<button class="ws-chip new" data-wsact="new-doc">+ Neu</button>`
+    + `<button class="ws-trashbtn" data-wsact="open-trash" title="Gelöschte Einträge, 3 Tage lang wiederherstellbar">🗑 Papierkorb${wsTrashCount()?" ("+wsTrashCount()+")":""}</button>`;
 }
 /* Beim Zurückkehren in die App (z. B. am Handy) den Stand neu holen, solange nichts ungespeichert ist */
 async function wsRefreshIfIdle(){
@@ -4946,14 +5077,29 @@ const ws3d = {
   pos:new Map(), sel:"", g:null, byId:new Map(), nb:new Map(), proj:new Map(),
   cv:null, ctx:null, w:0, h:0, alpha:1, raf:0, hits:[], ptr:new Map(), moved:false, thumbs:new Map(), loading:0, hover:"",
   opt:(()=>{ let o = {}; try{ o = JSON.parse(localStorage.getItem("ws3dOpt")||"{}")||{}; }catch(e){}
-    return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, layout:o.layout==="net"?"net":"tree", floor:o.floor!==false, spin:!!o.spin, edit:o.edit!==false, focus:false, q:""}; })()
+    return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, layout:o.layout==="net"?"net":"tree", floor:o.floor!==false, spin:!!o.spin, edit:o.edit!==false, head:"", focus:false, q:""}; })()
 };
 function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels, layout:ws3d.opt.layout, floor:ws3d.opt.floor, spin:ws3d.opt.spin, edit:ws3d.opt.edit})); }catch(e){} }
+function ws3dHeadOpts(){
+  const o = ws3d.opt, out = []; let found = !o.head;
+  wsDocs.forEach(d=>{
+    if(o.doc && d.id!==o.doc) return;
+    const dn = d.title||"(ohne Titel)";
+    const lead = d.blocks.length && d.blocks[0].type!=="heading";
+    const items = [];
+    if(lead && d.blocks.some(b=>b.type==="heading")) items.push(["S:"+d.id, "(vor der ersten Überschrift)"]);
+    d.blocks.forEach(b=>{ if(b.type==="heading") items.push(["H:"+b.id, (b.text||"").trim()||"(Überschrift ohne Text)"]); });
+    items.forEach(([v,l])=>{ if(v===o.head) found = true; out.push(`<option value="${esc(v)}"${v===o.head?" selected":""}>${esc(wsDocs.length>1 && !o.doc ? dn+" › "+l : l)}</option>`); });
+  });
+  if(!found) o.head = "";
+  return `<option value="">Alle Überschriften</option>`+out.join("");
+}
 function ws3dHtml(){
   const o = ws3d.opt;
   return `<div class="ws3d-root${ws3d.full?" full":""}" id="ws3dRoot"><div class="ws3d-bar">
     <button class="ws-addbtn ws3d-back" id="ws3dBack" title="Vollbild beenden (Esc)">← Zurück zur App</button>
     <select id="ws3dDoc" class="ws-in"><option value="">Alle Dokumente</option>${wsDocs.map(d=>`<option value="${esc(d.id)}"${o.doc===d.id?" selected":""}>${esc(d.title||"(ohne Titel)")}</option>`).join("")}</select>
+    <select id="ws3dHead" class="ws-in" title="Nur die Einträge unter einer bestimmten Überschrift zeigen">${ws3dHeadOpts()}</select>
     <input id="ws3dQ" class="ws-in" type="search" placeholder="Suchen" value="${esc(o.q)}">
     <select id="ws3dLay" class="ws-in" title="Anordnung"><option value="tree"${o.layout==="tree"?" selected":""}>Baum (geordnet)</option><option value="net"${o.layout==="net"?" selected":""}>Netz (frei)</option></select>
     <label class="ws3d-ck"><input type="checkbox" id="ws3dDone"${o.showDone?" checked":""}> Erledigte</label>
@@ -5023,7 +5169,7 @@ function ws3dTreeLayout(){
 }
 function ws3dBuild(){
   const o = ws3d.opt;
-  const g = wsGraph(wsDocs, {doc:o.doc, showDone:o.showDone, tags:o.tags, max:1000});
+  const g = wsGraph(wsDocs, {doc:o.doc, head:o.head, showDone:o.showDone, tags:o.tags, max:1000});
   ws3d.g = g; ws3d.byId = new Map(g.nodes.map(n=>[n.id, n]));
   ws3d.nb = new Map(g.nodes.map(n=>[n.id, new Set()]));
   const parentOf = new Map();
@@ -5301,7 +5447,7 @@ function ws3dInfoHtml(){
   if(n.kind==="doc") b += btn("goto","Öffnen") + btn("tags","Tags") + btn("import","ToDo/Ziel einfügen");
   else if(n.kind==="node") b += btn("goto","Öffnen") + btn("edit","Bearbeiten") + btn("move","Verschieben") + btn("tags","Tags") + btn("import","ToDo/Ziel einfügen");
   else if(n.kind==="att") b += (n.type==="file" ? btn("view","Ansehen") : n.type==="link" && n.url ? btn("url","Link öffnen") : "") + btn("goto", n.type==="file"||n.type==="link" ? "Im Dokument" : "Öffnen") + btn("edit","Bearbeiten") + btn("move","Verschieben") + btn("tags","Tags");
-  else if(n.kind==="block") b += btn("goto","Öffnen") + btn("tags","Tags");
+  else if(n.kind==="block") b += btn("goto","Öffnen") + (n.type==="heading" ? btn("head", ws3d.opt.head==="H:"+n.ref ? "Alle Überschriften zeigen" : "Nur diese Überschrift zeigen") : "") + btn("tags","Tags");
   b += btn("focus", ws3d.opt.focus ? "Alles zeigen" : "Nur Umgebung zeigen") + btn("center","Zentrieren");
   const nb = ws3d.nb.get(n.id).size;
   return `<div class="ws3d-card"><div><b>${esc(n.label)}</b> <span class="muted">· ${esc(ws3dKindName(n))}${n.eff&&n.kind!=="tag"?" · 🏷 "+esc(n.eff):""} · ${nb} Verbindung${nb===1?"":"en"}${n.done?" · erledigt":""}</span></div><div class="ws3d-btns">${b}</div></div>`;
@@ -5314,6 +5460,11 @@ function ws3dAct(act){
   if(act==="goto"){ if(ws3d.full){ ws3d.resumeFull = true; ws3dSetFull(false); } wsGoToItem(n.doc, n.kind==="doc"?"doc":n.kind, n.ref, true); return; }
   if(act==="edit"){ if(n.kind==="node") wsEditNode(n.ref); else wsOpenLinkMenu(n.doc, n.ref); }
   else if(act==="move"){ wsOpenMove(n.doc, n.ref); }
+  else if(act==="head"){
+    ws3d.opt.head = ws3d.opt.head==="H:"+n.ref ? "" : "H:"+n.ref; ws3d.opt.focus = false;
+    const sel = document.getElementById("ws3dHead"); if(sel) sel.innerHTML = ws3dHeadOpts();
+    ws3dBuild(); ws3dFit(); ws3dSelect(ws3d.byId.has(ws3d.sel) ? ws3d.sel : ""); ws3dKick();
+  }
   else if(act==="tags"){ wsOpenTagMenu(n.doc, n.kind==="doc" ? "doc" : n.kind==="block" ? "block" : n.kind==="att" ? "att" : "node", n.kind==="doc" ? n.doc : n.ref); }
   else if(act==="import"){ wsOpenImport(n.kind==="doc" ? {docId:n.doc} : {docId:n.doc, parent:n.ref}); }
   else if(act==="view"){ const d = wsGet(n.doc), a = d && wsFindAny(d, n.ref); if(a) wsOpenFileView(a); }
@@ -5330,7 +5481,8 @@ function ws3dMount(){
   const info = document.getElementById("ws3dInfo"); info.innerHTML = ws3dInfoHtml();
   info.onclick = e=>{ const b = e.target.closest("[data-w3]"); if(b) ws3dAct(b.dataset.w3); };
   const $$ = id=>document.getElementById(id);
-  $$("ws3dDoc").onchange = e=>{ ws3d.opt.doc = e.target.value; ws3dSaveOpt(); ws3d.opt.focus = false; ws3dBuild(); ws3dSelect(ws3d.sel); ws3d.alpha = 0.8; ws3dKick(); };
+  $$("ws3dHead").onchange = e=>{ ws3d.opt.head = e.target.value; ws3d.opt.focus = false; ws3dBuild(); ws3dFit(); ws3dSelect(ws3d.sel); ws3dKick(); };
+  $$("ws3dDoc").onchange = e=>{ ws3d.opt.head = ""; ws3d.opt.doc = e.target.value; $$("ws3dHead").innerHTML = ws3dHeadOpts(); ws3dSaveOpt(); ws3d.opt.focus = false; ws3dBuild(); ws3dSelect(ws3d.sel); ws3d.alpha = 0.8; ws3dKick(); };
   $$("ws3dQ").oninput = e=>{ ws3d.opt.q = e.target.value; ws3dKick(); };
   $$("ws3dLay").onchange = e=>{ ws3d.opt.layout = e.target.value; ws3dSaveOpt(); ws3d.pos.clear(); ws3dBuild(); ws3dFit(); ws3dKick(); };
   $$("ws3dDone").onchange = e=>{ ws3d.opt.showDone = e.target.checked; ws3dSaveOpt(); ws3dBuild(); ws3dSelect(ws3d.sel); };
@@ -5546,6 +5698,7 @@ main.addEventListener("click", e=>{
     wsF = wsFNorm(nf); wsFSave(); render(); return;
   }
   if(act==="retry-load"){ setSync("busy"); loadWorkspace().then(()=>{ setSync("on"); render(); }); return; }
+  if(act==="open-trash"){ wsOpenTrash(); return; }
   if(act==="new-doc"){
     if(!wsLoaded){ toast("Arbeitsbereich nicht geladen"); return; }
     const d = wsNewDoc("Neues Dokument"); wsDocs.push(d); wsOpenDocId = d.id; localStorage.setItem("wsOpenDoc", d.id);
@@ -6446,8 +6599,9 @@ async function wsDeleteNodeFlow(doc, nid){
     mode = await wsAskLinks(links, "Dieser Punkt"+(c.total?" samt "+c.total+" Unterpunkten":""));
     if(!mode) return;
   }else if((c.total>0 || nAtt>0) && !confirm("Diesen Punkt samt "+c.total+" Unterpunkten"+(nAtt?" und "+nAtt+" Anhängen":"")+" löschen?")) return;
-  if(!wsFindNode(doc, nid)) return;
-  wsDeleteNode(doc, nid); wsTouch(doc); wsRerender(doc.id);
+  const r2 = wsFindNode(doc, nid); if(!r2) return;
+  wsTrashPut(wsTrashItem("node", doc, r2.node, {blockId:r2.block.id, parentId:r2.parent?r2.parent.id:"", index:r2.index}));
+  wsDeleteNode(doc, nid); wsTouch(doc); wsRerender(doc.id); toast("Im Papierkorb (3 Tage)");
   if(links.length) wsLinkRun(()=>wsReleaseLinks(links, mode==="delete"));
 }
 async function wsDeleteAttFlow(doc, att){
@@ -6461,7 +6615,8 @@ async function wsDeleteAttFlow(doc, att){
     if(!empty && !confirm("Diesen Anhang mit Inhalt löschen?")) return;
   }
   const owner = wsAttOwner(doc, att.id); if(!owner) return;
-  owner.att = owner.att.filter(x=>x.id!==att.id); wsTouch(doc); wsRerender(doc.id);
+  wsTrashPut(wsTrashItem("att", doc, att, {ownerId:owner.id, index:owner.att.findIndex(x=>x.id===att.id)}));
+  owner.att = owner.att.filter(x=>x.id!==att.id); wsTouch(doc); wsRerender(doc.id); toast("Im Papierkorb (3 Tage)");
   if(links.length) wsLinkRun(()=>wsReleaseLinks(links, mode==="delete"));
 }
 async function wsDeleteBlockFlow(doc, block){
@@ -6474,7 +6629,8 @@ async function wsDeleteBlockFlow(doc, block){
     const empty = block.type==="table" ? block.rows.every(r=>r.every(c=>!c)) : block.type==="outline" ? !wsOpenCount(doc) && !JSON.stringify(block.items).includes('"text":"') : !(block.text||"").trim();
     if(!empty && !confirm("Diesen Block mit Inhalt löschen?")) return;
   }
-  doc.blocks = doc.blocks.filter(b=>b.id!==block.id); wsTouch(doc); wsRerender(doc.id);
+  wsTrashPut(wsTrashItem("block", doc, block, {index:doc.blocks.indexOf(block)}));
+  doc.blocks = doc.blocks.filter(b=>b.id!==block.id); wsTouch(doc); wsRerender(doc.id); toast("Im Papierkorb (3 Tage)");
   if(links.length) wsLinkRun(()=>wsReleaseLinks(links, mode==="delete"));
 }
 async function wsDeleteDocFlow(doc){
@@ -6485,6 +6641,7 @@ async function wsDeleteDocFlow(doc){
     mode = await wsAskLinks(links, "Dokument");
     if(!mode) return;
   }
+  wsTrashPut(wsTrashItem("doc", null, doc, {}));
   wsDocs = wsDocs.filter(d=>d.id!==doc.id); wsDirty.delete(doc.id); wsDeleted.set(doc.id, ++wsRev);
   if(wsOpenDocId===doc.id){ wsOpenDocId = null; localStorage.removeItem("wsOpenDoc"); }
   wsScheduleSave(); render();

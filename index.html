@@ -553,7 +553,6 @@
   .ws-h.ws-h3{font-size:14.5px;font-weight:600}
   /* Schlanker Listenmodus */
   .ws-lean .ws-nright,.ws-lean .ws-handle,.ws-lean .ws-block > .ws-x,.ws-lean .ws-atts,.ws-lean .ws-fpanel,.ws-lean .ws-meta{display:none}
-  .ws-lean .ws-nrow:focus-within .ws-nright{display:flex}
   .ws-lean .ws-nrow{gap:2px;padding:0}
   .ws-lean .ws-node{margin:0}
   .ws-lean .ws-nin{padding-top:3px;padding-bottom:3px;min-height:26px;font-size:14.5px}
@@ -564,6 +563,14 @@
   .ws-lean .ws-toolbar{margin-bottom:4px}
   .ws-lean .ws-nin{background:transparent;border-color:transparent}
   .ws-lean .ws-nin:focus{background:#101216;border-color:#30343b}
+  .ws-more{display:none;flex:none;background:transparent;border:1px solid #30343b;color:#8b93a1;border-radius:6px;font:700 12px var(--mono);padding:1px 7px;cursor:pointer;line-height:18px}
+  .ws-more.on{border-color:var(--amber);color:var(--amber)}
+  .ws-lean .ws-more{display:inline-block}
+  .ws-lean .ws-node.more > .ws-nrow .ws-nright{display:flex}
+  .ws-lean .ws-node.more > .ws-nrow .ws-handle{display:inline-block}
+  .ws-lean .ws-node.more > .ws-atts{display:block}
+  .ws-lean .ws-block.more > .ws-handle,.ws-lean .ws-block.more > .ws-x{display:inline-block}
+  .ws-lean .ws-block.more .ws-bbody .ws-addbtn{display:inline-block}
 </style>
 </head>
 <body>
@@ -4130,6 +4137,7 @@ function wsEffCollapsed(n, depth){
 let wsTab = localStorage.getItem("wsTab") || "docs";                 // docs | gantt | notes
 if(!["docs","week","gantt","3d","notes"].includes(wsTab)) wsTab = "docs";
 let wsOpenDocId = localStorage.getItem("wsOpenDoc") || null;
+const wsMore = new Set();     // Listenmodus: Einträge (Punkte und Blöcke), deren Knöpfe gerade aufgeklappt sind (nur diese Sitzung)
 let wsLean = false; try{ wsLean = localStorage.getItem("wsLean")==="1"; }catch(e){}
 let wsTodayExpanded = localStorage.getItem("wsTodayExp")==="1";
 let wsRev = 0;
@@ -4355,12 +4363,14 @@ function wsNodeHtml(n, depth, inh){
   const ticon = hasKids ? (coll?"▸":"▾") : hasAtt ? (n.aopen?"▾":"▸") : "·";
   const cnt = n.children.length ? wsCount(n) : null;
   const sub = (hasKids && !coll) ? `<ul class="ws-tree ws-sub">${shown.map(c=>wsNodeHtml(c, depth+1, eff)).join("")}</ul>` : "";
-  return `<li class="ws-node${n.done?" done":""}${n.hid?" hid":""}" data-nid="${n.id}">
+  const mo = wsMore.has(n.id);
+  return `<li class="ws-node${n.done?" done":""}${n.hid?" hid":""}${mo?" more":""}" data-nid="${n.id}">
     <div class="ws-nrow">
       <span class="ws-handle sm" draggable="true" data-wsdrag="node" title="Ziehen: Punkt samt Unterpunkten verschieben">⠿</span>
       <button class="ws-tog" data-wsact="toggle" title="${(hasKids||hasAtt)?(ticon==="▸"?"Aufklappen":"Zuklappen")+" (Umschalt-Klick: samt allen Ebenen darunter)":""}">${ticon}</button>
       <button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
+      <button class="ws-more${mo?" on":""}" data-wsact="more" data-mid="${n.id}" title="${mo?"Knöpfe dieses Punkts wieder einklappen":"Alle Knöpfe dieses Punkts anzeigen"}">${mo?"‹ zu":"⋯"}</button>
       <span class="ws-nright">
       ${wsNodeChips(n)}
       ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}${(hasKids && coll)?`<span class="ws-hcnt" title="ausgeblendete Unterpunkte">▸ ${wsDescCount(n)}</span>`:""}
@@ -4395,9 +4405,11 @@ function wsBlockHtml(b, eff, hidN, ind){
     const open = wsFoldOpen(b.id, "table");
     body = wsFoldBtn(open, "Tabelle · "+b.rows.length+(b.rows.length===1?" Zeile":" Zeilen")) + (open ? wsTableBody(b, true) : "");
   }
-  return `<div class="ws-block" data-bid="${b.id}" data-kind="${b.type}"${b.type==="heading"?` data-lvl="${wsHeadLvl(b)}"`:""}${ind?` style="margin-left:${ind*18}px"`:""}>
+  const bmo = wsMore.has(b.id);
+  return `<div class="ws-block${bmo?" more":""}" data-bid="${b.id}" data-kind="${b.type}"${b.type==="heading"?` data-lvl="${wsHeadLvl(b)}"`:""}${ind?` style="margin-left:${ind*18}px"`:""}>
     <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
     <div class="ws-bbody">${body}</div>
+    <button class="ws-more${bmo?" on":""}" data-wsact="more" data-mid="${b.id}" title="${bmo?"Knöpfe dieses Blocks wieder einklappen":"Alle Knöpfe dieses Blocks anzeigen"}">${bmo?"‹ zu":"⋯"}</button>
     <button class="ws-x ws-tagb${b.tag?" on":(eff?" inh":"")}" data-wsact="tag-block" title="${b.type==="heading"?"Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)":(b.tag?"Eigener Tag des Blocks":(eff?"Tag geerbt von oben, hier änderbar":"Tag für diesen Block setzen"))}">🏷${eff?" "+esc(eff):""}</button>
     <button class="ws-x" data-wsact="del-block" title="Block löschen">✕</button>
   </div>`;
@@ -5767,6 +5779,10 @@ main.addEventListener("click", e=>{
   }
   if((act==="fold-all" || act==="unfold-all") && doc){
     wsSetAllFolds(doc, act==="fold-all"); wsTouch(doc); wsRerender(doc.id); return;
+  }
+  if(act==="more" && doc){
+    const id = a.dataset.mid; if(wsMore.has(id)) wsMore.delete(id); else wsMore.add(id);
+    wsRerender(doc.id); return;
   }
   if(act==="lean-toggle"){ wsLean = !wsLean; try{ localStorage.setItem("wsLean", wsLean?"1":"0"); }catch(err){} render(); return; }
   if(act==="f-open"){ wsFOpen = !wsFOpen; try{ localStorage.setItem("wsFOpen", wsFOpen?"1":"0"); }catch(err){} render(); return; }

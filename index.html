@@ -4218,7 +4218,7 @@ function wsHeadChain(doc, bid){
 }
 /* Welche Blöcke blendet eine eingeklappte Überschrift aus? Ebene 1 schließt Ebene 2 und 3 mit ein. */
 function wsHiddenByHeads(doc){
-  const hidden = new Set(), counts = {}, indent = {};
+  const hidden = new Set(), counts = {}, indent = {}, base = {};
   let closedLvl = 0, cur = null, lvl = 0;
   doc.blocks.forEach(b=>{
     if(b.type==="heading"){
@@ -4227,11 +4227,11 @@ function wsHiddenByHeads(doc){
       if(closedLvl){ hidden.add(b.id); counts[cur.id]++; return; }
       if(wsHeadClosed(b)){ closedLvl = L; cur = b; counts[b.id] = 0; }
     }else{
-      indent[b.id] = lvl ? lvl-1 : 0;
+      indent[b.id] = lvl ? lvl-1 : 0; base[b.id] = lvl+1;
       if(closedLvl){ hidden.add(b.id); counts[cur.id]++; }
     }
   });
-  return {hidden, counts, indent};
+  return {hidden, counts, indent, base};
 }
 function wsSetAllFolds(doc, closed){
   const walk = list=>list.forEach(n=>{
@@ -4471,7 +4471,8 @@ function wsAttsHtml(n, eff){
     <div class="ws-add"><button class="ws-addbtn" data-wsact="add-att" data-type="text">+ Text / Notiz</button><button class="ws-addbtn" data-wsact="add-att" data-type="table">+ Tabelle</button><button class="ws-addbtn" data-wsact="add-att" data-type="link">+ Link</button><button class="ws-addbtn" data-wsact="add-file" title="Bild oder PDF in deinen Google-Drive-Ordner hochladen">+ Bild / PDF</button></div></div>`;
 }
 function wsDescCount(n){ let c = 0; n.children.forEach(k=>{ c += 1 + wsDescCount(k); }); return c; }
-function wsNodeHtml(n, depth, inh){
+function wsNodeHtml(n, depth, inh, base){
+  base = base || 3;
   depth = depth||0;
   const eff = wsTagUnion(inh, n.tag);
   const shown = (wsF.manual ? n.children : wsUrgSort(n.children)).filter(c=>wsVis(c, eff));
@@ -4481,13 +4482,13 @@ function wsNodeHtml(n, depth, inh){
   const attOn = (n.aopen && !wsF.noAtt) && !(hasKids && coll);           // eingeklappter Punkt blendet auch seine Anhänge aus
   const ticon = hasKids ? (coll?"▸":"▾") : hasAtt ? (n.aopen?"▾":"▸") : "·";
   const cnt = n.children.length ? wsCount(n) : null;
-  const sub = (hasKids && !coll) ? `<ul class="ws-tree ws-sub">${shown.map(c=>wsNodeHtml(c, depth+1, eff)).join("")}</ul>` : "";
+  const sub = (hasKids && !coll) ? `<ul class="ws-tree ws-sub">${shown.map(c=>wsNodeHtml(c, depth+1, eff, base)).join("")}</ul>` : "";
   const mo = wsMore.has(n.id);
   return `<li class="ws-node${n.done?" done":""}${n.hid?" hid":""}${mo?" more":""}" data-nid="${n.id}">
     <div class="ws-nrow">
       <span class="ws-handle sm" draggable="true" data-wsdrag="node" title="Ziehen: Punkt samt Unterpunkten verschieben">⠿</span>
       <button class="ws-tog" data-wsact="toggle" title="${(hasKids||hasAtt)?(ticon==="▸"?"Aufklappen":"Zuklappen")+" (Umschalt-Klick: samt allen Ebenen darunter)":""}">${ticon}</button>
-      <button class="ws-lvb ws-nlv" data-wsact="node-lvl" title="Ebene ändern: zur Überschrift machen oder tiefer und höher rücken">E${depth+3}</button>
+      <button class="ws-lvb ws-nlv" data-wsact="node-lvl" title="Ebene ändern: zur Überschrift machen oder tiefer und höher rücken">E${depth+base}</button>
       <button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
       <button class="ws-more${mo?" on":""}" data-wsact="more" data-mid="${n.id}" title="${mo?"Knöpfe dieses Punkts wieder einklappen":"Alle Knöpfe dieses Punkts anzeigen"}">${mo?"‹ zu":"⋯"}</button>
@@ -4504,7 +4505,7 @@ function wsNodeHtml(n, depth, inh){
     </div>${attOn?wsAttsHtml(n, eff):""}${sub}
   </li>`;
 }
-function wsBlockHtml(b, eff, hidN, ind){
+function wsBlockHtml(b, eff, hidN, ind, base){
   let body = "";
   if(wsF.tag && b.type!=="outline" && !wsTagMatch(eff, wsF.tag)) return "";
   if(b.type==="text"){
@@ -4517,10 +4518,8 @@ function wsBlockHtml(b, eff, hidN, ind){
   }else if(b.type==="outline"){
     const vis = (wsF.manual ? b.items : wsUrgSort(b.items)).filter(n=>wsVis(n, eff));
     if(wsF.tag && !vis.length) return "";
-    const open = wsFoldOpen(b.id, "outline");
-    body = wsFoldBtn(open, "Ebene 3 · "+b.items.length+(b.items.length===1?" Punkt":" Punkte"))
-      + (open ? `${(b.items.length && !vis.length)?`<div class="ws-meta">Alle Punkte sind durch die Ansicht ausgeblendet.</div>`:""}<ul class="ws-tree">${vis.map(n=>wsNodeHtml(n, 0, eff)).join("")}</ul>
-      <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button><button class="ws-addbtn" data-wsact="import-root" title="Offene ToDos oder Tages-Ziele der ToDo-App als verknüpfte Punkte einfügen">+ ToDo / Ziel</button>` : "");
+    body = `${(b.items.length && !vis.length)?`<div class="ws-meta">Alle Punkte sind durch die Ansicht ausgeblendet.</div>`:""}<ul class="ws-tree">${vis.map(n=>wsNodeHtml(n, 0, eff, base)).join("")}</ul>
+      <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button><button class="ws-addbtn" data-wsact="import-root" title="Offene ToDos oder Tages-Ziele der ToDo-App als verknüpfte Punkte einfügen">+ ToDo / Ziel</button>`;
   }else if(b.type==="table"){
     const open = wsFoldOpen(b.id, "table");
     body = wsFoldBtn(open, "Tabelle · "+b.rows.length+(b.rows.length===1?" Zeile":" Zeilen")) + (open ? wsTableBody(b, true) : "");
@@ -4580,13 +4579,13 @@ function wsEditorHtml(doc, mode){
   if(mode==="today" || !wsF.tag) h += wsFilterHtml([doc]);
   const bt = wsBlockTags(doc);
   const hh = wsHiddenByHeads(doc);
-  const parts = doc.blocks.map(b=>hh.hidden.has(b.id) ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], hh.indent[b.id])).filter(Boolean);
+  const parts = doc.blocks.map(b=>hh.hidden.has(b.id) ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], hh.indent[b.id], hh.base[b.id])).filter(Boolean);
   h += `<div class="ws-blocks">${parts.length ? parts.join("") : (doc.blocks.length ? `<div class="ws-empty">In diesem Dokument ist nichts für diese Ansicht.</div>` : `<div class="ws-empty">Noch leer. Unten einen Block hinzufügen.</div>`)}</div>
     <div class="ws-add">
       <button class="ws-addbtn" data-wsact="add-block" data-type="text">+ Text</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="1">+ Ebene 1</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="2">+ Ebene 2</button>
-      <button class="ws-addbtn" data-wsact="add-block" data-type="outline" title="Liste mit Punkten (Ebene 3 und tiefer)">+ Ebene 3</button>
+      <button class="ws-addbtn" data-wsact="add-block" data-type="outline" title="Punkte: Ebene 2 unter einer Ebene-1-Überschrift, Ebene 3 unter einer Ebene-2-Überschrift">+ Punkte</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="table">+ Tabelle</button>
       ${mode==="today"?`<span class="ws-status"></span>`:""}
     </div></div>`;
@@ -6096,7 +6095,7 @@ function wsOpenLevelMenu(docId, kind, id){
   if(kind==="head"){
     const b = wsBlock(doc, id); if(!b) return;
     const L = wsHLvl(b); title = "Ebene ändern: "+(b.text||"(ohne Text)").slice(0,40);
-    items = [["l1","Ebene 1 (große Überschrift)"+(L===1?" ✓":"")],["l2","Ebene 2 (Zwischenüberschrift)"+(L===2?" ✓":"")],["pt","Ebene 3: zum Punkt machen (samt allem darunter)"]];
+    items = [["l1","Ebene 1 (große Überschrift)"+(L===1?" ✓":"")],["l2","Ebene 2 (Zwischenüberschrift)"+(L===2?" ✓":"")],["pt","Zum Punkt machen (samt allem darunter)"]];
   }else{
     const r = wsFindNode(doc, id); if(!r) return;
     let d = 0, p = r.parent; while(p){ d++; const q = wsFindNode(doc, p.id); p = q && q.parent; }

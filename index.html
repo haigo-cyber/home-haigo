@@ -540,6 +540,30 @@
 
   .ws-hrow{display:flex;align-items:center;gap:4px}
   .ws-hrow .ws-h{flex:1;min-width:0}
+
+  .ws-lvb{flex:none;background:#14161a;border:1px solid #30343b;color:var(--muted,#9aa1ad);border-radius:6px;font:700 11px var(--mono);padding:3px 6px;cursor:pointer}
+  .ws-block[data-lvl="1"]{border-left:3px solid #e0a82e}
+  .ws-block[data-lvl="2"]{border-left:3px solid #5aa9e6}
+  .ws-block[data-lvl="3"]{border-left:3px solid #6fcf97}
+  .ws-block[data-lvl="1"] .ws-lvb{color:#e0a82e}
+  .ws-block[data-lvl="2"] .ws-lvb{color:#5aa9e6}
+  .ws-block[data-lvl="3"] .ws-lvb{color:#6fcf97}
+  .ws-h.ws-h1{font-size:18px}
+  .ws-h.ws-h2{font-size:16px}
+  .ws-h.ws-h3{font-size:14.5px;font-weight:600}
+  /* Schlanker Listenmodus */
+  .ws-lean .ws-nright,.ws-lean .ws-handle,.ws-lean .ws-block > .ws-x,.ws-lean .ws-atts,.ws-lean .ws-fpanel,.ws-lean .ws-meta{display:none}
+  .ws-lean .ws-nrow:focus-within .ws-nright{display:flex}
+  .ws-lean .ws-nrow{gap:2px;padding:0}
+  .ws-lean .ws-node{margin:0}
+  .ws-lean .ws-nin{padding-top:3px;padding-bottom:3px;min-height:26px;font-size:14.5px}
+  .ws-lean .ws-sub{margin-left:12px;padding-left:6px}
+  .ws-lean .ws-block{padding:2px 4px 2px 0;margin-bottom:2px}
+  .ws-lean .ws-block .ws-bbody .ws-addbtn{display:none}
+  .ws-lean .ws-block .ws-bbody > .ws-addbtn[data-wsact="add-root-node"]{display:inline-block}
+  .ws-lean .ws-toolbar{margin-bottom:4px}
+  .ws-lean .ws-nin{background:transparent;border-color:transparent}
+  .ws-lean .ws-nin:focus{background:#101216;border-color:#30343b}
 </style>
 </head>
 <body>
@@ -2989,7 +3013,7 @@ function openQuickAdd(){
       await addGoalTask(title, startDate||todayKey());
       return;
     }
-    const data={type:qtype, title, syncCalendar:false, notes:INBOX_MARKER};
+    const data={type:qtype, title, syncCalendar:false, notes:""};
     if(qtype==="habit"){
       data.scheduleType="daily"; data.startDate=todayKey();
     } else if(qtype==="duty"){
@@ -3404,7 +3428,7 @@ function wsNewDoc(title){
 }
 function wsNewBlock(type){
   if(type==="text") return {id:wsId(), type:"text", text:"", tag:""};
-  if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:"", collapsed:false};
+  if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:"", collapsed:false, lvl:1};
   if(type==="outline") return {id:wsId(), type:"outline", items:[wsNewNode("")], tag:""};
   if(type==="table") return {id:wsId(), type:"table", cols:["Spalte 1","Spalte 2","Spalte 3"], rows:[["","",""],["","",""]], tag:""};
   return null;
@@ -3426,7 +3450,7 @@ function wsNormalizeDocs(arr){
       if(!b || typeof b!=="object") return;
       const id = b.id||wsId();
       if(b.type==="text") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag)});
-      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag), collapsed:!!b.collapsed});
+      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag), collapsed:!!b.collapsed, lvl:(b.lvl===2||b.lvl===3)?b.lvl:1});
       else if(b.type==="outline") doc.blocks.push({id, type:"outline", items:wsNormNodes(b.items), tag:wsNormTag(b.tag)});
       else if(b.type==="table"){
         const cols = (Array.isArray(b.cols) && b.cols.length) ? b.cols.map(String) : ["Spalte 1"];
@@ -3826,8 +3850,13 @@ function wsTagMatch(eff, sel){ if(!sel) return true; const l = wsTagList(eff).ma
 /* Tag eines Blocks: Überschrift gilt für sich und alle folgenden Blöcke bis zur nächsten Überschrift; sonst der Tag des Dokuments */
 function wsBlockTags(doc){
   const out = {}; let base = wsNormTag(doc.tag);
+  const lv = {0:wsNormTag(doc.tag), 1:wsNormTag(doc.tag), 2:wsNormTag(doc.tag), 3:wsNormTag(doc.tag)};   // wirksamer Tag je Überschrift-Ebene
   doc.blocks.forEach(b=>{
-    if(b.type==="heading"){ base = wsTagUnion(doc.tag, b.tag); out[b.id] = base; }
+    if(b.type==="heading"){
+      const L = (b.lvl===2||b.lvl===3) ? b.lvl : 1;
+      base = wsTagUnion(lv[L-1], b.tag); out[b.id] = base;
+      for(let i=L;i<=3;i++) lv[i] = base;
+    }
     else out[b.id] = wsTagUnion(base, b.tag);
   });
   return out;
@@ -4051,10 +4080,32 @@ function wsHeadClosed(b){
   if(wsFiltered() && wsColl.has(b.id)) return wsColl.get(b.id);
   return !wsFiltered() && !!b.collapsed;
 }
-function wsHeadOf(doc, bid){
-  let h = null;
-  for(const b of doc.blocks){ if(b.id===bid) return h; if(b.type==="heading") h = b; }
-  return null;
+function wsHeadLvl(b){ return (b.lvl===2||b.lvl===3) ? b.lvl : 1; }
+/* alle Überschriften (Ebene 1 bis 3), unter denen ein Block steht */
+function wsHeadChain(doc, bid){
+  const st = [];
+  for(const b of doc.blocks){
+    if(b.id===bid) return st;
+    if(b.type==="heading"){ while(st.length && wsHeadLvl(st[st.length-1])>=wsHeadLvl(b)) st.pop(); st.push(b); }
+  }
+  return [];
+}
+/* Welche Blöcke blendet eine eingeklappte Überschrift aus? Ebene 1 schließt Ebene 2 und 3 mit ein. */
+function wsHiddenByHeads(doc){
+  const hidden = new Set(), counts = {}, indent = {};
+  let closedLvl = 0, cur = null, lvl = 0;
+  doc.blocks.forEach(b=>{
+    if(b.type==="heading"){
+      const L = wsHeadLvl(b); lvl = L; indent[b.id] = L-1;
+      if(closedLvl && L<=closedLvl){ closedLvl = 0; cur = null; }
+      if(closedLvl){ hidden.add(b.id); counts[cur.id]++; return; }
+      if(wsHeadClosed(b)){ closedLvl = L; cur = b; counts[b.id] = 0; }
+    }else{
+      indent[b.id] = lvl ? lvl-1 : 0;
+      if(closedLvl){ hidden.add(b.id); counts[cur.id]++; }
+    }
+  });
+  return {hidden, counts, indent};
 }
 function wsSetAllFolds(doc, closed){
   const walk = list=>list.forEach(n=>{
@@ -4079,6 +4130,7 @@ function wsEffCollapsed(n, depth){
 let wsTab = localStorage.getItem("wsTab") || "docs";                 // docs | gantt | notes
 if(!["docs","week","gantt","3d","notes"].includes(wsTab)) wsTab = "docs";
 let wsOpenDocId = localStorage.getItem("wsOpenDoc") || null;
+let wsLean = false; try{ wsLean = localStorage.getItem("wsLean")==="1"; }catch(e){}
 let wsTodayExpanded = localStorage.getItem("wsTodayExp")==="1";
 let wsRev = 0;
 const wsDirty = new Map(), wsDeleted = new Map();                     // id -> Version der letzten lokalen Änderung
@@ -4322,7 +4374,7 @@ function wsNodeHtml(n, depth, inh){
     </div>${attOn?wsAttsHtml(n, eff):""}${sub}
   </li>`;
 }
-function wsBlockHtml(b, eff, hidN){
+function wsBlockHtml(b, eff, hidN, ind){
   let body = "";
   if(wsF.tag && b.type!=="outline" && !wsTagMatch(eff, wsF.tag)) return "";
   if(b.type==="text"){
@@ -4330,20 +4382,20 @@ function wsBlockHtml(b, eff, hidN){
     body = wsFoldBtn(open, open ? "Notiz" : (esc(wsFirstLine(b.text)) || "(leere Notiz)"))
       + (open ? `<textarea class="ws-in ws-ta" data-wsf="text" rows="1" placeholder="Text">${esc(b.text)}</textarea>` : "");
   }else if(b.type==="heading"){
-    const hc = wsHeadClosed(b);
-    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alle Blöcke bis zur nächsten Überschrift">${hc?"▸":"▾"}</button><input type="text" class="ws-in ws-h" data-wsf="text" value="${esc(b.text)}" placeholder="Überschrift">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
+    const hc = wsHeadClosed(b), L = wsHeadLvl(b);
+    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alles darunter bis zur nächsten Überschrift derselben oder einer höheren Ebene">${hc?"▸":"▾"}</button><button class="ws-lvb" data-wsact="head-lvl" title="Ebene wechseln (1, 2, 3)">E${L}</button><input type="text" class="ws-in ws-h ws-h${L}" data-wsf="text" value="${esc(b.text)}" placeholder="Ebene ${L}">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
   }else if(b.type==="outline"){
     const vis = (wsF.manual ? b.items : wsUrgSort(b.items)).filter(n=>wsVis(n, eff));
     if(wsF.tag && !vis.length) return "";
     const open = wsFoldOpen(b.id, "outline");
-    body = wsFoldBtn(open, "Gliederung · "+b.items.length+(b.items.length===1?" Punkt":" Punkte"))
+    body = wsFoldBtn(open, "Liste · "+b.items.length+(b.items.length===1?" Punkt":" Punkte"))
       + (open ? `${(b.items.length && !vis.length)?`<div class="ws-meta">Alle Punkte sind durch die Ansicht ausgeblendet.</div>`:""}<ul class="ws-tree">${vis.map(n=>wsNodeHtml(n, 0, eff)).join("")}</ul>
       <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button><button class="ws-addbtn" data-wsact="import-root" title="Offene ToDos oder Tages-Ziele der ToDo-App als verknüpfte Punkte einfügen">+ ToDo / Ziel</button>` : "");
   }else if(b.type==="table"){
     const open = wsFoldOpen(b.id, "table");
     body = wsFoldBtn(open, "Tabelle · "+b.rows.length+(b.rows.length===1?" Zeile":" Zeilen")) + (open ? wsTableBody(b, true) : "");
   }
-  return `<div class="ws-block" data-bid="${b.id}" data-kind="${b.type}">
+  return `<div class="ws-block" data-bid="${b.id}" data-kind="${b.type}"${b.type==="heading"?` data-lvl="${wsHeadLvl(b)}"`:""}${ind?` style="margin-left:${ind*18}px"`:""}>
     <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
     <div class="ws-bbody">${body}</div>
     <button class="ws-x ws-tagb${b.tag?" on":(eff?" inh":"")}" data-wsact="tag-block" title="${b.type==="heading"?"Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)":(b.tag?"Eigener Tag des Blocks":(eff?"Tag geerbt von oben, hier änderbar":"Tag für diesen Block setzen"))}">🏷${eff?" "+esc(eff):""}</button>
@@ -4382,10 +4434,11 @@ function wsFilterHtml(docs){
   return h;
 }
 function wsEditorHtml(doc, mode){
-  let h = `<div class="ws-doc" data-doc="${doc.id}">`;
+  let h = `<div class="ws-doc${wsLean?" ws-lean":""}" data-doc="${doc.id}">`;
   if(mode==="tab"){
     h += `<div class="ws-toolbar">
       <input type="text" class="ws-in ws-doctitle" data-wsf="title" value="${esc(doc.title)}" placeholder="Titel des Dokuments">
+      <button class="ws-tb${wsLean?" on":""}" data-wsact="lean-toggle" title="Schlanker Listenmodus: alle Knöpfe eingeklappt, nur Pfeil, Haken und Text">☰ Liste${wsLean?" an":""}</button>
       <button class="ws-tb${doc.tag?" on":""}" data-wsact="tag-doc" title="Tag für das ganze Dokument">🏷 ${doc.tag?esc(doc.tag):"Tag"}</button>
       <button class="ws-tb${doc.pinned?" on":""}" data-wsact="pin" title="${doc.pinned?"Fokus in Heute aufheben":"Als Fokus-Notiz in Heute anzeigen"}">📌 ${doc.pinned?"Fokus":"anheften"}</button>
       <button class="ws-tb" data-wsact="del-doc" title="Dokument löschen">🗑</button>
@@ -4394,21 +4447,15 @@ function wsEditorHtml(doc, mode){
   }
   if(mode==="today" || !wsF.tag) h += wsFilterHtml([doc]);
   const bt = wsBlockTags(doc);
-  let hidHead = null;
-  const parts = doc.blocks.map((b,i)=>{
-    if(b.type==="heading"){
-      let n = 0; for(let j=i+1;j<doc.blocks.length && doc.blocks[j].type!=="heading";j++) n++;
-      hidHead = wsHeadClosed(b) ? b : null;
-      return wsBlockHtml(b, bt[b.id], n);
-    }
-    if(hidHead) return "";
-    return wsBlockHtml(b, bt[b.id]);
-  }).filter(Boolean);
+  const hh = wsHiddenByHeads(doc);
+  const parts = doc.blocks.map(b=>hh.hidden.has(b.id) ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], hh.indent[b.id])).filter(Boolean);
   h += `<div class="ws-blocks">${parts.length ? parts.join("") : (doc.blocks.length ? `<div class="ws-empty">In diesem Dokument ist nichts für diese Ansicht.</div>` : `<div class="ws-empty">Noch leer. Unten einen Block hinzufügen.</div>`)}</div>
     <div class="ws-add">
       <button class="ws-addbtn" data-wsact="add-block" data-type="text">+ Text</button>
-      <button class="ws-addbtn" data-wsact="add-block" data-type="heading">+ Überschrift</button>
-      <button class="ws-addbtn" data-wsact="add-block" data-type="outline">+ Gliederung</button>
+      <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="1">+ Ebene 1</button>
+      <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="2">+ Ebene 2</button>
+      <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="3">+ Ebene 3</button>
+      <button class="ws-addbtn" data-wsact="add-block" data-type="outline">+ Liste</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="table">+ Tabelle</button>
       ${mode==="today"?`<span class="ws-status"></span>`:""}
     </div></div>`;
@@ -5721,6 +5768,7 @@ main.addEventListener("click", e=>{
   if((act==="fold-all" || act==="unfold-all") && doc){
     wsSetAllFolds(doc, act==="fold-all"); wsTouch(doc); wsRerender(doc.id); return;
   }
+  if(act==="lean-toggle"){ wsLean = !wsLean; try{ localStorage.setItem("wsLean", wsLean?"1":"0"); }catch(err){} render(); return; }
   if(act==="f-open"){ wsFOpen = !wsFOpen; try{ localStorage.setItem("wsFOpen", wsFOpen?"1":"0"); }catch(err){} render(); return; }
   if(act==="tag-sel"){ wsF = wsFNorm({...wsF, tag:(wsF.tag===a.dataset.t)?"":a.dataset.t}); wsFSave(); render(); return; }
   if(act==="f-reset"){ wsF = wsFNorm(null); wsFSave(); render(); return; }
@@ -5791,6 +5839,7 @@ main.addEventListener("click", e=>{
   if(act==="del-doc"){ wsDeleteDocFlow(doc); return; }
   if(act==="add-block"){
     const b = wsNewBlock(a.dataset.type); if(!b) return;
+    if(b.type==="heading" && (a.dataset.lvl==="2" || a.dataset.lvl==="3")) b.lvl = +a.dataset.lvl;
     wsOpenMap.set(b.id, true);
     doc.blocks.push(b); wsTouch(doc);
     wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-bid="${b.id}"] .ws-in`; wsRerender(doc.id); return;
@@ -5799,6 +5848,9 @@ main.addEventListener("click", e=>{
   const block = blockEl ? wsBlock(doc, blockEl.dataset.bid) : null;
   if(act==="fold" && block && !a.closest(".ws-att") && !a.closest(".ws-node")){
     wsOpenMap.set(block.id, !wsFoldOpen(block.id, block.type)); wsRerender(doc.id); return;
+  }
+  if(act==="head-lvl" && block && block.type==="heading"){
+    block.lvl = wsHeadLvl(block)%3+1; wsTouch(doc); wsRerender(doc.id); return;
   }
   if(act==="hfold" && block && block.type==="heading"){
     const nc = !wsHeadClosed(block);
@@ -6344,8 +6396,9 @@ function wsGoToItem(docId, kind, ref, from3d){
       const nid2 = kind==="att" ? (wsAttOwner(doc, ref)||{}).id : ref;
       const bb = doc.blocks.find(b=>b.type==="outline" && wsNodePath(b.items, nid2, [])); tb = bb && bb.id;
     }
-    const hd = tb && wsHeadOf(doc, tb);
-    if(hd){ if(wsFiltered()) wsColl.set(hd.id, false); else if(hd.collapsed){ hd.collapsed = false; wsTouch(doc); } }
+    (tb ? wsHeadChain(doc, tb) : []).forEach(hd=>{
+      if(wsFiltered()) wsColl.set(hd.id, false); else if(hd.collapsed){ hd.collapsed = false; wsTouch(doc); }
+    });
   }
   wsTab = "docs"; try{ localStorage.setItem("wsTab", "docs"); }catch(e){}
   view = "notes"; render();

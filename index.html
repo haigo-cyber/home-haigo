@@ -571,6 +571,10 @@
   .ws-lean .ws-node.more > .ws-atts{display:block}
   .ws-lean .ws-block.more > .ws-handle,.ws-lean .ws-block.more > .ws-x{display:inline-block}
   .ws-lean .ws-block.more .ws-bbody .ws-addbtn{display:inline-block}
+  .ws-block.ws-drop-into{outline:2px dashed var(--amber);outline-offset:-2px;background:rgba(255,176,32,.08)}
+  .ws-nlv{color:#9aa3b2}
+  .ws-lean .ws-nlv{display:none}
+  .ws-lean .ws-node.more > .ws-nrow .ws-nlv{display:inline-block}
 </style>
 </head>
 <body>
@@ -3457,7 +3461,7 @@ function wsNormalizeDocs(arr){
       if(!b || typeof b!=="object") return;
       const id = b.id||wsId();
       if(b.type==="text") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag)});
-      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag), collapsed:!!b.collapsed, lvl:(b.lvl===2||b.lvl===3)?b.lvl:1});
+      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag), collapsed:!!b.collapsed, lvl:(b.lvl>=2)?2:1});
       else if(b.type==="outline") doc.blocks.push({id, type:"outline", items:wsNormNodes(b.items), tag:wsNormTag(b.tag)});
       else if(b.type==="table"){
         const cols = (Array.isArray(b.cols) && b.cols.length) ? b.cols.map(String) : ["Spalte 1"];
@@ -3762,6 +3766,121 @@ function wsMoveBlock(doc, bid, targetBid, pos){
   const [b] = doc.blocks.splice(i, 1);
   const t = doc.blocks.findIndex(x=>x.id===targetBid);
   doc.blocks.splice(t + (pos==="after"?1:0), 0, b);
+  return true;
+}
+
+/* ---- Ebenen: Ebene 1 und 2 sind Überschriften (Blöcke), Ebene 3 und tiefer sind Punkte ---- */
+function wsHLvl(b){ return b && b.lvl===2 ? 2 : 1; }
+/* Ende (exklusiv) des Abschnitts, der mit der Überschrift an Position i beginnt */
+function wsSecEnd(blocks, i){
+  const L = wsHLvl(blocks[i]); let j = i+1;
+  while(j<blocks.length && !(blocks[j].type==="heading" && wsHLvl(blocks[j])<=L)) j++;
+  return j;
+}
+/* Abschnitt (Überschrift mit allem darunter) in einen Punkt umwandeln: Listen werden Unterpunkte, Notizen und Tabellen Anhänge, Unterüberschriften Unterpunkte */
+function wsSecToNode(blocks, i, end){
+  const h = blocks[i], n = wsNewNode(h.text); n.tag = h.tag || "";
+  let j = i+1;
+  while(j<end){
+    const b = blocks[j];
+    if(b.type==="heading"){ const e = Math.min(wsSecEnd(blocks, j), end); n.children.push(wsSecToNode(blocks, j, e)); j = e; continue; }
+    if(b.type==="outline") b.items.forEach(x=>n.children.push(x));
+    else if(b.type==="text"){ const a = wsNewAtt("text"); a.text = b.text; a.tag = b.tag || ""; n.att.push(a); }
+    else if(b.type==="table"){ const a = wsNewAtt("table"); a.cols = b.cols.slice(); a.rows = b.rows.map(r=>r.slice()); a.tag = b.tag || ""; n.att.push(a); }
+    j++;
+  }
+  if(n.att.length) n.aopen = true;
+  return n;
+}
+/* Überschrift samt Abschnitt wird zum Punkt. tgt: null (an die Stelle der Überschrift), {nid,pos} (relativ zu einem Punkt) oder {headId} (an den Anfang des Abschnitts einer anderen Überschrift) */
+function wsDemoteHeading(doc, bid, tgt){
+  const i = doc.blocks.findIndex(b=>b.id===bid); if(i<0 || doc.blocks[i].type!=="heading") return null;
+  const end = wsSecEnd(doc.blocks, i);
+  const slice = doc.blocks.splice(i, end-i);
+  const node = wsSecToNode(slice, 0, slice.length);
+  const undo = ()=>{ doc.blocks.splice(i, 0, ...slice); return null; };
+  if(tgt && tgt.nid){
+    const r = wsFindNode(doc, tgt.nid); if(!r) return undo();
+    if(tgt.pos==="into"){ r.node.children.push(node); r.node.collapsed = false; }
+    else r.list.splice(r.index + (tgt.pos==="after"?1:0), 0, node);
+  }else if(tgt && tgt.headId){
+    const h = doc.blocks.findIndex(b=>b.id===tgt.headId); if(h<0) return undo();
+    const nx = doc.blocks[h+1];
+    if(nx && nx.type==="outline") nx.items.unshift(node);
+    else { const ob = wsNewBlock("outline"); ob.items = [node]; doc.blocks.splice(h+1, 0, ob); }
+  }else{
+    const pv = doc.blocks[i-1];
+    if(pv && pv.type==="outline") pv.items.push(node);
+    else { const ob = wsNewBlock("outline"); ob.items = [node]; doc.blocks.splice(i, 0, ob); }
+  }
+  return node;
+}
+/* Ebene einer Überschrift ändern; Ebene-2-Überschriften im Abschnitt einer Überschrift, die selbst Ebene 2 wird, werden zu Punkten */
+function wsSetHeadLvl(doc, bid, lvl){
+  const i = doc.blocks.findIndex(b=>b.id===bid); if(i<0) return false;
+  const h = doc.blocks[i]; lvl = lvl===2 ? 2 : 1;
+  if(wsHLvl(h)===1 && lvl===2){
+    const end = wsSecEnd(doc.blocks, i);
+    const subs = doc.blocks.slice(i+1, end).filter(b=>b.type==="heading").map(b=>b.id);
+    subs.forEach(id=>wsDemoteHeading(doc, id, null));
+  }
+  h.lvl = lvl;
+  return true;
+}
+/* Abschnitt (Überschrift mit allem darunter) vor oder hinter einen anderen Block schieben */
+function wsMoveSection(doc, bid, targetBid, pos){
+  const i = doc.blocks.findIndex(b=>b.id===bid); if(i<0 || doc.blocks[i].type!=="heading") return false;
+  const end = wsSecEnd(doc.blocks, i);
+  const ti = doc.blocks.findIndex(b=>b.id===targetBid); if(ti<0 || (ti>=i && ti<end)) return false;
+  const slice = doc.blocks.splice(i, end-i);
+  const t = doc.blocks.findIndex(b=>b.id===targetBid);
+  doc.blocks.splice(t + (pos==="after"?1:0), 0, ...slice);
+  return true;
+}
+/* Punkt wird zur Überschrift (Ebene 1 oder 2). Unterpunkte werden eine Liste darunter, Text- und Tabellen-Anhänge eigene Blöcke.
+   at: {bid,pos} = vor oder hinter diesen Block, sonst direkt an der Stelle des Punkts (Punkte dahinter bilden eine neue Liste).
+   Rückgabe: {heading} oder {err} */
+function wsPromoteNode(doc, nid, lvl, at){
+  const r = wsFindNode(doc, nid); if(!r) return {err:"Punkt nicht gefunden"};
+  const n = r.node;
+  if(n.link) return {err:"Dieser Punkt ist mit einem ToDo oder Ziel verknüpft und kann keine Überschrift werden"};
+  if(n.att.some(a=>a.type!=="text" && a.type!=="table")) return {err:"Links, Bilder und PDFs lassen sich nicht in eine Überschrift mitnehmen. Bitte zuerst verschieben."};
+  if(at && at.bid && !doc.blocks.some(b=>b.id===at.bid)) return {err:"Ziel nicht gefunden"};
+  const blk = r.block;
+  r.list.splice(r.index, 1);
+  let tail = [];
+  if(!at && !r.parent){ tail = r.list.splice(r.index); }
+  const h = wsNewBlock("heading"); h.text = n.text; h.tag = n.tag || ""; h.lvl = lvl===2 ? 2 : 1;
+  const ins = [h];
+  n.att.forEach(a=>{
+    if(a.type==="text"){ const t = wsNewBlock("text"); t.text = a.text; t.tag = a.tag || ""; ins.push(t); }
+    else { const t = wsNewBlock("table"); t.cols = a.cols.slice(); t.rows = a.rows.map(x=>x.slice()); t.tag = a.tag || ""; ins.push(t); }
+  });
+  if(n.children.length){ const ob = wsNewBlock("outline"); ob.items = n.children; ins.push(ob); }
+  if(tail.length){ const tb = wsNewBlock("outline"); tb.items = tail; tb.tag = blk.tag || ""; ins.push(tb); }
+  let pos;
+  if(at && at.bid){
+    if(!blk.items.length && blk.id!==at.bid) doc.blocks.splice(doc.blocks.indexOf(blk), 1);
+    const t = doc.blocks.findIndex(b=>b.id===at.bid);
+    pos = t + (at.pos==="after"?1:0);
+  }else{
+    pos = doc.blocks.indexOf(blk) + 1;
+    if(!blk.items.length){ pos--; doc.blocks.splice(doc.blocks.indexOf(blk), 1); }
+  }
+  doc.blocks.splice(pos, 0, ...ins);
+  return {heading:h};
+}
+/* Punkt an den Anfang des Abschnitts einer Überschrift legen (erste Liste darunter oder eine neue) */
+function wsNodeToSection(doc, nid, headId){
+  const r = wsFindNode(doc, nid); if(!r) return false;
+  const hi = doc.blocks.findIndex(b=>b.id===headId); if(hi<0) return false;
+  r.list.splice(r.index, 1);
+  const blk = r.block;
+  if(!blk.items.length && doc.blocks[hi+1]!==blk) doc.blocks.splice(doc.blocks.indexOf(blk), 1);
+  const h2 = doc.blocks.findIndex(b=>b.id===headId);
+  const nx = doc.blocks[h2+1];
+  if(nx && nx.type==="outline") nx.items.unshift(r.node);
+  else { const ob = wsNewBlock("outline"); ob.items = [r.node]; doc.blocks.splice(h2+1, 0, ob); }
   return true;
 }
 function wsMoveRow(block, from, to, pos){
@@ -4087,7 +4206,7 @@ function wsHeadClosed(b){
   if(wsFiltered() && wsColl.has(b.id)) return wsColl.get(b.id);
   return !wsFiltered() && !!b.collapsed;
 }
-function wsHeadLvl(b){ return (b.lvl===2||b.lvl===3) ? b.lvl : 1; }
+function wsHeadLvl(b){ return wsHLvl(b); }
 /* alle Überschriften (Ebene 1 bis 3), unter denen ein Block steht */
 function wsHeadChain(doc, bid){
   const st = [];
@@ -4368,6 +4487,7 @@ function wsNodeHtml(n, depth, inh){
     <div class="ws-nrow">
       <span class="ws-handle sm" draggable="true" data-wsdrag="node" title="Ziehen: Punkt samt Unterpunkten verschieben">⠿</span>
       <button class="ws-tog" data-wsact="toggle" title="${(hasKids||hasAtt)?(ticon==="▸"?"Aufklappen":"Zuklappen")+" (Umschalt-Klick: samt allen Ebenen darunter)":""}">${ticon}</button>
+      <button class="ws-lvb ws-nlv" data-wsact="node-lvl" title="Ebene ändern: zur Überschrift machen oder tiefer und höher rücken">E${depth+3}</button>
       <button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
       <button class="ws-more${mo?" on":""}" data-wsact="more" data-mid="${n.id}" title="${mo?"Knöpfe dieses Punkts wieder einklappen":"Alle Knöpfe dieses Punkts anzeigen"}">${mo?"‹ zu":"⋯"}</button>
@@ -4393,12 +4513,12 @@ function wsBlockHtml(b, eff, hidN, ind){
       + (open ? `<textarea class="ws-in ws-ta" data-wsf="text" rows="1" placeholder="Text">${esc(b.text)}</textarea>` : "");
   }else if(b.type==="heading"){
     const hc = wsHeadClosed(b), L = wsHeadLvl(b);
-    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alles darunter bis zur nächsten Überschrift derselben oder einer höheren Ebene">${hc?"▸":"▾"}</button><button class="ws-lvb" data-wsact="head-lvl" title="Ebene wechseln (1, 2, 3)">E${L}</button><input type="text" class="ws-in ws-h ws-h${L}" data-wsf="text" value="${esc(b.text)}" placeholder="Ebene ${L}">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
+    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alles darunter bis zur nächsten Überschrift derselben oder einer höheren Ebene">${hc?"▸":"▾"}</button><button class="ws-lvb" data-wsact="head-lvl" title="Ebene ändern: Ebene 1, Ebene 2 oder zum Punkt machen">E${L}</button><input type="text" class="ws-in ws-h ws-h${L}" data-wsf="text" value="${esc(b.text)}" placeholder="Ebene ${L}">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
   }else if(b.type==="outline"){
     const vis = (wsF.manual ? b.items : wsUrgSort(b.items)).filter(n=>wsVis(n, eff));
     if(wsF.tag && !vis.length) return "";
     const open = wsFoldOpen(b.id, "outline");
-    body = wsFoldBtn(open, "Liste · "+b.items.length+(b.items.length===1?" Punkt":" Punkte"))
+    body = wsFoldBtn(open, "Ebene 3 · "+b.items.length+(b.items.length===1?" Punkt":" Punkte"))
       + (open ? `${(b.items.length && !vis.length)?`<div class="ws-meta">Alle Punkte sind durch die Ansicht ausgeblendet.</div>`:""}<ul class="ws-tree">${vis.map(n=>wsNodeHtml(n, 0, eff)).join("")}</ul>
       <button class="ws-addbtn" data-wsact="add-root-node">+ Punkt</button><button class="ws-addbtn" data-wsact="import-root" title="Offene ToDos oder Tages-Ziele der ToDo-App als verknüpfte Punkte einfügen">+ ToDo / Ziel</button>` : "");
   }else if(b.type==="table"){
@@ -4466,8 +4586,7 @@ function wsEditorHtml(doc, mode){
       <button class="ws-addbtn" data-wsact="add-block" data-type="text">+ Text</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="1">+ Ebene 1</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="2">+ Ebene 2</button>
-      <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="3">+ Ebene 3</button>
-      <button class="ws-addbtn" data-wsact="add-block" data-type="outline">+ Liste</button>
+      <button class="ws-addbtn" data-wsact="add-block" data-type="outline" title="Liste mit Punkten (Ebene 3 und tiefer)">+ Ebene 3</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="table">+ Tabelle</button>
       ${mode==="today"?`<span class="ws-status"></span>`:""}
     </div></div>`;
@@ -5866,7 +5985,7 @@ main.addEventListener("click", e=>{
     wsOpenMap.set(block.id, !wsFoldOpen(block.id, block.type)); wsRerender(doc.id); return;
   }
   if(act==="head-lvl" && block && block.type==="heading"){
-    block.lvl = wsHeadLvl(block)%3+1; wsTouch(doc); wsRerender(doc.id); return;
+    wsOpenLevelMenu(doc.id, "head", block.id); return;
   }
   if(act==="hfold" && block && block.type==="heading"){
     const nc = !wsHeadClosed(block);
@@ -5917,6 +6036,7 @@ main.addEventListener("click", e=>{
       }
       return;
     }
+    if(act==="node-lvl"){ wsOpenLevelMenu(doc.id, "node", nid); return; }
     if(act==="tag-node"){ wsOpenTagMenu(doc.id, "node", nid); return; }
     if(act==="hide-node"){
       r.node.hid = !r.node.hid; wsTouch(doc); wsRerender(doc.id);
@@ -5968,6 +6088,43 @@ function wsTableAct(doc, tbl, scope, act, a){
   return false;
 }
 
+/* ---- Menü "Ebene ändern" (Ebene 1 und 2 = Überschriften, Ebene 3 und tiefer = Punkte) ---- */
+function wsOpenLevelMenu(docId, kind, id){
+  if(document.getElementById("modalBg")) return;
+  const doc = wsGet(docId); if(!doc) return;
+  let items = [], title = "";
+  if(kind==="head"){
+    const b = wsBlock(doc, id); if(!b) return;
+    const L = wsHLvl(b); title = "Ebene ändern: "+(b.text||"(ohne Text)").slice(0,40);
+    items = [["l1","Ebene 1 (große Überschrift)"+(L===1?" ✓":"")],["l2","Ebene 2 (Zwischenüberschrift)"+(L===2?" ✓":"")],["pt","Ebene 3: zum Punkt machen (samt allem darunter)"]];
+  }else{
+    const r = wsFindNode(doc, id); if(!r) return;
+    let d = 0, p = r.parent; while(p){ d++; const q = wsFindNode(doc, p.id); p = q && q.parent; }
+    title = "Ebene ändern: "+(r.node.text||"(ohne Text)").slice(0,40);
+    items = [["h1","Zu Ebene 1 machen (große Überschrift)"],["h2","Zu Ebene 2 machen (Zwischenüberschrift)"]];
+    if(r.index>0) items.push(["in","Eine Ebene tiefer (Unterpunkt des Punkts darüber)"]);
+    if(r.parent) items.push(["out","Eine Ebene höher"]);
+  }
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>${esc(title)}</h2>
+    <div class="ws-implist">${items.map(i=>`<button class="ws-addbtn" style="display:block;width:100%;text-align:left;margin-bottom:6px" data-lv="${i[0]}">${esc(i[1])}</button>`).join("")}</div>
+    <div class="modal-actions"><button class="btn-primary" id="wsl_close">Abbrechen</button></div></div></div>`);
+  const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); };
+  document.getElementById("wsl_close").onclick = close;
+  document.getElementById("modalBg").onclick = e=>{
+    if(e.target.id==="modalBg"){ close(); return; }
+    const b = e.target.closest("[data-lv]"); if(!b) return;
+    const a = b.dataset.lv; let ok = true, msg = "";
+    if(a==="l1" || a==="l2") ok = wsSetHeadLvl(doc, id, a==="l1"?1:2);
+    else if(a==="pt") ok = !!wsDemoteHeading(doc, id, null);
+    else if(a==="h1" || a==="h2"){ const r = wsPromoteNode(doc, id, a==="h1"?1:2); ok = !r.err; msg = r.err||""; }
+    else if(a==="in") ok = wsIndent(doc, id);
+    else if(a==="out") ok = wsOutdent(doc, id);
+    close();
+    if(!ok){ toast(msg||"Das geht an dieser Stelle nicht"); return; }
+    wsTouch(doc); wsRerender(doc.id);
+  };
+}
+
 /* ---- Ziehen und Ablegen mit der Maus ---- */
 function wsClearDropMarks(){
   document.querySelectorAll(".ws-drop-before,.ws-drop-after,.ws-drop-into").forEach(el=>el.classList.remove("ws-drop-before","ws-drop-after","ws-drop-into"));
@@ -5982,16 +6139,32 @@ function wsDropTarget(e){
   const docEl = e.target.closest(".ws-doc");
   if(!docEl || docEl.dataset.doc!==wsDrag.docId) return null;
   if(wsDrag.kind==="block"){
-    const el = e.target.closest(".ws-block"); if(!el || el.dataset.bid===wsDrag.bid) return null;
-    const r = el.getBoundingClientRect();
-    return {el, pos:(e.clientY < r.top + r.height/2) ? "before" : "after", bid:el.dataset.bid};
+    const doc = wsGet(wsDrag.docId), own = new Set();
+    if(wsDrag.head && doc){ const i = doc.blocks.findIndex(b=>b.id===wsDrag.bid); if(i>=0) doc.blocks.slice(i, wsSecEnd(doc.blocks, i)).forEach(b=>own.add(b.id)); }
+    if(wsDrag.head){                                                         // Überschrift auf einen Punkt: wird zum Punkt
+      const row = e.target.closest(".ws-nrow");
+      if(row && row.parentElement && !own.has((row.closest(".ws-block")||{dataset:{}}).dataset.bid)){
+        const r = row.getBoundingClientRect(), y = (e.clientY - r.top) / (r.height||1);
+        return {el:row, kind:"node", pos: y<0.3 ? "before" : (y>0.7 ? "after" : "into"), nid:row.parentElement.dataset.nid};
+      }
+    }
+    const el = e.target.closest(".ws-block"); if(!el || el.dataset.bid===wsDrag.bid || own.has(el.dataset.bid)) return null;
+    const r = el.getBoundingClientRect(), y = (e.clientY - r.top) / (r.height||1);
+    if(wsDrag.head && el.dataset.kind==="heading") return {el, kind:"block", pos: y<0.3 ? "before" : (y>0.7 ? "after" : "into"), bid:el.dataset.bid};
+    return {el, kind:"block", pos:(y<0.5) ? "before" : "after", bid:el.dataset.bid};
   }
   if(wsDrag.kind==="node"){
-    const row = e.target.closest(".ws-nrow"); if(!row) return null;
-    const li = row.parentElement; if(!li || li.dataset.nid===wsDrag.nid) return null;
-    if(wsDrag.el.contains(li)) return null;                                  // nie in den eigenen Teilbaum
-    const r = row.getBoundingClientRect(), y = (e.clientY - r.top) / (r.height||1);
-    return {el:row, pos: y<0.3 ? "before" : (y>0.7 ? "after" : "into"), nid:li.dataset.nid};
+    const row = e.target.closest(".ws-nrow");
+    if(row){
+      const li = row.parentElement; if(!li || li.dataset.nid===wsDrag.nid) return null;
+      if(wsDrag.el.contains(li)) return null;                                  // nie in den eigenen Teilbaum
+      const r = row.getBoundingClientRect(), y = (e.clientY - r.top) / (r.height||1);
+      return {el:row, kind:"node", pos: y<0.3 ? "before" : (y>0.7 ? "after" : "into"), nid:li.dataset.nid};
+    }
+    const el = e.target.closest(".ws-block"); if(!el) return null;
+    const r = el.getBoundingClientRect(), y = (e.clientY - r.top) / (r.height||1);
+    if(el.dataset.kind==="heading") return {el, kind:"block", pos: y<0.3 ? "before" : "into", bid:el.dataset.bid};
+    return {el, kind:"block", pos:(y<0.5) ? "before" : "after", bid:el.dataset.bid};
   }
   if(wsDrag.kind==="row"){
     const tr = e.target.closest("tbody tr"); if(!tr || tr===wsDrag.el) return null;
@@ -6008,7 +6181,7 @@ main.addEventListener("dragstart", e=>{
   const src = kind==="block" ? h.closest(".ws-block") : kind==="node" ? h.closest(".ws-node") : h.closest("tr");
   if(!src) return;
   wsDrag = {kind, docId:docEl.dataset.doc, el:src,
-    bid: (h.closest(".ws-block")||{dataset:{}}).dataset.bid, nid: kind==="node" ? src.dataset.nid : null, ri: kind==="row" ? +src.dataset.ri : null};
+    bid: (h.closest(".ws-block")||{dataset:{}}).dataset.bid, head: kind==="block" && src.dataset.kind==="heading", nid: kind==="node" ? src.dataset.nid : null, ri: kind==="row" ? +src.dataset.ri : null};
   e.dataTransfer.effectAllowed = "move";
   try{
     e.dataTransfer.setData("text/plain", "ws");
@@ -6029,14 +6202,58 @@ main.addEventListener("drop", e=>{
   const t = wsDropTarget(e) || wsDrop, d = wsDrag;
   const doc = wsGet(d.docId); let ok = false;
   if(doc && t){
-    if(d.kind==="block") ok = wsMoveBlock(doc, d.bid, t.bid, t.pos);
-    else if(d.kind==="node") ok = wsMoveNode(doc, d.nid, t.nid, t.pos);
+    if(d.kind==="block"){
+      if(t.kind==="node") ok = !!wsDemoteHeading(doc, d.bid, {nid:t.nid, pos:t.pos});
+      else if(d.head) ok = wsDropSection(doc, d.bid, t);
+      else ok = wsMoveBlock(doc, d.bid, t.bid, t.pos);
+    }
+    else if(d.kind==="node"){
+      if(t.kind==="block") ok = wsDropNodeOnBlock(doc, d.nid, t);
+      else ok = wsMoveNode(doc, d.nid, t.nid, t.pos);
+    }
     else { const b = wsBlock(doc, d.bid); if(b) ok = wsMoveRow(b, d.ri, t.ri, t.pos); }
   }
   wsDragEnd();
   if(ok){ wsTouch(doc); wsRerender(doc.id); }
 });
 main.addEventListener("dragend", wsDragEnd);
+/* Überschrift (samt Abschnitt) auf einen Block ziehen: davor oder dahinter, auf eine andere Überschrift gezogen auch mit deren Ebene bzw. als Unterebene */
+function wsDropSection(doc, bid, t){
+  const tb = wsBlock(doc, t.bid), h = wsBlock(doc, bid); if(!tb || !h) return false;
+  if(tb.type==="heading"){
+    if(t.pos==="into"){
+      if(wsHLvl(tb)===1){ wsSetHeadLvl(doc, bid, 2); return wsMoveIntoSectionEnd(doc, bid, t.bid); }
+      return !!wsDemoteHeading(doc, bid, {headId:t.bid});                      // unter Ebene 2 gibt es nur noch Punkte
+    }
+    wsSetHeadLvl(doc, bid, wsHLvl(tb));                                         // Geschwister: gleiche Ebene
+  }
+  return wsMoveSection(doc, bid, t.bid, t.pos);
+}
+/* Nach einem "hinter die Überschrift"-Verschieben ans Ende des Abschnitts der Ziel-Überschrift rücken */
+function wsMoveIntoSectionEnd(doc, bid, headId){
+  const i = doc.blocks.findIndex(b=>b.id===bid); if(i<0) return false;
+  const se = wsSecEnd(doc.blocks, i);
+  const slice = doc.blocks.splice(i, se-i);
+  const hi = doc.blocks.findIndex(b=>b.id===headId); if(hi<0){ doc.blocks.splice(i, 0, ...slice); return false; }
+  const e2 = wsSecEnd(doc.blocks, hi);
+  doc.blocks.splice(e2, 0, ...slice);
+  return true;
+}
+/* Punkt auf einen Block ziehen: auf eine Überschrift = Punkt in deren Abschnitt, zwischen andere Blöcke = wird zur Überschrift */
+function wsDropNodeOnBlock(doc, nid, t){
+  const tb = wsBlock(doc, t.bid); if(!tb) return false;
+  if(tb.type==="heading" && t.pos==="into") return wsNodeToSection(doc, nid, tb.id);
+  let lvl = 1;
+  if(tb.type==="heading") lvl = wsHLvl(tb);                                     // vor einer Überschrift: Geschwister
+  else{
+    let cur = null;                                                              // sonst: eine Stufe unter der Überschrift, in deren Abschnitt der Punkt landet
+    for(const b of doc.blocks){ if(b.id===tb.id) break; if(b.type==="heading") cur = b; }
+    lvl = cur ? 2 : 1;
+  }
+  const r = wsPromoteNode(doc, nid, lvl, {bid:t.bid, pos:t.pos});
+  if(r.err){ toast(r.err); return false; }
+  return true;
+}
 
 /* ---- Speichern beim Verlassen, Aktualisieren beim Zurückkehren ---- */
 document.addEventListener("visibilitychange", ()=>{

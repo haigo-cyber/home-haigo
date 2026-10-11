@@ -609,6 +609,9 @@
   .ws-plus{flex:none;background:transparent;border:1px solid #3b4a2f;color:#8fd16b;border-radius:6px;font:700 13px var(--mono);padding:1px 7px;cursor:pointer;line-height:18px}
   .ws-plus:hover{background:#1c2a14}
   .ws-lean > .ws-add > .ws-addbtn:not(.ws-plusend){display:none}
+
+  /* alte Einzelknöpfe sind durch das Plus ersetzt */
+  .ws-bbody > .ws-addbtn[data-wsact="add-root-node"],.ws-bbody > .ws-addbtn[data-wsact="import-root"],.ws-doc > .ws-add > .ws-addbtn:not(.ws-plusend){display:none !important}
 </style>
 </head>
 <body>
@@ -6169,13 +6172,13 @@ function wsOpenPlusMenu(docId, kind, id){
     const r = wsFindNode(doc, id); if(!r) return;
     title = "Zu „"+(r.node.text||"(ohne Text)").slice(0,30)+"“ hinzufügen";
     items = [["n-sib","Punkt darunter (gleiche Ebene)"],["n-kid","Unterpunkt (eine Ebene tiefer)"],["n-h1","Überschrift Ebene 1 darunter"],["n-h2","Überschrift Ebene 2 darunter"],
-      ["a-text","Anhang: Text / Notiz"],["a-table","Anhang: Tabelle"],["a-link","Anhang: Link"],["a-file","Anhang: Bild / PDF"]];
+      ["a-text","Anhang: Text / Notiz"],["a-table","Anhang: Tabelle"],["a-link","Anhang: Link"],["a-file","Anhang: Bild / PDF"],["i-kid","ToDo / Ziel aus der App als Unterpunkt einfügen"]];
   }else if(kind==="block"){
     const b = wsBlock(doc, id); if(!b) return;
     title = b.type==="heading" ? "Unter „"+(b.text||"Überschrift").slice(0,30)+"“ hinzufügen" : "Danach hinzufügen";
-    items = [["b-pt","Punkt"]].concat(BL);
+    items = [["b-pt","Punkt"]].concat(BL, [["i-doc","ToDo / Ziel aus der App einfügen"]]);
   }else{
-    items = [["e-pt","Punkt"]].concat(BL);
+    items = [["e-pt","Punkt"]].concat(BL, [["i-doc","ToDo / Ziel aus der App einfügen"]]);
   }
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>${esc(title)}</h2>
     <div class="ws-implist">${items.map(i=>`<button class="ws-addbtn" style="display:block;width:100%;text-align:left;margin-bottom:6px" data-pl="${i[0]}">${esc(i[1])}</button>`).join("")}</div>
@@ -6199,6 +6202,8 @@ function wsOpenPlusMenu(docId, kind, id){
       if(kind==="block" && nb && nb.type==="outline"){ const n = wsNewNode(""); nb.items.unshift(n); return n; }
       const ob = wsNewBlock("outline"); doc.blocks.splice(pos, 0, ob); return ob.items[0];
     };
+    if(a==="i-kid"){ wsOpenImport({docId:doc.id, parent:id}); return; }
+    if(a==="i-doc"){ wsOpenImport({docId:doc.id}); return; }
     if(a==="n-sib" || a==="n-kid" || a==="n-h1" || a==="n-h2"){
       const n = a==="n-kid" ? wsAddChild(doc, id) : wsAddSibling(doc, id); if(!n) return;
       if(a==="n-kid") wsColl.set(id, false);

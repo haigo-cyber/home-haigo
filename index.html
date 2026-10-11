@@ -345,7 +345,7 @@
   .ws-tog{flex:none;width:22px;background:none;border:none;color:#9aa3b2;cursor:pointer;font-size:14px;padding:4px 0}
   .ws-chk{flex:none;width:22px;height:22px;border-radius:6px;border:2px solid #5b6270;background:rgba(0,0,0,.4);color:#04210f;font-size:13px;font-weight:800;cursor:pointer;padding:0;line-height:1}
   .ws-chk.on{background:linear-gradient(145deg,#4be08d,#1fa75c);border-color:#4be08d}
-  .ws-cnt{flex:none;font:600 11px var(--mono);color:var(--muted);background:#101216;border:1px solid #2c3037;border-radius:999px;padding:2px 7px}
+  .ws-cnt,.ws-hcnt{flex:none;font:600 11px var(--mono);color:var(--muted);background:#101216;border:1px solid #2c3037;border-radius:999px;padding:2px 7px}
   .ws-date{flex:none;background:#101216;border:1px solid #3a3f47;color:#c9d0db;border-radius:999px;padding:3px 8px;font:600 11px var(--mono);cursor:pointer;white-space:nowrap}
   .ws-date:hover{border-color:#7a818d;color:#fff}
   .ws-date.over{border-color:var(--red);color:var(--red)}
@@ -537,6 +537,9 @@
   body.ws3d-fs .toast{z-index:500}
   .ws-trashbtn{background:transparent;border:1px dashed #4a505a;color:var(--muted,#9aa1ad);border-radius:999px;padding:7px 13px;font-size:13px;cursor:pointer;white-space:nowrap}
   .ws-trashbtn:hover{color:var(--text);border-color:#7a818d}
+
+  .ws-hrow{display:flex;align-items:center;gap:4px}
+  .ws-hrow .ws-h{flex:1;min-width:0}
 </style>
 </head>
 <body>
@@ -3401,7 +3404,7 @@ function wsNewDoc(title){
 }
 function wsNewBlock(type){
   if(type==="text") return {id:wsId(), type:"text", text:"", tag:""};
-  if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:""};
+  if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:"", collapsed:false};
   if(type==="outline") return {id:wsId(), type:"outline", items:[wsNewNode("")], tag:""};
   if(type==="table") return {id:wsId(), type:"table", cols:["Spalte 1","Spalte 2","Spalte 3"], rows:[["","",""],["","",""]], tag:""};
   return null;
@@ -3423,7 +3426,7 @@ function wsNormalizeDocs(arr){
       if(!b || typeof b!=="object") return;
       const id = b.id||wsId();
       if(b.type==="text") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag)});
-      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag)});
+      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag), collapsed:!!b.collapsed});
       else if(b.type==="outline") doc.blocks.push({id, type:"outline", items:wsNormNodes(b.items), tag:wsNormTag(b.tag)});
       else if(b.type==="table"){
         const cols = (Array.isArray(b.cols) && b.cols.length) ? b.cols.map(String) : ["Spalte 1"];
@@ -4043,6 +4046,27 @@ function wsFoldOpen(id, kind){
   if(kind==="table") return !wsF.noTab;
   return true;
 }
+/* Überschriften klappen alle Blöcke bis zur nächsten Überschrift ein (gespeichert am Block, also auf allen Geräten gleich) */
+function wsHeadClosed(b){
+  if(wsFiltered() && wsColl.has(b.id)) return wsColl.get(b.id);
+  return !wsFiltered() && !!b.collapsed;
+}
+function wsHeadOf(doc, bid){
+  let h = null;
+  for(const b of doc.blocks){ if(b.id===bid) return h; if(b.type==="heading") h = b; }
+  return null;
+}
+function wsSetAllFolds(doc, closed){
+  const walk = list=>list.forEach(n=>{
+    if(n.children.length){ n.collapsed = closed; wsColl.set(n.id, closed); }
+    if(n.att.length) n.aopen = !closed;
+    walk(n.children);
+  });
+  doc.blocks.forEach(b=>{
+    if(b.type==="outline") walk(b.items);
+    if(b.type==="heading"){ b.collapsed = closed; wsColl.set(b.id, closed); }
+  });
+}
 function wsFoldBtn(open, label){ return `<button class="ws-fh" data-wsact="fold" title="${open?"Einklappen":"Aufklappen"}"><span>${open?"▾":"▸"}</span><span class="ws-fp">${label}</span></button>`; }
 function wsFirstLine(t){ const s = String(t||"").trim().split("\n")[0]; return s.length>90 ? s.slice(0,90)+"…" : s; }
 function wsSorter(){ return wsF.manual ? null : wsUrgSort; }
@@ -4267,23 +4291,27 @@ function wsAttsHtml(n, eff){
   return `<div class="ws-atts">${list.map(a=>wsAttHtml(a, eff)).join("")}
     <div class="ws-add"><button class="ws-addbtn" data-wsact="add-att" data-type="text">+ Text / Notiz</button><button class="ws-addbtn" data-wsact="add-att" data-type="table">+ Tabelle</button><button class="ws-addbtn" data-wsact="add-att" data-type="link">+ Link</button><button class="ws-addbtn" data-wsact="add-file" title="Bild oder PDF in deinen Google-Drive-Ordner hochladen">+ Bild / PDF</button></div></div>`;
 }
+function wsDescCount(n){ let c = 0; n.children.forEach(k=>{ c += 1 + wsDescCount(k); }); return c; }
 function wsNodeHtml(n, depth, inh){
   depth = depth||0;
   const eff = wsTagUnion(inh, n.tag);
   const shown = (wsF.manual ? n.children : wsUrgSort(n.children)).filter(c=>wsVis(c, eff));
   const hasKids = shown.length>0;
+  const hasAtt = n.att.length>0 && !wsF.noAtt;
   const coll = wsEffCollapsed(n, depth);
+  const attOn = (n.aopen && !wsF.noAtt) && !(hasKids && coll);           // eingeklappter Punkt blendet auch seine Anhänge aus
+  const ticon = hasKids ? (coll?"▸":"▾") : hasAtt ? (n.aopen?"▾":"▸") : "·";
   const cnt = n.children.length ? wsCount(n) : null;
   const sub = (hasKids && !coll) ? `<ul class="ws-tree ws-sub">${shown.map(c=>wsNodeHtml(c, depth+1, eff)).join("")}</ul>` : "";
   return `<li class="ws-node${n.done?" done":""}${n.hid?" hid":""}" data-nid="${n.id}">
     <div class="ws-nrow">
       <span class="ws-handle sm" draggable="true" data-wsdrag="node" title="Ziehen: Punkt samt Unterpunkten verschieben">⠿</span>
-      <button class="ws-tog" data-wsact="toggle" title="${hasKids?(coll?"Aufklappen":"Zuklappen"):""}">${hasKids?(coll?"▸":"▾"):"·"}</button>
+      <button class="ws-tog" data-wsact="toggle" title="${(hasKids||hasAtt)?(ticon==="▸"?"Aufklappen":"Zuklappen")+" (Umschalt-Klick: samt allen Ebenen darunter)":""}">${ticon}</button>
       <button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
       <span class="ws-nright">
       ${wsNodeChips(n)}
-      ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}
+      ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}${(hasKids && coll)?`<span class="ws-hcnt" title="ausgeblendete Unterpunkte">▸ ${wsDescCount(n)}</span>`:""}
       ${wsF.noAtt?"":`<button class="ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle an diesen Punkt anhängen">📎 ${n.att.length?n.att.length:"Anhang"}</button>`}
       <button class="ws-mini ws-tagb${n.tag?" on":(eff?" inh":"")}" data-wsact="tag-node" title="${n.tag?"Eigener Tag, gilt auch für alle Unterpunkte und Anhänge":(eff?"Tag geerbt von oben, hier änderbar":"Tag setzen (gilt auch für alle Unterpunkte und Anhänge)")}">🏷${eff?" "+esc(eff):""}</button>
       <button class="ws-mini ws-eye${n.hid?" on":""}" data-wsact="hide-node" title="${n.hid?"Wieder einblenden":"Ausblenden (unter Ansicht wieder einblendbar)"}">${n.hid?"🙈":"👁"}</button>
@@ -4291,10 +4319,10 @@ function wsNodeHtml(n, depth, inh){
       <button class="ws-mini" data-wsact="add-child" title="Unterpunkt anlegen">+</button>
       <button class="ws-mini" data-wsact="del-node" title="Punkt löschen">✕</button>
       </span>
-    </div>${(n.aopen && !wsF.noAtt)?wsAttsHtml(n, eff):""}${sub}
+    </div>${attOn?wsAttsHtml(n, eff):""}${sub}
   </li>`;
 }
-function wsBlockHtml(b, eff){
+function wsBlockHtml(b, eff, hidN){
   let body = "";
   if(wsF.tag && b.type!=="outline" && !wsTagMatch(eff, wsF.tag)) return "";
   if(b.type==="text"){
@@ -4302,7 +4330,8 @@ function wsBlockHtml(b, eff){
     body = wsFoldBtn(open, open ? "Notiz" : (esc(wsFirstLine(b.text)) || "(leere Notiz)"))
       + (open ? `<textarea class="ws-in ws-ta" data-wsf="text" rows="1" placeholder="Text">${esc(b.text)}</textarea>` : "");
   }else if(b.type==="heading"){
-    body = `<input type="text" class="ws-in ws-h" data-wsf="text" value="${esc(b.text)}" placeholder="Überschrift">`;
+    const hc = wsHeadClosed(b);
+    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alle Blöcke bis zur nächsten Überschrift">${hc?"▸":"▾"}</button><input type="text" class="ws-in ws-h" data-wsf="text" value="${esc(b.text)}" placeholder="Überschrift">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
   }else if(b.type==="outline"){
     const vis = (wsF.manual ? b.items : wsUrgSort(b.items)).filter(n=>wsVis(n, eff));
     if(wsF.tag && !vis.length) return "";
@@ -4327,6 +4356,7 @@ function wsFilterHtml(docs){
   const hid = docs.reduce((s,d)=>{ const bt = wsBlockTags(d); return s + d.blocks.filter(b=>b.type==="outline").reduce((k,b)=>k+wsHiddenCount(b.items, wsF, today, bt[b.id]), 0); }, 0);
   const ch = (k,v,label,on)=>`<button class="ws-fc${on?" on":""}" data-wsact="f-set" data-k="${k}" data-v="${v}">${label}</button>`;
   let h = `<div class="ws-fbar"><button class="ws-tb${act?" on":""}" data-wsact="f-open">🔍 Ansicht${act?" · "+act:""} ${wsFOpen?"▲":"▼"}</button>`;
+  h += `<button class="ws-tb" data-wsact="fold-all" title="Alle Punkte und Überschriften einklappen">⊟ Alles zu</button><button class="ws-tb" data-wsact="unfold-all" title="Alle Punkte und Überschriften aufklappen">⊞ Alles auf</button>`;
   if(hid) h += `<span class="ws-fhint">${hid} ausgeblendet</span>`;
   if(act) h += `<button class="ws-tb" data-wsact="f-reset">Zurücksetzen</button>`;
   h += `</div>`;
@@ -4364,7 +4394,16 @@ function wsEditorHtml(doc, mode){
   }
   if(mode==="today" || !wsF.tag) h += wsFilterHtml([doc]);
   const bt = wsBlockTags(doc);
-  const parts = doc.blocks.map(b=>wsBlockHtml(b, bt[b.id])).filter(Boolean);
+  let hidHead = null;
+  const parts = doc.blocks.map((b,i)=>{
+    if(b.type==="heading"){
+      let n = 0; for(let j=i+1;j<doc.blocks.length && doc.blocks[j].type!=="heading";j++) n++;
+      hidHead = wsHeadClosed(b) ? b : null;
+      return wsBlockHtml(b, bt[b.id], n);
+    }
+    if(hidHead) return "";
+    return wsBlockHtml(b, bt[b.id]);
+  }).filter(Boolean);
   h += `<div class="ws-blocks">${parts.length ? parts.join("") : (doc.blocks.length ? `<div class="ws-empty">In diesem Dokument ist nichts für diese Ansicht.</div>` : `<div class="ws-empty">Noch leer. Unten einen Block hinzufügen.</div>`)}</div>
     <div class="ws-add">
       <button class="ws-addbtn" data-wsact="add-block" data-type="text">+ Text</button>
@@ -5679,6 +5718,9 @@ main.addEventListener("click", e=>{
     wsTodayExpanded = !wsTodayExpanded; localStorage.setItem("wsTodayExp", wsTodayExpanded?"1":"0");
     if(doc) wsRerender(doc.id); return;
   }
+  if((act==="fold-all" || act==="unfold-all") && doc){
+    wsSetAllFolds(doc, act==="fold-all"); wsTouch(doc); wsRerender(doc.id); return;
+  }
   if(act==="f-open"){ wsFOpen = !wsFOpen; try{ localStorage.setItem("wsFOpen", wsFOpen?"1":"0"); }catch(err){} render(); return; }
   if(act==="tag-sel"){ wsF = wsFNorm({...wsF, tag:(wsF.tag===a.dataset.t)?"":a.dataset.t}); wsFSave(); render(); return; }
   if(act==="f-reset"){ wsF = wsFNorm(null); wsFSave(); render(); return; }
@@ -5758,6 +5800,11 @@ main.addEventListener("click", e=>{
   if(act==="fold" && block && !a.closest(".ws-att") && !a.closest(".ws-node")){
     wsOpenMap.set(block.id, !wsFoldOpen(block.id, block.type)); wsRerender(doc.id); return;
   }
+  if(act==="hfold" && block && block.type==="heading"){
+    const nc = !wsHeadClosed(block);
+    if(wsFiltered()) wsColl.set(block.id, nc); else { block.collapsed = nc; wsTouch(doc); }
+    wsRerender(doc.id); return;
+  }
   if(act==="tag-block" && block){ wsOpenTagMenu(doc.id, "block", block.id); return; }
   if(act==="del-block" && block){
     wsDeleteBlockFlow(doc, block); return;
@@ -5788,11 +5835,17 @@ main.addEventListener("click", e=>{
   if(nodeEl){
     const nid = nodeEl.dataset.nid, r = wsFindNode(doc, nid); if(!r) return;
     if(act==="toggle"){
+      const all = !!e.shiftKey;
+      const setSub = (node, closed)=>{ node.children.forEach(k=>{ if(k.children.length){ k.collapsed = closed; wsColl.set(k.id, closed); } if(k.att.length) k.aopen = !closed; setSub(k, closed); }); };
       if(r.node.children.length){
-        if(wsFiltered()){
-          let depth = 0, p = nodeEl.parentElement; while(p){ if(p.classList && p.classList.contains("ws-node")) depth++; p = p.parentElement; }
-          wsColl.set(nid, !wsEffCollapsed(r.node, depth)); wsRerender(doc.id);
-        }else{ r.node.collapsed = !r.node.collapsed; wsTouch(doc); wsRerender(doc.id); }
+        let depth = 0, p = nodeEl.parentElement; while(p){ if(p.classList && p.classList.contains("ws-node")) depth++; p = p.parentElement; }
+        const nc = !wsEffCollapsed(r.node, depth);
+        if(wsFiltered()) wsColl.set(nid, nc); else { r.node.collapsed = nc; }
+        if(all){ setSub(r.node, nc); if(r.node.att.length) r.node.aopen = !nc; }
+        if(!wsFiltered() || all) wsTouch(doc);
+        wsRerender(doc.id);
+      }else if(r.node.att.length){
+        r.node.aopen = !r.node.aopen; wsTouch(doc); wsRerender(doc.id);
       }
       return;
     }
@@ -5809,7 +5862,13 @@ main.addEventListener("click", e=>{
     }
     if(act==="link-menu"){ wsOpenLinkMenu(doc.id, nid); return; }
     if(act==="add-file"){ wsAddFiles(doc, r.node); return; }
-    if(act==="att-toggle"){ r.node.aopen = !r.node.aopen; wsTouch(doc); wsRerender(doc.id); return; }
+    if(act==="att-toggle"){
+      const hidden = r.node.children.length>0 && r.node.collapsed;                    // eingeklappter Punkt: Anhänge sind nicht zu sehen
+      r.node.aopen = hidden ? true : !r.node.aopen;
+      if(hidden) r.node.collapsed = false;                                           // Anhänge zeigen heißt: Punkt aufklappen
+      if(hidden || r.node.aopen) wsColl.set(nid, false);
+      wsTouch(doc); wsRerender(doc.id); return;
+    }
     if(act==="add-att"){
       const at = wsNewAtt(a.dataset.type); if(!at) return;
       wsOpenMap.set(at.id, true);
@@ -6278,6 +6337,16 @@ function wsGoToItem(docId, kind, ref, from3d){
     if(kind==="att" && tn){ if(!tn.aopen){ tn.aopen = true; wsTouch(doc); } wsOpenMap.set(ref, true); }
     sel = kind==="att" ? `.ws-doc[data-doc="${docId}"] [data-aid="${ref}"]` : `.ws-doc[data-doc="${docId}"] [data-nid="${ref}"] > .ws-nrow`;
   }else if(kind==="block") sel = `.ws-doc[data-doc="${docId}"] [data-bid="${ref}"]`;
+  {
+    let tb = null;
+    if(kind==="block") tb = ref;
+    else if(kind==="node" || kind==="att"){
+      const nid2 = kind==="att" ? (wsAttOwner(doc, ref)||{}).id : ref;
+      const bb = doc.blocks.find(b=>b.type==="outline" && wsNodePath(b.items, nid2, [])); tb = bb && bb.id;
+    }
+    const hd = tb && wsHeadOf(doc, tb);
+    if(hd){ if(wsFiltered()) wsColl.set(hd.id, false); else if(hd.collapsed){ hd.collapsed = false; wsTouch(doc); } }
+  }
   wsTab = "docs"; try{ localStorage.setItem("wsTab", "docs"); }catch(e){}
   view = "notes"; render();
   let tries = 0;

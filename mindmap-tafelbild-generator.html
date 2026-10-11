@@ -586,6 +586,7 @@
     <h1>Mind-Map-Tafelbild-Generator</h1>
     <span class="ws-status muted" id="mmStatus" style="font-size:12px"></span>
     <button class="ws-tb" id="mmExample">Beispiel laden</button>
+    <button class="ws-tb" id="mmBackup" title="Automatische Sicherung">Sicherung</button>
     <button class="ws-tb" id="mmExport">Exportieren</button>
     <button class="ws-tb" id="mmImport">Importieren</button>
     <input type="file" id="mmFile" accept=".json,application/json" style="display:none">
@@ -1610,6 +1611,7 @@ function wsEditorHtml(doc, mode){
     h += `<div class="ws-toolbar">
       <input type="text" class="ws-in ws-doctitle" data-wsf="title" value="${esc(doc.title)}" placeholder="Titel des Dokuments">
       <button class="ws-tb${doc.tag?" on":""}" data-wsact="tag-doc" title="Tag für das ganze Dokument">🏷 ${doc.tag?esc(doc.tag):"Tag"}</button>
+      <button class="ws-tb" data-wsact="save-doc" title="Dieses Dokument als eigene Datei speichern">💾 Datei</button>
       <button class="ws-tb" data-wsact="del-doc" title="Dokument löschen">🗑</button>
     </div>
     <div class="ws-meta">geändert ${esc(wsDateTime(doc.updatedAt))} · <span class="ws-status"></span></div>`;
@@ -2711,7 +2713,7 @@ function wsAfterRender(){
 function mmSave(){
   clearTimeout(wsSaveTimer); wsSaveTimer = null;
   if(!wsLoaded) return;
-  try{ mmLS.setItem("docs", wsSerialize(wsDocs, wsTrash)); wsSetStatus("gespeichert ✓"); }
+  try{ mmLS.setItem("docs", wsSerialize(wsDocs, wsTrash)); wsSetStatus("gespeichert ✓"); mmBackupSoon(); }
   catch(e){ wsSetStatus("Speichern im Browser nicht möglich"); toast("Speichern im Browser nicht möglich. Bitte über Exportieren sichern."); }
 }
 function wsScheduleSave(){ clearTimeout(wsSaveTimer); wsSetStatus("…"); wsSaveTimer = setTimeout(mmSave, 400); }
@@ -2882,7 +2884,7 @@ function mmRenderMapTab(){
     <label>Schrift <input type="range" id="mmFs" min="14" max="30" value="${cfg.fs}"></label>
     <span class="ws-fl" style="flex:none">Zoom</span><button class="ws-tb" id="mmZm">−</button><span id="mmZv" class="ws-fhint" style="min-width:42px;text-align:center"></span><button class="ws-tb" id="mmZp">+</button><button class="ws-tb" id="mmZf">Anpassen</button>
     <span style="flex:1"></span>
-    <button class="ws-tb" id="mmFull">⛶ Vollbild</button><button class="ws-tb" id="mmPrint">Drucken</button><button class="ws-tb" id="mmSvg">SVG</button><button class="ws-tb on" id="mmPng">PNG</button>
+    <button class="ws-tb" id="mmFull">⛶ Vollbild</button><button class="ws-tb" id="mmDocSave">Dokument speichern</button><button class="ws-tb" id="mmPrint">Drucken</button><button class="ws-tb" id="mmSvg">SVG</button><button class="ws-tb on" id="mmPng">PNG</button>
   </div><div id="mapWrap"><button class="ws-addbtn" id="mapExit">Vollbild beenden</button><div id="mapHost"></div></div>`;
   $("mmDoc").onchange = e=>{ wsOpenDocId = e.target.value; mmLS.setItem("wsOpenDoc", wsOpenDocId); mmRenderMapTab(); };
   $("mmTitle").oninput = e=>{ if(doc){ mmCfgSet(doc, {title:e.target.value}); mmRenderMap(); } };
@@ -2893,6 +2895,7 @@ function mmRenderMapTab(){
   $("mmFull").onclick = ()=>mmMapFull(true);
   $("mapExit").onclick = ()=>mmMapFull(false);
   $("mmPrint").onclick = ()=>window.print();
+  $("mmDocSave").onclick = ()=>{ if(doc) mmSaveDocDialog(doc); };
   $("mmSvg").onclick = ()=>{ if(mmMap.svg) mmDownload(mmFileName("svg"), new Blob([mmMap.svg], {type:"image/svg+xml"})); };
   $("mmPng").onclick = mmPng;
   mmRenderMap();
@@ -2927,9 +2930,148 @@ document.addEventListener("keydown", e=>{ if(e.key==="Escape" && document.body.c
 window.addEventListener("resize", ()=>{ if(mmTab===3 && mmMap.fit) mmApplyZoom(); });
 window.addEventListener("beforeprint", ()=>{ if(mmTab!==3) setTab(3); });
 
+/* ============ EINZELDATEIEN: jedes Dokument (Gliederung / Mindmap) als eigene Datei ============ */
+function mmDocFile(doc, ext){
+  const t = ((doc && doc.title) || "mindmap").replace(/[^\wäöüÄÖÜß\- ]+/g,"").trim().replace(/\s+/g,"_") || "mindmap";
+  return t+"."+ext;
+}
+function mmDocJson(doc){ return wsSerialize([doc], []); }
+function mmDocText(doc){
+  const tree = mmBuildTree(doc, doc.title||"");
+  const out = [tree.text, "=".repeat(Math.max(3, tree.text.length)), ""];
+  const rec = (n, d)=>{ out.push("  ".repeat(d)+"- "+n.text); n.children.forEach(c=>rec(c, d+1)); };
+  tree.children.forEach(b=>{ out.push("# "+b.text); b.children.forEach(c=>rec(c, 0)); out.push(""); });
+  return out.join("\n");
+}
+main.addEventListener("click", e=>{
+  const a = e.target.closest('[data-wsact="save-doc"]'); if(!a) return;
+  const docEl = a.closest(".ws-doc"), doc = docEl ? wsGet(docEl.dataset.doc) : null; if(doc) mmSaveDocDialog(doc);
+});
+function mmSaveDocDialog(doc){
+  if($("modalBg")) return;
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal">
+    <h2>„${esc(doc.title||"Ohne Titel")}“ als Datei speichern</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:12px">Die Datei landet im Download-Ordner deines Browsers.</p>
+    <div class="modal-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+      <button class="btn-primary" id="sd_json">Gliederung als JSON (wieder importierbar)</button>
+      <button class="btn-ghost" id="sd_txt">Als Text-Gliederung (.txt)</button>
+      <button class="btn-ghost" id="sd_cancel">Abbrechen</button></div></div></div>`);
+  const close = ()=>{ const m = $("modalBg"); if(m) m.remove(); };
+  $("sd_json").onclick = ()=>{ mmDownload(mmDocFile(doc,"json"), new Blob([mmDocJson(doc)], {type:"application/json"})); close(); };
+  $("sd_txt").onclick = ()=>{ mmDownload(mmDocFile(doc,"txt"), new Blob([mmDocText(doc)], {type:"text/plain;charset=utf-8"})); close(); };
+  $("sd_cancel").onclick = close;
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+}
+
+/* ============ AUTOMATISCHE SICHERUNG ============ */
+/* Ordner-Modus: Der Browser lässt dich einmal einen Ordner wählen (File System Access API, nur Chrome und Edge); danach schreibt die Seite dort eine laufende Sicherung und eine Tagessicherung.
+   Download-Modus: für alle Browser; bei Änderungen höchstens alle 15 Minuten eine neue Datei im Download-Ordner. */
+const MM_BK = {handle:null, mode:mmLS.getItem("bkMode")||"", timer:null, lastDl:0, last:"", state:""};
+const MM_BK_WAIT = 15*60*1000;
+const mmIdb = ()=>new Promise((res,rej)=>{ const r = indexedDB.open("mmtg",1); r.onupgradeneeded = ()=>r.result.createObjectStore("kv"); r.onsuccess = ()=>res(r.result); r.onerror = ()=>rej(r.error); });
+async function mmIdbGet(k){ const db = await mmIdb(); return new Promise((res,rej)=>{ const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = ()=>res(q.result); q.onerror = ()=>rej(q.error); }); }
+async function mmIdbSet(k,v){ const db = await mmIdb(); return new Promise((res,rej)=>{ const q = db.transaction("kv","readwrite").objectStore("kv").put(v,k); q.onsuccess = ()=>res(); q.onerror = ()=>rej(q.error); }); }
+function mmBkStamp(){ const d = new Date(), p = n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
+function mmBkBadge(){
+  const b = $("mmBackup"); if(!b) return;
+  b.textContent = MM_BK.state==="renew" ? "Sicherung: Zugriff erneuern" : MM_BK.mode ? "Sicherung: an" : "Sicherung: aus";
+  b.classList.toggle("on", !!MM_BK.mode && MM_BK.state!=="renew");
+  b.style.borderColor = MM_BK.state==="renew" ? "var(--red)" : "";
+}
+async function mmBkWrite(dir, name, text){
+  const fh = await dir.getFileHandle(name, {create:true}), w = await fh.createWritable();
+  await w.write(text); await w.close();
+}
+async function mmBkFolderRun(userGesture){
+  const h = MM_BK.handle; if(!h || !wsLoaded) return false;
+  let perm = await h.queryPermission({mode:"readwrite"});
+  if(perm!=="granted" && userGesture) perm = await h.requestPermission({mode:"readwrite"});
+  if(perm!=="granted"){ MM_BK.state = "renew"; mmBkBadge(); return false; }
+  const text = wsSerialize(wsDocs, wsTrash);
+  await mmBkWrite(h, "mindmap-sicherung.json", text);
+  await mmBkWrite(h, "mindmap-sicherung-"+mmBkStamp()+".json", text);
+  MM_BK.state = "ok"; MM_BK.last = new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"}); mmBkBadge();
+  return true;
+}
+function mmBackupSoon(){
+  if(!MM_BK.mode || !wsLoaded) return;
+  clearTimeout(MM_BK.timer);
+  const wait = MM_BK.mode==="folder" ? 4000 : Math.max(4000, MM_BK.lastDl + MM_BK_WAIT - Date.now());
+  MM_BK.timer = setTimeout(mmBackupRun, wait);
+}
+async function mmBackupRun(){
+  try{
+    if(MM_BK.mode==="folder") await mmBkFolderRun(false);
+    else if(MM_BK.mode==="download"){
+      const d = new Date(), p = n=>String(n).padStart(2,"0");
+      mmDownload("mindmap-sicherung-"+mmBkStamp()+"_"+p(d.getHours())+p(d.getMinutes())+".json", new Blob([wsSerialize(wsDocs, wsTrash)], {type:"application/json"}));
+      MM_BK.lastDl = Date.now(); MM_BK.last = p(d.getHours())+":"+p(d.getMinutes()); MM_BK.state = "ok"; mmBkBadge();
+    }
+  }catch(e){ MM_BK.state = "err:"+e.message; mmBkBadge(); }
+}
+async function mmBackupInit(){
+  mmBkBadge();
+  if(MM_BK.mode==="folder"){
+    try{ MM_BK.handle = await mmIdbGet("dir"); }catch(e){ MM_BK.handle = null; }
+    if(!MM_BK.handle){ MM_BK.mode = ""; mmLS.removeItem("bkMode"); mmBkBadge(); return; }
+    try{ if(!(await mmBkFolderRun(false))) mmBkBadge(); }catch(e){ MM_BK.state = "err:"+e.message; mmBkBadge(); }
+  }
+}
+function mmBackupDialog(){
+  if($("modalBg")) return;
+  const sup = !!window.showDirectoryPicker;
+  const stText = MM_BK.state==="renew" ? "Der Browser braucht für den gewählten Ordner eine neue Freigabe (nach jedem Neustart des Browsers üblich). Drücke „Zugriff erneuern“."
+    : MM_BK.state.startsWith("err:") ? "Letzter Versuch fehlgeschlagen: "+esc(MM_BK.state.slice(4))
+    : MM_BK.mode ? "Aktiv ("+(MM_BK.mode==="folder"?"Sicherungsordner":"Download alle 15 Minuten bei Änderungen")+")"+(MM_BK.last?", zuletzt gesichert um "+MM_BK.last+" Uhr.":".") : "Aus.";
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal">
+    <h2>Automatische Sicherung</h2>
+    <p style="font-size:14px;margin-bottom:10px">${stText}</p>
+    <p class="muted" style="font-size:12.5px;margin-bottom:12px">Die Dokumente selbst liegen im Browser (localStorage). Die Sicherung legt zusätzlich Dateien auf deinem Rechner ab, damit nichts verloren geht, wenn der Browser seine Daten löscht.</p>
+    <div class="modal-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+      ${sup ? `<button class="btn-primary" id="bk_folder">Sicherungsordner wählen …</button>` : `<div class="muted" style="font-size:12.5px">Ordner-Sicherung gibt es nur in Chrome und Edge. In diesem Browser steht sie nicht zur Verfügung.</div>`}
+      ${sup && MM_BK.mode==="folder" ? `<button class="btn-ghost" id="bk_renew">Zugriff erneuern und jetzt sichern</button>` : ""}
+      <button class="btn-ghost" id="bk_dl">Stattdessen als Download sichern (alle 15 Minuten bei Änderungen)</button>
+      <button class="btn-ghost" id="bk_now">Jetzt einmal sichern (Download)</button>
+      <button class="btn-ghost" id="bk_each">Alle Dokumente einzeln als Dateien speichern</button>
+      ${MM_BK.mode ? `<button class="btn-ghost" id="bk_off">Automatische Sicherung ausschalten</button>` : ""}
+      <button class="btn-ghost" id="bk_close">Schließen</button></div>
+    ${sup ? `<p class="muted" style="font-size:12px;margin-top:10px">Wenn der Browser den Ordner Downloads selbst nicht zulässt, lege darin einen Unterordner an (zum Beispiel „Mindmap-Sicherung“) und wähle diesen.</p>` : ""}
+  </div></div>`);
+  const close = ()=>{ const m = $("modalBg"); if(m) m.remove(); };
+  const set = (mode)=>{ MM_BK.mode = mode; if(mode) mmLS.setItem("bkMode", mode); else mmLS.removeItem("bkMode"); MM_BK.state = ""; mmBkBadge(); };
+  $("bk_close").onclick = close;
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+  if($("bk_folder")) $("bk_folder").onclick = async ()=>{
+    try{
+      const h = await window.showDirectoryPicker({id:"mmtg-backup", mode:"readwrite", startIn:"downloads"});
+      await mmIdbSet("dir", h); MM_BK.handle = h; set("folder"); close();
+      if(await mmBkFolderRun(true)) toast("Sicherung angelegt im Ordner „"+h.name+"“"); 
+    }catch(e){ if(e && e.name!=="AbortError") toast("Ordner nicht möglich: "+e.message); }
+  };
+  if($("bk_renew")) $("bk_renew").onclick = async ()=>{ try{ if(await mmBkFolderRun(true)){ close(); toast("Gesichert"); } }catch(e){ toast("Fehlgeschlagen: "+e.message); } };
+  $("bk_dl").onclick = ()=>{ set("download"); MM_BK.lastDl = 0; close(); toast("Automatischer Download an. Der Browser fragt eventuell nach, ob die Seite mehrere Dateien laden darf."); mmBackupSoon(); };
+  $("bk_now").onclick = ()=>{ if(!wsLoaded) return; mmDownload("mindmap-sicherung-"+mmBkStamp()+".json", new Blob([wsSerialize(wsDocs, wsTrash)], {type:"application/json"})); close(); };
+  $("bk_each").onclick = async ()=>{
+    close(); if(!wsLoaded) return;
+    const used = new Set();
+    for(const d of wsDocs){
+      let n = mmDocFile(d,"json"); while(used.has(n)) n = n.replace(/(\.json)$/, "_2$1"); used.add(n);
+      if(MM_BK.mode==="folder" && MM_BK.handle){
+        try{ if((await MM_BK.handle.queryPermission({mode:"readwrite"}))==="granted"){ await mmBkWrite(MM_BK.handle, n, mmDocJson(d)); continue; } }catch(e){}
+      }
+      mmDownload(n, new Blob([mmDocJson(d)], {type:"application/json"}));
+      await new Promise(r=>setTimeout(r,300));
+    }
+    toast(wsDocs.length+" Datei(en) gespeichert");
+  };
+  if($("bk_off")) $("bk_off").onclick = ()=>{ set(""); close(); };
+}
+$("mmBackup").onclick = mmBackupDialog;
+
 /* ---- Start ---- */
 mmLoad();
 setTab(1);
+mmBackupInit();
 
 </script>
 </body>

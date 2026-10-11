@@ -572,13 +572,22 @@
   .ws-lean .ws-block.more > .ws-handle,.ws-lean .ws-block.more > .ws-x{display:inline-block}
   .ws-lean .ws-block.more .ws-bbody .ws-addbtn{display:inline-block}
   .ws-block.ws-drop-into{outline:2px dashed var(--amber);outline-offset:-2px;background:rgba(255,176,32,.08)}
-  .ws-nlv{color:#9aa3b2}
-  .ws-lean .ws-nlv{display:none}
-  .ws-lean .ws-node.more > .ws-nrow .ws-nlv{display:inline-block}
   /* Punktblöcke haben keinen eigenen Rahmen und keine eigenen Knöpfe mehr: die Punkte stehen direkt unter ihrer Überschrift */
   .ws-block[data-kind="outline"]{border-color:transparent;padding-top:0;padding-bottom:0;padding-left:0}
   .ws-block[data-kind="outline"]:hover{border-color:transparent}
   .ws-block[data-kind="outline"] > .ws-handle,.ws-block[data-kind="outline"] > .ws-x,.ws-block[data-kind="outline"] > .ws-more,.ws-lean .ws-block[data-kind="outline"].more > .ws-handle,.ws-lean .ws-block[data-kind="outline"].more > .ws-x{display:none}
+  .ws-lvs{display:inline-flex;gap:2px;flex:none;align-items:center}
+  .ws-lvs .ws-lvb{padding:2px 5px;opacity:.55}
+  .ws-lvs .ws-lvb.on{opacity:1;background:#1c2027}
+  .ws-lvs .ws-lvb:hover{opacity:1}
+  .ws-lvx{font:700 11px var(--mono);color:#9aa3b2;padding:0 3px}
+  .ws-lean .ws-lvs.n{display:none}
+  .ws-lean .ws-node.more > .ws-nrow .ws-lvs.n{display:inline-flex}
+  .ws-tagbar{margin:2px 0}
+  .ws-chips{margin-top:2px}
+  .ws-meta .ws-status{font-size:11px}
+  .ws-tagtog{background:#14161a;border:1px solid #30343b;color:var(--muted,#9aa1ad);border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer}
+  .ws-tagtog.on{border-color:var(--amber);color:var(--amber)}
 </style>
 </head>
 <body>
@@ -4400,8 +4409,9 @@ function wsRefreshChips(){
 function wsChipsInner(cur){
   return wsDocs.map(d=>`<button class="ws-chip${cur&&cur.id===d.id?" sel":""}" data-wsact="open-doc" data-id="${d.id}">${d.pinned?"📌 ":""}${esc(d.title||"Ohne Titel")}</button>`).join("")
     + `<button class="ws-chip new" data-wsact="new-doc">+ Neu</button>`
-    + `<button class="ws-trashbtn" data-wsact="inbox-toggle" title="Neue ToDos und Tagesziele automatisch im Dokument ToDo-Eingang ablegen">${wsInboxOn()?"📥 Auto-Eingang: an":"📥 Auto-Eingang: aus"}</button>`
-    + `<button class="ws-trashbtn" data-wsact="open-trash" title="Gelöschte Einträge, 3 Tage lang wiederherstellbar">🗑 Papierkorb${wsTrashCount()?" ("+wsTrashCount()+")":""}</button>`;
+    + (wsAllTags(wsDocs).length ? `<button class="ws-trashbtn" data-wsact="tag-bar-toggle" title="Nach Tag filtern">🏷</button>` : "")
+    + `<button class="ws-trashbtn" data-wsact="inbox-toggle" title="Auto-Eingang: neue ToDos und Tagesziele automatisch im Dokument ToDo-Eingang ablegen (${wsInboxOn()?"an":"aus"})">${wsInboxOn()?"📥":"📥 aus"}</button>`
+    + `<button class="ws-trashbtn" data-wsact="open-trash" title="Papierkorb: gelöschte Einträge, 3 Tage lang wiederherstellbar">🗑${wsTrashCount()?" ("+wsTrashCount()+")":""}</button>`;
 }
 /* Beim Zurückkehren in die App (z. B. am Handy) den Stand neu holen, solange nichts ungespeichert ist */
 async function wsRefreshIfIdle(){
@@ -4488,11 +4498,11 @@ function wsNodeHtml(n, depth, inh, base){
   const cnt = n.children.length ? wsCount(n) : null;
   const sub = (hasKids && !coll) ? `<ul class="ws-tree ws-sub">${shown.map(c=>wsNodeHtml(c, depth+1, eff, base)).join("")}</ul>` : "";
   const mo = wsMore.has(n.id);
-  return `<li class="ws-node${n.done?" done":""}${n.hid?" hid":""}${mo?" more":""}" data-nid="${n.id}">
+  return `<li class="ws-node${n.done?" done":""}${n.hid?" hid":""}${mo?" more":""}" data-nid="${n.id}" data-lvl="${depth+base}" data-base="${base}">
     <div class="ws-nrow">
       <span class="ws-handle sm" draggable="true" data-wsdrag="node" title="Ziehen: Punkt samt Unterpunkten verschieben">⠿</span>
       <button class="ws-tog" data-wsact="toggle" title="${(hasKids||hasAtt)?(ticon==="▸"?"Aufklappen":"Zuklappen")+" (Umschalt-Klick: samt allen Ebenen darunter)":""}">${ticon}</button>
-      <button class="ws-lvb ws-nlv" data-wsact="node-lvl" title="Ebene ändern: zur Überschrift machen oder tiefer und höher rücken">E${depth+base}</button>
+      <span class="ws-lvs n">${[1,2,3].map(k=>`<button class="ws-lvb${depth+base===k?" on":""}" data-wsact="node-set" data-k="${k}" title="Zu Ebene ${k} machen">E${k}</button>`).join("")}${depth+base>3?`<span class="ws-lvx" title="aktuelle Ebene">E${depth+base}</span>`:""}</span>
       <button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
       <button class="ws-more${mo?" on":""}" data-wsact="more" data-mid="${n.id}" title="${mo?"Knöpfe dieses Punkts wieder einklappen":"Alle Knöpfe dieses Punkts anzeigen"}">${mo?"‹ zu":"⋯"}</button>
@@ -4518,7 +4528,7 @@ function wsBlockHtml(b, eff, hidN, ind, base){
       + (open ? `<textarea class="ws-in ws-ta" data-wsf="text" rows="1" placeholder="Text">${esc(b.text)}</textarea>` : "");
   }else if(b.type==="heading"){
     const hc = wsHeadClosed(b), L = wsHeadLvl(b);
-    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alles darunter bis zur nächsten Überschrift derselben oder einer höheren Ebene">${hc?"▸":"▾"}</button><button class="ws-lvb" data-wsact="head-lvl" title="Ebene ändern: Ebene 1, Ebene 2 oder zum Punkt machen">E${L}</button><input type="text" class="ws-in ws-h ws-h${L}" data-wsf="text" value="${esc(b.text)}" placeholder="Ebene ${L}">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
+    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alles darunter bis zur nächsten Überschrift derselben oder einer höheren Ebene">${hc?"▸":"▾"}</button><span class="ws-lvs">${[1,2,3].map(k=>`<button class="ws-lvb${L===k?" on":""}" data-wsact="head-set" data-k="${k}" title="${k===3?"Zum Punkt (Ebene 3) machen":"Zu Ebene "+k+" machen"}">E${k}</button>`).join("")}</span><input type="text" class="ws-in ws-h ws-h${L}" data-wsf="text" value="${esc(b.text)}" placeholder="Ebene ${L}">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
   }else if(b.type==="outline"){
     const vis = (wsF.manual ? b.items : wsUrgSort(b.items)).filter(n=>wsVis(n, eff));
     if(wsF.tag && !vis.length) return "";
@@ -4542,8 +4552,8 @@ function wsFilterHtml(docs){
   const act = wsFActive(wsF), today = todayKey();
   const hid = docs.reduce((s,d)=>{ const bt = wsBlockTags(d); return s + d.blocks.filter(b=>b.type==="outline").reduce((k,b)=>k+wsHiddenCount(b.items, wsF, today, bt[b.id]), 0); }, 0);
   const ch = (k,v,label,on)=>`<button class="ws-fc${on?" on":""}" data-wsact="f-set" data-k="${k}" data-v="${v}">${label}</button>`;
-  let h = `<div class="ws-fbar"><button class="ws-tb${act?" on":""}" data-wsact="f-open">🔍 Ansicht${act?" · "+act:""} ${wsFOpen?"▲":"▼"}</button>`;
-  h += `<button class="ws-tb" data-wsact="fold-all" title="Alle Punkte und Überschriften einklappen">⊟ Alles zu</button><button class="ws-tb" data-wsact="unfold-all" title="Alle Punkte und Überschriften aufklappen">⊞ Alles auf</button>`;
+  let h = `<div class="ws-fbar"><button class="ws-tb${act?" on":""}" data-wsact="f-open" title="Ansicht: filtern, sortieren, Ebenen">🔍${act?" "+act:""} ${wsFOpen?"▲":"▼"}</button>`;
+  h += `<button class="ws-tb" data-wsact="fold-all" title="Alle Punkte und Überschriften einklappen">⊟</button><button class="ws-tb" data-wsact="unfold-all" title="Alle Punkte und Überschriften aufklappen">⊞</button>`;
   if(hid) h += `<span class="ws-fhint">${hid} ausgeblendet</span>`;
   if(act) h += `<button class="ws-tb" data-wsact="f-reset">Zurücksetzen</button>`;
   h += `</div>`;
@@ -4573,12 +4583,12 @@ function wsEditorHtml(doc, mode){
   if(mode==="tab"){
     h += `<div class="ws-toolbar">
       <input type="text" class="ws-in ws-doctitle" data-wsf="title" value="${esc(doc.title)}" placeholder="Titel des Dokuments">
-      <button class="ws-tb${wsLean?" on":""}" data-wsact="lean-toggle" title="Schlanke Ansicht: alle Knöpfe eingeklappt, nur Pfeil, Haken und Text">☰ Schlank${wsLean?" an":""}</button>
-      <button class="ws-tb${doc.tag?" on":""}" data-wsact="tag-doc" title="Tag für das ganze Dokument">🏷 ${doc.tag?esc(doc.tag):"Tag"}</button>
-      <button class="ws-tb${doc.pinned?" on":""}" data-wsact="pin" title="${doc.pinned?"Fokus in Heute aufheben":"Als Fokus-Notiz in Heute anzeigen"}">📌 ${doc.pinned?"Fokus":"anheften"}</button>
+      <button class="ws-tb${wsLean?" on":""}" data-wsact="lean-toggle" title="Schlanke Ansicht: alle Knöpfe eingeklappt, nur Pfeil, Haken und Text">☰</button>
+      <button class="ws-tb${doc.tag?" on":""}" data-wsact="tag-doc" title="Tag für das ganze Dokument">🏷${doc.tag?" "+esc(doc.tag):""}</button>
+      <button class="ws-tb${doc.pinned?" on":""}" data-wsact="pin" title="${doc.pinned?"Fokus in Heute aufheben":"Als Fokus-Notiz in Heute anzeigen"}">📌</button>
       <button class="ws-tb" data-wsact="del-doc" title="Dokument löschen">🗑</button>
     </div>
-    <div class="ws-meta">geändert ${esc(wsDateTime(doc.updatedAt))} · <span class="ws-status"></span></div>`;
+    <div class="ws-meta" title="geändert ${esc(wsDateTime(doc.updatedAt))}"><span class="ws-status"></span></div>`;
   }
   if(mode==="today" || !wsF.tag) h += wsFilterHtml([doc]);
   const bt = wsBlockTags(doc);
@@ -4624,11 +4634,13 @@ function wsTodayHtml(){
   const d = wsPinned(); if(!d) return "";
   return `<div class="section-title">📌 Fokus</div><div class="ws-card ws-mount" data-doc="${d.id}" data-mode="today">${wsTodayInner(d)}</div>`;
 }
-function wsTagBarHtml(){
+let wsTagOpen = false; try{ wsTagOpen = localStorage.getItem("wsTagOpen")==="1"; }catch(e){}
+function wsTagBarHtml(inline){
   const tags = wsAllTags(wsDocs);
   if(!tags.length && !wsF.tag) return "";
   const chip = (k, label)=>`<button class="ws-fc${wsF.tag===k?" on":""}" data-wsact="tag-sel" data-t="${esc(k)}">${label}</button>`;
-  return `<div class="ws-tagbar"><span class="ws-fl">Tag</span>${chip("", "Alle")}${tags.map(t=>chip(wsTagKey(t), "🏷 "+esc(t))).join("")}${chip("!none", "ohne Tag")}</div>`;
+  if(wsTagOpen || wsF.tag) return `<div class="ws-tagbar"><button class="ws-tagtog on" data-wsact="tag-bar-toggle" title="Tag-Auswahl einklappen">🏷 ▴</button>${chip("", "Alle")}${tags.map(t=>chip(wsTagKey(t), "🏷 "+esc(t))).join("")}${chip("!none", "ohne Tag")}</div>`;
+  return inline ? "" : `<div class="ws-tagbar"><button class="ws-tagtog" data-wsact="tag-bar-toggle" title="Nach Tag filtern">🏷 ▾</button></div>`;
 }
 function wsDocsTabHtml(){
   if(!wsLoaded){
@@ -4642,7 +4654,7 @@ function wsDocsTabHtml(){
                      : `<div class="empty">Kein Dokument hat Einträge mit diesem Tag.</div>`);
   }
   const cur = wsCurrentDoc();
-  let h = wsTagBarHtml() + `<div class="ws-chips">${wsChipsInner(cur)}</div>`;
+  let h = wsTagBarHtml(true) + `<div class="ws-chips">${wsChipsInner(cur)}</div>`;
   if(!cur) return h + `<div class="empty">Noch kein Dokument. Mit "+ Neu" anlegen.</div>`;
   return h + `<div class="ws-card ws-mount" data-doc="${cur.id}" data-mode="tab">${wsEditorHtml(cur, "tab")}</div>`;
 }
@@ -5908,6 +5920,7 @@ main.addEventListener("click", e=>{
   }
   if(act==="lean-toggle"){ wsLean = !wsLean; try{ localStorage.setItem("wsLean", wsLean?"1":"0"); }catch(err){} render(); return; }
   if(act==="f-open"){ wsFOpen = !wsFOpen; try{ localStorage.setItem("wsFOpen", wsFOpen?"1":"0"); }catch(err){} render(); return; }
+  if(act==="tag-bar-toggle"){ wsTagOpen = !wsTagOpen; try{ localStorage.setItem("wsTagOpen", wsTagOpen?"1":"0"); }catch(err){} if(!wsTagOpen && wsF.tag){ wsF = wsFNorm({...wsF, tag:""}); wsFSave(); } render(); return; }
   if(act==="tag-sel"){ wsF = wsFNorm({...wsF, tag:(wsF.tag===a.dataset.t)?"":a.dataset.t}); wsFSave(); render(); return; }
   if(act==="f-reset"){ wsF = wsFNorm(null); wsFSave(); render(); return; }
   if(act==="f-preset"){
@@ -5987,6 +6000,13 @@ main.addEventListener("click", e=>{
   if(act==="fold" && block && !a.closest(".ws-att") && !a.closest(".ws-node")){
     wsOpenMap.set(block.id, !wsFoldOpen(block.id, block.type)); wsRerender(doc.id); return;
   }
+  if(act==="head-set" && block && block.type==="heading"){
+    const k = +a.dataset.k;
+    if(k===wsHLvl(block)) return;
+    const ok = k===3 ? !!wsDemoteHeading(doc, block.id, null) : wsSetHeadLvl(doc, block.id, k);
+    if(!ok){ toast("Das geht an dieser Stelle nicht"); return; }
+    wsTouch(doc); wsRerender(doc.id); return;
+  }
   if(act==="head-lvl" && block && block.type==="heading"){
     wsOpenLevelMenu(doc.id, "head", block.id); return;
   }
@@ -6040,6 +6060,20 @@ main.addEventListener("click", e=>{
       return;
     }
     if(act==="node-lvl"){ wsOpenLevelMenu(doc.id, "node", nid); return; }
+    if(act==="node-set"){
+      const k = +a.dataset.k, c = +nodeEl.dataset.lvl, base = +nodeEl.dataset.base || 3;
+      if(k===c) return;
+      if(k<=2){
+        const rr = wsPromoteNode(doc, nid, k);
+        if(rr.err){ toast(rr.err); return; }
+      }else{
+        const need = Math.max(0, 3-base); let d = c-base, guard = 0;
+        while(d>need && guard++<10){ if(!wsOutdent(doc, nid)) break; d--; }
+        while(d<need && guard++<10){ if(!wsIndent(doc, nid)) break; d++; }
+        if(d!==need){ toast("Dafür fehlt ein Punkt davor, unter den dieser Punkt rücken kann"); if(guard>0) { wsTouch(doc); wsRerender(doc.id); } return; }
+      }
+      wsTouch(doc); wsRerender(doc.id); return;
+    }
     if(act==="tag-node"){ wsOpenTagMenu(doc.id, "node", nid); return; }
     if(act==="hide-node"){
       r.node.hid = !r.node.hid; wsTouch(doc); wsRerender(doc.id);

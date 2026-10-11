@@ -6002,9 +6002,9 @@ main.addEventListener("click", e=>{
   }
   if(act==="head-set" && block && block.type==="heading"){
     const k = +a.dataset.k;
-    if(k===wsHLvl(block)) return;
+    if(k===wsHLvl(block)){ toast("Das ist schon Ebene "+k); return; }
     const ok = k===3 ? !!wsDemoteHeading(doc, block.id, null) : wsSetHeadLvl(doc, block.id, k);
-    if(!ok){ toast("Das geht an dieser Stelle nicht"); return; }
+    if(!ok){ alert("Das geht an dieser Stelle nicht."); return; }
     wsTouch(doc); wsRerender(doc.id); return;
   }
   if(act==="head-lvl" && block && block.type==="heading"){
@@ -6062,15 +6062,21 @@ main.addEventListener("click", e=>{
     if(act==="node-lvl"){ wsOpenLevelMenu(doc.id, "node", nid); return; }
     if(act==="node-set"){
       const k = +a.dataset.k, c = +nodeEl.dataset.lvl, base = +nodeEl.dataset.base || 3;
-      if(k===c) return;
+      if(k===c){ toast("Dieser Punkt ist schon Ebene "+k); return; }
       if(k<=2){
+        let rel = null;
+        if(r.node.link){
+          if(!confirm("Dieser Punkt ist mit einem ToDo oder Ziel verknüpft. Zum Umwandeln in eine Überschrift wird die Verknüpfung gelöst (das ToDo bzw. Ziel bleibt bestehen). Fortfahren?")) return;
+          rel = Object.assign({}, r.node.link); r.node.link = null;
+        }
         const rr = wsPromoteNode(doc, nid, k);
-        if(rr.err){ toast(rr.err); return; }
+        if(rr.err){ if(rel) r.node.link = rel; alert(rr.err); return; }
+        if(rel) wsLinkRun(()=>wsReleaseLinks([rel], false));
       }else{
         const need = Math.max(0, 3-base); let d = c-base, guard = 0;
         while(d>need && guard++<10){ if(!wsOutdent(doc, nid)) break; d--; }
         while(d<need && guard++<10){ if(!wsIndent(doc, nid)) break; d++; }
-        if(d!==need){ toast("Dafür fehlt ein Punkt davor, unter den dieser Punkt rücken kann"); if(guard>0) { wsTouch(doc); wsRerender(doc.id); } return; }
+        if(d!==need){ alert("Das geht hier nicht: Für Ebene 3 fehlt ein Punkt davor, unter den dieser Punkt rücken kann."); if(guard>0) { wsTouch(doc); wsRerender(doc.id); } return; }
       }
       wsTouch(doc); wsRerender(doc.id); return;
     }

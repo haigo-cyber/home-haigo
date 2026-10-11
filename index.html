@@ -604,6 +604,11 @@
   .ws-lean .ws-tbmore{display:inline-block}
   .ws-lean:not(.more) .ws-toolbar > .ws-tb:not([data-wsact="lean-toggle"]):not(.ws-tbmore){display:none}
   .ws-lean:not(.more) .ws-fbar{display:none}
+
+  /* Plus: überall sichtbar, auch in der schlanken Ansicht */
+  .ws-plus{flex:none;background:transparent;border:1px solid #3b4a2f;color:#8fd16b;border-radius:6px;font:700 13px var(--mono);padding:1px 7px;cursor:pointer;line-height:18px}
+  .ws-plus:hover{background:#1c2a14}
+  .ws-lean > .ws-add > .ws-addbtn:not(.ws-plusend){display:none}
 </style>
 </head>
 <body>
@@ -4521,6 +4526,7 @@ function wsNodeHtml(n, depth, inh, base){
       <span class="ws-lvs n">${[1,2,3].map(k=>`<button class="ws-lvb${depth+base===k?" on":""}" data-wsact="node-set" data-k="${k}" title="Zu Ebene ${k} machen">E${k}</button>`).join("")}${depth+base>3?`<span class="ws-lvx" title="aktuelle Ebene">E${depth+base}</span>`:""}</span>
       <span class="ws-lvt" title="Ebene ${depth+base}">E${depth+base}</span><button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
+      <button class="ws-plus" data-wsact="plus" data-kind="node" data-id="${n.id}" title="Hinzufügen: Punkt, Unterpunkt, Überschrift, Anhang …">+</button>
       <button class="ws-more${mo?" on":""}" data-wsact="more" data-mid="${n.id}" title="${mo?"Knöpfe dieses Punkts wieder einklappen":"Alle Knöpfe dieses Punkts anzeigen"}">${mo?"‹ zu":"⋯"}</button>
       <span class="ws-nright">
       ${wsNodeChips(n)}
@@ -4558,6 +4564,7 @@ function wsBlockHtml(b, eff, hidN, ind, base){
   return `<div class="ws-block${bmo?" more":""}" data-bid="${b.id}" data-kind="${b.type}"${b.type==="heading"?` data-lvl="${wsHeadLvl(b)}"`:""}${ind?` style="margin-left:${ind*18}px"`:""}>
     <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
     <div class="ws-bbody">${body}</div>
+    ${b.type==="outline"?"":`<button class="ws-plus" data-wsact="plus" data-kind="block" data-id="${b.id}" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>`}
     <button class="ws-more${bmo?" on":""}" data-wsact="more" data-mid="${b.id}" title="${bmo?"Knöpfe dieses Blocks wieder einklappen":"Alle Knöpfe dieses Blocks anzeigen"}">${bmo?"‹ zu":"⋯"}</button>
     <button class="ws-x ws-tagb${b.tag?" on":(eff?" inh":"")}" data-wsact="tag-block" title="${b.type==="heading"?"Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)":(b.tag?"Eigener Tag des Blocks":(eff?"Tag geerbt von oben, hier änderbar":"Tag für diesen Block setzen"))}">🏷${eff?" "+esc(eff):""}</button>
     <button class="ws-x" data-wsact="del-block" title="Block löschen">✕</button>
@@ -4599,6 +4606,7 @@ function wsEditorHtml(doc, mode){
   if(mode==="tab"){
     h += `<div class="ws-toolbar">
       <input type="text" class="ws-in ws-doctitle" data-wsf="title" value="${esc(doc.title)}" placeholder="Titel des Dokuments">
+      <button class="ws-plus" data-wsact="plus" data-kind="end" data-id="" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>
       <button class="ws-tb ws-tbmore" data-wsact="more" data-mid="${doc.id}" title="Alle Knöpfe dieses Dokuments ein- oder ausblenden">⋯</button>
       <button class="ws-tb${wsLean?" on":""}" data-wsact="lean-toggle" title="Schlanke Ansicht: alle Knöpfe eingeklappt, nur Pfeil, Haken und Text">☰</button>
       <button class="ws-tb${doc.tag?" on":""}" data-wsact="tag-doc" title="Tag für das ganze Dokument">🏷${doc.tag?" "+esc(doc.tag):""}</button>
@@ -4613,6 +4621,7 @@ function wsEditorHtml(doc, mode){
   const parts = doc.blocks.map(b=>hh.hidden.has(b.id) ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], hh.indent[b.id], hh.base[b.id])).filter(Boolean);
   h += `<div class="ws-blocks">${parts.length ? parts.join("") : (doc.blocks.length ? `<div class="ws-empty">In diesem Dokument ist nichts für diese Ansicht.</div>` : `<div class="ws-empty">Noch leer. Unten einen Block hinzufügen.</div>`)}</div>
     <div class="ws-add">
+      <button class="ws-addbtn ws-plusend" data-wsact="plus" data-kind="end" data-id="" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">＋ Hinzufügen</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="text">+ Text</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="1">+ Ebene 1</button>
       <button class="ws-addbtn" data-wsact="add-block" data-type="heading" data-lvl="2">+ Ebene 2</button>
@@ -5935,6 +5944,7 @@ main.addEventListener("click", e=>{
     const id = a.dataset.mid; if(wsMore.has(id)) wsMore.delete(id); else wsMore.add(id);
     wsRerender(doc.id); return;
   }
+  if(act==="plus" && doc){ wsOpenPlusMenu(doc.id, a.dataset.kind, a.dataset.id); return; }
   if(act==="lean-toggle"){ wsLean = !wsLean; try{ localStorage.setItem("wsLean", wsLean?"1":"0"); }catch(err){} render(); return; }
   if(act==="f-open"){ wsFOpen = !wsFOpen; try{ localStorage.setItem("wsFOpen", wsFOpen?"1":"0"); }catch(err){} render(); return; }
   if(act==="tag-bar-toggle"){ wsTagOpen = !wsTagOpen; try{ localStorage.setItem("wsTagOpen", wsTagOpen?"1":"0"); }catch(err){} if(!wsTagOpen && wsF.tag){ wsF = wsFNorm({...wsF, tag:""}); wsFSave(); } render(); return; }
@@ -6149,6 +6159,70 @@ function wsTableAct(doc, tbl, scope, act, a){
 }
 
 /* ---- Menü "Ebene ändern" (Ebene 1 und 2 = Überschriften, Ebene 3 und tiefer = Punkte) ---- */
+/* Plus-Menü: überall dort, wo etwas hinzugefügt werden kann (Punkt, Überschrift, Text, Tabelle, Block, Dokumentende) */
+function wsOpenPlusMenu(docId, kind, id){
+  if(document.getElementById("modalBg")) return;
+  const doc = wsGet(docId); if(!doc) return;
+  let title = "Hinzufügen", items = [];
+  const BL = [["t-text","Text / Notiz"],["t-table","Tabelle"],["t-h1","Überschrift Ebene 1"],["t-h2","Überschrift Ebene 2"]];
+  if(kind==="node"){
+    const r = wsFindNode(doc, id); if(!r) return;
+    title = "Zu „"+(r.node.text||"(ohne Text)").slice(0,30)+"“ hinzufügen";
+    items = [["n-sib","Punkt darunter (gleiche Ebene)"],["n-kid","Unterpunkt (eine Ebene tiefer)"],["n-h1","Überschrift Ebene 1 darunter"],["n-h2","Überschrift Ebene 2 darunter"],
+      ["a-text","Anhang: Text / Notiz"],["a-table","Anhang: Tabelle"],["a-link","Anhang: Link"],["a-file","Anhang: Bild / PDF"]];
+  }else if(kind==="block"){
+    const b = wsBlock(doc, id); if(!b) return;
+    title = b.type==="heading" ? "Unter „"+(b.text||"Überschrift").slice(0,30)+"“ hinzufügen" : "Danach hinzufügen";
+    items = [["b-pt","Punkt"]].concat(BL);
+  }else{
+    items = [["e-pt","Punkt"]].concat(BL);
+  }
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>${esc(title)}</h2>
+    <div class="ws-implist">${items.map(i=>`<button class="ws-addbtn" style="display:block;width:100%;text-align:left;margin-bottom:6px" data-pl="${i[0]}">${esc(i[1])}</button>`).join("")}</div>
+    <div class="modal-actions"><button class="btn-primary" id="wsl_close">Abbrechen</button></div></div></div>`);
+  const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); };
+  document.getElementById("wsl_close").onclick = close;
+  document.getElementById("modalBg").onclick = e=>{
+    if(e.target.id==="modalBg"){ close(); return; }
+    const bt = e.target.closest("[data-pl]"); if(!bt) return;
+    const a = bt.dataset.pl; close();
+    const focusNode = n=>{ wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-nid="${n.id}"] > .ws-nrow .ws-nin`; };
+    // Block-Position: Überschrift = hinter ihrem Abschnitt, sonst direkt dahinter; Ende = ganz hinten
+    let idx = doc.blocks.length;
+    if(kind==="block"){
+      const i = doc.blocks.findIndex(b=>b.id===id); idx = i+1;
+      if(a==="t-h1" || a==="t-h2"){ if(doc.blocks[i].type==="heading") idx = wsSecEnd(doc.blocks, i); }
+    }
+    const addPoint = pos=>{
+      const nb = doc.blocks[pos];
+      if(kind==="end" && pos>0 && doc.blocks[pos-1].type==="outline"){ const n = wsNewNode(""); doc.blocks[pos-1].items.push(n); return n; }
+      if(kind==="block" && nb && nb.type==="outline"){ const n = wsNewNode(""); nb.items.unshift(n); return n; }
+      const ob = wsNewBlock("outline"); doc.blocks.splice(pos, 0, ob); return ob.items[0];
+    };
+    if(a==="n-sib" || a==="n-kid" || a==="n-h1" || a==="n-h2"){
+      const n = a==="n-kid" ? wsAddChild(doc, id) : wsAddSibling(doc, id); if(!n) return;
+      if(a==="n-kid") wsColl.set(id, false);
+      if(a==="n-h1" || a==="n-h2"){
+        const rr = wsPromoteNode(doc, n.id, a==="n-h1"?1:2);
+        if(rr.err){ wsDeleteNode(doc, n.id); alert(rr.err); wsRerender(doc.id); return; }
+      }else focusNode(n);
+    }else if(a.startsWith("a-")){
+      const r = wsFindNode(doc, id); if(!r) return;
+      if(a==="a-file"){ wsAddFiles(doc, r.node); return; }
+      const at = wsNewAtt(a.slice(2)); if(!at) return;
+      wsOpenMap.set(at.id, true); r.node.att.push(at); r.node.aopen = true; wsColl.set(id, false);
+      wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-aid="${at.id}"] .ws-abody .ws-in`;
+    }else if(a==="b-pt" || a==="e-pt"){
+      focusNode(addPoint(idx));
+    }else if(a.startsWith("t-")){
+      const ty = a==="t-text"?"text":a==="t-table"?"table":"heading";
+      const b = wsNewBlock(ty); if(a==="t-h2") b.lvl = 2;
+      wsOpenMap.set(b.id, true); doc.blocks.splice(idx, 0, b);
+      wsFocusSel = `.ws-doc[data-doc="${doc.id}"] [data-bid="${b.id}"] .ws-in`;
+    }
+    wsTouch(doc); wsRerender(doc.id);
+  };
+}
 function wsOpenLevelMenu(docId, kind, id){
   if(document.getElementById("modalBg")) return;
   const doc = wsGet(docId); if(!doc) return;

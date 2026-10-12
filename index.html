@@ -1652,6 +1652,7 @@ function taskCard(t,{showCheck=true, key=todayKey(), oneTime=false}={}){
     </div>
     <div class="row-actions">
       ${inbox?`<button class="mini" data-sort="${t.id}" title="Einsortieren">➜ Einsortieren</button>`:''}
+      ${(t.type==="todo" && t.scheduleType!=="weekly")?wsTaskBtns("todo",t.id):''}
       <button class="mini" data-edit="${t.id}">Bearb.</button>
       <button class="mini" data-del="${t.id}">🗑</button>
     </div>
@@ -1690,6 +1691,7 @@ function goalTaskCard(g){
     <div class="check${g.completed?' on':''}" data-${g.completed?'guncheck':'gtask'}="${g.id}">${checkSvg()}</div>
     <div class="body"><div class="title" style="color:#000">${esc(g.title)}</div></div>
     <div class="row-actions">
+      ${wsTaskBtns("goal",g.id)}
       <button class="mini" data-gcal="${g.id}" title="In Google Kalender eintragen">📅</button>
       <button class="mini" data-gedit="${g.id}">Bearb.</button>
       <button class="mini" data-gdel="${g.id}">🗑</button>
@@ -6046,6 +6048,18 @@ main.addEventListener("click", e=>{
     const id = a.dataset.mid; if(wsMore.has(id)) wsMore.delete(id); else wsMore.add(id);
     wsRerender(doc.id); return;
   }
+  if(act==="task-focus" || act==="task-meta"){
+    if(!wsLoaded){ toast("Arbeitsbereich noch nicht geladen"); return; }
+    const hit = wsEnsureTaskNode(a.dataset.kind, a.dataset.ref);
+    if(!hit){ toast("Eintrag nicht gefunden"); return; }
+    if(act==="task-focus"){
+      const on = wsFocusToggle(hit.doc, hit.node.id);
+      if(on===null){ toast("Erledigte Einträge können keinen Fokus bekommen"); return; }
+      render(); toast(on ? "Fokus: erscheint in Heute" : "Fokus aufgehoben"); return;
+    }
+    hit.node.meta = !hit.node.meta; wsTouch(hit.doc); render();
+    toast(hit.node.meta ? "Meta-Projekt: erscheint in Heute unter Metaprojekten und im Gantt" : "Kein Meta-Projekt mehr"); return;
+  }
   if(act==="focus" && doc){
     const on = wsFocusToggle(doc, a.dataset.fid);
     if(on===null){ toast("Erledigte Einträge können keinen Fokus bekommen"); return; }
@@ -7036,6 +7050,37 @@ function wsImportCandidates(){
   });
   out.sort((a,b)=>(a.day?0:1)-(b.day?0:1) || (a.day<b.day?-1:a.day>b.day?1:0) || a.title.localeCompare(b.title, "de"));
   return out;
+}
+/* ---- Fokus und Meta-Projekt für ToDos und Tages-Ziele der ToDo-App (über den verknüpften Punkt im Arbeitsbereich) ---- */
+function wsTaskBtns(kind, ref){
+  if(!wsLoaded) return "";
+  const hit = wsFindByLink(wsDocs, kind, ref);
+  const fo = !!hit && wsFocusHas(hit.doc, hit.node.id), me = !!hit && !!hit.node.meta;
+  return `<button class="mini${fo?" on":""}" data-wsact="task-focus" data-kind="${kind}" data-ref="${esc(ref)}" title="${fo?"Fokus aufheben":"In Heute als Fokus anzeigen"}" style="${fo?"color:#b45309;font-weight:700":""}">📌</button>`
+       + `<button class="mini${me?" on":""}" data-wsact="task-meta" data-kind="${kind}" data-ref="${esc(ref)}" title="${me?"Nicht mehr Meta-Projekt":"Als Meta-Projekt kennzeichnen"}" style="${me?"color:#b45309;font-weight:700":""}">${me?"★":"☆"}</button>`;
+}
+/* verknüpften Punkt holen; gibt es ihn noch nicht, wird er im Auto-Eingang angelegt */
+function wsEnsureTaskNode(kind, ref){
+  let hit = wsFindByLink(wsDocs, kind, ref); if(hit) return hit;
+  let x = null;
+  if(kind==="todo"){
+    const t = tasks.find(q=>q.id===ref);
+    if(t) x = {kind, id:t.id, title:t.title, day:wsIsDate(t.startDate)?t.startDate:"", cal:!!t.calendarEventId, tag:String(t.tag||"").split(",").map(q=>WS_TAGLBL[q.trim()]).filter(Boolean).join(", ")};
+  }else{
+    const g = allOpenGoals.concat(goalTasks).find(q=>q && q.id===ref);
+    if(g) x = {kind, id:g.id, title:g.title, day:wsIsDate(g.due)?g.due:"", cal:false, tag:""};
+  }
+  if(!x) return null;
+  let doc = wsDocs.find(d=>d.inbox);
+  if(!doc){
+    doc = wsNewDoc("ToDo-Eingang"); doc.inbox = true; doc.seen = [];
+    const ol = wsNewBlock("outline"); ol.items = []; doc.blocks.push(ol); wsDocs.push(doc);
+    try{ localStorage.setItem("wsInboxMade", "1"); }catch(e){}
+  }
+  wsInsertLinked(doc, [x], null, null);
+  if(!doc.seen.includes(kind+":"+ref)) doc.seen.push(kind+":"+ref);
+  wsTouch(doc);
+  return wsFindByLink(wsDocs, kind, ref);
 }
 /* ---- Auto-Eingang: jedes neue ToDo und Tagesziel landet als verknüpfter Punkt im Dokument "ToDo-Eingang" ---- */
 function wsInboxOn(){ try{ return localStorage.getItem("wsInboxOff")!=="1"; }catch(e){ return true; } }   // immer an; nur die Tests schalten es über wsInboxOff ab

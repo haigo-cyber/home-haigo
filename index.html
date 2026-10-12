@@ -4698,15 +4698,27 @@ function wsFocusKind(doc, id){
 }
 function wsFocusToggle(doc, id){
   if(!Array.isArray(doc.focus)) doc.focus = [];
+  const k0 = wsFocusKind(doc, id);
+  if(k0==="node" || k0==="att"){ const x = k0==="node" ? wsFindNode(doc, id).node : wsFindAny(doc, id); if(x && x.done && !doc.focus.includes(id)) return null; }
   const i = doc.focus.indexOf(id);
   if(i>=0) doc.focus.splice(i, 1); else doc.focus.push(id);
   doc.focus = doc.focus.filter(k=>wsFocusKind(doc, k));
   wsTouch(doc);
   return i<0;
 }
+/* Ein erledigter Punkt oder Anhang verliert seinen Fokus */
+function wsFocusDrop(doc, id){
+  const i = Array.isArray(doc.focus) ? doc.focus.indexOf(id) : -1;
+  if(i>=0){ doc.focus.splice(i, 1); return true; }
+  return false;
+}
 function wsFocusItems(){
   const out = [];
-  wsDocs.forEach(d=>{ (d.focus||[]).forEach(id=>{ const k = wsFocusKind(d, id); if(k) out.push({doc:d, id, kind:k}); }); });
+  wsDocs.forEach(d=>{
+    // auch wenn "erledigt" anderswo gesetzt wurde (z. B. über das verknüpfte ToDo): Fokus entfernen
+    const dn = (d.focus||[]).filter(id=>{ const k = wsFocusKind(d, id); if(k!=="node" && k!=="att") return false; const x = k==="node" ? wsFindNode(d, id).node : wsFindAny(d, id); return x && x.done; });
+    if(dn.length){ dn.forEach(id=>wsFocusDrop(d, id)); wsTouch(d); }
+    (d.focus||[]).forEach(id=>{ const k = wsFocusKind(d, id); if(k) out.push({doc:d, id, kind:k}); }); });
   return out;
 }
 /* Inhalt einer Fokus-Karte; leer, wenn der Eintrag nicht mehr existiert */
@@ -5900,7 +5912,7 @@ function wsRerender(docId){
   if(!doc || !mounts.length){ render(); return; }
   let gone = false;
   mounts.forEach(m=>{
-    if(m.dataset.mode==="focus"){ const h = wsFocusInner(doc, m.dataset.fid, m.dataset.fkind); if(h===null) gone = true; else m.innerHTML = h; }
+    if(m.dataset.mode==="focus"){ const h = wsFocusInner(doc, m.dataset.fid, m.dataset.fkind); if(h===null || !wsFocusHas(doc, m.dataset.fid)) gone = true; else m.innerHTML = h; }
     else m.innerHTML = m.dataset.mode==="today" ? wsTodayInner(doc) : wsEditorHtml(doc, "tab");
   });
   if(gone){ render(); return; }
@@ -6036,6 +6048,7 @@ main.addEventListener("click", e=>{
   }
   if(act==="focus" && doc){
     const on = wsFocusToggle(doc, a.dataset.fid);
+    if(on===null){ toast("Erledigte Einträge können keinen Fokus bekommen"); return; }
     if(view==="today") render(); else wsRerender(doc.id);
     toast(on ? "Fokus: erscheint in Heute" : "Fokus aufgehoben"); return;
   }
@@ -6157,7 +6170,7 @@ main.addEventListener("click", e=>{
     const att = wsFindAny(doc, attEl.dataset.aid); if(!att) return;
     if(act==="fold"){ wsOpenMap.set(att.id, !wsFoldOpen(att.id, att.type)); wsRerender(doc.id); return; }
     if(act==="done"){
-      att.done = !att.done; wsTouch(doc); wsRerender(doc.id);
+      att.done = !att.done; if(att.done) wsFocusDrop(doc, att.id); wsTouch(doc); wsRerender(doc.id);
       if(att.link) wsLinkRun(()=>wsPushDone(doc, att));
       return;
     }
@@ -6215,7 +6228,7 @@ main.addEventListener("click", e=>{
       return;
     }
     if(act==="done"){
-      r.node.done = !r.node.done; wsTouch(doc); wsRerender(doc.id);
+      r.node.done = !r.node.done; if(r.node.done) wsFocusDrop(doc, r.node.id); wsTouch(doc); wsRerender(doc.id);
       if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
       return;
     }

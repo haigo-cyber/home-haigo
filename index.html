@@ -612,6 +612,9 @@
 
   /* alte Einzelknöpfe sind durch das Plus ersetzt */
   .ws-bbody > .ws-addbtn[data-wsact="add-root-node"],.ws-bbody > .ws-addbtn[data-wsact="import-root"],.ws-doc > .ws-add > .ws-addbtn:not(.ws-plusend){display:none !important}
+
+  .ws-footer{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;margin-top:14px;padding-top:10px;border-top:1px solid #20242b}
+  .ws-footer .ws-tagbar{margin:0;flex:1 1 auto}
 </style>
 </head>
 <body>
@@ -4429,13 +4432,18 @@ function wsRefreshChips(){
   const box = document.querySelector(".ws-chips"); if(!box || view!=="notes" || wsTab!=="docs") return;
   const cur = wsCurrentDoc();
   box.innerHTML = wsChipsInner(cur);
+  const ft = document.querySelector(".ws-footer"); if(ft) ft.outerHTML = wsFooterHtml();
 }
 function wsChipsInner(cur){
   return wsDocs.map(d=>`<button class="ws-chip${cur&&cur.id===d.id?" sel":""}" data-wsact="open-doc" data-id="${d.id}">${d.pinned?"📌 ":""}${esc(d.title||"Ohne Titel")}</button>`).join("")
-    + `<button class="ws-chip new" data-wsact="new-doc">+ Neu</button>`
-    + (wsAllTags(wsDocs).length ? `<button class="ws-trashbtn" data-wsact="tag-bar-toggle" title="Nach Tag filtern">🏷</button>` : "")
-    + `<button class="ws-trashbtn" data-wsact="inbox-toggle" title="Auto-Eingang: neue ToDos und Tagesziele automatisch im Dokument ToDo-Eingang ablegen (${wsInboxOn()?"an":"aus"})">${wsInboxOn()?"📥":"📥 aus"}</button>`
-    + `<button class="ws-trashbtn" data-wsact="open-trash" title="Papierkorb: gelöschte Einträge, 3 Tage lang wiederherstellbar">🗑${wsTrashCount()?" ("+wsTrashCount()+")":""}</button>`;
+    + `<button class="ws-chip new" data-wsact="new-doc">+ Neu</button>`;
+}
+/* Fußzeile des Arbeitsbereichs: Tag-Auswahl und Papierkorb */
+function wsFooterHtml(){
+  const hasTags = wsAllTags(wsDocs).length>0;
+  const open = wsTagOpen || !!wsF.tag;
+  return `<div class="ws-footer">${wsTagBarHtml(true)}${(hasTags && !open)?`<button class="ws-trashbtn" data-wsact="tag-bar-toggle" title="Nach Tag filtern">🏷</button>`:""}`
+    + `<button class="ws-trashbtn" data-wsact="open-trash" title="Papierkorb: gelöschte Einträge, 3 Tage lang wiederherstellbar">🗑${wsTrashCount()?" ("+wsTrashCount()+")":""}</button></div>`;
 }
 /* Beim Zurückkehren in die App (z. B. am Handy) den Stand neu holen, solange nichts ungespeichert ist */
 async function wsRefreshIfIdle(){
@@ -4604,6 +4612,7 @@ function wsFilterHtml(docs){
   }
   return h;
 }
+function wsHidCount(doc){ return wsAllNodes(doc).filter(n=>n.hid).length; }
 function wsEditorHtml(doc, mode){
   let h = `<div class="ws-doc${wsLean?" ws-lean":""}${wsMore.has(doc.id)?" more":""}" data-doc="${doc.id}">`;
   if(mode==="tab"){
@@ -4612,6 +4621,7 @@ function wsEditorHtml(doc, mode){
       <button class="ws-plus" data-wsact="plus" data-kind="end" data-id="" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>
       <button class="ws-tb ws-tbmore" data-wsact="more" data-mid="${doc.id}" title="Alle Knöpfe dieses Dokuments ein- oder ausblenden">⋯</button>
       <button class="ws-tb${wsLean?" on":""}" data-wsact="lean-toggle" title="Schlanke Ansicht: alle Knöpfe eingeklappt, nur Pfeil, Haken und Text">☰</button>
+      <button class="ws-tb" data-wsact="unhide-all" title="Alle ausgeblendeten Punkte dieses Dokuments wieder einblenden">👁 Alle ausgeblendeten einblenden${wsHidCount(doc)?" ("+wsHidCount(doc)+")":""}</button>
       <button class="ws-tb${doc.tag?" on":""}" data-wsact="tag-doc" title="Tag für das ganze Dokument">🏷${doc.tag?" "+esc(doc.tag):""}</button>
       <button class="ws-tb${doc.pinned?" on":""}" data-wsact="pin" title="${doc.pinned?"Fokus in Heute aufheben":"Als Fokus-Notiz in Heute anzeigen"}">📌</button>
       <button class="ws-tb" data-wsact="del-doc" title="Dokument löschen">🗑</button>
@@ -4678,14 +4688,14 @@ function wsDocsTabHtml(){
   if(wsF.tag){
     let list = wsDocs.filter(d=>wsDocHasTag(d, wsF.tag));
     if(!wsF.manual){ list = list.map((d,i)=>({d,i,k:wsDocUrgKey(d)})).sort((a,b)=> (a.k?0:1)-(b.k?0:1) || (a.k<b.k?-1:a.k>b.k?1:0) || a.i-b.i).map(x=>x.d); }
-    return wsTagBarHtml() + wsFilterHtml(list)
+    return wsFilterHtml(list)
       + (list.length ? list.map(d=>`<div class="ws-card ws-mount" data-doc="${d.id}" data-mode="tab">${wsEditorHtml(d, "tab")}</div>`).join("")
-                     : `<div class="empty">Kein Dokument hat Einträge mit diesem Tag.</div>`);
+                     : `<div class="empty">Kein Dokument hat Einträge mit diesem Tag.</div>`) + wsFooterHtml();
   }
   const cur = wsCurrentDoc();
-  let h = wsTagBarHtml(true) + `<div class="ws-chips">${wsChipsInner(cur)}</div>`;
-  if(!cur) return h + `<div class="empty">Noch kein Dokument. Mit "+ Neu" anlegen.</div>`;
-  return h + `<div class="ws-card ws-mount" data-doc="${cur.id}" data-mode="tab">${wsEditorHtml(cur, "tab")}</div>`;
+  let h = `<div class="ws-chips">${wsChipsInner(cur)}</div>`;
+  if(!cur) return h + `<div class="empty">Noch kein Dokument. Mit "+ Neu" anlegen.</div>` + wsFooterHtml();
+  return h + `<div class="ws-card ws-mount" data-doc="${cur.id}" data-mode="tab">${wsEditorHtml(cur, "tab")}</div>` + wsFooterHtml();
 }
 function wsOldNotesHtml(){
   const activeNotes = notes.filter(n=>!n.archived);
@@ -5947,6 +5957,12 @@ main.addEventListener("click", e=>{
     const id = a.dataset.mid; if(wsMore.has(id)) wsMore.delete(id); else wsMore.add(id);
     wsRerender(doc.id); return;
   }
+  if(act==="unhide-all" && doc){
+    const hs = wsAllNodes(doc).filter(n=>n.hid);
+    if(!hs.length){ toast("In diesem Dokument ist nichts ausgeblendet"); return; }
+    hs.forEach(n=>{ n.hid = false; }); wsTouch(doc); wsRerender(doc.id);
+    toast(hs.length+(hs.length===1?" Punkt":" Punkte")+" wieder eingeblendet"); return;
+  }
   if(act==="plus" && doc){ wsOpenPlusMenu(doc.id, a.dataset.kind, a.dataset.id); return; }
   if(act==="lean-toggle"){ wsLean = !wsLean; try{ localStorage.setItem("wsLean", wsLean?"1":"0"); }catch(err){} render(); return; }
   if(act==="f-open"){ wsFOpen = !wsFOpen; try{ localStorage.setItem("wsFOpen", wsFOpen?"1":"0"); }catch(err){} render(); return; }
@@ -5973,11 +5989,6 @@ main.addEventListener("click", e=>{
   }
   if(act==="retry-load"){ setSync("busy"); loadWorkspace().then(()=>{ setSync("on"); render(); }); return; }
   if(act==="open-trash"){ wsOpenTrash(); return; }
-  if(act==="inbox-toggle"){
-    const on = !wsInboxOn(); try{ localStorage.setItem("wsInboxAuto", on?"1":"0"); }catch(e){}
-    toast(on ? "Auto-Eingang an: neue ToDos und Ziele landen im Dokument ToDo-Eingang" : "Auto-Eingang aus");
-    wsRefreshChips(); if(on) wsInboxSync(); return;
-  }
   if(act==="new-doc"){
     if(!wsLoaded){ toast("Arbeitsbereich nicht geladen"); return; }
     const d = wsNewDoc("Neues Dokument"); wsDocs.push(d); wsOpenDocId = d.id; localStorage.setItem("wsOpenDoc", d.id);
@@ -6927,7 +6938,7 @@ function wsImportCandidates(){
   return out;
 }
 /* ---- Auto-Eingang: jedes neue ToDo und Tagesziel landet als verknüpfter Punkt im Dokument "ToDo-Eingang" ---- */
-function wsInboxOn(){ try{ return localStorage.getItem("wsInboxAuto")!=="0"; }catch(e){ return true; } }
+function wsInboxOn(){ try{ return localStorage.getItem("wsInboxOff")!=="1"; }catch(e){ return true; } }   // immer an; nur die Tests schalten es über wsInboxOff ab
 let wsInboxTimer = null;
 function wsInboxKick(){
   if(!wsLoaded || !wsInboxOn()) return;

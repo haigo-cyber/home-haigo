@@ -615,6 +615,16 @@
 
   .ws-footer{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;margin-top:14px;padding-top:10px;border-top:1px solid #20242b}
   .ws-footer .ws-tagbar{margin:0;flex:1 1 auto}
+
+  /* Fokus einzelner Einträge */
+  .ws-fobtn{opacity:.55}
+  .ws-fobtn.on{opacity:1;border-color:var(--amber);color:var(--amber)}
+  .ws-focuscard{margin-bottom:10px}
+  .ws-fohead{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .ws-fodoc{font-size:12px;padding:3px 10px}
+  .ws-focusdoc .ws-handle{display:none}
+  .ws-lean.ws-focusdoc > .ws-atts{display:block}
+  .ws-lean.ws-focusdoc > .ws-atts .ws-nright{display:flex}
 </style>
 </head>
 <body>
@@ -3475,7 +3485,7 @@ function wsFindByLink(docs, kind, ref){
 }
 function wsNewDoc(title){
   const now = new Date().toISOString();
-  return {id:wsId(), title:title||"Neues Dokument", pinned:false, tag:"", inbox:false, seen:[], createdAt:now, updatedAt:now, blocks:[]};
+  return {id:wsId(), title:title||"Neues Dokument", pinned:false, tag:"", inbox:false, seen:[], focus:[], createdAt:now, updatedAt:now, blocks:[]};
 }
 function wsNewBlock(type){
   if(type==="text") return {id:wsId(), type:"text", text:"", tag:""};
@@ -3496,6 +3506,7 @@ function wsNormalizeDocs(arr){
   return arr.filter(d=>d && typeof d==="object").map(d=>{
     const doc = {id:d.id||wsId(), title:String(d.title||""), pinned:!!d.pinned, tag:wsNormTag(d.tag),
       inbox:!!d.inbox, seen:(Array.isArray(d.seen)?d.seen:[]).filter(k=>typeof k==="string").slice(-3000),
+      focus:(Array.isArray(d.focus)?d.focus:[]).filter(k=>typeof k==="string").slice(0,500),
       createdAt:d.createdAt||new Date().toISOString(), updatedAt:d.updatedAt||d.createdAt||new Date().toISOString(), blocks:[]};
     (Array.isArray(d.blocks)?d.blocks:[]).forEach(b=>{
       if(!b || typeof b!=="object") return;
@@ -4506,7 +4517,7 @@ function wsAttHtml(a, eff){
       <button class="ws-tog" data-wsact="fold" title="${open?"Einklappen":"Aufklappen"}">${open?"▾":"▸"}</button>
       <button class="ws-chk${a.done?" on":""}" data-wsact="done" title="Erledigt">${a.done?"✓":""}</button>
       <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":a.type==="link"?"Bezeichnung des Links (optional)":a.type==="file"?(a.name||"Bezeichnung (optional)"):"Titel der Tabelle"}">
-      <span class="ws-nright">${wsNodeChips(a)}${wsAttTagBtn(a, wsTagUnion(eff, a.tag), "tag-att", "diesen Anhang")}<button class="ws-mini" data-wsact="move-att" title="Zu einem anderen Punkt, Block oder Dokument verschieben">⇄</button><button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
+      <span class="ws-nright">${wsNodeChips(a)}${wsAttTagBtn(a, wsTagUnion(eff, a.tag), "tag-att", "diesen Anhang")}<button class="ws-mini ws-fobtn${wsFocusHas(wsFocusDocOf(a.id),a.id)?" on":""}" data-wsact="focus" data-fid="${a.id}" title="In Heute als Fokus anzeigen / Fokus aufheben">📌</button><button class="ws-mini" data-wsact="move-att" title="Zu einem anderen Punkt, Block oder Dokument verschieben">⇄</button><button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
     </div>
     <div class="ws-abody"${open?"":' data-wsact="fold"'}>${body}</div>
   </div>`;
@@ -4545,6 +4556,7 @@ function wsNodeHtml(n, depth, inh, base){
       ${wsF.noAtt?"":`<button class="ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle an diesen Punkt anhängen">📎 ${n.att.length?n.att.length:"Anhang"}</button>`}
       <button class="ws-mini ws-tagb${n.tag?" on":(eff?" inh":"")}" data-wsact="tag-node" title="${n.tag?"Eigener Tag, gilt auch für alle Unterpunkte und Anhänge":(eff?"Tag geerbt von oben, hier änderbar":"Tag setzen (gilt auch für alle Unterpunkte und Anhänge)")}">🏷${eff?" "+esc(eff):""}</button>
       <button class="ws-mini ws-eye${n.hid?" on":""}" data-wsact="hide-node" title="${n.hid?"Wieder einblenden":"Ausblenden (unter Ansicht wieder einblendbar)"}">${n.hid?"🙈":"👁"}</button>
+      <button class="ws-mini ws-fobtn${wsFocusHas(wsFocusDocOf(n.id),n.id)?" on":""}" data-wsact="focus" data-fid="${n.id}" title="In Heute als Fokus anzeigen / Fokus aufheben">📌</button>
       <button class="ws-mini" data-wsact="move-node" title="In einen anderen Block, unter eine andere Überschrift oder in ein anderes Dokument verschieben">⇄</button>
       <button class="ws-mini" data-wsact="add-child" title="Unterpunkt anlegen">+</button>
       <button class="ws-mini" data-wsact="del-node" title="Punkt löschen">✕</button>
@@ -4578,6 +4590,7 @@ function wsBlockHtml(b, eff, hidN, ind, base){
     ${b.type==="outline"?"":`<button class="ws-plus" data-wsact="plus" data-kind="block" data-id="${b.id}" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>`}
     <button class="ws-more${bmo?" on":""}" data-wsact="more" data-mid="${b.id}" title="${bmo?"Knöpfe dieses Blocks wieder einklappen":"Alle Knöpfe dieses Blocks anzeigen"}">${bmo?"‹ zu":"⋯"}</button>
     <button class="ws-x ws-tagb${b.tag?" on":(eff?" inh":"")}" data-wsact="tag-block" title="${b.type==="heading"?"Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)":(b.tag?"Eigener Tag des Blocks":(eff?"Tag geerbt von oben, hier änderbar":"Tag für diesen Block setzen"))}">🏷${eff?" "+esc(eff):""}</button>
+    ${b.type==="outline"?"":`<button class="ws-x ws-fobtn${wsFocusHas(wsFocusDocOf(b.id),b.id)?" on":""}" data-wsact="focus" data-fid="${b.id}" title="In Heute als Fokus anzeigen / Fokus aufheben">📌</button>`}
     <button class="ws-x" data-wsact="del-block" title="Block löschen">✕</button>
   </div>`;
 }
@@ -4669,9 +4682,68 @@ function wsTodayInner(doc){
   }
   return h;
 }
+/* ---- Fokus für einzelne Einträge (Punkt, Überschrift samt Abschnitt, Text, Tabelle, Anhang) ---- */
+let wsFocusRenderDoc = null;            // Dokument, das gerade gezeichnet wird (die Knöpfe kennen so ihr Dokument)
+function wsFocusDocOf(id){
+  if(wsFocusRenderDoc) return wsFocusRenderDoc;
+  for(const d of wsDocs){ if(d.focus && d.focus.includes(id)) return d; }
+  return null;
+}
+function wsFocusHas(doc, id){ return !!doc && Array.isArray(doc.focus) && doc.focus.includes(id); }
+function wsFocusKind(doc, id){
+  const b = wsBlock(doc, id);
+  if(b) return b.type==="outline" ? "" : b.type;
+  if(wsFindNode(doc, id)) return "node";
+  return wsFindAny(doc, id) ? "att" : "";
+}
+function wsFocusToggle(doc, id){
+  if(!Array.isArray(doc.focus)) doc.focus = [];
+  const i = doc.focus.indexOf(id);
+  if(i>=0) doc.focus.splice(i, 1); else doc.focus.push(id);
+  doc.focus = doc.focus.filter(k=>wsFocusKind(doc, k));
+  wsTouch(doc);
+  return i<0;
+}
+function wsFocusItems(){
+  const out = [];
+  wsDocs.forEach(d=>{ (d.focus||[]).forEach(id=>{ const k = wsFocusKind(d, id); if(k) out.push({doc:d, id, kind:k}); }); });
+  return out;
+}
+/* Inhalt einer Fokus-Karte; leer, wenn der Eintrag nicht mehr existiert */
+function wsFocusBody(doc, id, kind){
+  const bt = wsBlockTags(doc), hh = wsHiddenByHeads(doc);
+  if(kind==="node" || kind==="att"){
+    let node = null, att = null;
+    if(kind==="node") node = wsFindNode(doc, id); else { att = wsFindAny(doc, id); node = att ? wsAttOwner(doc, id) : null; }
+    if(kind==="node" && !node) return "";
+    if(kind==="att" && !att) return "";
+    const eff = wsEffMap();
+    if(kind==="att"){
+      const own = wsFindNode(doc, node.id);
+      return `<div class="ws-atts">${wsAttHtml(att, eff.get(node.id)||"")}</div>`;
+    }
+    let depth = 0, p = node.parent;
+    while(p){ depth++; const q = wsFindNode(doc, p.id); p = q && q.parent; }
+    const inh = node.parent ? (eff.get(node.parent.id)||"") : (bt[node.block.id]||"");
+    return `<ul class="ws-tree">${wsNodeHtml(node.node, depth, inh, hh.base[node.block.id])}</ul>`;
+  }
+  const i = doc.blocks.findIndex(b=>b.id===id); if(i<0) return "";
+  const end = kind==="heading" ? wsSecEnd(doc.blocks, i) : i+1;
+  const parts = doc.blocks.slice(i, end).map(b=>hh.hidden.has(b.id) && b.id!==id ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], 0, hh.base[b.id])).filter(Boolean);
+  return parts.join("");
+}
+function wsFocusInner(doc, id, kind){
+  wsFocusRenderDoc = doc;
+  let body = "";
+  try{ body = wsFocusBody(doc, id, kind); }finally{ wsFocusRenderDoc = null; }
+  if(!body) return null;
+  return `<div class="ws-doc ws-lean ws-focusdoc" data-doc="${doc.id}"><div class="ws-fohead"><button class="ws-chip ws-fodoc" data-wsact="focus-open" data-fid="${id}" title="Im Dokument öffnen">${esc(doc.title||"Ohne Titel")} ↗</button><button class="ws-mini ws-fobtn on" data-wsact="focus" data-fid="${id}" title="Fokus aufheben">📌 ✕</button></div>${body}</div>`;
+}
 function wsTodayHtml(){
-  const d = wsPinned(); if(!d) return "";
-  return `<div class="section-title">📌 Fokus</div><div class="ws-card ws-mount" data-doc="${d.id}" data-mode="today">${wsTodayInner(d)}</div>`;
+  const d = wsPinned();
+  const cards = wsFocusItems().map(it=>{ const inner = wsFocusInner(it.doc, it.id, it.kind); return inner===null ? "" : `<div class="ws-card ws-focuscard ws-mount" data-doc="${it.doc.id}" data-mode="focus" data-fid="${it.id}" data-fkind="${it.kind}">${inner}</div>`; }).join("");
+  if(!d && !cards) return "";
+  return `<div class="section-title">📌 Fokus</div>` + (d ? `<div class="ws-card ws-mount" data-doc="${d.id}" data-mode="today">${wsTodayInner(d)}</div>` : "") + cards;
 }
 let wsTagOpen = false; try{ wsTagOpen = localStorage.getItem("wsTagOpen")==="1"; }catch(e){}
 function wsTagBarHtml(inline){
@@ -5826,7 +5898,12 @@ function wsRerender(docId){
   const doc = wsGet(docId);
   const mounts = document.querySelectorAll('.ws-mount[data-doc="'+docId+'"]');
   if(!doc || !mounts.length){ render(); return; }
-  mounts.forEach(m=>{ m.innerHTML = m.dataset.mode==="today" ? wsTodayInner(doc) : wsEditorHtml(doc, "tab"); });
+  let gone = false;
+  mounts.forEach(m=>{
+    if(m.dataset.mode==="focus"){ const h = wsFocusInner(doc, m.dataset.fid, m.dataset.fkind); if(h===null) gone = true; else m.innerHTML = h; }
+    else m.innerHTML = m.dataset.mode==="today" ? wsTodayInner(doc) : wsEditorHtml(doc, "tab");
+  });
+  if(gone){ render(); return; }
   wsAfterRender();
 }
 
@@ -5956,6 +6033,16 @@ main.addEventListener("click", e=>{
   if(act==="more" && doc){
     const id = a.dataset.mid; if(wsMore.has(id)) wsMore.delete(id); else wsMore.add(id);
     wsRerender(doc.id); return;
+  }
+  if(act==="focus" && doc){
+    const on = wsFocusToggle(doc, a.dataset.fid);
+    if(view==="today") render(); else wsRerender(doc.id);
+    toast(on ? "Fokus: erscheint in Heute" : "Fokus aufgehoben"); return;
+  }
+  if(act==="focus-open" && doc){
+    const h = wsFindNode(doc, a.dataset.fid);
+    wsOpenDocId = doc.id; try{ localStorage.setItem("wsOpenDoc", doc.id); localStorage.setItem("wsTab","docs"); }catch(e){}
+    wsTab = "docs"; view = "notes"; render(); return;
   }
   if(act==="unhide-all" && doc){
     const hs = wsAllNodes(doc).filter(n=>n.hid);

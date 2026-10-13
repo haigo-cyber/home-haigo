@@ -264,7 +264,11 @@
   /* ===== Design 2: flach, ruhig, ohne Rahmen-Optik ===== */
   :root { --bg:#0d1016; --surface:#141922; --surface2:#1a202b; --hair:rgba(255,255,255,.08); --hair2:rgba(255,255,255,.15);
           --text:#eef1f5; --muted:#99a3b1; --dark:#0d1117; --light:#eef1f6; --ink:#10131a; }
-  html { font-size:clamp(14px, min(0.45vw + 9.6px, 1.35vh + 6px), 34px); }
+  html { --ufs:1; font-size:calc(clamp(14px, min(0.45vw + 9.6px, 1.35vh + 6px), 34px) * var(--ufs)); }
+  .fsz { padding:0.353rem 0.588rem 0.118rem; color:#b9bfc6; font-size:0.82rem; }
+  .fsz label { display:flex; flex-direction:column; gap:0.35rem; }
+  .fsz input { width:100%; }
+  .app.collapsed .fsz { display:none; }
   body { font-family:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--text);
          background:radial-gradient(58.824rem 30.588rem at 85% -8%, rgba(86,120,196,.17), transparent 62%), radial-gradient(47.059rem 29.412rem at 0% 105%, rgba(140,100,220,.08), transparent 60%), var(--bg) fixed; }
   button { font-family:inherit; background:rgba(255,255,255,.06); border:1px solid var(--hair); border-radius:0.588rem; padding:0.471rem 0.882rem; color:var(--text); transition:background .15s, border-color .15s, transform .05s; }
@@ -338,6 +342,7 @@
     </div>
     <nav class="side-nav" id="sideNav" role="tablist" aria-orientation="vertical" aria-label="Themen"></nav>
     <div class="side-foot">
+      <div class="fsz"><label>Schriftgröße <span id="fszVal">100 %</span><input type="range" id="fszR" min="70" max="180" step="5" value="100" aria-label="Schriftgröße"></label></div>
       <button id="fsBtn" title="Vollbild ein/aus" aria-label="Vollbild ein oder aus"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="foot-text">Vollbild</span></button>
     </div>
   </aside>
@@ -851,7 +856,19 @@ const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return
   if (!document.fullscreenEnabled) fs.hidden = true;
   fs.addEventListener("click", () => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch (e) {} });
   applyMode();
-  let lastK = msK(), tmr = null;
+  const fr = g("fszR"), fv = g("fszVal");
+  const setFs = (v, save) => {
+    v = Math.min(180, Math.max(70, Number(v) || 100));
+    document.documentElement.style.setProperty("--ufs", (v / 100).toString());
+    fr.value = v; fv.textContent = v + " %";
+    if (save) LS.set("msw_fs", String(v));
+    const k = msK(); if (Math.abs(k - lastK) > 0.001) { lastK = k; window.dispatchEvent(new Event("msk-rescale")); }
+  };
+  let lastK = 1, tmr = null;
+  setFs(LS.get("msw_fs") || 100, false);
+  lastK = msK();
+  fr.addEventListener("input", () => setFs(fr.value, true));
+  fr.addEventListener("dblclick", () => setFs(100, true));
   window.addEventListener("resize", () => {
     clearTimeout(tmr);
     tmr = setTimeout(() => { const k = msK(); if (Math.abs(k - lastK) > 0.01) { lastK = k; window.dispatchEvent(new Event("msk-rescale")); } }, 120);

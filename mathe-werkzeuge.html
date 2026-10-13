@@ -189,6 +189,14 @@
   .slab { min-width:6.471rem; text-align:center; font-size:1.2rem; }
   .sstack { display:flex; flex-direction:column; gap:0.353rem; }
   .sstack svg { display:block; }
+  .mrows { display:flex; flex-direction:column; gap:0.5rem; margin-top:0.5rem; }
+  .mrow { display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap; }
+  .mnum { flex:none; width:1.6rem; height:1.6rem; border-radius:50%; background:#2c3038; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:.85rem; }
+  .mcells { display:inline-flex; gap:2px; padding:5px; border:3px solid #3fb455; border-radius:0.471rem; background:#14161a; }
+  .mcells.rest { border-style:dashed; border-color:#f2a900; }
+  .msq { display:block; width:var(--s,16px); height:var(--s,16px); border-radius:2px; background:#5aaee8; }
+  .msq.off { background:transparent; outline:1px dashed #5c636d; outline-offset:-1px; }
+  .mlab { color:var(--muted); font-size:.95rem; }
   .rsq { display:block; width:0.941rem; height:0.941rem; background:#5aaee8; border-radius:2px; }
   .unav { flex:none; display:flex; flex-direction:column; justify-content:center; gap:0.706rem; align-self:center; width:11.176rem; }
   .unav button { padding:0.941rem 0.824rem; font-size:1.15rem; width:100%; }
@@ -2199,7 +2207,7 @@ renderStell();
       rects(Gn, b, 1, k => (c) => blueAt(k, c) ? { col: COL.blue } : null)));
     out.push(step("In " + n + " gleich große Teile teilen",
       "Ich teile jedes Rechteck waagerecht in " + n + " gleich große Zeilen. Dadurch ist das blaue Stück in " + n + " gleich große Teile geteilt. Das Ganze besteht jetzt aus " + b + " · " + n + " = " + Y + " gleich großen Kästchen. Jedes Kästchen ist " + F(1, Y) + " vom Ganzen.",
-      rects(Gn, b, n, k => (c, r) => blueAt(k, c) ? { col: COL.blue, op: r % 2 ? 0.55 : 1 } : null)));
+      rects(Gn, b, n, k => (c, r) => blueAt(k, c) ? { col: r % 2 ? COL.blue2 || '#9bd0f3' : COL.blue } : null, () => n + " gleich große Teile (Zeilen)")));
     const ks = kuerz(a, Y);
     let res = '<div class="zbig">' + sf + " = " + F(a, b + " · " + n, "zo") + " = " + F(a, Y, "zo") + (ks ? " = " + F(ks[0], ks[1], "zo") : "") + "</div>";
     res += line("Rechnung:", F(a, b, "zs") + " : " + T(n, "zg") + " = " + F(T(a, "zs"), T(b, "zs") + " · " + T(n, "zg")) + " = " + F(a, Y, "zo"));
@@ -2227,22 +2235,34 @@ renderStell();
       f1 + " besteht aus " + a + " · " + d + " = <b>" + N + "</b> Kästchen (blau). Das Messstück " + f2 + " besteht aus " + c + " · " + b + " = <b>" + M + "</b> Kästchen (grün).",
       rects(Ga, b, d, k => (cc) => blueAt(k, cc) ? { col: COL.blue } : null) +
       rects(Gc, b, d, k => (cc, r) => k * d + r < c ? { col: COL.green } : null, () => "Messstück " + c + "/" + d)));
-    let strip = '<div class="rrow" style="align-items:flex-start">';
-    for (let i = 0; i < x; i++) strip += '<div class="rgw"><div class="rgrp" style="grid-template-columns:repeat(' + b + ',16px)">' + '<i class="rsq"></i>'.repeat(M) + '</div><div class="rcap">' + (i + 1) + ". Messstück</div></div>";
-    if (rest) strip += '<div class="rgw"><div class="rgrp rest" style="grid-template-columns:repeat(' + b + ',16px)">' + '<i class="rsq"></i>'.repeat(rest) + '</div><div class="rcap">Rest: ' + rest + " von " + M + " Kästchen</div></div>";
-    strip += "</div>";
     const rr = kuerz(N, M);
+    // Messstücke als Zeilen: jede Zeile ist ein Messstück mit M Kästchen; die letzte Zeile ist der Rest
+    const mrows = (full, withRest) => {
+      const sz = Math.max(4, Math.min(Math.round(26 * msK()), Math.floor(560 * msK() / M)));
+      const sq1 = cls => '<i class="msq ' + cls + '" style="--s:' + sz + 'px"></i>';
+      const cells = (on, off) => sq1("on").repeat(on) + sq1("off").repeat(off);
+      let h = '<div class="mrows">';
+      for (let i = 0; i < full; i++) h += '<div class="mrow"><span class="mnum">' + (i + 1) + '</span><div class="mcells ok">' + cells(M, 0) + '</div><span class="mlab">' + (i + 1) + ". Messstück " + f2 + " (" + M + " Kästchen)</span></div>";
+      if (withRest && rest) h += '<div class="mrow"><span class="mnum">+</span><div class="mcells rest">' + cells(rest, M - rest) + '</div><span class="mlab">Rest: nur ' + rest + " von " + M + " Kästchen</span></div>";
+      return h + "</div>";
+    };
     out.push(step("Wie oft passt das Messstück?",
-      "Ich lege die " + N + " blauen Kästchen in Gruppen zu je " + M + " Kästchen. Jede Gruppe ist ein Messstück " + f2 + ". " +
-      (x ? "Das Messstück passt <b>" + x + "-mal</b> hinein" + (rest ? ", und es bleiben " + rest + " Kästchen übrig. Das sind " + F(rest, M, "zo") + " von einem Messstück." : ".") : "Das Messstück passt nicht ganz hinein. Es sind nur " + F(rest, M, "zo") + " von einem Messstück.") +
-      " Insgesamt passt es " + F(N, M, "zo") + "-mal hinein.", strip));
+      "Ich lege die " + N + " blauen Kästchen in Gruppen zu je " + M + " Kästchen. Jede Zeile unten ist ein Messstück " + f2 + " (grüner Rahmen, " + M + " Kästchen). " +
+      (x ? "Das Messstück passt <b>" + x + "-mal</b> vollständig hinein." + (rest ? " Danach bleiben " + rest + " Kästchen übrig." : " Es bleibt nichts übrig.") : "Das Messstück passt nicht vollständig hinein: Es sind nur " + rest + " von " + M + " Kästchen da."),
+      mrows(x, !x)));
+    if (rest && x) {
+      out.push(step("Der Rest",
+        "Der Rest hat " + rest + " Kästchen, ein ganzes Messstück hat " + M + " Kästchen. Also ist der Rest " + F(rest, M, "zo") + " von einem Messstück (gestrichelter Rahmen). " +
+        "Insgesamt passt das Messstück " + x + " und " + F(rest, M, "zo") + "-mal hinein, das sind " + F(N, M, "zo") + "-mal.",
+        mrows(x, true)));
+    }
     let res = '<div class="zbig">' + sf + " = " + F(a + " · " + d, b + " · " + c) + " = " + F(N, M, "zo") + (rr ? " = " + F(rr[0], rr[1], "zo") : "") + (G(rr ? rr[0] : N, rr ? rr[1] : M) ? " = " + mixed(rr ? rr[0] : N, rr ? rr[1] : M, "zo") : "") + "</div>";
     res += line("Rechnung:", f1 + " : " + f2 + " = " + F(T(a, "zs") + " · " + T(d, "zg"), T(b, "zs") + " · " + T(c, "zg")) + " = " + F(N, M, "zo"));
     res += line("Kehrbruch:", "Das ist dasselbe wie " + f1 + " · " + F(d, c, "zg") + ". Ich multipliziere mit dem Kehrbruch: Zähler und Nenner des zweiten Bruchs vertauschen.");
     if (rr) res += line("Kürzen:", F(N, M) + " = " + F(rr[0], rr[1], "zo") + " (kürzen mit " + rr[2] + ": Zähler und Nenner durch " + rr[2] + " teilen, die Einteilung wird gröber)");
     out.push(step("Ergebnis",
-      "Die Anzahl der Kästchen von " + f1 + " geteilt durch die Anzahl der Kästchen von " + f2 + ": " + N + " : " + M + ". Das Ergebnis ist " + F(N, M, "zo") + ". " +
-      '<span class="usmall">Mathesprache: ' + N + " Kästchen : " + M + " Kästchen = " + F(N, M) + "</span>", res, "good"));
+      "Die Anzahl der Kästchen von " + f1 + " geteilt durch die Anzahl der Kästchen von " + f2 + ": " + N + " : " + M + ". Das Ergebnis ist " + F(N, M, "zo") + ".",
+      line("Mathesprache:", N + " Kästchen : " + M + " Kästchen = " + F(N, M)) + res, "good"));
     return out;
   }
 

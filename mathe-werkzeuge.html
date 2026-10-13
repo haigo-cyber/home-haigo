@@ -148,6 +148,7 @@
   .zblock { display:inline-block; }
   .zring { display:inline-flex; flex-wrap:wrap; gap:5px; align-items:flex-end; border:3px solid #c3c8ce; border-radius:14px; padding:4px 5px; box-shadow:0 0 0 1px rgba(0,0,0,.5); }
   .zs { color:#6cc0f5; font-weight:700; }
+  .zp { color:#c89cff; font-weight:700; }
   .zw { color:#e6e8eb; font-weight:700; }
   .zeq { font-size:1.2rem; line-height:2; }
   .zeq .usmall { display:inline-block; min-width:260px; }
@@ -156,6 +157,23 @@
   .zbig { font-size:1.9rem; font-weight:700; margin:4px 0 6px; }
   .uhead { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; margin-bottom:4px; }
   .uhead .utitle { margin-bottom:0; }
+  /* Brüche am Rechteck */
+  .ifr { display:inline-flex; flex-direction:column; align-items:center; vertical-align:middle; line-height:1.25; margin:0 4px; font-weight:700; }
+  .ifr > span:first-child { border-bottom:2px solid currentColor; padding:0 5px 1px; }
+  .ifr > span:last-child { padding:1px 5px 0; }
+  .zo { color:#ffb347; font-weight:700; }
+  .rrow { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; margin:10px 0 4px; }
+  .rrow figure { margin:0; }
+  .rrow svg { display:block; }
+  .rcap { font-size:.9rem; color:var(--muted); text-align:center; margin-top:3px; }
+  .rgw { display:flex; flex-direction:column; align-items:center; }
+  .rgrp { display:inline-grid; gap:2px; padding:5px; border:3px solid #3fb455; border-radius:8px; background:#14161a; }
+  .rgrp.rest { border-style:dashed; border-color:#f2a900; }
+  .srow { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; margin:12px 0; }
+  .slab { min-width:110px; text-align:center; font-size:1.2rem; }
+  .sstack { display:flex; flex-direction:column; gap:6px; }
+  .sstack svg { display:block; }
+  .rsq { display:block; width:16px; height:16px; background:#5aaee8; border-radius:2px; }
   .unav { flex:none; display:flex; flex-direction:column; justify-content:center; gap:12px; align-self:center; width:190px; }
   .unav button { padding:16px 14px; font-size:1.15rem; width:100%; }
   .unav button.primary { background: linear-gradient(180deg, #8a9099 0%, #4e5359 100%); border-color:#c3c8ce; color:#fff; font-weight:700; padding:26px 14px; font-size:1.3rem; }
@@ -171,6 +189,8 @@
     <button class="tab" role="tab" id="tab-mul" aria-selected="false">Flächenmodell</button>
     <button class="tab" role="tab" id="tab-stuf" aria-selected="false">Auf Stufenzahl erweitern</button>
     <button class="tab" role="tab" id="tab-uez" aria-selected="false">Zehnerübergang</button>
+    <button class="tab" role="tab" id="tab-brr" aria-selected="false">Brüche am Rechteck</button>
+    <button class="tab" role="tab" id="tab-bad" aria-selected="false">Brüche addieren und subtrahieren</button>
   </div>
 
   <section id="panel-bruch">
@@ -235,6 +255,7 @@
       <div class="controls" style="margin-bottom:12px">
         <button class="tab" id="zAdd" aria-selected="true">Addition</button>
         <button class="tab" id="zSub" aria-selected="false">Subtraktion</button>
+        <button class="tab" id="zMul" aria-selected="false">Multiplikation mit Stufenzahlen</button>
         <button id="zRandom">Zufallsaufgabe</button>
         <button id="zBack">Schritt zurück</button>
         <button id="zNext">Nächster Schritt</button>
@@ -245,8 +266,9 @@
       <div class="numrow">
         <div class="numbox"><input type="number" id="zA" min="0" max="999" step="1" value="38"></div>
         <span class="mdot" id="zOp">+</span>
-        <div class="numbox"><input type="number" id="zB" min="0" max="999" step="1" value="27"></div>
+        <div class="numbox" id="zBBox"><input type="number" id="zB" min="0" max="999" step="1" value="27"></div>
       </div>
+      <div class="controls" id="zSBox" style="display:none;margin-top:10px"><span class="note">Stufenzahl:</span><button class="tab" id="zS10" aria-selected="true">10</button><button class="tab" id="zS100" aria-selected="false">100</button><button class="tab" id="zS1000" aria-selected="false">1000</button></div>
       <p class="note" id="zMsg"></p>
     </div>
     <div id="zSteps"></div>
@@ -255,10 +277,10 @@
     </div>
     <div class="card">
       <div class="ktitle">Wortspeicher</div>
-      <div class="zeq"><span class="usmall">Zahlen und Ergebnis:</span>erste Zahl, zweite Zahl, Ergebnis · Summand, Summe · Minuend, Subtrahend, Differenz</div>
-      <div class="zeq"><span class="usmall">Material:</span>Einerwürfel, Zehnerstange, Hunderterplatte · Einerspalte, Zehnerspalte, Hunderterspalte</div>
+      <div class="zeq"><span class="usmall">Zahlen und Ergebnis:</span>erste Zahl, zweite Zahl, Ergebnis · Summand, Summe · Minuend, Subtrahend, Differenz · Faktor, Stufenzahl, Produkt</div>
+      <div class="zeq"><span class="usmall">Material:</span>Einerwürfel, Zehnerstange, Hunderterplatte, Tausenderwürfel · Einerspalte, Zehnerspalte, Hunderterspalte, Tausenderspalte</div>
       <div class="zeq"><span class="usmall">Tätigkeiten:</span>dazulegen, wegnehmen, bündeln, entbündeln, tauschen, ersetzen, verschieben, auffüllen</div>
-      <div class="zeq"><span class="usmall">Satzanfänge:</span>Ich bündele 10 Einer zu 1 Zehner. · Ich tausche 10 Einerwürfel gegen 1 Zehnerstange. · Ich verschiebe die Zehnerstange in die Zehnerspalte. · Ich entbündele 1 Zehner. · Ich ersetze die Zehnerstange durch 10 Einerwürfel. · Ich nehme 7 Einer weg.</div>
+      <div class="zeq"><span class="usmall">Satzanfänge:</span>Ich bündele 10 Einer zu 1 Zehner. · Ich tausche 10 Einerwürfel gegen 1 Zehnerstange. · Ich verschiebe die Zehnerstange in die Zehnerspalte. · Ich entbündele 1 Zehner. · Ich ersetze die Zehnerstange durch 10 Einerwürfel. · Ich nehme 7 Einer weg. · Ich multipliziere mit 10. Ich tausche 3 Einerwürfel gegen 3 Zehnerstangen.</div>
     </div>
   </section>
 
@@ -286,6 +308,59 @@
       <p class="note" id="mKNote"></p>
     </div>
     <div class="card"><div id="mEq"></div></div>
+  </section>
+  <section id="panel-brr" hidden>
+    <div class="card">
+      <div class="controls" style="margin-bottom:12px">
+        <button class="tab" id="br_zahl" aria-selected="true">Bruch mal ganze Zahl</button>
+        <button class="tab" id="br_bb" aria-selected="false">Bruch mal Bruch</button>
+        <button class="tab" id="br_dz" aria-selected="false">Bruch geteilt durch ganze Zahl</button>
+        <button class="tab" id="br_db" aria-selected="false">Bruch geteilt durch Bruch</button>
+      </div>
+      <div class="controls" style="margin-bottom:12px">
+        <button id="brRandom">Zufallsaufgabe</button>
+        <button id="brBack">Schritt zurück</button>
+        <button id="brNext">Nächster Schritt</button>
+        <button id="brAll">Alle Schritte zeigen</button>
+        <button id="brRestart">Neu starten</button>
+        <label class="opt">Größe <input type="range" id="brSize" min="8" max="20" value="14"></label>
+      </div>
+      <div class="numrow" id="brRow"></div>
+      <p class="note" id="brMsg"></p>
+    </div>
+    <div id="brSteps"></div>
+    <div class="card"><div id="brLegend"></div></div>
+    <div class="card">
+      <div class="ktitle">Wortspeicher</div>
+      <div class="zeq"><span class="usmall">Brüche:</span>Ganzes, Anteil, Bruchteil, Zähler, Nenner, Kehrbruch, gekürzt, gemischte Zahl</div>
+      <div class="zeq"><span class="usmall">Rechteck:</span>Streifen, Zeile, Spalte, Kästchen, gleich große Teile, senkrecht, waagerecht, Überlagerung</div>
+      <div class="zeq"><span class="usmall">Tätigkeiten:</span>teilen, färben, markieren, zählen, auffüllen, messen, aufteilen, kürzen</div>
+      <div class="zeq"><span class="usmall">Satzanfänge:</span>Ich nehme 2/3 von 3/4. · Das Ganze ist jetzt in 12 gleich große Kästchen geteilt. · Wie oft passt das Messstück hinein? · Ich teile den Bruch in 3 gleich große Teile.</div>
+    </div>
+  </section>
+  <section id="panel-bad" hidden>
+    <div class="card">
+      <div class="controls" style="margin-bottom:12px">
+        <button class="tab" id="baAdd" aria-selected="true">Addition</button>
+        <button class="tab" id="baSub" aria-selected="false">Subtraktion</button>
+        <button id="baRandom">Zufallsaufgabe</button>
+        <button id="baBack">Schritt zurück</button>
+        <button id="baNext">Nächster Schritt</button>
+        <button id="baAll">Alle Schritte zeigen</button>
+        <button id="baRestart">Neu starten</button>
+        <label class="opt">Größe <input type="range" id="baSize" min="8" max="24" value="14"></label>
+      </div>
+      <div class="numrow" id="baRow"></div>
+      <p class="note" id="baMsg"></p>
+    </div>
+    <div id="baSteps"></div>
+    <div class="card"><div id="baLegend"></div></div>
+    <div class="card">
+      <div class="ktitle">Wortspeicher</div>
+      <div class="zeq"><span class="usmall">Brüche:</span>Zähler, Nenner, gleichnamig, Hauptnenner, gemischte Zahl</div>
+      <div class="zeq"><span class="usmall">Tätigkeiten:</span>kürzen (vergröbern), erweitern (verfeinern), addieren, subtrahieren, zusammenfassen, zählen</div>
+      <div class="zeq"><span class="usmall">Satzanfänge:</span>Ich vergröbere die Einteilung: Je 2 Teile fasse ich zu 1 Teil zusammen. · Ich verfeinere die Einteilung und erweitere mit 3. · Jetzt sind alle Stücke gleich groß. · Der Nenner bleibt gleich.</div>
+    </div>
   </section>
 </main>
 
@@ -502,12 +577,12 @@ function bindNav(host, pre) {
 
 /* ===== Tabs ===== */
 function showTab(which) {
-  ["bruch", "stell", "mul", "stuf", "uez"].forEach(k => {
+  ["bruch", "stell", "mul", "stuf", "uez", "brr", "bad"].forEach(k => {
     document.getElementById("panel-" + k).hidden = k !== which;
     document.getElementById("tab-" + k).setAttribute("aria-selected", k === which ? "true" : "false");
   });
 }
-["bruch", "stell", "mul", "stuf", "uez"].forEach(k => document.getElementById("tab-" + k).addEventListener("click", () => showTab(k)));
+["bruch", "stell", "mul", "stuf", "uez", "brr", "bad"].forEach(k => document.getElementById("tab-" + k).addEventListener("click", () => showTab(k)));
 
 /* ===== Stellenwerttafel ===== */
 // dims = [Breite, Höhe, Tiefe] in Einheiten eines Einers
@@ -1268,23 +1343,23 @@ renderStell();
 })();
 /* ===== Zehnerübergang: Addition und Subtraktion mit Stellenwertmaterial ===== */
 (function () {
-  const NAMES = ["Einer", "Zehner", "Hunderter"];
-  const FAC = [1, 10, 100];
-  const MAT = ["Einerwürfel", "Zehnerstange", "Hunderterplatte"];
-  const MATPL = ["Einerwürfel", "Zehnerstangen", "Hunderterplatten"];
-  const AB = ["E", "Z", "H"];
+  const NAMES = ["Einer", "Zehner", "Hunderter", "Tausender"];
+  const FAC = [1, 10, 100, 1000];
+  const MAT = ["Einerwürfel", "Zehnerstange", "Hunderterplatte", "Tausenderwürfel"];
+  const MATPL = ["Einerwürfel", "Zehnerstangen", "Hunderterplatten", "Tausenderwürfel"];
+  const AB = ["E", "Z", "H", "T"];
   const COL = { steel: "#5aaee8", green: "#3fb455", red: "#e03a2f", gold: "#3fb455" };
   const MAXV = 999;
-  let op = "add", A = 38, B = 27, shown = 0, steps = [], ueb = false;
+  let op = "add", S = 10, A = 38, B = 27, shown = 0, steps = [], ueb = false;
   const $ = id => document.getElementById(id);
-  const digs = v => [v % 10, Math.floor(v / 10) % 10, Math.floor(v / 100) % 10];
-  const sym = () => op === "add" ? "+" : "−";
+  const digs = v => [v % 10, Math.floor(v / 10) % 10, Math.floor(v / 100) % 10, Math.floor(v / 1000) % 10];
+  const sym = () => op === "add" ? "+" : op === "sub" ? "−" : "·";
   const dimsOf = p => PLACES[3 - p].dims;
   const mkArr = (n, c) => Array(n).fill(c);
 
   function zerl(v) {
     const d = digs(v), parts = [];
-    for (let p = 2; p >= 0; p--) if (d[p] > 0) parts.push(d[p] + " " + NAMES[p]);
+    for (let p = 3; p >= 0; p--) if (d[p] > 0) parts.push(d[p] + " " + NAMES[p]);
     if (!parts.length) return "nichts";
     if (parts.length === 1) return parts[0];
     return parts.slice(0, -1).join(", ") + " und " + parts[parts.length - 1];
@@ -1351,14 +1426,27 @@ renderStell();
 
   function tafel(cols, sec, gF, gB) {
     const u = parseInt($("zSize").value, 10);
-    const colW = Math.max(120, (($("panel-uez").clientWidth || 960) - 60) / 3 - 12);
+    const mulM = op === "mul", nc = mulM ? 4 : 3;
+    const colW = Math.max(120, (($("panel-uez").clientWidth || 960) - 60) / nc - 12);
     const hW = 10 * u + 0.5 * u + 7;
-    const rows = Math.max(1, Math.ceil(Math.max(cols[2].length + gF[2].length + gB[2].length, sec[2].length) / Math.max(1, Math.floor(colW / hW))));
-    const mh = Math.round(rows * (10.5 * u + 8) + 20);
+    let mh;
+    if (!mulM) {
+      const rows = Math.max(1, Math.ceil(Math.max(cols[2].length + gF[2].length + gB[2].length, sec[2].length) / Math.max(1, Math.floor(colW / hW))));
+      mh = Math.round(rows * (10.5 * u + 8) + 20);
+    } else {
+      const wd = [5 * (u + 5), 1 * u + 7, 10.5 * u + 7, 15 * u + 7], ht = [2 * (u + 5) + 12, 10.5 * u + 8, 10.5 * u + 8, 15 * u + 8];
+      mh = 0;
+      for (let q = 0; q < 4; q++) {
+        const n = Math.max(cols[q].length, gF[q].length, 1);
+        const rws = q === 0 ? Math.ceil(n / 10) : Math.ceil(n / Math.max(1, Math.floor(colW / wd[q])));
+        mh = Math.max(mh, rws * ht[q]);
+      }
+      mh = Math.round(mh + 24);
+    }
     const secCol = op === "add" ? "#5fd06f" : "#ff6b5e";
     const secTxt = op === "add" ? "dazu: " : "weg: ";
-    let h = '<div class="wtafel" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:8px">';
-    for (let p = 2; p >= 0; p--) {
+    let h = '<div class="wtafel" style="grid-template-columns:repeat(' + nc + ',minmax(0,1fr));margin-top:8px">';
+    for (let p = nc - 1; p >= 0; p--) {
       const draw = (arr, gf, gb) => {
         let o = "";
         if (p === 0) {
@@ -1381,27 +1469,79 @@ renderStell();
         if (gb.length) o += '<span class="zring zghost">' + gb.map(it => stoneHtml(it, p, u)).join("") + "</span>";
         return o;
       };
-      h += '<div class="wcol" style="--c:#6b7078"><div class="wh"><b>' + "HZE"[2 - p] + "</b><small>" + NAMES[p] + "</small></div>" +
+      h += '<div class="wcol" style="--c:#6b7078"><div class="wh"><b>' + "EZHT"[p] + "</b><small>" + NAMES[p] + "</small></div>" +
         '<div class="wd" style="font-size:1.8rem"><span class="' + clsOf(cols[p]) + '">' + cols[p].length + "</span></div>" +
         '<div class="wp" style="flex:none;min-height:' + mh + 'px">' + draw(cols[p], gF[p], gB[p]) + "</div>" +
-        '<div class="zsep" style="color:' + secCol + '">' + (sec[p].length ? secTxt + sec[p].length : "&nbsp;") + "</div>" +
-        '<div class="wp" style="flex:none;min-height:' + mh + 'px">' + draw(sec[p], [], []) + "</div></div>";
+        (mulM ? "" : '<div class="zsep" style="color:' + secCol + '">' + (sec[p].length ? secTxt + sec[p].length : "&nbsp;") + "</div>" +
+        '<div class="wp" style="flex:none;min-height:' + mh + 'px">' + draw(sec[p], [], []) + "</div>") + "</div>";
     }
     return h + "</div>";
   }
 
   function validInput() {
     const ok = v => Number.isInteger(v) && v >= 0 && v <= MAXV;
-    return ok(A) && ok(B);
+    return op === "mul" ? ok(A) : ok(A) && ok(B);
   }
   function problem() {
+    if (op === "mul") {
+      if (!validInput() || A < 1) return "Bitte eine ganze Zahl von 1 bis " + MAXV + " eingeben.";
+      if (A * S > 9999) return "Das Produkt darf höchstens 9999 sein, sonst fehlt die Zehntausenderstelle. Wähle eine kleinere Zahl oder eine kleinere Stufenzahl.";
+      return "";
+    }
     if (!validInput()) return "Bitte zwei ganze Zahlen von 0 bis " + MAXV + " eingeben.";
     if (op === "add" && A + B > MAXV) return "Die Summe darf höchstens " + MAXV + " sein, sonst fehlt die Tausenderstelle.";
     if (op === "sub" && A < B) return "Beim Abziehen muss die erste Zahl mindestens so groß sein wie die zweite.";
     return "";
   }
 
+  function buildMul() {
+    const out = [];
+    const k = S === 10 ? 1 : S === 100 ? 2 : 3;
+    const ad = digs(A);
+    ueb = false;
+    const mkIt = () => ({ c: "steel", m: null, ring: false, mark: false });
+    let cols = [0, 1, 2, 3].map(p => Array.from({ length: ad[p] }, mkIt));
+    const cp = arr => arr.map(it => Object.assign({}, it));
+    const none = () => [[], [], [], []];
+    const spA = '<span class="zs">' + A + "</span>", spS = '<span class="zp">' + S + "</span>";
+    const snapM = (t, txt, cls, gF) => out.push({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + tafel(cols.map(cp), none(), gF || none(), none()) });
+    const kind = (n, p) => n + " " + (n === 1 ? MAT[p] : MATPL[p]);
+    snapM("Aufgabe", "Oben liegt die Zahl " + spA + " (" + zerl(A) + ") in Hellblau. Ich multipliziere sie mit " + spS + ". " +
+      (k === 1 ? "Mal 10 heißt: Jeder Stein wird 10-mal so viel wert. Ich tausche jeden Stein gegen den nächstgrößeren Stein."
+               : "Mal " + S + " heißt: " + k + "-mal nacheinander mal 10. Jedes Mal wird jeder Stein 10-mal so viel wert. Ich tausche jedes Mal jeden Stein gegen den nächstgrößeren Stein."));
+    let cur = A;
+    for (let j = 1; j <= k; j++) {
+      const old = cols;
+      const gh = old.map(c => c.map(it => Object.assign({}, it, { ring: false })));
+      cols = [[], [], [], []];
+      for (let p = 0; p < 3; p++) cols[p + 1] = old[p].map(it => ({ c: it.c, m: null, ring: true, mark: false }));
+      cur = cur * 10;
+      const ex = [], ms = [];
+      for (let p = 0; p < 3; p++) {
+        const n = old[p].length;
+        if (n > 0) { ex.push(kind(n, p) + " gegen " + kind(n, p + 1)); ms.push('<span class="zs">' + n + "</span> " + AB[p] + " · 10 = " + n + " " + AB[p + 1]); }
+      }
+      const fr = ["Einer", "Zehner", "Hunderter"].slice(0, j);
+      const frTxt = (fr.length === 1 ? fr[0] : fr.slice(0, -1).map(x => x + "-").join(", ") + " und " + fr[fr.length - 1]) + (fr.length === 1 ? "spalte ist" : "spalte sind");
+      const ti = k === 1 ? "Mal 10" : "Mal 10 (" + j + " von " + k + ")";
+      snapM(ti, "Ich multipliziere mit 10. Jeder Stein ist jetzt 10-mal so viel wert. Ich tausche " + ex.join(" und ") + " und verschiebe sie eine Spalte nach links. Die Anzahl der Steine bleibt gleich. " +
+        "Die " + frTxt + " jetzt leer, dort steht eine 0. Die Zahl heißt jetzt <b>" + cur + "</b>. Die hellen Schatten zeigen, wo die Steine vorher lagen. " +
+        '<span class="usmall">Mathesprache: ' + ms.join("; ") + "</span>", j === k ? "" : "", gh);
+    }
+    const total = A * S;
+    let res = '<div class="zbig"><span class="zs">' + A + '</span> · <span class="zp">' + S + "</span> = " + total + "</div>";
+    const line = (lab, txt) => '<div class="zeq"><span class="usmall">' + lab + "</span>" + txt + "</div>";
+    res += line("Regel:", "Beim Multiplizieren mit " + S + " rutschen alle Ziffern " + k + (k === 1 ? " Stelle" : " Stellen") + " nach links. Die frei gewordenen Stellen fülle ich mit 0 auf. Ich hänge also " + (k === 1 ? "eine Null" : k + " Nullen") + " an: " + A + " · " + S + " = " + total + ".");
+    const pv = digs(A).map((x, p) => x * FAC[p]).reverse().filter(x => x > 0);
+    if (pv.length > 1) res += line("Stellenweise:", '<span class="zs">' + A + '</span> · <span class="zp">' + S + "</span> = " + pv.map(v => '<span class="zs">' + v + '</span> · <span class="zp">' + S + "</span>").join(" + ") + " = " + pv.map(v => v * S).join(" + ") + " = " + total);
+    res += '<div class="utext">Ich lese ab: ' + zerl(total) + ". Das Ergebnis ist " + total + ".</div>";
+    cols = cols.map(c => c.map(it => Object.assign({}, it, { ring: false })));
+    snapM("Ergebnis", res, "good");
+    return out;
+  }
+
   function build() {
+    if (op === "mul") return buildMul();
     const out = [];
     const ad = digs(A), bd = digs(B);
     let cols = [[], [], []], sec = [[], [], []];
@@ -1529,20 +1669,24 @@ renderStell();
   function renderLegend() {
     const u = parseInt($("zSize").value, 10);
     let h = "";
-    [0, 1, 2].forEach(p => {
+    (op === "mul" ? [0, 1, 2, 3] : [0, 1, 2]).forEach(p => {
       const dm = dimsOf(p);
       h += "<div>" + stoneSvg(dm[0], dm[1], dm[2], u, COL.steel) + "<span>" + NAMES[p] + " = " + FAC[p] + "</span></div>";
     });
     const sw = c => '<i class="zsw" style="background:' + c + '"></i>';
     h += '<div style="align-items:flex-start;gap:4px;font-size:.95rem">' +
-      (op === "add"
+      (op === "mul"
+        ? "<span>" + sw(COL.steel) + "die Zahl (hellblau)</span>" +
+          "<span>Bei „mal 10“ wird jeder Stein gegen den nächstgrößeren Stein getauscht.</span>" +
+          "<span>Die Anzahl der Steine bleibt gleich, jeder Stein ist aber 10-mal so viel wert.</span>"
+      : op === "add"
         ? "<span>" + sw(COL.steel) + "erster Summand (hellblau, oben)</span>" +
           "<span>Unter der gestrichelten Linie liegt der zweite Summand.</span>" +
           "<span>" + sw(COL.green) + "zweiter Summand (grün), wandert nach oben</span>"
         : "<span>" + sw(COL.steel) + "Minuend (hellblau, oben)</span>" +
           "<span>Unter der gestrichelten Linie liegt der Subtrahend.</span>" +
           "<span>" + sw(COL.red) + "Subtrahend (rot), wird weggenommen und dann durchgestrichen</span>") +
-      '<span><i class="zsw" style="background:transparent;border:2px solid #c3c8ce;border-radius:50%"></i>grauer Ring: eingekreist, gebündelt oder entbündelt (die Farben bleiben)</span>' +
+      '<span><i class="zsw" style="background:transparent;border:2px solid #c3c8ce;border-radius:50%"></i>grauer Ring: eingekreist, gebündelt, entbündelt oder neu getauscht (die Farben bleiben)</span>' +
       '<span><i class="zsw" style="background:#e6e8eb;opacity:.35;border:2px dashed #c3c8ce;border-radius:50%"></i>heller Schatten: hier lagen die Steine vorher</span></div>';
     $("zLegend").innerHTML = h;
   }
@@ -1550,10 +1694,14 @@ renderStell();
   function render() {
     const msg = $("zMsg"), host = $("zSteps");
     const nextB = $("zNext"), backB = $("zBack"), allB = $("zAll");
-    $("zOp").textContent = sym();
+    $("zOp").textContent = op === "mul" ? "· " + S : sym();
     $("zA").style.color = "#6cc0f5"; $("zA").style.borderColor = "#5aaee8";
     $("zB").style.color = op === "add" ? "#5fd06f" : "#ff6b5e"; $("zB").style.borderColor = op === "add" ? "#3fb455" : "#e03a2f";
-    $("zOp").className = "mdot " + (op === "add" ? "zg" : "zr");
+    $("zOp").className = "mdot " + (op === "add" ? "zg" : op === "sub" ? "zr" : "zp");
+    $("zBBox").style.display = op === "mul" ? "none" : "";
+    $("zSBox").style.display = op === "mul" ? "flex" : "none";
+    [10, 100, 1000].forEach(v => $("zS" + v).setAttribute("aria-selected", S === v ? "true" : "false"));
+    $("zMul").setAttribute("aria-selected", op === "mul" ? "true" : "false");
     $("zAdd").setAttribute("aria-selected", op === "add" ? "true" : "false");
     $("zSub").setAttribute("aria-selected", op === "sub" ? "true" : "false");
     renderLegend();
@@ -1567,7 +1715,7 @@ renderStell();
     }
     steps = build();
     msg.className = "note";
-    msg.textContent = (ueb
+    msg.textContent = op === "mul" ? "Beim Multiplizieren mit einer Stufenzahl wird jeder Stein gegen den nächstgrößeren getauscht und rutscht eine Spalte nach links. Mit „Nächster Schritt“ geht es weiter, der neueste Schritt steht immer oben." : (ueb
       ? (op === "add" ? "Bei dieser Aufgabe gibt es einen Zehnerübergang: Es müssen Stellen gebündelt werden. "
                       : "Bei dieser Aufgabe gibt es eine Zehnerunterschreitung: Es muss entbündelt werden. ")
       : (op === "add" ? "Bei dieser Aufgabe wird nichts gebündelt, es gibt keinen Zehnerübergang. "
@@ -1590,6 +1738,10 @@ renderStell();
   const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 
   function randomTask() {
+    if (op === "mul") {
+      const s = [10, 100, 1000][ri(0, 2)];
+      return [ri(s === 1000 ? 2 : 12, s === 10 ? 999 : s === 100 ? 99 : 9), s];
+    }
     for (let t = 0; t < 500; t++) {
       const three = Math.random() < 0.3;
       if (op === "add") {
@@ -1609,6 +1761,8 @@ renderStell();
 
   $("zAdd").addEventListener("click", () => { op = "add"; restart(); });
   $("zSub").addEventListener("click", () => { op = "sub"; restart(); });
+  $("zMul").addEventListener("click", () => { op = "mul"; restart(); });
+  [10, 100, 1000].forEach(v => $("zS" + v).addEventListener("click", () => { S = v; restart(); }));
   $("zA").addEventListener("input", ev => { A = ev.target.value === "" ? NaN : Number(ev.target.value); restart(); });
   $("zB").addEventListener("input", ev => { B = ev.target.value === "" ? NaN : Number(ev.target.value); restart(); });
   $("zSize").addEventListener("input", render);
@@ -1618,12 +1772,451 @@ renderStell();
   $("zRestart").addEventListener("click", restart);
   $("zRandom").addEventListener("click", () => {
     const t = randomTask();
-    A = t[0]; B = t[1];
-    $("zA").value = A; $("zB").value = B;
+    A = t[0];
+    if (op === "mul") S = t[1]; else { B = t[1]; $("zB").value = B; }
+    $("zA").value = A;
     restart();
   });
 
   render();
+})();
+/* ===== Brüche am Rechteck: Multiplikation und Division ===== */
+(function () {
+  const $ = id => document.getElementById(id);
+  const gcd = (x, y) => y ? gcd(y, x % y) : x;
+  const COL = { blue: "#5aaee8", green: "#3fb455", orange: "#f2a900", dim: "#14161a" };
+  let op = "zahl", shown = 0, steps = [];
+  const V = { n: 3, a: 2, b: 5, c: 3, d: 4 };
+  const DEF = { zahl: { n: 3, a: 2, b: 5 }, bb: { a: 2, b: 3, c: 3, d: 4 }, dz: { n: 2, a: 3, b: 4 }, db: { a: 3, b: 4, c: 1, d: 2 } };
+  const SYM = { zahl: "·", bb: "·", dz: ":", db: ":" };
+  const FIELDS = {
+    zahl: [["n", "zp", "#c89cff"], ["a/b", "zs", COL.blue]],
+    bb: [["a/b", "zg", COL.green], ["c/d", "zs", COL.blue]],
+    dz: [["a/b", "zs", COL.blue], ["n", "zg", COL.green]],
+    db: [["a/b", "zs", COL.blue], ["c/d", "zg", COL.green]]
+  };
+  const F = (p, q, cls) => '<span class="ifr ' + (cls || "") + '"><span>' + p + "</span><span>" + q + "</span></span>";
+  const T = (x, cls) => '<span class="' + cls + '">' + x + "</span>";
+  const mixed = (p, q, cls) => {
+    if (q === 1) return T(p, cls);
+    if (p >= q) { const w = Math.floor(p / q), r = p % q; return r ? T(w, cls) + " " + F(r, q, cls) : T(w, cls); }
+    return F(p, q, cls);
+  };
+  const G = (p, q, cls) => (p >= q && q > 1) ? mixed(p, q, cls) : "";
+  const line = (lab, txt) => '<div class="zeq"><span class="usmall">' + lab + "</span>" + txt + "</div>";
+  const kuerz = (p, q, cls) => { const g = gcd(p, q); return g > 1 ? [p / g, q / g, g] : null; };
+
+  // Rechteck als SVG: cols x rows Kästchen, fill(c,r) -> null | {col, op, label}
+  function rect(o) {
+    const W = o.W, H = o.H, cw = W / o.cols, ch = H / o.rows, f1 = x => x.toFixed(1);
+    let s = '<svg width="' + (W + 4) + '" height="' + (H + 4) + '" viewBox="-2 -2 ' + (W + 4) + " " + (H + 4) + '" role="img" aria-label="Rechteck">' +
+      '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="' + COL.dim + '"/>';
+    for (let r = 0; r < o.rows; r++) for (let c = 0; c < o.cols; c++) {
+      const f = o.fill(c, r);
+      if (!f) continue;
+      s += '<rect x="' + f1(c * cw) + '" y="' + f1(r * ch) + '" width="' + f1(cw) + '" height="' + f1(ch) + '" fill="' + f.col + '" fill-opacity="' + (f.op == null ? 1 : f.op) + '"/>';
+      if (f.label && cw >= 15 && ch >= 13) s += '<text x="' + f1(c * cw + cw / 2) + '" y="' + f1(r * ch + ch / 2) + '" text-anchor="middle" dominant-baseline="central" font-size="' + f1(Math.min(cw * 0.5, ch * 0.55, 15)) + '" font-weight="700" fill="#111">' + f.label + "</text>";
+    }
+    let d = "";
+    for (let i = 1; i < o.cols; i++) d += "M" + f1(i * cw) + ",0V" + H;
+    for (let i = 1; i < o.rows; i++) d += "M0," + f1(i * ch) + "H" + W;
+    s += '<path d="' + d + '" stroke="#9aa0a8" stroke-opacity=".7" stroke-width="1" fill="none"/>';
+    return s + '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="none" stroke="#c3c8ce" stroke-width="2"/></svg>';
+  }
+  const dims = () => { const W = parseInt($("brSize").value, 10) * 16; return { W: W, H: Math.round(W * 0.62) }; };
+  // k Rechtecke nebeneinander; mk(k) -> Füllfunktion, cap optional
+  function rects(k, cols, rows, mk, cap) {
+    const dm = dims();
+    let h = '<div class="rrow">';
+    for (let i = 0; i < k; i++) h += "<figure>" + rect({ W: dm.W, H: dm.H, cols: cols, rows: rows, fill: mk(i) }) + (cap ? '<figcaption class="rcap">' + cap(i) + "</figcaption>" : "") + "</figure>";
+    return h + "</div>";
+  }
+  const step = (t, txt, vis, cls) => ({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + (vis || "") });
+
+  /* --- Bruch mal ganze Zahl --- */
+  function buildZahl() {
+    const n = V.n, a = V.a, b = V.b, tot = n * a, Gn = Math.ceil(tot / b), out = [];
+    const sf = T(n, "zp") + " · " + F(a, b, "zs");
+    out.push(step("Aufgabe",
+      "Die Aufgabe " + sf + " heißt: " + T(n, "zp") + "-mal " + F(a, b, "zs") + ". Ich zeichne " + n + " Rechtecke. Jedes Rechteck ist ein Ganzes. Ich teile jedes Ganze senkrecht in " + b + " gleich große Streifen (Nenner " + b + ") und färbe " + a + " davon blau (Zähler " + a + ").",
+      rects(n, b, 1, () => (c) => c < a ? { col: COL.blue } : null)));
+    out.push(step("Die Stücke zählen",
+      "Jeder gefärbte Streifen ist ein Stück der Größe " + F(1, b, "zs") + ". In einem Rechteck liegen " + a + " Stücke, in " + n + " Rechtecken zusammen " + n + " · " + a + " = <b>" + tot + "</b> Stücke. " +
+      '<span class="usmall">Mathesprache: ' + n + " · " + a + " Stücke = " + tot + " Stücke der Größe " + F(1, b, "zs") + "</span>",
+      rects(n, b, 1, k => (c) => c < a ? { col: COL.blue, label: k * a + c + 1 } : null)));
+    const ks = kuerz(tot, b);
+    let res = '<div class="zbig">' + sf + " = " + F(n + " · " + a, b) + " = " + F(tot, b, "zo") + (G(tot, b) ? " = " + mixed(tot, b, "zo") : "") + "</div>";
+    res += line("Rechnung:", T(n, "zp") + " · " + F(a, b, "zs") + " = " + F(T(n, "zp") + " · " + T(a, "zs"), b) + " = " + F(tot, b, "zo"));
+    res += line("Regel:", "Der Nenner bleibt gleich, weil die Stücke gleich groß bleiben. Nur die Anzahl der Stücke (der Zähler) wird " + n + "-mal so groß.");
+    if (ks) res += line("Kürzen:", F(tot, b) + " = " + F(ks[0], ks[1], "zo") + " (kürzen mit " + ks[2] + ")");
+    out.push(step("Ganze auffüllen und Ergebnis",
+      "Ich lege die " + tot + " Stücke zusammen. " + b + " Stücke füllen 1 Ganzes. " + (tot >= b ? "Ich fülle " + Math.floor(tot / b) + (Math.floor(tot / b) === 1 ? " Ganzes" : " Ganze") + (tot % b ? " und lege " + (tot % b) + " Stücke dazu." : ".") : "Es reicht nicht für ein ganzes Rechteck.") + " Das Ergebnis ist " + F(tot, b, "zo") + (G(tot, b) ? ", das sind " + mixed(tot, b, "zo") : "") + ".",
+      rects(Gn, b, 1, k => (c) => k * b + c < tot ? { col: COL.orange } : null) + res, "good"));
+    return out;
+  }
+
+  /* --- Bruch mal Bruch: a/b von c/d --- */
+  function buildBB() {
+    const a = V.a, b = V.b, c = V.c, d = V.d, X = a * c, Y = b * d, out = [];
+    const f1 = F(a, b, "zg"), f2 = F(c, d, "zs");
+    out.push(step("Aufgabe",
+      "Die Aufgabe " + f1 + " · " + f2 + " lese ich so: " + f1 + " <b>von</b> " + f2 + ". Das Wort „von“ zeigt: Ich nehme einen Anteil von einem Anteil. Ich zeichne ein Rechteck. Das Rechteck ist das Ganze (1).",
+      rects(1, 1, 1, () => () => null)));
+    out.push(step(F(c, d) + " einzeichnen",
+      "Ich teile das Ganze senkrecht in " + d + " gleich große Streifen (Nenner " + d + ") und färbe " + c + " davon blau (Zähler " + c + "). Das blaue Stück ist " + f2 + " vom Ganzen.",
+      rects(1, d, 1, () => (cc) => cc < c ? { col: COL.blue } : null)));
+    const fill3 = (op3) => () => (cc, r) => {
+      const bl = cc < c, gr = r < a;
+      if (bl && gr) return { col: COL.orange };
+      if (bl) return { col: COL.blue, op: op3 ? 0.35 : 1 };
+      if (gr) return { col: COL.green, op: op3 ? 0.18 : 0.4 };
+      return null;
+    };
+    out.push(step(F(a, b) + " von dem blauen Stück",
+      "Jetzt will ich " + f1 + " von dem <b>blauen Stück</b> nehmen. Dazu teile ich das ganze Rechteck waagerecht in " + b + " gleich große Zeilen (Nenner " + b + ") und markiere " + a + " Zeilen grün. Das Ganze ist jetzt in " + b + " · " + d + " = " + Y + " gleich große Kästchen geteilt. Dort, wo blau und grün übereinander liegen, ist " + f1 + " von " + f2 + ": die orangen Kästchen.",
+      rects(1, d, b, fill3(false))));
+    const ks = kuerz(X, Y);
+    let res = '<div class="zbig">' + f1 + " · " + f2 + " = " + F(a + " · " + c, b + " · " + d) + " = " + F(X, Y, "zo") + (ks ? " = " + F(ks[0], ks[1], "zo") : "") + "</div>";
+    res += line("Rechnung:", "Zähler mal Zähler, Nenner mal Nenner: " + F(T(a, "zg") + " · " + T(c, "zs"), T(b, "zg") + " · " + T(d, "zs")) + " = " + F(X, Y, "zo"));
+    if (ks) res += line("Kürzen:", F(X, Y) + " = " + F(ks[0], ks[1], "zo") + " (kürzen mit " + ks[2] + ")");
+    out.push(step("Ergebnis ablesen",
+      "Ich zähle die orangen Kästchen: " + a + " · " + c + " = <b>" + X + "</b>. Alle Kästchen im Ganzen: " + b + " · " + d + " = <b>" + Y + "</b>. Das Ergebnis bezieht sich wieder auf das ganze Rechteck: " + F(X, Y, "zo") + ". Das Ganze hat gewechselt: erst das ganze Rechteck, dann das blaue Stück, am Ende wieder das ganze Rechteck. " +
+      '<span class="usmall">Mathesprache: Zähler · Zähler = ' + X + "; Nenner · Nenner = " + Y + "</span>",
+      rects(1, d, b, () => (cc, r) => {
+        const bl = cc < c, gr = r < a;
+        if (bl && gr) return { col: COL.orange, label: r * c + cc + 1 };
+        if (bl) return { col: COL.blue, op: 0.25 };
+        if (gr) return { col: COL.green, op: 0.12 };
+        return null;
+      }) + res, "good"));
+    return out;
+  }
+
+  /* --- Bruch geteilt durch ganze Zahl (Aufteilen) --- */
+  function buildDZ() {
+    const n = V.n, a = V.a, b = V.b, Gn = Math.ceil(a / b), Y = b * n, out = [];
+    const sf = F(a, b, "zs") + " : " + T(n, "zg");
+    const blueAt = (k, c) => k * b + c < a;
+    out.push(step("Aufgabe",
+      "Die Aufgabe " + sf + " heißt: Ich teile " + F(a, b, "zs") + " in " + T(n, "zg") + " gleich große Teile. Ich zeichne " + (Gn === 1 ? "das Ganze" : Gn + " Ganze") + " und teile senkrecht in " + b + " gleich große Streifen. Ich färbe " + a + " Streifen blau. Das ist " + F(a, b, "zs") + ".",
+      rects(Gn, b, 1, k => (c) => blueAt(k, c) ? { col: COL.blue } : null)));
+    out.push(step("In " + n + " gleich große Teile teilen",
+      "Ich teile jedes Rechteck waagerecht in " + n + " gleich große Zeilen. Dadurch ist das blaue Stück in " + n + " gleich große Teile geteilt. Das Ganze besteht jetzt aus " + b + " · " + n + " = " + Y + " gleich großen Kästchen. Jedes Kästchen ist " + F(1, Y) + " vom Ganzen.",
+      rects(Gn, b, n, k => (c, r) => blueAt(k, c) ? { col: COL.blue, op: r % 2 ? 0.55 : 1 } : null)));
+    const ks = kuerz(a, Y);
+    let res = '<div class="zbig">' + sf + " = " + F(a, b + " · " + n, "zo") + " = " + F(a, Y, "zo") + (ks ? " = " + F(ks[0], ks[1], "zo") : "") + "</div>";
+    res += line("Rechnung:", F(a, b, "zs") + " : " + T(n, "zg") + " = " + F(T(a, "zs"), T(b, "zs") + " · " + T(n, "zg")) + " = " + F(a, Y, "zo"));
+    res += line("Regel:", "Ich teile durch " + n + ": Der Nenner wird " + n + "-mal so groß, weil die Stücke " + n + "-mal so klein werden. Der Zähler bleibt.");
+    if (a % n === 0) res += line("Auch möglich:", "Weil " + a + " durch " + n + " teilbar ist, kann ich den Zähler teilen: " + F(a, b, "zs") + " : " + T(n, "zg") + " = " + F(a + " : " + n, b) + " = " + F(a / n, b, "zo"));
+    if (ks) res += line("Kürzen:", F(a, Y) + " = " + F(ks[0], ks[1], "zo") + " (kürzen mit " + ks[2] + ")");
+    out.push(step("Ein Teil ist das Ergebnis",
+      "Ein Teil ist die oberste Zeile (orange). In ihr liegen " + a + " Kästchen. Jedes Kästchen ist " + F(1, Y) + " vom Ganzen. Das Ergebnis ist " + F(a, Y, "zo") + ". " +
+      '<span class="usmall">Mathesprache: ' + a + " Kästchen der Größe " + F(1, Y) + " = " + F(a, Y) + "</span>",
+      rects(Gn, b, n, k => (c, r) => blueAt(k, c) ? (r === 0 ? { col: COL.orange, label: k * b + c + 1 } : { col: COL.blue, op: 0.25 }) : null) + res, "good"));
+    return out;
+  }
+
+  /* --- Bruch geteilt durch Bruch (Messen) --- */
+  function buildDB() {
+    const a = V.a, b = V.b, c = V.c, d = V.d, Ga = Math.ceil(a / b), Gc = Math.ceil(c / d);
+    const N = a * d, M = c * b, x = Math.floor(N / M), rest = N % M, out = [];
+    const f1 = F(a, b, "zs"), f2 = F(c, d, "zg"), sf = f1 + " : " + f2;
+    const blueAt = (k, cc) => k * b + cc < a;
+    out.push(step("Aufgabe",
+      "Die Aufgabe " + sf + " heißt: <b>Wie oft passt</b> " + f2 + " in " + f1 + "? Das nenne ich Messen: " + f2 + " ist das Messstück. Ich zeichne " + (Ga === 1 ? "das Ganze" : Ga + " Ganze") + ", teile senkrecht in " + b + " gleich große Streifen und färbe " + a + " blau. Das ist " + f1 + ".",
+      rects(Ga, b, 1, k => (cc) => blueAt(k, cc) ? { col: COL.blue } : null)));
+    out.push(step("Gleiche Kästchen herstellen",
+      "Um zu messen, brauche ich gleich große Kästchen. Ich teile das Ganze senkrecht in " + b + " Streifen und waagerecht in " + d + " Zeilen. Es entstehen " + b + " · " + d + " = " + (b * d) + " gleich große Kästchen. " +
+      f1 + " besteht aus " + a + " · " + d + " = <b>" + N + "</b> Kästchen (blau). Das Messstück " + f2 + " besteht aus " + c + " · " + b + " = <b>" + M + "</b> Kästchen (grün).",
+      rects(Ga, b, d, k => (cc) => blueAt(k, cc) ? { col: COL.blue } : null) +
+      rects(Gc, b, d, k => (cc, r) => k * d + r < c ? { col: COL.green } : null, () => "Messstück " + c + "/" + d)));
+    let strip = '<div class="rrow" style="align-items:flex-start">';
+    for (let i = 0; i < x; i++) strip += '<div class="rgw"><div class="rgrp" style="grid-template-columns:repeat(' + b + ',16px)">' + '<i class="rsq"></i>'.repeat(M) + '</div><div class="rcap">' + (i + 1) + ". Messstück</div></div>";
+    if (rest) strip += '<div class="rgw"><div class="rgrp rest" style="grid-template-columns:repeat(' + b + ',16px)">' + '<i class="rsq"></i>'.repeat(rest) + '</div><div class="rcap">Rest: ' + rest + " von " + M + " Kästchen</div></div>";
+    strip += "</div>";
+    const rr = kuerz(N, M);
+    out.push(step("Wie oft passt das Messstück?",
+      "Ich lege die " + N + " blauen Kästchen in Gruppen zu je " + M + " Kästchen. Jede Gruppe ist ein Messstück " + f2 + ". " +
+      (x ? "Das Messstück passt <b>" + x + "-mal</b> hinein" + (rest ? ", und es bleiben " + rest + " Kästchen übrig. Das sind " + F(rest, M, "zo") + " von einem Messstück." : ".") : "Das Messstück passt nicht ganz hinein. Es sind nur " + F(rest, M, "zo") + " von einem Messstück.") +
+      " Insgesamt passt es " + F(N, M, "zo") + "-mal hinein.", strip));
+    let res = '<div class="zbig">' + sf + " = " + F(a + " · " + d, b + " · " + c) + " = " + F(N, M, "zo") + (rr ? " = " + F(rr[0], rr[1], "zo") : "") + (G(rr ? rr[0] : N, rr ? rr[1] : M) ? " = " + mixed(rr ? rr[0] : N, rr ? rr[1] : M, "zo") : "") + "</div>";
+    res += line("Rechnung:", f1 + " : " + f2 + " = " + F(T(a, "zs") + " · " + T(d, "zg"), T(b, "zs") + " · " + T(c, "zg")) + " = " + F(N, M, "zo"));
+    res += line("Kehrbruch:", "Das ist dasselbe wie " + f1 + " · " + F(d, c, "zg") + ". Ich multipliziere mit dem Kehrbruch: Zähler und Nenner des zweiten Bruchs vertauschen.");
+    if (rr) res += line("Kürzen:", F(N, M) + " = " + F(rr[0], rr[1], "zo") + " (kürzen mit " + rr[2] + ")");
+    out.push(step("Ergebnis",
+      "Die Anzahl der Kästchen von " + f1 + " geteilt durch die Anzahl der Kästchen von " + f2 + ": " + N + " : " + M + ". Das Ergebnis ist " + F(N, M, "zo") + ". " +
+      '<span class="usmall">Mathesprache: ' + N + " Kästchen : " + M + " Kästchen = " + F(N, M) + "</span>", res, "good"));
+    return out;
+  }
+
+  function problem() {
+    const I = k => Number.isInteger(V[k]);
+    const need = { zahl: ["n", "a", "b"], bb: ["a", "b", "c", "d"], dz: ["n", "a", "b"], db: ["a", "b", "c", "d"] }[op];
+    if (!need.every(I) || need.some(k => V[k] < 1)) return "Bitte nur ganze Zahlen von 1 an eingeben (Nenner mindestens 1).";
+    if (op === "zahl") { if (V.n > 12 || V.b > 12) return "Die Zahl und der Nenner dürfen höchstens 12 sein."; if (V.a > V.b) return "Der Zähler darf höchstens so groß sein wie der Nenner (Bruch bis 1)."; }
+    if (op === "bb") { if (V.b > 12 || V.d > 12) return "Die Nenner dürfen höchstens 12 sein."; if (V.a > V.b || V.c > V.d) return "Beide Brüche dürfen höchstens 1 sein (Zähler höchstens so groß wie Nenner)."; }
+    if (op === "dz") { if (V.n > 12 || V.b > 12) return "Die Zahl und der Nenner dürfen höchstens 12 sein."; if (V.a > 3 * V.b) return "Der Bruch darf höchstens 3 sein."; }
+    if (op === "db") { if (V.b > 10 || V.d > 10) return "Die Nenner dürfen höchstens 10 sein."; if (V.a > 3 * V.b || V.c > 3 * V.d) return "Beide Brüche dürfen höchstens 3 sein."; }
+    return "";
+  }
+  const NOTE = {
+    zahl: "Bruch mal ganze Zahl: n-mal derselbe Anteil. Ich zähle Stücke gleicher Größe.",
+    bb: "Bruch mal Bruch: Ich nehme einen Anteil von einem Anteil („von“). Das Ganze wechselt dabei.",
+    dz: "Bruch geteilt durch ganze Zahl: Ich teile den Bruch in gleich große Teile (Aufteilen).",
+    db: "Bruch geteilt durch Bruch: Ich frage, wie oft das Messstück in den Bruch hineinpasst (Messen)."
+  };
+
+  function inputs() {
+    const f = FIELDS[op];
+    const frac = (k1, k2, color) => '<div class="frac" style="--c:' + color + '"><input type="number" data-k="' + k1 + '" min="1" value="' + V[k1] + '" style="color:' + color + '"><div class="bar"></div><input type="number" data-k="' + k2 + '" min="1" value="' + V[k2] + '" style="color:' + color + '"></div>';
+    const keys = { zahl: [["n"], ["a", "b"]], bb: [["a", "b"], ["c", "d"]], dz: [["a", "b"], ["n"]], db: [["a", "b"], ["c", "d"]] }[op];
+    const box = (ks, i) => ks.length === 2 ? frac(ks[0], ks[1], f[i][2]) :
+      '<div class="numbox"><input type="number" data-k="' + ks[0] + '" min="1" value="' + V[ks[0]] + '" style="color:' + f[i][2] + ";border-color:" + f[i][2] + '"></div>';
+    $("brRow").innerHTML = box(keys[0], 0) + '<span class="mdot">' + SYM[op] + "</span>" + box(keys[1], 1);
+    $("brRow").querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => {
+      V[inp.dataset.k] = inp.value === "" ? NaN : Number(inp.value);
+      shown = 0; render();
+    }));
+  }
+
+  function render() {
+    const msg = $("brMsg"), host = $("brSteps");
+    ["zahl", "bb", "dz", "db"].forEach(k => $("br_" + k).setAttribute("aria-selected", k === op ? "true" : "false"));
+    const pr = problem();
+    const nb = $("brNext"), bb = $("brBack"), ab = $("brAll");
+    if (pr) { msg.className = "note err"; msg.textContent = pr; host.innerHTML = ""; nb.disabled = bb.disabled = ab.disabled = true; return; }
+    steps = op === "zahl" ? buildZahl() : op === "bb" ? buildBB() : op === "dz" ? buildDZ() : buildDB();
+    msg.className = "note";
+    msg.textContent = NOTE[op] + " Mit „Nächster Schritt“ geht es weiter, der neueste Schritt steht immer oben.";
+    if (shown > steps.length - 1) shown = steps.length - 1;
+    let h = "";
+    for (let i = shown; i >= 0; i--) {
+      const s = steps[i];
+      h += '<div class="ustep' + (i === shown ? " cur" : "") + (i === shown && s.cls ? " " + s.cls : "") + '"><div class="unum">' + (i + 1) +
+        '</div><div class="ubody"><div class="utitle">' + s.t + "</div>" + s.h + "</div>" + (i === shown ? navBtns("br", shown >= steps.length - 1, shown > 0) : "") + "</div>";
+    }
+    host.innerHTML = h;
+    bindNav(host, "br");
+    nb.disabled = ab.disabled = shown >= steps.length - 1;
+    bb.disabled = shown <= 0;
+    renderLegend();
+  }
+
+  function renderLegend() {
+    const sw = (c, o) => '<i class="zsw" style="background:' + c + ';opacity:' + (o || 1) + '"></i>';
+    let h = "";
+    if (op === "zahl") h = sw(COL.blue) + "gefärbte Stücke (der Bruch) &nbsp; " + sw(COL.orange) + "Ergebnis: zusammengelegte Stücke";
+    else if (op === "bb") h = sw(COL.blue) + "zweiter Faktor (senkrecht, das Ganze ist das Rechteck) &nbsp; " + sw(COL.green, .5) + "erster Faktor „von“ (waagerecht) &nbsp; " + sw(COL.orange) + "Ergebnis: Anteil vom Anteil";
+    else if (op === "dz") h = sw(COL.blue) + "der Bruch, der geteilt wird &nbsp; " + sw(COL.orange) + "ein Teil = Ergebnis";
+    else h = sw(COL.blue) + "Dividend (der Bruch, in den gemessen wird) &nbsp; " + sw(COL.green) + "Messstück (Divisor) &nbsp; " + sw(COL.orange) + "Rest";
+    $("brLegend").innerHTML = '<div style="font-size:.95rem;line-height:2">' + h + "</div>";
+  }
+
+  function setOp(o) { op = o; Object.assign(V, DEF[o]); shown = 0; inputs(); render(); }
+  const ri = (x, y) => x + Math.floor(Math.random() * (y - x + 1));
+  function random() {
+    if (op === "zahl") { const b = ri(3, 8); Object.assign(V, { n: ri(2, 6), b: b, a: ri(1, b - 1) }); }
+    else if (op === "bb") { const b = ri(2, 6), d = ri(2, 6); Object.assign(V, { b: b, d: d, a: ri(1, b), c: ri(1, d) }); }
+    else if (op === "dz") { const b = ri(2, 6); Object.assign(V, { b: b, a: ri(1, b + 2), n: ri(2, 5) }); }
+    else { const b = ri(2, 6), d = ri(2, 6); Object.assign(V, { b: b, d: d, a: ri(1, b + 2), c: ri(1, d) }); }
+    shown = 0; inputs(); render();
+  }
+  ["zahl", "bb", "dz", "db"].forEach(k => $("br_" + k).addEventListener("click", () => setOp(k)));
+  $("brSize").addEventListener("input", render);
+  $("brNext").addEventListener("click", () => { shown++; render(); });
+  $("brBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
+  $("brAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
+  $("brRestart").addEventListener("click", () => { shown = 0; render(); });
+  $("brRandom").addEventListener("click", random);
+  setOp("zahl");
+})();
+/* ===== Brüche addieren und subtrahieren: kürzen, erweitern, rechnen ===== */
+(function () {
+  const $ = id => document.getElementById(id);
+  const gcd = (x, y) => y ? gcd(y, x % y) : x;
+  const lcm = (x, y) => x / gcd(x, y) * y;
+  const COL = { blue: "#5aaee8", green: "#3fb455", red: "#e03a2f", orange: "#f2a900", dim: "#14161a" };
+  let op = "add", shown = 0, steps = [];
+  const V = { a: 4, b: 6, c: 3, d: 4 };
+  const DEF = { add: { a: 4, b: 6, c: 3, d: 4 }, sub: { a: 6, b: 8, c: 2, d: 3 } };
+  const F = (p, q, cls) => '<span class="ifr ' + (cls || "") + '"><span>' + p + "</span><span>" + q + "</span></span>";
+  const T = (x, cls) => '<span class="' + cls + '">' + x + "</span>";
+  const mixed = (p, q, cls) => {
+    if (q === 1) return T(p, cls);
+    if (p >= q) { const w = Math.floor(p / q), r = p % q; return r ? T(w, cls) + " " + F(r, q, cls) : T(w, cls); }
+    return F(p, q, cls);
+  };
+  const line = (lab, txt) => '<div class="zeq"><span class="usmall">' + lab + "</span>" + txt + "</div>";
+  const f1 = (a, b) => F(a, b, "zs");
+  const f2 = (c, d) => F(c, d, op === "add" ? "zg" : "zr");
+  const col2 = () => op === "add" ? COL.green : COL.red;
+  const sign = () => op === "add" ? "+" : "−";
+
+  // Streifen: cols Teile, fill(c) -> null | {col, cross}; thick: dicke Linie nach je thick Teilen
+  function strip(W, H, cols, fill, thick) {
+    const cw = W / cols, f1_ = x => x.toFixed(1);
+    let s = '<svg width="' + (W + 4) + '" height="' + (H + 4) + '" viewBox="-2 -2 ' + (W + 4) + " " + (H + 4) + '" role="img" aria-label="Streifen"><rect width="' + W + '" height="' + H + '" fill="' + COL.dim + '"/>';
+    for (let c = 0; c < cols; c++) {
+      const f = fill(c);
+      if (!f) continue;
+      s += '<rect x="' + f1_(c * cw) + '" width="' + f1_(cw) + '" height="' + H + '" fill="' + f.col + '" fill-opacity="' + (f.op == null ? 1 : f.op) + '"/>';
+      if (f.cross) s += '<path d="M' + f1_(c * cw + 2) + ",2L" + f1_((c + 1) * cw - 2) + "," + (H - 2) + "M" + f1_((c + 1) * cw - 2) + ",2L" + f1_(c * cw + 2) + "," + (H - 2) + '" stroke="#000" stroke-width="4.5" stroke-linecap="round"/><path d="M' + f1_(c * cw + 2) + ",2L" + f1_((c + 1) * cw - 2) + "," + (H - 2) + "M" + f1_((c + 1) * cw - 2) + ",2L" + f1_(c * cw + 2) + "," + (H - 2) + '" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>';
+      if (f.label && cw >= 15) s += '<text x="' + f1_(c * cw + cw / 2) + '" y="' + (H / 2) + '" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#111">' + f.label + "</text>";
+    }
+    let d = "", dk = "";
+    for (let i = 1; i < cols; i++) { if (thick && i % thick === 0) dk += "M" + f1_(i * cw) + ",0V" + H; else d += "M" + f1_(i * cw) + ",0V" + H; }
+    s += '<path d="' + d + '" stroke="#9aa0a8" stroke-opacity=".7" stroke-width="1" fill="none"/>';
+    if (dk) s += '<path d="' + dk + '" stroke="#fff" stroke-width="3" fill="none"/>';
+    return s + '<rect width="' + W + '" height="' + H + '" fill="none" stroke="#c3c8ce" stroke-width="2"/></svg>';
+  }
+  const dm = () => ({ W: parseInt($("baSize").value, 10) * 36, H: 40 });
+  // Zeile: Beschriftung + Streifen für num/den (mehrere Ganze untereinander)
+  function srow(label, num, den, fillOf, thick, total) {
+    const d = dm(), k = Math.max(1, Math.ceil((total != null ? total : num) / den));
+    let s = '<div class="srow"><div class="slab">' + label + '</div><div class="sstack">';
+    for (let i = 0; i < k; i++) s += strip(d.W, d.H, den, c => fillOf(i * den + c), thick);
+    return s + "</div></div>";
+  }
+  const solid = col => idx => null;
+  const step = (t, txt, vis, cls) => ({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + (vis || "") });
+
+  function build() {
+    const a = V.a, b = V.b, c = V.c, d = V.d, out = [];
+    const g1 = gcd(a, b), a1 = a / g1, b1 = b / g1, g2 = gcd(c, d), c1 = c / g2, d1 = d / g2;
+    const H = lcm(b1, d1), e1 = H / b1, e2 = H / d1, x = a1 * e1, y = c1 * e2;
+    const z = op === "add" ? x + y : x - y;
+    const gz = gcd(z, H), zr = z / gz, Hr = H / gz;
+    const sf = f1(a, b) + " " + sign() + " " + f2(c, d);
+    const fillA = (num, col) => idx => idx < num ? { col: col } : null;
+
+    out.push(step("Aufgabe",
+      "Die Aufgabe heißt " + sf + ". Ich zeichne beide Brüche als Streifen. Ein ganzer Streifen ist jeweils das Ganze. " +
+      (op === "add" ? "Ich lege " + f2(c, d) + " zu " + f1(a, b) + " dazu." : "Ich nehme " + f2(c, d) + " von " + f1(a, b) + " weg.") +
+      " Der Plan: Erst kürze ich, dann mache ich die Nenner gleich (erweitern), dann rechne ich.",
+      srow(f1(a, b), a, b, fillA(a, COL.blue)) + srow(f2(c, d), c, d, fillA(c, col2()))));
+
+    // Kürzen
+    let kt = "", kv = "";
+    const kz = (num, den, g, n1, d1_, fr, col) => {
+      if (g > 1) {
+        kt += fr(num, den) + " kann ich kürzen: Ich <b>vergröbere</b> die Einteilung. Je " + g + " Teile fasse ich zu 1 Teil zusammen. Aus " + den + " Teilen werden " + d1_ + " Teile, aus " + num + " gefärbten Teilen werden " + n1 + ". " +
+          '<span class="usmall">Mathesprache: ' + num + " : " + g + " = " + n1 + " und " + den + " : " + g + " = " + d1_ + ", also " + F(num, den) + " = " + F(n1, d1_) + "</span> ";
+        kv += srow(fr(num, den), num, den, fillA(num, col), g) + srow(fr(n1, d1_), n1, d1_, fillA(n1, col));
+      } else kt += fr(num, den) + " kann ich nicht kürzen: Zähler und Nenner haben keinen gemeinsamen Teiler außer 1. ";
+    };
+    kz(a, b, g1, a1, b1, f1, COL.blue);
+    kz(c, d, g2, c1, d1, f2, col2());
+    out.push(step("Erst kürzen", kt, kv));
+
+    // Erweitern
+    let et = "Damit ich rechnen kann, brauche ich gleich große Stücke, also <b>den gleichen Nenner</b>. Der Hauptnenner ist das kleinste gemeinsame Vielfache von " + b1 + " und " + d1 + ": <b>" + H + "</b>. ";
+    et += e1 > 1 ? "Ich <b>verfeinere</b> " + f1(a1, b1) + ": Jedes Teil teile ich in " + e1 + " gleich große Teile, also erweitere ich mit " + e1 + ". " : f1(a1, b1) + " hat schon den Nenner " + H + ", ich muss nicht erweitern. ";
+    et += e2 > 1 ? "Ich verfeinere " + f2(c1, d1) + ": Jedes Teil teile ich in " + e2 + " gleich große Teile, also erweitere ich mit " + e2 + ". " : f2(c1, d1) + " hat schon den Nenner " + H + ", ich muss nicht erweitern. ";
+    et += '<span class="usmall">Mathesprache: ' + F(a1 + " · " + e1, b1 + " · " + e1) + " = " + F(x, H) + (op === "add" ? " und " : " und ") + F(c1 + " · " + e2, d1 + " · " + e2) + " = " + F(y, H) + "</span>";
+    let ev = "";
+    ev += (e1 > 1 ? srow(f1(a1, b1), a1, b1, fillA(a1, COL.blue)) : "") + srow(f1(x, H), x, H, fillA(x, COL.blue), e1 > 1 ? e1 : 0, x);
+    ev += (e2 > 1 ? srow(f2(c1, d1), c1, d1, fillA(c1, col2())) : "") + srow(f2(y, H), y, H, fillA(y, col2()), e2 > 1 ? e2 : 0, y);
+    out.push(step("Auf den gleichen Nenner erweitern", et, ev));
+
+    // Rechnen
+    const calcFill = op === "add" ? idx => idx < x ? { col: COL.blue } : idx < x + y ? { col: COL.green } : null
+      : idx => idx < z ? { col: COL.blue } : idx < x ? { col: COL.red, cross: true } : null;
+    out.push(step(op === "add" ? "Addieren" : "Subtrahieren",
+      "Jetzt sind alle Stücke gleich groß: Jedes Stück ist " + F(1, H) + ". " +
+      (op === "add" ? "Ich zähle die Stücke zusammen: " + T(x, "zs") + " + " + T(y, "zg") + " = <b>" + z + "</b> Stücke. " : "Ich nehme " + T(y, "zr") + " Stücke weg (rot, durchgestrichen). Es bleiben " + T(x, "zs") + " − " + T(y, "zr") + " = <b>" + z + "</b> Stücke. ") +
+      "Der Nenner bleibt " + H + ", weil die Stücke gleich groß bleiben. " +
+      '<span class="usmall">Mathesprache: ' + x + " Stücke " + sign() + " " + y + " Stücke = " + z + " Stücke, also " + F(x, H) + " " + sign() + " " + F(y, H) + " = " + F(z, H) + "</span>",
+      srow(F(x, H, "zs") + " " + sign() + " " + F(y, H, op === "add" ? "zg" : "zr"), z, H, calcFill, 0, Math.max(x + (op === "add" ? y : 0), 1))));
+
+    // Ergebnis
+    const chain = [sf];
+    if (g1 > 1 || g2 > 1) chain.push(f1(a1, b1) + " " + sign() + " " + f2(c1, d1));
+    chain.push(F(x, H, "zs") + " " + sign() + " " + F(y, H, op === "add" ? "zg" : "zr"));
+    chain.push(F(z, H, "zo"));
+    if (gz > 1) chain.push(F(zr, Hr, "zo"));
+    if (zr >= Hr && Hr > 1) chain.push(mixed(zr, Hr, "zo"));
+    let res = '<div class="zbig">' + chain.join(" = ") + "</div>";
+    res += line("Rechnung:", "gekürzt, gleichnamig gemacht, dann nur die Zähler " + (op === "add" ? "addiert" : "subtrahiert") + ": " + F(x + " " + sign() + " " + y, H) + " = " + F(z, H, "zo"));
+    if (gz > 1) res += line("Ergebnis kürzen:", F(z, H) + " = " + F(zr, Hr, "zo") + " (kürzen mit " + gz + ")");
+    else res += line("Ergebnis kürzen:", F(z, H) + " lässt sich nicht weiter kürzen.");
+    if (zr >= Hr && Hr > 1) res += line("Gemischte Zahl:", F(zr, Hr) + " = " + mixed(zr, Hr, "zo") + " (" + Math.floor(zr / Hr) + " Ganze" + (zr % Hr ? " und " + F(zr % Hr, Hr) : "") + ")");
+    out.push(step("Ergebnis kürzen und ablesen",
+      "Ich schaue, ob ich das Ergebnis " + F(z, H, "zo") + " noch kürzen kann. " + (gz > 1 ? "Ja: Ich vergröbere die Einteilung und fasse je " + gz + " Teile zusammen. Das Ergebnis ist " + F(zr, Hr, "zo") + (zr >= Hr && Hr > 1 ? ", das sind " + mixed(zr, Hr, "zo") + "." : ".") : "Das geht nicht. Das Ergebnis ist " + F(z, H, "zo") + (zr >= Hr && Hr > 1 ? ", das sind " + mixed(zr, Hr, "zo") + "." : ".")),
+      srow(F(z, H, "zo"), z, H, fillA(z, COL.orange), gz > 1 ? gz : 0) + (gz > 1 ? srow(F(zr, Hr, "zo"), zr, Hr, fillA(zr, COL.orange)) : "") + res, "good"));
+    return out;
+  }
+
+  function problem() {
+    const ks = ["a", "b", "c", "d"];
+    if (!ks.every(k => Number.isInteger(V[k]) && V[k] >= 1)) return "Bitte nur ganze Zahlen von 1 an eingeben.";
+    if (V.b > 12 || V.d > 12) return "Die Nenner dürfen höchstens 12 sein.";
+    if (V.a > 3 * V.b || V.c > 3 * V.d) return "Die Brüche dürfen höchstens 3 sein.";
+    const H = lcm(V.b / gcd(V.a, V.b), V.d / gcd(V.c, V.d));
+    if (H > 72) return "Der Hauptnenner wäre " + H + ". Das ist für die Streifen zu groß, bitte kleinere Nenner wählen.";
+    if (op === "sub") {
+      if (V.a * V.d < V.c * V.b) return "Beim Subtrahieren muss der erste Bruch mindestens so groß sein wie der zweite.";
+      if (V.a * V.d === V.c * V.b) return "Die Differenz wäre 0. Bitte zwei verschieden große Brüche wählen.";
+    }
+    return "";
+  }
+
+  function inputs() {
+    const col2c = op === "add" ? COL.green : COL.red;
+    const frac = (k1, k2, color) => '<div class="frac" style="--c:' + color + '"><input type="number" data-k="' + k1 + '" min="1" value="' + V[k1] + '" style="color:' + color + '"><div class="bar"></div><input type="number" data-k="' + k2 + '" min="1" value="' + V[k2] + '" style="color:' + color + '"></div>';
+    $("baRow").innerHTML = frac("a", "b", COL.blue) + '<span class="mdot">' + sign() + "</span>" + frac("c", "d", col2c);
+    $("baRow").querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => {
+      V[inp.dataset.k] = inp.value === "" ? NaN : Number(inp.value);
+      shown = 0; render();
+    }));
+  }
+
+  function render() {
+    const msg = $("baMsg"), host = $("baSteps");
+    $("baAdd").setAttribute("aria-selected", op === "add" ? "true" : "false");
+    $("baSub").setAttribute("aria-selected", op === "sub" ? "true" : "false");
+    const pr = problem(), nb = $("baNext"), bb = $("baBack"), ab = $("baAll");
+    $("baLegend").innerHTML = '<div style="font-size:.95rem;line-height:2"><i class="zsw" style="background:' + COL.blue + '"></i>erster Bruch &nbsp; <i class="zsw" style="background:' + (op === "add" ? COL.green : COL.red) + '"></i>zweiter Bruch' + (op === "sub" ? " (wird weggenommen und durchgestrichen)" : "") +
+      ' &nbsp; <i class="zsw" style="background:' + COL.orange + '"></i>Ergebnis &nbsp; <i class="zsw" style="background:#fff;height:4px;width:18px"></i>dicke weiße Linie: Hier werden Teile zusammengefasst (kürzen) oder verfeinert (erweitern)</div>';
+    if (pr) { msg.className = "note err"; msg.textContent = pr; host.innerHTML = ""; nb.disabled = bb.disabled = ab.disabled = true; return; }
+    steps = build();
+    msg.className = "note";
+    msg.textContent = "Fünf Schritte: Aufgabe, erst kürzen, auf den gleichen Nenner erweitern, " + (op === "add" ? "addieren" : "subtrahieren") + ", Ergebnis kürzen. Mit „Nächster Schritt“ geht es weiter, der neueste Schritt steht immer oben.";
+    if (shown > steps.length - 1) shown = steps.length - 1;
+    let h = "";
+    for (let i = shown; i >= 0; i--) {
+      const s = steps[i];
+      h += '<div class="ustep' + (i === shown ? " cur" : "") + (i === shown && s.cls ? " " + s.cls : "") + '"><div class="unum">' + (i + 1) +
+        '</div><div class="ubody"><div class="utitle">' + s.t + "</div>" + s.h + "</div>" + (i === shown ? navBtns("ba", shown >= steps.length - 1, shown > 0) : "") + "</div>";
+    }
+    host.innerHTML = h;
+    bindNav(host, "ba");
+    nb.disabled = ab.disabled = shown >= steps.length - 1;
+    bb.disabled = shown <= 0;
+  }
+
+  function setOp(o) { op = o; Object.assign(V, DEF[o]); shown = 0; inputs(); render(); }
+  const ri = (x, y) => x + Math.floor(Math.random() * (y - x + 1));
+  function random() {
+    const dens = [2, 3, 4, 5, 6, 8, 9, 10, 12];
+    for (let t = 0; t < 200; t++) {
+      const b = dens[ri(0, dens.length - 1)], d = dens[ri(0, dens.length - 1)];
+      let a = ri(1, b - 1 || 1), c = ri(1, d - 1 || 1);
+      if (b < 2 || d < 2) continue;
+      if (op === "sub" && a * d < c * b) { Object.assign(V, { a: c, b: d, c: a, d: b }); }
+      else Object.assign(V, { a: a, b: b, c: c, d: d });
+      if (!problem() && (gcd(V.a, V.b) > 1 || gcd(V.c, V.d) > 1 || Math.random() < 0.4)) break;
+    }
+    shown = 0; inputs(); render();
+  }
+  $("baAdd").addEventListener("click", () => setOp("add"));
+  $("baSub").addEventListener("click", () => setOp("sub"));
+  $("baSize").addEventListener("input", render);
+  $("baNext").addEventListener("click", () => { shown++; render(); });
+  $("baBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
+  $("baAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
+  $("baRestart").addEventListener("click", () => { shown = 0; render(); });
+  $("baRandom").addEventListener("click", random);
+  setOp("add");
 })();
 </script>
 </body>

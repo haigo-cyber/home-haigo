@@ -235,6 +235,7 @@
   .logo { flex:none; width:2.588rem; height:2.588rem; border-radius:0.706rem; display:grid; place-items:center; border:1px solid #6b7078; background:linear-gradient(145deg,#1c1e21,#6f757d); box-shadow:inset 0 1px 0 rgba(255,255,255,.2); }
   .brand-text { font-weight:700; font-size:1.02rem; line-height:1.18; letter-spacing:.01em; }
   .brand-text small { display:block; font-weight:400; color:var(--muted); font-size:.74rem; margin-top:2px; letter-spacing:.04em; }
+  .side-nav > * { flex:none; }
   .side-nav { flex:1; overflow-y:auto; overflow-x:hidden; padding:0.471rem 0.588rem 0.824rem; display:flex; flex-direction:column; gap:3px; scrollbar-width:thin; }
   .grp-label { text-transform:uppercase; letter-spacing:.09em; font-size:.7rem; color:#8d949c; padding:0.941rem 0.706rem 0.353rem; white-space:nowrap; }
   .nav-item { display:flex; align-items:center; gap:0.706rem; width:100%; min-height:2.941rem; padding:0.588rem 0.706rem; text-align:left; position:relative;
@@ -590,6 +591,7 @@
       <div class="zeq"><span class="usmall">Fragen zum Bild:</span>Wo sieht man die Anzahl der Gruppen, wo die Anzahl in jeder Gruppe? · Warum passt das Bild zur Aufgabe? · Wo sieht man das Ergebnis? · Wie viele Kästchen sind in jeder Gruppe, wie viele Gruppen gibt es?</div>
     </div>
   </section>
+  <section id="panel-swr" hidden></section>
   <section id="panel-dbr" hidden></section>
   <section id="panel-dko" hidden></section>
   <section id="panel-das" hidden></section>
@@ -822,6 +824,8 @@ const TOPICS = [
     i: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><circle cx="17.5" cy="17.5" r="3.5"/>' },
   { k: "mul", g: "Zahlen und Rechenoperationen", t: "Flächenmodell", s: "Multiplikation am Rechteckfeld: Zerlegen, Malkreuz und halbschriftliches Rechnen",
     i: '<rect x="3" y="5" width="18" height="14"/><path d="M10 5v14M3 12h18"/>' },
+  { k: "swr", g: "Zahlen und Rechenoperationen", t: "Schriftlich rechnen", s: "Schriftlich addieren, subtrahieren, multiplizieren und dividieren: Spalte für Spalte, bündeln und entbündeln",
+    i: '<path d="M5 8h10M5 13h10M5 18h6"/><path d="M19 6v12M16 9l3-3 3 3"/>' },
   { k: "bruch", g: "Brüche", t: "Bruchstreifen", s: "Anteile am Bruchstreifen darstellen, vergleichen, vergröbern (kürzen) und verfeinern (erweitern)",
     i: '<rect x="3" y="8" width="18" height="8"/><path d="M9 8v8M15 8v8"/>' },
   { k: "bad", g: "Brüche", t: "Brüche addieren und subtrahieren", s: "Anteile zusammenfügen und wegnehmen: erst kürzen, dann auf einen gemeinsamen Nenner erweitern, dann rechnen",
@@ -3269,6 +3273,174 @@ renderStell();
     });
     inputs(); sp.render();
     window.__dz = Object.assign(window.__dz || {}, { setDm: (m, a, b) => { mode = m; V.a = a; V.b = b; sp.reset(); inputs(); sp.render(); } });
+  })();
+
+  /* ================= 5. Schriftliche Rechenverfahren (natürliche Zahlen) ================= */
+  (function () {
+    const pre = "sr"; let op = "add";
+    const DEF = { add: { a: "4768", b: "2859" }, sub: { a: "5402", b: "2879" }, mul: { a: "16", b: "23" }, div: { a: "875", b: "12" } };
+    const V = Object.assign({}, DEF.add);
+    panel("swr", pre, [["add", "Addieren"], ["sub", "Subtrahieren"], ["mul", "Multiplizieren"], ["div", "Dividieren"]], [
+      ["Stellenwerte:", "Stellentafel, Einer, Zehner, Hunderter, Tausender, Spalte, Stelle, stellengerecht"],
+      ["Tätigkeiten:", "untereinander schreiben, addieren, subtrahieren, multiplizieren, dividieren, bündeln (die Zahl aufräumen), entbündeln, Übertrag, Nullen weglassen, Probe machen"],
+      ["Satzanfänge:", "Ich schreibe Einer unter Einer, Zehner unter Zehner. · 13 Einer sind 1 Zehner und 3 Einer. Ich schreibe die 3 und merke mir den Übertrag. · 2 − 7 geht nicht. Ich entbündele 1 Zehner zu 10 Einern. · Ich zerlege die Aufgabe: 16 · 23 = 16 · 20 + 16 · 3. · Ich lasse die Null weg, weil die Ziffer schon in der Zehner-Spalte steht. · Ich teile Stelle für Stelle von links. · Zur Probe rechne ich die Umkehraufgabe."],
+      ["Fragen zum Bild:", "In welcher Spalte steht die Ziffer? · Was bedeutet der kleine Übertrag? · Welche Rechnung gehört zu welcher Zeile?"]
+    ]);
+    const COLS = ["cs", "cg", "cr", "co"];
+    const gr = n => { const s = String(n); return s.length > 4 ? s.replace(/\B(?=(\d{3})+(?!\d))/g, " ") : s; };
+    const pint = (s, mx) => { s = String(s).trim(); if (!/^\d+$/.test(s)) return null; s = s.replace(/^0+(?=\d)/, ""); return s.length > mx ? null : Number(s); };
+    const dg = (n, e) => Math.floor(n / P10(e)) % 10;
+    const rnd = n => { const l = String(n).length; if (l < 2) return n; const pw = P10(l - 1); return Math.round(n / pw) * pw; };
+    function ntafel(rows, opt) {
+      opt = opt || {};
+      let hi = 2;
+      rows.forEach(r => Object.keys(r.cells).forEach(k => { if (+k > hi) hi = +k; }));
+      hi = Math.min(hi, 6);
+      let h = '<div class="dtw"><table class="dtab"><thead><tr><th class="dl"></th>';
+      for (let e = hi; e >= 0; e--) h += '<th class="' + (opt.col === e ? "dh" : "") + '" title="' + EXPN[e] + '">' + EXPA[e] + "</th>";
+      h += "</tr></thead><tbody>";
+      rows.forEach(r => {
+        h += "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + '><th class="dl">' + r.label + "</th>";
+        for (let e = hi; e >= 0; e--) { const c = r.cells[e]; h += '<td class="' + (c && c.cls ? c.cls : "") + (opt.col === e ? " dh" : "") + '">' + (c ? c.t : "") + "</td>"; }
+        h += "</tr>";
+      });
+      return h + '</tbody></table><div class="note dleg">E = Einer, Z = Zehner, H = Hunderter, T = Tausender, ZT = Zehntausender, HT = Hunderttausender.</div></div>';
+    }
+    const numCells = (n, cls, shift) => { const c = {}, s = String(n); for (let i = 0; i < s.length; i++) c[s.length - 1 - i + (shift || 0)] = { t: s[i], cls: cls }; return c; };
+
+    /* ---- Addieren und Subtrahieren ---- */
+    function buildAS() {
+      const A = pint(V.a, 6), B = pint(V.b, 6);
+      if (A === null || B === null) return "Bitte ganze Zahlen mit höchstens 6 Stellen eingeben.";
+      const add = op === "add";
+      if (!add && A < B) return "Bei der Subtraktion muss die erste Zahl größer oder gleich der zweiten sein.";
+      const R = add ? A + B : A - B, sign = add ? "+" : "−", out = [];
+      const sf = T(gr(A), "zs") + " " + sign + " " + T(gr(B), add ? "zg" : "zr");
+      const top = Math.max(String(A).length, String(B).length) - 1;
+      const cols = []; let carry = 0;
+      for (let e = 0; e <= top + (add ? 1 : 0); e++) {
+        const da = dg(A, e), db = dg(B, e);
+        if (add) { const s = da + db + carry; cols.push({ e: e, da: da, db: db, cin: carry, s: s, dig: s % 10, cout: Math.floor(s / 10) }); carry = Math.floor(s / 10); }
+        else { const eff = da - carry; let v = eff - db, bo = 0; if (v < 0) { v += 10; bo = 1; } cols.push({ e: e, da: da, db: db, cin: carry, eff: eff, dig: v, cout: bo }); carry = bo; }
+      }
+      const tbl = (upto, hl) => {
+        const rows = [{ label: "erste Zahl", cells: numCells(A, "cs") }, { label: sign + " zweite Zahl", cells: numCells(B, add ? "cg" : "cr") }];
+        const carr = {}, resc = {};
+        cols.forEach(c => { if (c.e <= upto) { if (c.cout) carr[c.e + 1] = { t: add ? "+1" : "−1", cls: (add ? "co" : "cr") + " csm" }; resc[c.e] = { t: c.dig, cls: "co" }; } });
+        Object.keys(resc).forEach(k => { k = +k; if (k > 0 && resc[k].t === 0 && k > String(R).length - 1) delete resc[k]; });
+        rows.splice(2, 0, { label: add ? "Übertrag" : "entbündelt", cells: carr, cls: "dcar" });
+        rows.push({ label: "Ergebnis", cells: resc, cls: "dres" });
+        return ntafel(rows, { col: hl });
+      };
+      out.push(step("Aufgabe", "Die Aufgabe " + sf + " rechne ich schriftlich. Ich schreibe die Zahlen so untereinander, dass Einer unter Einer, Zehner unter Zehner und Hunderter unter Hunderter stehen. Dann rechne ich Spalte für Spalte von rechts nach links.", tbl(-1)));
+      cols.forEach(c => {
+        if (c.e > top && !c.cout && c.dig === 0 && c.cin === 0) return;
+        const nm = EXPN[c.e], nx = EXPN[c.e + 1];
+        let t;
+        if (add) {
+          t = nm + ": " + c.da + " + " + c.db + (c.cin ? " + " + c.cin + " (Übertrag)" : "") + " = " + c.s + " " + nm + ".";
+          if (c.s >= 10) t += " " + c.s + " " + nm + " sind 1 " + nx + " und " + c.dig + " " + nm + ". Ich bündele, das heißt: Ich räume die Zahl auf. Ich schreibe " + c.dig + " und merke mir 1 " + nx + " als Übertrag.";
+        } else {
+          t = nm + ": ";
+          if (c.cin) t += c.da + " − 1 (entbündelt) = " + c.eff + " " + nm + ". ";
+          if (c.eff < c.db) t += c.eff + " − " + c.db + " geht nicht. Ich entbündele 1 " + nx + " zu 10 " + nm + ": " + (c.eff + 10) + " − " + c.db + " = " + c.dig + " " + nm + ".";
+          else t += c.eff + " − " + c.db + " = " + c.dig + " " + nm + ".";
+        }
+        out.push(step(nm, t, tbl(c.e, c.e)));
+      });
+      let rr = '<div class="zbig">' + sf + " = " + T(gr(R), "zo") + "</div>";
+      rr += line("Überschlag:", "Ich runde: " + gr(rnd(A)) + " " + sign + " " + gr(rnd(B)) + " = " + gr(add ? rnd(A) + rnd(B) : rnd(A) - rnd(B)) + ". Das passt ungefähr zum Ergebnis.");
+      rr += line("Probe:", "Die Umkehraufgabe: " + gr(R) + " " + (add ? "−" : "+") + " " + gr(B) + " = " + gr(A));
+      out.push(step("Ergebnis", "Das Ergebnis ist " + T(gr(R), "zo") + ".", tbl(top + 2) + rr, "good", String(R)));
+      return out;
+    }
+
+    /* ---- Multiplizieren (Rechentabelle und schriftlicher Rechenweg) ---- */
+    function buildMul() {
+      const A = pint(V.a, 4), B = pint(V.b, 3);
+      if (A === null || B === null) return "Bitte für den ersten Faktor höchstens 4 Stellen und für den zweiten Faktor höchstens 3 Stellen eingeben.";
+      const R = A * B, out = [], sf = T(gr(A), "zs") + " · " + T(gr(B), "zg"), la = String(A).length, lb = String(B).length;
+      const part = n => { const s = String(n), p = []; for (let i = 0; i < s.length; i++) { const d = Number(s[i]); if (d) p.push(d * P10(s.length - 1 - i)); } return p; };
+      const pa = part(A), pb = part(B);
+      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: " + gr(A) + "-mal " + gr(B) + ". Ich rechne in zwei Rechenwegen: erst mit einer Rechentabelle, dann schriftlich untereinander."));
+      if (pa.length * pb.length > 1 || true) {
+        let h = '<div class="dtw"><table class="dtab"><thead><tr><th class="dl">·</th>' + pb.map(x => '<th class="zg">' + gr(x) + "</th>").join("") + "</tr></thead><tbody>";
+        pa.forEach(a => { h += '<tr><th class="dl zs">' + gr(a) + "</th>" + pb.map(b => '<td class="co">' + gr(a * b) + "</td>").join("") + "</tr>"; });
+        h += "</tbody></table></div>";
+        const all = []; pa.forEach(a => pb.forEach(b => all.push(a * b)));
+        h += line("Zerlegen:", gr(A) + " · " + gr(B) + " = " + pa.map(a => pb.map(b => gr(a) + " · " + gr(b)).join(" + ")).join(" + "));
+        h += line("Addieren:", all.map(gr).join(" + ") + " = " + gr(R));
+        out.push(step("Rechentabelle", "Ich zerlege beide Zahlen nach Stellen: " + T(gr(A), "zs") + " = " + pa.map(gr).join(" + ") + " und " + T(gr(B), "zg") + " = " + pb.map(gr).join(" + ") + ". Jede Zelle der Tabelle ist eine Teilaufgabe. Zum Schluss addiere ich alle Teilprodukte.", h));
+      }
+      // schriftlicher Rechenweg: für jede Ziffer des zweiten Faktors eine Zeile, von links nach rechts
+      const rows = [{ label: "Aufgabe", cells: numCells(A, "cs"), cls: "" }], prods = [];
+      for (let i = 0; i < lb; i++) {
+        const e = lb - 1 - i, d = Number(String(B)[i]);
+        if (d === 0) { prods.push({ e: e, d: d, p: 0, skip: true }); continue; }
+        prods.push({ e: e, d: d, p: d * A, skip: false });
+      }
+      const rowOf = (p, k) => ({ label: p.d + " " + EXPN[p.e] + " · " + gr(A), cells: numCells(p.p, COLS[k % 3], p.e), cls: "" });
+      let k = 0;
+      const shownRows = [];
+      prods.forEach(p => {
+        if (p.skip) {
+          out.push(step("Ziffer " + p.d + " in der " + EXPN[p.e] + "-Spalte", "Die Ziffer " + T("0", "zr") + " steht in der " + EXPN[p.e] + "-Spalte. 0 · " + gr(A) + " = 0. Diese Zeile lasse ich weg. Ich muss nur aufpassen, dass die nächste Zeile in der richtigen Spalte endet.", ntafel([{ label: "Aufgabe", cells: numCells(A, "cs") }].concat(shownRows), { col: p.e })));
+          return;
+        }
+        const as = String(A); let c = 0; const lines = [];
+        for (let i = as.length - 1; i >= 0; i--) { const v = Number(as[i]) * p.d + c; lines.push(p.d + " · " + as[i] + (c ? " + " + c : "") + " = " + v + (as.length > 1 ? (i > 0 || v >= 10 ? ", ich schreibe " + (i > 0 ? v % 10 + " und merke " + Math.floor(v / 10) : v) : "") : "")); c = Math.floor(v / 10); }
+        const rw = rowOf(p, k++); shownRows.push(rw);
+        const zeros = p.e;
+        out.push(step("Ziffer " + p.d + " in der " + EXPN[p.e] + "-Spalte",
+          T(p.d, "zg") + " " + EXPN[p.e] + " mal " + gr(A) + " = " + gr(p.p) + " " + EXPN[p.e] + (zeros ? " (also " + gr(p.p * P10(zeros)) + ")" : "") + ". " + (zeros ? "Ich schreibe " + gr(p.p) + " so, dass die letzte Ziffer in der " + EXPN[p.e] + "-Spalte steht. Darum kann ich die " + (zeros === 1 ? "Null" : zeros + " Nullen") + " am Ende weglassen. " : "") + "Rechnung: " + lines.join("; ") + ".",
+          ntafel([{ label: "Aufgabe", cells: numCells(A, "cs") }].concat(shownRows), { col: p.e })));
+      });
+      const res = { label: "Ergebnis", cells: numCells(R, "co"), cls: "dres" };
+      let rr = '<div class="zbig">' + sf + " = " + T(gr(R), "zo") + "</div>";
+      rr += line("Überschlag:", "Ich runde: " + gr(rnd(A)) + " · " + gr(rnd(B)) + " = " + gr(rnd(A) * rnd(B)) + ". Das passt ungefähr zum Ergebnis.");
+      rr += line("Probe:", "Die Tauschaufgabe: " + gr(B) + " · " + gr(A) + " = " + gr(R));
+      out.push(step("Ergebnis", "Jetzt addiere ich die Zeilen Spalte für Spalte (wie beim schriftlichen Addieren). Das Ergebnis ist " + T(gr(R), "zo") + ". Beide Rechenwege liefern dasselbe.", ntafel([{ label: "Aufgabe", cells: numCells(A, "cs") }].concat(shownRows, [res])) + rr, "good", String(R)));
+      return out;
+    }
+
+    /* ---- Dividieren (Stelle für Stelle) ---- */
+    function buildDiv() {
+      const A = pint(V.a, 6), M = pint(V.b, 2);
+      if (A === null || M === null) return "Bitte für den Dividenden höchstens 6 Stellen und für den Divisor höchstens 2 Stellen eingeben.";
+      if (M === 0) return "Durch 0 kann man nicht teilen.";
+      const out = [], sf = T(gr(A), "zs") + " : " + T(gr(M), "zg"), Q = Math.floor(A / M), Rm = A % M;
+      const ld = ldiv(A, M, 0, 0);
+      let rows = ld.rows.slice();
+      while (rows.length > 1 && rows[0].q === 0 && rows[0].rin === 0) rows.shift();
+      const qd = rows.map(r => r.q).join("");
+      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: Wie oft passt " + T(gr(M), "zg") + " in " + T(gr(A), "zs") + "? Ich teile Stelle für Stelle, von links nach rechts. Ich beginne bei der größten Stelle."));
+      const skipped = ld.rows.length - rows.length, skd = String(A).slice(0, skipped);
+      out.push(step("Stelle für Stelle teilen", (skipped ? "Die erste Stelle " + (skipped > 1 ? "(" + skd + ") " : "(" + skd + ") ") + "ist kleiner als " + gr(M) + ". Dort kann ich noch nicht teilen. Ich nehme die nächste Stelle dazu. " : "") + "Ich teile jede Stelle durch " + gr(M) + ". Bleibt ein Rest, dann entbündele ich ihn: Ich mache aus dem Rest die nächstkleinere Einheit und lege die nächste Ziffer dazu.", ldTable({ rows: rows, rest: ld.rest, per: -1, terminating: ld.rest === 0 }, M).replace(/<th>Ziffer<\/th>/, "<th>Ziffer</th>")));
+      let rr = '<div class="zbig">' + sf + " = " + T(gr(Q) + (Rm ? " Rest " + Rm : ""), "zo") + "</div>";
+      rr += line("Überschlag:", "Ich runde: " + gr(rnd(A)) + " : " + gr(rnd(M)) + " ist ungefähr " + gr(Math.round(rnd(A) / rnd(M))) + ".");
+      rr += line("Probe:", "Die Umkehraufgabe: " + gr(Q) + " · " + gr(M) + (Rm ? " + " + Rm : "") + " = " + gr(Q * M + Rm));
+      out.push(step("Ergebnis", gr(A) + " : " + gr(M) + " = " + T(gr(Q), "zo") + (Rm ? " Rest " + T(Rm, "zr") + ". Der Rest ist kleiner als " + gr(M) + "." : ". Es bleibt kein Rest.") + " Die Ziffern aus der letzten Spalte der Tabelle ergeben " + qd.replace(/^0+(?=\d)/, "") + ".", rr, "good", String(Q) + (Rm ? " R" + Rm : "")));
+      return out;
+    }
+
+    const sp = stepper({ pre: pre, build: () => (op === "add" || op === "sub") ? buildAS() : op === "mul" ? buildMul() : buildDiv(),
+      note: () => ({ add: "Schriftlich addieren: Stellengerecht untereinander, Spalte für Spalte von rechts, bei 10 oder mehr bündeln.", sub: "Schriftlich subtrahieren: Stellengerecht untereinander, Spalte für Spalte von rechts, wenn nötig entbündeln.", mul: "Schriftlich multiplizieren: Zerlegen, für jede Ziffer des zweiten Faktors eine Zeile, dann die Zeilen addieren.", div: "Schriftlich dividieren: Stelle für Stelle von links, den Rest entbündeln." })[op] });
+    function inputs() {
+      const o = { add: "+", sub: "−", mul: "·", div: ":" }[op];
+      $(pre + "Row").innerHTML = txtIn(pre, "a", V.a, "#6cc0f5") + sym(o) + txtIn(pre, "b", V.b, op === "sub" ? "#ff6b5e" : "#5fd06f");
+      $(pre + "Row").querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => { V[inp.dataset.k] = inp.value; sp.reset(); sp.render(); }));
+    }
+    function setOp(o) { op = o; Object.assign(V, DEF[o]); ["add", "sub", "mul", "div"].forEach(k => $(pre + "_" + k).setAttribute("aria-selected", k === o ? "true" : "false")); sp.reset(); inputs(); sp.render(); }
+    ["add", "sub", "mul", "div"].forEach(k => $(pre + "_" + k).addEventListener("click", () => setOp(k)));
+    $(pre + "Random").addEventListener("click", () => {
+      if (op === "add") { V.a = String(ri(10, 9999)); V.b = String(ri(10, 9999)); }
+      else if (op === "sub") { let a = ri(100, 9999), b = ri(10, 9999); if (a < b) { const t = a; a = b; b = t; } V.a = String(a); V.b = String(b); }
+      else if (op === "mul") { V.a = String(ri(12, 999)); V.b = Math.random() < 0.3 ? String(ri(1, 9) * 100 + ri(1, 9)) : String(ri(11, 99)); }
+      else { const m = ri(2, 12), q = ri(10, 999); V.b = String(m); V.a = String(m * q + (Math.random() < 0.5 ? 0 : ri(1, m - 1))); }
+      sp.reset(); inputs(); sp.render();
+    });
+    inputs(); sp.render();
+    window.__dz = Object.assign(window.__dz || {}, { setSr: (o, a, b) => { op = o; V.a = a; V.b = b; ["add", "sub", "mul", "div"].forEach(k => $(pre + "_" + k).setAttribute("aria-selected", k === o ? "true" : "false")); sp.reset(); inputs(); sp.render(); } });
   })();
 })();
 

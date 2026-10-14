@@ -2201,26 +2201,22 @@ function render(){
   }
   else if(view==="goals"){
     const doneCount=goalTasks.filter(g=>g.completed).length;
-    let h=goalTasks.length?goalTasks.map(goalTaskCard).join(""):empty("Noch keine Tages-Ziele. Bis zu "+GOAL_MAX+" mit + anlegen.");
+    const openToday=goalTasks.filter(g=>!g.completed);
+    const undatedGoals=allGTasks.filter(t=>isGoalTask(t) && !t.due).map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false, due:""}));
+    let h=openToday.length?openToday.map(goalTaskCard).join(""):(goalTasks.length?"":empty("Noch keine Tages-Ziele. Bis zu "+GOAL_MAX+" mit + anlegen."));
     if(goalTasks.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,goalTasks.length);
     
-    // Vorschau kommender Tage (nächste 10 Tage)
     const today=todayKey();
-    const upcomingGoals={};
-    for(let i=1; i<=10; i++){
-      const d=new Date();
-      d.setDate(d.getDate()+i);
-      const k=dateKey(d);
-      upcomingGoals[k]=[];
+    const overdueGoals=allOpenGoals.filter(g=>g.due<today).sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
+    if(overdueGoals.length){
+      h+=`<div class="section-title">Überfällig</div>`+overdueGoals.map(goalTaskCard).join("");
     }
-    
-    // Zukünftige Ziele aus allOpenGoals
-    allOpenGoals.forEach(g=>{
-      if(g.due>today && upcomingGoals[g.due]){
-        upcomingGoals[g.due].push(g);
-      }
-    });
-    
+    if(undatedGoals.length){
+      h+=`<div class="section-title">Ohne Datum</div>`+undatedGoals.map(goalTaskCard).join("");
+    }
+    // Kommende Tage: alle künftigen offenen Ziele, nach Datum
+    const upcomingGoals={};
+    allOpenGoals.filter(g=>g.due>today).sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0).forEach(g=>{ (upcomingGoals[g.due]=upcomingGoals[g.due]||[]).push(g); });
     const hasUpcoming=Object.values(upcomingGoals).some(arr=>arr.length>0);
     if(hasUpcoming){
       h+=`<div class="section-title">Kommende Tage</div>`;

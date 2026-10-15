@@ -480,6 +480,26 @@
   .qzrev { text-align:left; margin:1rem auto 0; max-width:46rem; } .qzrev summary { cursor:pointer; font-weight:700; }
   .qzrevi { margin:.6rem 0; padding:.6rem .9rem; border-radius:.7rem; background:var(--surface2); }
   .qzrq { font-size:1.05rem; } .qzra { margin-top:.3rem; color:#8fe3a0; font-weight:700; }
+  .qzteamset { margin:.6rem 0; }
+  .qzti { display:flex; align-items:center; gap:.8rem; margin:.5rem 0; flex-wrap:wrap; }
+  .qzti span { min-width:8.5rem; font-weight:800; color:var(--tc); }
+  .qzinp { font:inherit; font-size:1.25rem; font-weight:700; color:var(--text); background:var(--surface2); border:3px solid var(--tc); border-radius:.8rem; padding:.45rem .9rem; width:min(22rem,100%); }
+  .qzinp:focus { outline:none; box-shadow:0 0 14px var(--tc); }
+  .qzteamhud { gap:.8rem 1rem; }
+  .qzteamrow { display:flex; gap:.8rem; flex:1; flex-wrap:wrap; }
+  .qzteam { flex:1; min-width:9rem; padding:.4rem .8rem; border-radius:1rem; border:3px solid var(--tc); background:var(--surface); opacity:.55; text-align:center; transition:opacity .2s, transform .2s, box-shadow .2s; }
+  .qzteam.cur { opacity:1; transform:scale(1.04); box-shadow:0 0 20px var(--tc); }
+  .qzteamn { font-size:1.15rem; font-weight:900; color:var(--tc); overflow-wrap:anywhere; }
+  .qzteamsc { font-size:2.2rem; font-weight:900; line-height:1.1; font-variant-numeric:tabular-nums; }
+  .qzteamf { font-size:.95rem; color:var(--muted); }
+  .qzteamf svg { width:1.2rem; height:1.2rem; vertical-align:-.2rem; }
+  .qzpodw { display:flex; flex-direction:column; gap:.7rem; max-width:34rem; margin:1rem auto; }
+  .qzpod { display:flex; align-items:center; gap:1rem; text-align:left; padding:.7rem 1rem; border-radius:1rem; border:3px solid var(--tc); background:var(--surface2); }
+  .qzpod.p1 { box-shadow:0 0 22px var(--tc); }
+  .qzpl { font-size:2rem; font-weight:900; color:var(--tc); min-width:2.2rem; text-align:center; }
+  .qzpn { font-size:1.35rem; font-weight:900; overflow-wrap:anywhere; }
+  .qzps { margin-left:auto; font-size:1.7rem; font-weight:900; font-variant-numeric:tabular-nums; }
+  .qzpd { font-size:.95rem; color:var(--muted); }
   @keyframes qzpop { 0% { transform:scale(1); } 40% { transform:scale(1.1); } 100% { transform:scale(1); } }
   @keyframes qzshake { 0%,100% { transform:translateX(0); } 20%,60% { transform:translateX(-8px); } 40%,80% { transform:translateX(8px); } }
   @keyframes qzin { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
@@ -4756,6 +4776,13 @@ document.querySelectorAll(".card").forEach(c => {
     const id = s => rub + s, $ = s => document.getElementById(id(s));
     let top = "alle", timerOn = store.get("msw_qz_cd") !== "0", expired = false, st = null, Q = null, sel = {}, checked = false, tmr = null, rem = TIME, roundNo = 0, usedJoker = false, boss = false;
     host.style.setProperty("--qa", info.col);
+    const TR = 4, TCOL = ["#6cc0f5", "#ff8a65", "#5fd06f"], DEFN = ["Team Blau", "Team Rot", "Team Grün"];
+    let teamOn = store.get("msw_qz_team") === "1", teamN = store.get("msw_qz_teamn") === "3" ? 3 : 2, tnames = ["", "", ""];
+    try { const a = JSON.parse(store.get("msw_qz_teamnames") || "[]"); if (Array.isArray(a)) tnames = [0, 1, 2].map(i => String(a[i] || "").slice(0, 20)); } catch (e) { /* leer */ }
+    const escT = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const nQ = () => st && st.team ? st.team.n * TR : N;
+    const isBoss = i => st && st.team ? Math.floor(i / st.team.n) === TR - 1 : (st && !st.practice && i === N - 1);
+    const curName = () => st.team.names[st.idx % st.team.n];
     host.innerHTML = '<div class="qzwrap" id="' + id("Stage") + '"></div>';
     const stage = () => $("Stage");
     const timeFor = () => Math.max(MINT, TIME - roundNo);
@@ -4773,17 +4800,44 @@ document.querySelectorAll(".card").forEach(c => {
       const best = loadBest(), bd = loadBadges();
       stage().innerHTML = '<div class="card qzstart">' +
         '<div class="qzarena">' + info.arena + '</div>' +
-        '<p class="qzlead">10 Aufgaben, 3 Smileys. Bei jedem Fehler wird ein Smiley zum Gespenst. Drei richtige Aufgaben hintereinander wecken ein Gespenst wieder zum Smiley auf. Bei jeder Aufgabe stehen 7 Möglichkeiten da. Finde <b>alle</b> richtigen und drücke „Prüfen“. Die letzte Aufgabe ist der Boss und zählt doppelt.</p>' + rankHtml(loadXp(), rankInfo(loadXp()), rankInfo(loadXp()).pct) + (timerOn ? '<p class="qzlead">Mit Countdown hast du ' + timeFor() + ' Sekunden pro Aufgabe' + (timeFor() > MINT ? ' (in jeder weiteren Runde eine Sekunde weniger, mindestens ' + MINT + ')' : ' (weniger geht nicht, das ist das Minimum)') + '. Danach gibt es für diese Aufgabe keine Punkte mehr, lösen kannst du sie aber trotzdem.</p>' : '') +
+        (teamOn ? "" : '<p class="qzlead">10 Aufgaben, 3 Smileys. Bei jedem Fehler wird ein Smiley zum Gespenst. Drei richtige Aufgaben hintereinander wecken ein Gespenst wieder zum Smiley auf. Bei jeder Aufgabe stehen 7 Möglichkeiten da. Finde <b>alle</b> richtigen und drücke „Prüfen“. Die letzte Aufgabe ist der Boss und zählt doppelt.</p>' + rankHtml(loadXp(), rankInfo(loadXp()), rankInfo(loadXp()).pct)) + (timerOn ? '<p class="qzlead">Mit Countdown hast du ' + timeFor() + ' Sekunden pro Aufgabe' + (timeFor() > MINT ? ' (in jeder weiteren Runde eine Sekunde weniger, mindestens ' + MINT + ')' : ' (weniger geht nicht, das ist das Minimum)') + '. Danach gibt es für diese Aufgabe keine Punkte mehr, lösen kannst du sie aber trotzdem.</p>' : '') +
         '<div class="qzsec">Thema</div><div class="controls" id="' + id("Chips") + '">' + [["alle", "Alle Themen"]].concat(info.tops).map(x => '<button class="tab" data-top="' + x[0] + '" aria-selected="' + (x[0] === top) + '">' + x[1] + "</button>").join("") + "</div>" +
         '<div class="qzsec">Einstellungen</div><div class="controls"><button class="tab" id="' + id("Timer") + '" aria-pressed="' + timerOn + '" aria-selected="' + timerOn + '">Countdown: ' + (timerOn ? "an (" + timeFor() + " s)" : "aus") + '</button><button class="tab" id="' + id("Snd") + '" aria-selected="' + soundOn + '">Ton: ' + (soundOn ? "an" : "aus") + "</button>" + (timerOn && roundNo ? '<button class="tab" id="' + id("CdReset") + '">Countdown wieder auf ' + TIME + ' s</button>' : "") + "</div>" +
+        teamHtml() +
         '<div class="qzbest">' + (best ? "Bestleistung bei „" + topName() + "“: <b>" + best.pts + " Punkte</b> " + stars(best.stars) : "Noch keine Runde bei „" + topName() + "“ gespielt.") + "</div>" +
         (bd.length ? '<div class="qzbadges">' + bd.map(b => '<span class="qzbadge" title="' + BADGES[b][1] + '">' + BADGES[b][0] + "</span>").join("") + "</div>" : "") +
-        '<div class="controls qzgo"><button class="qzbig" id="' + id("Go") + '">Spiel starten</button><button id="' + id("Prac") + '">Üben ohne Punkte</button></div></div>';
+        '<div class="controls qzgo"><button class="qzbig" id="' + id("Go") + '">' + (teamOn ? "Mannschaftsspiel starten" : "Spiel starten") + '</button><button id="' + id("Prac") + '">Üben ohne Punkte</button></div></div>';
       $("Chips").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { top = b.dataset.top; showStart(); }));
       $("Timer").addEventListener("click", () => { timerOn = !timerOn; store.set("msw_qz_cd", timerOn ? "1" : "0"); showStart(); });
       $("Snd").addEventListener("click", () => { soundOn = !soundOn; store.set("msw_qz_snd", soundOn ? "1" : "0"); showStart(); SFX.tick(); });
       if ($("CdReset")) $("CdReset").addEventListener("click", () => { roundNo = 0; showStart(); });
-      $("Go").addEventListener("click", () => start(false)); $("Prac").addEventListener("click", () => start(true));
+      $("Team").addEventListener("click", () => { teamOn = !teamOn; store.set("msw_qz_team", teamOn ? "1" : "0"); showStart(); });
+      stage().querySelectorAll("[data-tn]").forEach(b => b.addEventListener("click", () => { teamN = Number(b.dataset.tn); store.set("msw_qz_teamn", String(teamN)); showStart(); }));
+      stage().querySelectorAll(".qzinp").forEach(inp => inp.addEventListener("input", () => { tnames[Number(inp.dataset.ti)] = inp.value.slice(0, 20); store.set("msw_qz_teamnames", JSON.stringify(tnames)); }));
+      $("Go").addEventListener("click", () => teamOn ? startTeam() : start(false)); $("Prac").addEventListener("click", () => start(true));
+    }
+    function teamHtml() {
+      return '<div class="qzsec">Spielart</div><div class="controls"><button class="tab" id="' + id("Team") + '" aria-pressed="' + teamOn + '" aria-selected="' + teamOn + '">Mannschaftsmodus: ' + (teamOn ? "an" : "aus") + "</button>" +
+        (teamOn ? [2, 3].map(n => '<button class="tab" data-tn="' + n + '" aria-selected="' + (n === teamN) + '">' + n + " Mannschaften</button>").join("") : "") + "</div>" +
+        (teamOn ? '<p class="qzlead">Die Mannschaften sind abwechselnd dran. Jede Mannschaft bekommt ' + TR + ' Aufgaben, die letzte Runde ist die Bossrunde mit doppelten Punkten. Es gibt keine Smileys, es zählen nur die Punkte. Rang und Bestleistung zählen im Mannschaftsmodus nicht.</p><div class="qzteamset">' +
+          [0, 1, 2].slice(0, teamN).map(i => '<label class="qzti" style="--tc:' + TCOL[i] + '"><span>Mannschaft ' + (i + 1) + '</span><input class="qzinp" maxlength="20" data-ti="' + i + '" placeholder="' + DEFN[i] + '" value="' + escT(tnames[i]) + '" aria-label="Name der Mannschaft ' + (i + 1) + '"></label>').join("") + "</div>" : "");
+    }
+    function startTeam() {
+      const n = teamN; let names = [0, 1, 2].slice(0, n).map(i => (tnames[i] || "").trim() || DEFN[i]);
+      names = names.map((x, i) => names.indexOf(x) !== i ? x + " " + (i + 1) : x);
+      const z = k => Array(n).fill(k);
+      st = { practice: false, idx: 0, flash: -1, lives: 3, score: 0, streak: 0, maxStreak: 0, correct: 0, late: 0, jokers: 2, log: [], bossOk: false, timer: timerOn, T: timeFor(), team: { n: n, names: names, scores: z(0), streaks: z(0), jokers: z(2), correct: z(0), max: z(0) } };
+      if (st.timer) roundNo++;
+      SFX.tick(); nextQ();
+    }
+    function teamCards() {
+      const T = st.team, cur = st.idx % T.n;
+      return T.names.map((nm, i) => '<div class="qzteam' + (i === cur ? " cur" : "") + '" style="--tc:' + TCOL[i] + '"><div class="qzteamn">' + escT(nm) + '</div><div class="qzteamsc">' + T.scores[i] + '</div><div class="qzteamf">' + (T.streaks[i] >= 3 ? FLAME : "") + "Serie " + T.streaks[i] + "</div></div>").join("");
+    }
+    function teamHudHtml() {
+      return '<div class="qzhud qzteamhud"><div class="qzteamrow" id="' + id("Teams") + '">' + teamCards() + "</div>" +
+        '<button class="qzjok" id="' + id("Joker") + '" ' + (st.jokers <= 0 ? "disabled" : "") + ' title="Streicht bis zu 3 falsche Möglichkeiten. Die Aufgabe bringt dann nur halbe Punkte.">50:50 <b>' + st.jokers + "</b></button>" +
+        '<button id="' + id("Quit") + '">Beenden</button></div>';
     }
     function start(practice) {
       st = { practice: practice, idx: 0, flash: -1, lives: 3, score: 0, streak: 0, maxStreak: 0, correct: 0, late: 0, jokers: 2, log: [], bossOk: false, timer: timerOn && !practice, T: timeFor() };
@@ -4791,18 +4845,21 @@ document.querySelectorAll(".card").forEach(c => {
       SFX.tick(); nextQ();
     }
     function nextQ() {
-      boss = !st.practice && st.idx === N - 1;
-      Q = gen(rub, top, boss ? 2 : 0); sel = {}; checked = false; usedJoker = false; expired = false;
-      renderPlay(); if (boss) { SFX.boss(); banner("BOSS!"); }
+      boss = isBoss(st.idx);
+      Q = gen(rub, top, boss ? 2 : 0);
+      if (st.team) { const c = st.idx % st.team.n; st.streak = st.team.streaks[c]; st.jokers = st.team.jokers[c]; } sel = {}; checked = false; usedJoker = false; expired = false;
+      renderPlay();
+      if (st.team) { const tcol = TCOL[st.idx % st.team.n]; if (boss) SFX.boss(); else SFX.tick(); banner((boss ? "BOSS: " : "") + curName() + (boss ? "" : " ist dran"), tcol, true); } else if (boss) { SFX.boss(); banner("BOSS!"); }
       if (st.timer) startTimer();
     }
     /* ----- Spielbild ----- */
     function pathHtml() {
       let h = '<div class="qzpath" aria-label="Fortschritt">';
-      for (let i = 0; i < N; i++) { const r = st.log[i] ? st.log[i].res : ""; h += '<span class="qzdot' + (r ? " " + r : "") + (i === st.idx ? " cur" : "") + (i === N - 1 ? " boss" : "") + '">' + (i === N - 1 ? STAR(true) : "") + "</span>"; }
+      for (let i = 0; i < nQ(); i++) { const r = st.log[i] ? st.log[i].res : ""; h += '<span class="qzdot' + (r ? " " + r : "") + (i === st.idx ? " cur" : "") + (isBoss(i) ? " boss" : "") + '"' + (st.team ? ' style="border-color:' + TCOL[i % st.team.n] + '"' : "") + ">" + (isBoss(i) ? STAR(true) : "") + "</span>"; }
       return h + "</div>";
     }
     function hudHtml() {
+      if (st.team) return teamHudHtml();
       return '<div class="qzhud"><div class="qzhearts" id="' + id("Hearts") + '" aria-label="Smileys">' + [0, 1, 2].map(i => HEART(i < st.lives)).join("") + "</div>" +
         '<div class="qzstat">Punkte <b id="' + id("Pts") + '">' + st.score + '</b></div>' +
         '<div class="qzstat qzflame' + (st.streak >= 3 ? " hot" : "") + '" id="' + id("Str") + '">' + (st.streak >= 3 ? FLAME : "") + 'Serie <b>' + st.streak + "</b></div>" +
@@ -4813,7 +4870,7 @@ document.querySelectorAll(".card").forEach(c => {
       const g = !st.practice;
       let h = g ? hudHtml() + pathHtml() + (st.timer ? '<div class="qztime" id="' + id("Tm") + '"><div class="qzbarw"><div id="' + id("Bar") + '"></div></div><span class="qzcdnum" id="' + id("Cd") + '">' + st.T + '</span><span class="qzlate" id="' + id("Late") + '" hidden>Keine Punkte mehr für diese Aufgabe</span></div>' : "") : '<div class="controls" style="margin-bottom:.6rem"><span class="qzbadge">Üben ohne Punkte</span><button id="' + id("Quit") + '">Zurück zum Start</button></div>';
       h += '<div class="card qzcard' + (boss ? " boss" : "") + '" id="' + id("Card") + '">' +
-        '<div class="qzmeta">' + (g ? (boss ? "BOSSAUFGABE · doppelte Punkte" : "Aufgabe " + (st.idx + 1) + " von " + N) : "Übungsaufgabe") + " · " + topLabel(Q.top) + "</div>" +
+        '<div class="qzmeta">' + (g ? (st.team ? escT(curName()) + " · Runde " + (Math.floor(st.idx / st.team.n) + 1) + " von " + TR + (boss ? " · BOSSRUNDE, doppelte Punkte" : "") : (boss ? "BOSSAUFGABE · doppelte Punkte" : "Aufgabe " + (st.idx + 1) + " von " + N)) : "Übungsaufgabe") + " · " + topLabel(Q.top) + "</div>" +
         '<div class="utext qzq">' + Q.q + "</div>" +
         '<div class="qzk">' + (Q.k === 1 ? "Genau <b>1</b> Möglichkeit ist richtig." : "Genau <b>" + Q.k + "</b> Möglichkeiten sind richtig. Finde alle.") + "</div>" +
         '<div class="qzgrid' + (Q.kind === "eqs" ? " wide" : "") + '">' + Q.opts.map((o, i) => '<button class="qzopt qzc' + i + '" data-i="' + i + '" aria-pressed="false"><span class="qzn">' + (i + 1) + "</span>" + o.h + "</button>").join("") + "</div>" +
@@ -4856,10 +4913,11 @@ document.querySelectorAll(".card").forEach(c => {
       }, 100);
     }
     function burst(svg, txt) { const c = stage().querySelector(".qzcard"); if (!c) return; const e = document.createElement("div"); e.className = "qzburst"; e.innerHTML = svg + "<div>" + txt + "</div>"; c.appendChild(e); setTimeout(() => e.remove(), 1600); }
-    function banner(txt) { const c = stage().querySelector(".qzcard"); if (!c) return; const e = document.createElement("div"); e.className = "qzbanner"; e.textContent = txt; c.appendChild(e); setTimeout(() => e.remove(), 1800); }
+    function banner(txt, col, small) { const c = stage().querySelector(".qzcard"); if (!c) return; const e = document.createElement("div"); e.className = "qzbanner"; e.textContent = txt; if (col) { e.style.color = col; e.style.textShadow = "0 3px 12px rgba(0,0,0,.85)"; } if (small) e.style.fontSize = "clamp(1.6rem,5vw,2.6rem)"; c.appendChild(e); setTimeout(() => e.remove(), 1800); }
     function floatText(t, cls) { const f = $("Fl"); if (!f) return; const e = document.createElement("div"); e.className = "qzpts " + (cls || ""); e.textContent = t; f.appendChild(e); setTimeout(() => e.remove(), 1500); }
     function updateHud() {
       if (st.practice) return;
+      if (st.team) { $("Teams").innerHTML = teamCards(); const pp = stage().querySelector(".qzpath"); if (pp) pp.outerHTML = pathHtml(); return; }
       $("Hearts").innerHTML = [0, 1, 2].map(i => HEART(i < st.lives, i === st.flash)).join(""); st.flash = -1; $("Pts").textContent = st.score;
       $("Str").innerHTML = (st.streak >= 3 ? FLAME : "") + "Serie <b>" + st.streak + "</b>"; $("Str").classList.toggle("hot", st.streak >= 3);
       const p = stage().querySelector(".qzpath"); if (p) p.outerHTML = pathHtml();
@@ -4887,18 +4945,19 @@ document.querySelectorAll(".card").forEach(c => {
           if (usedJoker) { pts = Math.round(pts / 2); lines.push("50:50 benutzt: halbe Punkte"); }
           pts += t;
           if (expired) { pts = 0; lines.length = 0; lines.push("Die Zeit war schon abgelaufen"); st.late++; }
-          st.score += pts; st.correct++; if (boss) st.bossOk = true;
-          if (!expired) { st.streak++; st.maxStreak = Math.max(st.maxStreak, st.streak); if (st.streak % 3 === 0 && st.lives < 3) { st.lives++; st.flash = st.lives - 1; revived = true; } }
+          st.score += pts; st.correct++; if (boss) st.bossOk = true; if (st.team) { const T = st.team, c = st.idx % T.n; T.scores[c] += pts; T.correct[c]++; }
+          if (!expired) { st.streak++; st.maxStreak = Math.max(st.maxStreak, st.streak); if (!st.team && st.streak % 3 === 0 && st.lives < 3) { st.lives++; st.flash = st.lives - 1; revived = true; } }
           SFX.good(); floatText(expired ? "0 Punkte" : "+" + pts, expired ? "late" : "gain"); if (!expired) confetti(stage().querySelector(".qzcard"), boss ? 70 : 18);
           if (revived) { SFX.revive(); burst(HEART(true), "Ein Gespenst ist wieder ein Smiley!"); } else if (!expired && st.streak >= 3) { SFX.fire(); burst(FLAME, "Serie " + st.streak + "!"); }
         } else {
-          st.lives--; st.flash = st.lives; st.streak = 0; SFX.bad(); burst(HEART(false), "Ups, ein Gespenst!"); if (!calm()) { const c = stage().querySelector(".qzcard"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); }
+          st.streak = 0; SFX.bad(); if (!st.team) { st.lives--; st.flash = st.lives; burst(HEART(false), "Ups, ein Gespenst!"); } if (!calm()) { const c = stage().querySelector(".qzcard"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); }
         }
         st.log[st.idx] = { res: perfect ? "ok" : "no", q: Q.q, corr: Q.opts.filter(o => o.ok).map(o => o.h), pts: pts };
-        fb = '<div class="qzfb ' + (perfect ? "good" : "no") + '"><b>' + (perfect ? (expired ? "Richtig! Aber keine Punkte, die Zeit war abgelaufen." : "Richtig! +" + pts + " Punkte") : timeUp ? "Die Zeit ist abgelaufen. Ein Smiley wird zum Gespenst." : "Nicht ganz. Ein Smiley wird zum Gespenst.") + "</b> " +
+        fb = '<div class="qzfb ' + (perfect ? "good" : "no") + '"><b>' + (perfect ? (expired ? "Richtig! Aber keine Punkte, die Zeit war abgelaufen." : "Richtig! +" + pts + " Punkte" + (st.team ? " für " + escT(curName()) : "")) : st.team ? (timeUp ? "Die Zeit ist abgelaufen." : "Nicht ganz.") + " Diesmal keine Punkte für " + escT(curName()) + "." : timeUp ? "Die Zeit ist abgelaufen. Ein Smiley wird zum Gespenst." : "Nicht ganz. Ein Smiley wird zum Gespenst.") + "</b> " +
           (perfect ? (expired ? "" : "(" + lines.join(", ") + ")" + (revived ? " Und ein Gespenst ist wieder ein Smiley." : "")) : hit + " von " + Q.k + " richtigen gefunden" + (bad ? ", " + bad + " falsche angeklickt" : "") + ".") + "</div>";
+        if (st.team) { const T = st.team, c = st.idx % T.n; T.streaks[c] = st.streak; T.jokers[c] = st.jokers; T.max[c] = Math.max(T.max[c], st.streak); }
         updateHud();
-        const last = st.lives <= 0 || st.idx >= N - 1;
+        const last = st.team ? st.idx >= nQ() - 1 : (st.lives <= 0 || st.idx >= N - 1);
         $("Next").hidden = false; $("Next").textContent = last ? "Ergebnis ansehen" : "Weiter";
       }
       if (why.length) fb += '<div class="note">' + why.map(o => "<div>" + o.h + ": " + o.why + "</div>").join("") + "</div>";
@@ -4908,6 +4967,7 @@ document.querySelectorAll(".card").forEach(c => {
     function retry() { sel = {}; checked = false; renderPlay(); }
     function next() {
       if (st.practice) { nextQ(); return; }
+      if (st.team) { st.idx++; if (st.idx >= nQ()) endTeam(); else nextQ(); return; }
       st.idx++;
       if (st.lives <= 0) endGame(false); else if (st.idx >= N) endGame(true); else nextQ();
     }
@@ -4939,6 +4999,16 @@ document.querySelectorAll(".card").forEach(c => {
       setTimeout(() => { const b = $("XpBar"); if (b) b.style.width = r1.pct + "%"; }, 120);
       if (up) { setTimeout(() => { SFX.rank(); confetti(stage().querySelector(".qzend"), 60); }, 700); }
     }
+    function endTeam() {
+      stopTimer(); const T = st.team, order = T.names.map((x, i) => i).sort((a, b) => T.scores[b] - T.scores[a] || a - b);
+      const topS = T.scores[order[0]], win = order.filter(i => T.scores[i] === topS), place = i => 1 + T.scores.filter(x => x > T.scores[i]).length;
+      const title = win.length === T.n ? "Alle Mannschaften sind gleich auf!" : win.length > 1 ? "Unentschieden: " + win.map(i => escT(T.names[i])).join(" und ") : "Es gewinnt " + escT(T.names[win[0]]) + "!";
+      stage().innerHTML = '<div class="card qzend win" id="' + id("Card") + '"><div class="qzarena">' + title + '</div><div class="qzstars">' + STAR(true) + "</div>" +
+        '<div class="qzpodw">' + order.map(i => '<div class="qzpod p' + place(i) + '" style="--tc:' + TCOL[i] + '"><div class="qzpl">' + place(i) + '.</div><div><div class="qzpn">' + escT(T.names[i]) + '</div><div class="qzpd">' + T.correct[i] + " von " + TR + " richtig · längste Serie " + T.max[i] + '</div></div><div class="qzps">' + T.scores[i] + "</div></div>").join("") + "</div>" +
+        '<div class="controls qzgo"><button class="qzbig" id="' + id("Again") + '">Nochmal mit denselben Mannschaften</button><button id="' + id("Home") + '">Zurück zum Start</button></div></div>';
+      $("Again").addEventListener("click", startTeam); $("Home").addEventListener("click", showStart);
+      SFX.win(); confetti(stage().querySelector(".qzend"), 90);
+    }
     document.addEventListener("keydown", ev => {
       if (host.hidden || !st || !Q || ev.ctrlKey || ev.metaKey || ev.altKey) return;
       if (/^[1-7]$/.test(ev.key)) { toggle(String(Number(ev.key) - 1)); return; }
@@ -4946,7 +5016,7 @@ document.querySelectorAll(".card").forEach(c => {
     });
     showStart();
     return {
-      setTop: t => { top = t; showStart(); }, start: (practice, timer) => { timerOn = !!timer; start(!!practice); },
+      setTop: t => { top = t; showStart(); }, startTeam: (n, names) => { teamOn = true; teamN = n; if (names) tnames = names.slice(); startTeam(); }, start: (practice, timer) => { timerOn = !!timer; start(!!practice); },
       state: () => ({ Q: Q, sel: sel, st: st, checked: checked }), toggle: toggle, check: () => check(false), expire: () => expire(), next: next, joker: joker, home: showStart, retry: retry
     };
   }

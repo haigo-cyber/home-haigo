@@ -184,6 +184,9 @@
   .gwrap { display:flex; flex-wrap:wrap; gap:0.824rem 2.118rem; align-items:flex-start; margin:0.588rem 0 4px; }
   .gdots { display:grid; grid-template-columns:repeat(var(--cols,10), var(--u,1.412rem)); gap:2px; padding:4px; border:2px solid #c3c8ce; border-radius:4px; width:max-content; }
   .gdots.rest { border-style:dashed; border-color:#f2a900; }
+  .bog { display:flex; width:max-content; align-items:center; font-size:1.7rem; font-weight:700; margin:0.3rem 0.6rem 0.3rem 0; }
+  .bog svg { display:block; width:6.4em; height:6.4em; overflow:visible; }
+  .bog svg text { font-family:inherit; }
   .kpf { display:flex; align-items:center; gap:0.9rem; font-size:1.5rem; margin:0.6rem 0 0.4rem; }
   .kmid { display:flex; flex-direction:column; align-items:center; gap:0.3rem; }
   .kup { color:#f2a900; font-weight:700; font-size:1.05rem; border:2px solid #f2a900; border-radius:999px; padding:0 0.7rem; }
@@ -587,6 +590,7 @@
       <div class="controls" style="margin-bottom:12px">
         <button class="tab" id="gd_vErk" aria-selected="true">Erklären in Schritten</button>
         <button class="tab" id="gd_vAufg" aria-selected="false">Aufgaben mit dem Punktefeld</button>
+        <button class="tab" id="gd_vZs" aria-selected="false">Aufgaben am Zahlenstrahl</button>
       </div>
       <div class="controls" style="margin-bottom:12px">
         <button class="tab" id="gd_mul" aria-selected="true">Multiplikation</button>
@@ -610,7 +614,7 @@
     <div class="card">
       <div class="ktitle">Wortspeicher</div>
       <div class="zeq"><span class="usmall">Zahlen:</span>Anzahl der Gruppen (Bündel), Anzahl in jeder Gruppe, Produkt, Quotient, Rest</div>
-      <div class="zeq"><span class="usmall">Material:</span>Kästchen, Punkt, Kringel (Gruppe), Reihe, Zeile, Spalte, Rechteckfeld, Punktefeld, Vorrat</div>
+      <div class="zeq"><span class="usmall">Material:</span>Kästchen, Punkt, Kringel (Gruppe), Reihe, Zeile, Spalte, Rechteckfeld, Punktefeld, Zahlenstrahl, Sprung, Vorrat</div>
       <div class="zeq"><span class="usmall">Tätigkeiten:</span>in Bündeln zählen, Gruppen bilden, untereinander legen, drehen, gerecht verteilen, gleichmäßig aufteilen, Probe machen</div>
       <div class="zeq"><span class="usmall">Satzanfänge:</span>3 · 4 heißt: 3 Gruppen mit je 4 Kästchen. · Drei 4er, das sind 3 · 4. · Ein 4er, zwei 4er, drei 4er, also sind es 12. · 12 Kästchen in drei 4er: 3 · 4 = 12, 12 : 4 = 3 und 12 : 3 = 4. · Ich verteile 15 Kästchen gerecht auf 3 Gruppen. · Ich bilde Gruppen mit je 5 Kästchen. · Es bleibt ein Rest.</div>
       <div class="zeq"><span class="usmall">Fragen zum Bild:</span>Wo sieht man die Anzahl der Gruppen, wo die Anzahl in jeder Gruppe? · Warum passt das Bild zur Aufgabe? · Wo sieht man das Ergebnis? · Wie viele Kästchen sind in jeder Gruppe, wie viele Gruppen gibt es?</div>
@@ -843,13 +847,23 @@ function bindNav(host, pre) {
   host.querySelectorAll("[data-nav]").forEach(b => b.addEventListener("click", () => document.getElementById(ids[b.dataset.nav]).click()));
 }
 
+/* ===== Rechenbögen beim Erweitern und Kürzen: Bruch = Bruch mit Bogenpfeilen ===== */
+function bogenHtml(l, r, op, k) {
+  const lab = (op === "·" ? "·" : ":") + k;
+  const arc = (d, ty) => '<path d="' + d + '" fill="none" stroke="#c3c8ce" stroke-width="2" marker-end="url(#bogh)"/><text x="75" y="' + ty + '" text-anchor="middle" font-size="17" font-weight="700" fill="#f2a900">' + lab + "</text>";
+  return '<div class="bog">' + l +
+    '<svg viewBox="0 -16 150 148" aria-label="Zähler und Nenner jeweils ' + (op === "·" ? "mal " : "geteilt durch ") + k + '"><defs><marker id="bogh" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#c3c8ce"/></marker></defs>' +
+    arc("M10,32C35,-10 115,-10 140,32", -2) + arc("M10,84C35,126 115,126 140,84", 128) +
+    '<text x="75" y="70" text-anchor="middle" font-size="34" font-weight="700" fill="#e8eaed">=</text></svg>' + r + "</div>";
+}
+
 /* ===== Themen und Seitenleiste ===== */
 const TOPICS = [
   { k: "stell", g: "Zahlen und Rechenoperationen", t: "Stellenwerttafel", s: "Zahlen mit Stellenwertmaterial in der Tafel darstellen",
     i: '<rect x="3" y="14" width="4" height="7"/><rect x="10" y="9" width="4" height="12"/><rect x="17" y="4" width="4" height="17"/>' },
   { k: "uez", g: "Zahlen und Rechenoperationen", t: "Zehnerübergang", s: "Addition mit Zehnerüberschreitung und Subtraktion mit Zehnerunterschreitung: bündeln und entbündeln (Stange aufbrechen), Multiplikation mit Stufenzahlen",
     i: '<path d="M4 18h16"/><path d="M5 14C7 6 15 6 18 12"/><path d="M14.5 12H18.5V8"/>' },
-  { k: "gdr", g: "Zahlen und Rechenoperationen", t: "Multiplizieren und Dividieren", s: "Erklärung in Schritten (mal, gerecht verteilen, gleichmäßig aufteilen) und Aufgaben mit dem Punktefeld",
+  { k: "gdr", g: "Zahlen und Rechenoperationen", t: "Multiplizieren und Dividieren", s: "Erklärung in Schritten (mal, gerecht verteilen, gleichmäßig aufteilen) und Aufgaben mit dem Punktefeld oder am Zahlenstrahl",
     i: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><circle cx="17.5" cy="17.5" r="3.5"/>' },
   { k: "mul", g: "Zahlen und Rechenoperationen", t: "Flächenmodell", s: "Multiplikation am Rechteckfeld: Zerlegen, Malkreuz und halbschriftliches Rechnen",
     i: '<rect x="3" y="5" width="18" height="14"/><path d="M10 5v14M3 12h18"/>' },
@@ -1592,7 +1606,7 @@ renderStell();
       out.push({
         t: "Erst kürzen",
         h: '<div class="utext">Zähler und Nenner haben den gemeinsamen Teiler <b>' + g + '</b>. Man kürzt zuerst, dann ist der Nenner kleiner und leichter zu prüfen:</div>' +
-          '<div class="ubig">' + col("uorig", fr(z, n)) + " = " + fr(z + " : " + g, n + " : " + g) + " = " + col("uorig", fr(zz, nn)) + "</div>"
+          bogenHtml(col("uorig", fr(z, n)), col("uorig", fr(zz, nn)), ":", g)
       });
     }
 
@@ -1643,7 +1657,7 @@ renderStell();
 
     out.push({
       t: "Zähler und Nenner mit " + f + " multiplizieren",
-      h: '<div class="ubig">' + col("uorig", fr(zz, nn)) + " = " + fr(zz + " · " + col("ufac", f), nn + " · " + col("ufac", f)) + " = " + col("ures", fr(nz, S)) + "</div>" +
+      h: bogenHtml(col("uorig", fr(zz, nn)), col("ures", fr(nz, S)), "·", f) +
         '<div class="utext">Der Zähler wird ' + zz + " · " + f + " = " + nz + ", der Nenner wird " + nn + " · " + f + " = " + S + ".</div>"
     });
 
@@ -2505,6 +2519,8 @@ renderStell();
       if (g > 1) {
         kt += fr(num, den) + " kann ich kürzen: Ich <b>vergröbere</b> den Streifen. Immer " + g + " kleine Stücke werden zu 1 großen Stück. Aus " + den + " kleinen Stücken werden " + d1_ + " größere Stücke. " + num + " von " + den + " kleinen Stücken waren gefärbt, jetzt sind " + n1 + " von " + d1_ + " großen Stücken gefärbt. Der gefärbte Teil ist genauso groß wie vorher, die Brüche sind gleichwertig. " + chainTxt(g, num, den) + " " +
           '<span class="usmall">Mathesprache: ' + num + " : " + g + " = " + n1 + " und " + den + " : " + g + " = " + d1_ + ", also " + F(num, den) + " = " + F(n1, d1_) + "</span> ";
+        let ca = num, cb = den;
+        primes(g).forEach(p => { kv += bogenHtml(fr(ca, cb), fr(ca / p, cb / p), ":", p); ca /= p; cb /= p; });
         kv += srow(fr(num, den), num, den, fillA(num, col), g) + srow(fr(n1, d1_), n1, d1_, fillA(n1, col));
       } else kt += fr(num, den) + " kann ich nicht kürzen: Ich probiere 2, 3, 4 und 5, aber Zähler und Nenner lassen sich nicht durch dieselbe Zahl teilen." + (num === 1 ? " Ein Stammbruch mit der 1 oben lässt sich nie kürzen." : "") + " ";
     };
@@ -2519,6 +2535,8 @@ renderStell();
     if (e1 > 1 || e2 > 1) et += "Erweitern ist nicht dasselbe wie Malnehmen: Die Einteilung wird feiner, aber der Anteil bleibt gleich groß. ";
     et += '<span class="usmall">Mathesprache: ' + F(a1 + " · " + e1, b1 + " · " + e1) + " = " + F(x, H) + (op === "add" ? " und " : " und ") + F(c1 + " · " + e2, d1 + " · " + e2) + " = " + F(y, H) + "</span>";
     let ev = "";
+    if (e1 > 1) ev += bogenHtml(f1(a1, b1), f1(x, H), "·", e1);
+    if (e2 > 1) ev += bogenHtml(f2(c1, d1), f2(y, H), "·", e2);
     ev += (e1 > 1 ? srow(f1(a1, b1), a1, b1, fillA(a1, COL.blue)) : "") + srow(f1(x, H), x, H, fillA(x, COL.blue), e1 > 1 ? e1 : 0, x);
     ev += (e2 > 1 ? srow(f2(c1, d1), c1, d1, fillA(c1, col2())) : "") + srow(f2(y, H), y, H, fillA(y, col2()), e2 > 1 ? e2 : 0, y);
     out.push(step("Auf den gleichen Nenner erweitern", et, ev));
@@ -2547,6 +2565,7 @@ renderStell();
     if (zr >= Hr && Hr > 1) res += line("Gemischte Zahl:", F(zr, Hr) + " = " + mixed(zr, Hr, "zo") + " (" + Math.floor(zr / Hr) + " Ganze" + (zr % Hr ? " und " + F(zr % Hr, Hr) : "") + ")");
     out.push(step("Ergebnis kürzen und ablesen",
       "Ich schaue, ob ich das Ergebnis " + F(z, H, "zo") + " noch kürzen kann. " + (gz > 1 ? "Ja: Ich vergröbere den Streifen. Immer " + gz + " kleine Stücke werden zu 1 großen Stück, der gefärbte Teil bleibt gleich groß. " + chainTxt(gz, z, H) + " Das Ergebnis ist " + F(zr, Hr, "zo") + (zr >= Hr && Hr > 1 ? ", das sind " + mixed(zr, Hr, "zo") + "." : ".") : "Das geht nicht: Ich probiere 2, 3, 4 und 5, aber Zähler und Nenner lassen sich nicht durch dieselbe Zahl teilen. Das Ergebnis ist " + F(z, H, "zo") + (zr >= Hr && Hr > 1 ? ", das sind " + mixed(zr, Hr, "zo") + "." : ".")),
+      (() => { let h = "", ca = z, cb = H; if (gz > 1) primes(gz).forEach(p => { h += bogenHtml(F(ca, cb, "zo"), F(ca / p, cb / p, "zo"), ":", p); ca /= p; cb /= p; }); return h; })() +
       srow(F(z, H, "zo"), z, H, fillA(z, COL.orange), gz > 1 ? gz : 0) + (gz > 1 ? srow(F(zr, Hr, "zo"), zr, Hr, fillA(zr, COL.orange)) : "") + res, "good"));
     return out;
   }
@@ -2634,6 +2653,7 @@ renderStell();
   const SYM = { mul: "·", ver: ":", auf: ":" };
   const WORD = ["", "ein", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf"];
   const T = (x, cls) => '<span class="' + cls + '">' + x + "</span>";
+  const T_ = T;
   const line = (lab, txt) => '<div class="zeq"><span class="usmall">' + lab + "</span>" + txt + "</div>";
   const sq = (col, lab) => '<i class="gsq" style="background:' + col + '">' + (lab == null ? "" : lab) + "</i>";
   const sqs = (n, col) => n > 0 ? sq(col).repeat(n) : "";
@@ -2737,6 +2757,55 @@ renderStell();
     return out;
   }
 
+  // Zahlenstrahl: Strecke 0 bis T, Sprünge der Länge len (cnt Stück), vorwärts ab 0 oder rückwärts ab T; rest = Reststrecke (orange)
+  function numLine(T, len, cnt, dir, rest) {
+    const W = 1000, L = 30, Rr = 30, y0 = 118, x = v => L + (W - L - Rr) * v / T, f = v => v.toFixed(1), id = "gdm" + (numLine.u = (numLine.u || 0) + 1);
+    let s = '<svg viewBox="0 0 ' + W + ' 200" style="width:100%;max-width:62rem;display:block" role="img" aria-label="Zahlenstrahl von 0 bis ' + T + '">';
+    s += '<defs><marker id="' + id + 'a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="' + C.steel + '"/></marker><marker id="' + id + 'b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="' + C.steel2 + '"/></marker></defs>';
+    s += '<line x1="' + (L - 10) + '" y1="' + y0 + '" x2="' + (W - Rr + 14) + '" y2="' + y0 + '" stroke="#8a93a3" stroke-width="2"/>';
+    const lab = {}; lab[0] = 1; lab[T] = 1;
+    for (let j = 0; j <= cnt; j++) lab[dir > 0 ? j * len : T - j * len] = 1;
+    if (T <= 20) for (let v = 0; v <= T; v++) lab[v] = 1;
+    for (let v = 0; v <= T; v++) {
+      const big = lab[v] || (T > 40 && v % 10 === 0);
+      if (T > 60 && !big) continue;
+      s += '<line x1="' + f(x(v)) + '" y1="' + (y0 - (big ? 9 : 5)) + '" x2="' + f(x(v)) + '" y2="' + (y0 + (big ? 9 : 5)) + '" stroke="#8a93a3" stroke-width="' + (big ? 2.2 : 1) + '"/>';
+      if (lab[v] && (x(v + 1) - x(v) > 14 || T > 40)) s += '<text x="' + f(x(v)) + '" y="' + (y0 + 30) + '" text-anchor="middle" font-size="19" font-weight="700" fill="#e8eaed">' + v + "</text>";
+    }
+    for (let j = 0; j < cnt; j++) {
+      const a = dir > 0 ? j * len : T - j * len, b = dir > 0 ? (j + 1) * len : T - (j + 1) * len, k = j % 2, h = 34 + Math.min(28, (Math.abs(x(b) - x(a)) / 6));
+      s += '<path d="M' + f(x(a)) + "," + (y0 - 4) + " Q" + f((x(a) + x(b)) / 2) + "," + (y0 - 4 - h * 2) + " " + f(x(b)) + "," + (y0 - 4) + '" fill="none" stroke="' + (k ? C.steel2 : C.steel) + '" stroke-width="3" marker-end="url(#' + id + (k ? "b" : "a") + ')"/>';
+      if (Math.abs(x(b) - x(a)) >= 26) s += '<text x="' + f((x(a) + x(b)) / 2) + '" y="' + (y0 - h - 14) + '" text-anchor="middle" font-size="18" font-weight="700" fill="' + (k ? C.steel2 : C.steel) + '">' + (dir > 0 ? "+" : "−") + len + "</text>";
+    }
+    if (rest > 0) {
+      const a = dir > 0 ? cnt * len : 0, b = dir > 0 ? T : rest;
+      s += '<line x1="' + f(x(a)) + '" y1="' + y0 + '" x2="' + f(x(b)) + '" y2="' + y0 + '" stroke="' + C.orange + '" stroke-width="7" stroke-linecap="round"/>';
+      s += '<text x="' + f((x(a) + x(b)) / 2) + '" y="' + (y0 + 62) + '" text-anchor="middle" font-size="18" font-weight="700" fill="' + C.orange + '">Rest ' + rest + "</text>";
+    }
+    return s + "</svg>";
+  }
+  function buildLine() {
+    const a = V.a, b = V.b;
+    let T, len, cnt, dir, rest = 0, head, txt, extra = "";
+    if (op === "mul") {
+      T = a * b; len = b; cnt = a; dir = 1;
+      head = T_(a, "zs") + " · " + T_(b, "zg") + " = " + T_(T, "zo");
+      txt = a + " · " + b + " heißt: Ich starte bei 0 und springe " + T_(a, "zs") + "-mal je " + T_(b, "zg") + " Schritte nach rechts. Ich lande bei " + T + ".";
+      extra = line("Tauschaufgabe:", b + " · " + a + " = " + T + " (" + b + "-mal je " + a + " Schritte)") + line("Umkehraufgaben:", T + " : " + a + " = " + b + " und " + T + " : " + b + " = " + a);
+    } else if (op === "ver") {
+      const q = Math.floor(a / b); rest = a % b; T = a; len = q; cnt = b; dir = 1;
+      head = T_(a, "zs") + " : " + T_(b, "zg") + " = " + T_(q, "zo") + (rest ? " Rest " + T_(rest, "zo") : "");
+      txt = "Gerecht verteilen: Ich teile die Strecke von 0 bis " + T_(a, "zs") + " in " + T_(b, "zg") + " gleich lange Sprünge. " + (q ? "Jeder Sprung ist " + T_(q, "zo") + " lang." : "Es reicht nicht für einen ganzen Schritt je Sprung.") + (rest ? " " + rest + " Schritte bleiben als Rest übrig, weil " + rest + " kleiner als " + b + " ist." : " Es bleibt kein Rest.");
+      extra = line("Probe:", b + " · " + q + (rest ? " + " + rest : "") + " = " + (b * q) + (rest ? " + " + rest : "") + " = " + a) + line("Zusammenhang:", "Teilen ist die Umkehraufgabe von Mal: Weil " + b + " · " + q + " = " + (b * q) + " ist, ist " + (b * q) + " : " + b + " = " + q + ".");
+    } else {
+      const q = Math.floor(a / b); rest = a % b; T = a; len = b; cnt = q; dir = -1;
+      head = T_(a, "zs") + " : " + T_(b, "zg") + " = " + T_(q, "zo") + (rest ? " Rest " + T_(rest, "zo") : "");
+      txt = "Gleichmäßig aufteilen: Ich starte bei " + T_(a, "zs") + " und springe immer " + T_(b, "zg") + " Schritte nach links. " + (q ? "Das schaffe ich " + T_(q, "zo") + "-mal." : "Schon der erste Sprung ginge über die 0 hinaus.") + (rest ? " Dann lande ich bei " + rest + ". Das ist kleiner als " + b + ", ein weiterer Sprung geht nicht: Rest " + rest + "." : " Ich lande genau bei 0. Es bleibt kein Rest.");
+      extra = line("Probe:", q + " · " + b + (rest ? " + " + rest : "") + " = " + (q * b) + (rest ? " + " + rest : "") + " = " + a) + line("Zusammenhang:", "Teilen ist die Umkehraufgabe von Mal: Weil " + q + " · " + b + " = " + (q * b) + " ist, ist " + (q * b) + " : " + b + " = " + q + ".");
+    }
+    return '<div class="card"><div class="utext">' + txt + "</div>" + (len > 0 ? numLine(T, len, cnt, dir, rest) : numLine(T, 1, 0, 1, T)) + '<div class="zbig">' + head + "</div>" + extra + "</div>";
+  }
+
   function buildDots() {
     const a = V.a, b = V.b, col = "#5aaee8", cr = "#f2a900";
     const dots = (n, c) => ('<i style="--c:' + c + '"></i>').repeat(n);
@@ -2789,6 +2858,11 @@ renderStell();
     ver: "Gerecht verteilen: Die Anzahl der Gruppen ist bekannt. Gesucht ist, wie viele Kästchen in jeder Gruppe liegen.",
     auf: "Gleichmäßig aufteilen: Ich packe immer gleich viele Kästchen zusammen (Bündel). Die Anzahl in jeder Gruppe ist bekannt. Gesucht ist, wie viele Gruppen es gibt."
   };
+  const NOTEZ = {
+    mul: "Am Zahlenstrahl heißt Mal: Ich springe von 0 aus immer gleich weit nach rechts. Die erste Zahl sagt, wie oft ich springe, die zweite, wie weit.",
+    ver: "Gerecht verteilen am Zahlenstrahl: Die Anzahl der Sprünge ist bekannt. Gesucht ist, wie lang jeder Sprung ist, damit ich genau bis zur Zahl komme.",
+    auf: "Gleichmäßig aufteilen am Zahlenstrahl: Ich springe von der Zahl aus immer gleich weit nach links. Gesucht ist, wie oft ich springen kann."
+  };
   const LAB = {
     mul: ["Anzahl der Gruppen", "Anzahl in jeder Gruppe"],
     ver: ["Anzahl der Kästchen", "Anzahl der Gruppen"],
@@ -2798,7 +2872,8 @@ renderStell();
   function inputs() {
     const box = (k, color, lab) => '<div class="gbox"><div class="note">' + lab + '</div><div class="numbox"><input type="number" data-k="' + k + '" min="1" value="' + V[k] + '" style="color:' + color + ';border-color:' + color + '"></div></div>';
     const pk = t => view === "aufg" ? t.replace(/Kästchen/g, "Punkte") : t;
-    $("gdRow").innerHTML = box("a", "#6cc0f5", pk(LAB[op][0])) + '<span class="mdot">' + SYM[op] + "</span>" + box("b", "#5fd06f", pk(LAB[op][1]));
+    const labs = view === "zs" ? { mul: ["Anzahl der Sprünge", "Länge eines Sprungs"], ver: ["Zahl (Strecke)", "Anzahl der Sprünge"], auf: ["Zahl (Strecke)", "Länge eines Sprungs"] }[op] : LAB[op].map(pk);
+    $("gdRow").innerHTML = box("a", "#6cc0f5", labs[0]) + '<span class="mdot">' + SYM[op] + "</span>" + box("b", "#5fd06f", labs[1]);
     $("gdRow").querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => {
       V[inp.dataset.k] = inp.value === "" ? NaN : Number(inp.value);
       shown = 0; render();
@@ -2810,25 +2885,29 @@ renderStell();
     $("panel-gdr").style.setProperty("--u", (parseInt($("gdSize").value, 10) * msK()).toFixed(1) + "px");
     ["mul", "ver", "auf"].forEach(k => $("gd_" + k).setAttribute("aria-selected", k === op ? "true" : "false"));
     const pr = problem(), nb = $("gdNext"), bb = $("gdBack"), ab = $("gdAll");
-    const aufg = view === "aufg";
+    const aufg = view !== "erk";
     ["gdBack", "gdNext", "gdAll", "gdRestart"].forEach(id => $(id).style.display = aufg ? "none" : "");
     host.style.display = aufg ? "none" : "";
     $("gdAufg").style.display = aufg ? "" : "none";
-    $("gd_vErk").setAttribute("aria-selected", aufg ? "false" : "true");
-    $("gd_vAufg").setAttribute("aria-selected", aufg ? "true" : "false");
+    $("gd_vErk").setAttribute("aria-selected", view === "erk" ? "true" : "false");
+    $("gd_vAufg").setAttribute("aria-selected", view === "aufg" ? "true" : "false");
+    $("gd_vZs").setAttribute("aria-selected", view === "zs" ? "true" : "false");
     $("gdLegend").innerHTML = '<div style="font-size:.95rem;line-height:2"><i class="zsw" style="background:' + C.steel + '"></i>Kästchen &nbsp; ' +
       '<i class="zsw" style="background:transparent;border:2px solid #c3c8ce;border-radius:50%"></i>Kringel = eine Gruppe &nbsp; ' +
       (op === "mul" ? "" : '<i class="zsw" style="background:' + C.orange + '"></i>Rest (reicht nicht mehr für eine ganze Gruppe) &nbsp; ') +
       '<i class="zsw" style="background:' + C.steel2 + '"></i>zweite, vierte … Runde bzw. Gruppe (nur zur Unterscheidung)</div>';
-    if (aufg) {
+    if (view === "zs") {
+      $("gdLegend").innerHTML = '<div style="font-size:.95rem;line-height:2"><i class="zsw" style="background:' + C.steel + '"></i>Sprung &nbsp; <i class="zsw" style="background:' + C.steel2 + '"></i>nächster Sprung (nur zur Unterscheidung) &nbsp; ' +
+        (op === "mul" ? "" : '<i class="zsw" style="background:' + C.orange + '"></i>Rest (reicht nicht mehr für einen ganzen Sprung)') + "</div>";
+    } else if (aufg) {
       $("gdLegend").innerHTML = '<div style="font-size:.95rem;line-height:2"><i class="zsw" style="background:' + C.steel + ';border-radius:50%"></i>Punkt &nbsp; ' +
         (op === "mul" ? "" : '<i class="zsw" style="background:' + C.orange + ';border-radius:50%"></i>Rest (reicht nicht mehr für eine ganze Gruppe) &nbsp; ') + 'Jede Zeile ist eine Gruppe, sie ist eingekringelt.</div>';
     }
     if (pr) { msg.className = "note err"; msg.textContent = pr; host.innerHTML = ""; $("gdAufg").innerHTML = ""; nb.disabled = bb.disabled = ab.disabled = true; return; }
     if (aufg) {
       msg.className = "note";
-      msg.textContent = NOTE[op].replace(/Kästchen/g, "Punkte") + " Die Erklärung in Schritten steht im anderen Reiter.";
-      $("gdAufg").innerHTML = buildDots();
+      msg.textContent = (view === "zs" ? NOTEZ[op] : NOTE[op].replace(/Kästchen/g, "Punkte")) + " Die Erklärung in Schritten steht im anderen Reiter.";
+      $("gdAufg").innerHTML = view === "zs" ? buildLine() : buildDots();
       return;
     }
     steps = op === "mul" ? buildMul() : op === "ver" ? buildVer() : buildAuf();
@@ -2863,7 +2942,7 @@ renderStell();
   $("gdAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("gdRestart").addEventListener("click", () => { shown = 0; render(); });
   $("gdRandom").addEventListener("click", random);
-  ["Erk", "Aufg"].forEach(k => $("gd_v" + k).addEventListener("click", () => { view = k === "Aufg" ? "aufg" : "erk"; shown = 0; inputs(); render(); }));
+  ["Erk", "Aufg", "Zs"].forEach(k => $("gd_v" + k).addEventListener("click", () => { view = k === "Aufg" ? "aufg" : k === "Zs" ? "zs" : "erk"; shown = 0; inputs(); render(); }));
   window.__gd = { setView: v => { view = v; inputs(); render(); }, setOp: setOp, setV: (a, b) => { V.a = a; V.b = b; inputs(); render(); } };
   setOp("mul");
 })();
@@ -3382,9 +3461,10 @@ renderStell();
     const V = Object.assign({}, DEF.add);
     panel("swr", pre, [["add", "Addieren"], ["sub", "Subtrahieren"], ["mul", "Multiplizieren"], ["div", "Dividieren"]], [
       ["Stellenwerte:", "Stellentafel, Einer, Zehner, Hunderter, Tausender, Spalte, Stelle, stellengerecht"],
-      ["Tätigkeiten:", "untereinander schreiben, addieren, subtrahieren, multiplizieren, dividieren, bündeln (die Zahl aufräumen), entbündeln, Übertrag, Nullen weglassen, Probe machen"],
-      ["Satzanfänge:", "Ich schreibe Einer unter Einer, Zehner unter Zehner. · 13 Einer sind 1 Zehner und 3 Einer. Ich schreibe die 3 und merke mir den Übertrag. · 2 − 7 geht nicht. Ich entbündele 1 Zehner zu 10 Einern. · Ich zerlege die Aufgabe: 16 · 23 = 16 · 20 + 16 · 3. · Ich lasse die Null weg, weil die Ziffer schon in der Zehner-Spalte steht. · Ich teile Stelle für Stelle von links. · Zur Probe rechne ich die Umkehraufgabe."],
-      ["Fragen zum Bild:", "In welcher Spalte steht die Ziffer? · Was bedeutet der kleine Übertrag? · Welche Rechnung gehört zu welcher Zeile?"]
+      ["Zahlen:", "Summand, Summe · Minuend, Subtrahend, Differenz · Faktor, Teilprodukt, Produkt · Dividend, Divisor, Quotient, Rest"],
+      ["Tätigkeiten:", "untereinander schreiben, addieren, subtrahieren, multiplizieren, dividieren, bündeln (die Zahl aufräumen), entbündeln, Übertrag (übertragen), erweitern, Nullen weglassen, Probe machen"],
+      ["Satzanfänge:", "Ich schreibe Einer unter Einer, Zehner unter Zehner. · 5 (Zehner) plus 7 (Zehner) gleich 12 (Zehner). Ich schreibe 2 (Zehner) und übertrage 1 (Hunderter). · 13 Einer sind 1 Zehner und 3 Einer. Ich schreibe die 3 und merke mir den Übertrag. · Minussprechweise: 13 (Einer) minus 6 (Einer) gleich 7 (Einer). · Plussprechweise: 6 (Einer) plus ? gleich 13 (Einer). · Der Minuend bleibt insgesamt unverändert. · 2 − 7 geht nicht. Ich entbündele 1 Zehner zu 10 Einern. · Ich zerlege die Aufgabe: 16 · 23 = 16 · 20 + 16 · 3. · Ich lasse die Null weg, weil die Ziffer schon in der Zehner-Spalte steht. · Ich teile Stelle für Stelle von links. · Zur Probe rechne ich die Umkehraufgabe."],
+      ["Fragen zum Bild:", "In welcher Spalte steht die Ziffer? · Was bedeutet der kleine Übertrag? · Welche Rechnung gehört zu welcher Zeile? · Welches Teilprodukt gehört zu welcher Ziffer? · Warum stehen die Teilprodukte versetzt untereinander?"]
     ]);
     const COLS = ["cs", "cg", "cr", "co"];
     const gr = n => { const s = String(n); return s.length > 4 ? s.replace(/\B(?=(\d{3})+(?!\d))/g, " ") : s; };
@@ -3413,7 +3493,7 @@ renderStell();
       const A = pint(V.a, 6), B = pint(V.b, 6);
       if (A === null || B === null) return "Bitte ganze Zahlen mit höchstens 6 Stellen eingeben.";
       const add = op === "add";
-      if (!add && A < B) return "Bei der Subtraktion muss die erste Zahl größer oder gleich der zweiten sein.";
+      if (!add && A < B) return "Bei der Subtraktion muss der Minuend (die erste Zahl) größer oder gleich dem Subtrahenden (der zweiten Zahl) sein.";
       const R = add ? A + B : A - B, sign = add ? "+" : "−", out = [];
       const sf = T(gr(A), "zs") + " " + sign + " " + T(gr(B), add ? "zg" : "zr");
       const top = Math.max(String(A).length, String(B).length) - 1;
@@ -3424,34 +3504,47 @@ renderStell();
         else { const eff = da - carry; let v = eff - db, bo = 0; if (v < 0) { v += 10; bo = 1; } cols.push({ e: e, da: da, db: db, cin: carry, eff: eff, dig: v, cout: bo }); carry = bo; }
       }
       const tbl = (upto, hl) => {
-        const rows = [{ label: "erste Zahl", cells: numCells(A, "cs") }, { label: sign + " zweite Zahl", cells: numCells(B, add ? "cg" : "cr") }];
+        const rows = [{ label: add ? "1. Summand" : "Minuend", cells: numCells(A, "cs") }, { label: sign + (add ? " 2. Summand" : " Subtrahend"), cells: numCells(B, add ? "cg" : "cr") }];
         const carr = {}, resc = {};
         cols.forEach(c => { if (c.e <= upto) { if (c.cout) carr[c.e + 1] = { t: add ? "+1" : "−1", cls: (add ? "co" : "cr") + " csm" }; resc[c.e] = { t: c.dig, cls: "co" }; } });
         Object.keys(resc).forEach(k => { k = +k; if (k > 0 && resc[k].t === 0 && k > String(R).length - 1) delete resc[k]; });
         rows.splice(2, 0, { label: add ? "Übertrag" : "entbündelt", cells: carr, cls: "dcar" });
-        rows.push({ label: "Ergebnis", cells: resc, cls: "dres" });
+        rows.push({ label: add ? "Summe" : "Differenz", cells: resc, cls: "dres" });
         return ntafel(rows, { col: hl });
       };
-      out.push(step("Aufgabe", "Die Aufgabe " + sf + " rechne ich schriftlich. Ich schreibe die Zahlen so untereinander, dass Einer unter Einer, Zehner unter Zehner und Hunderter unter Hunderter stehen. Dann rechne ich Spalte für Spalte von rechts nach links.", tbl(-1)));
+      const sA = String(A), sB = String(B);
+      let an = add ? "Die Zahlen heißen Summanden, das Ergebnis heißt Summe." : "Die erste Zahl heißt Minuend, die zweite Subtrahend, das Ergebnis heißt Differenz.";
+      if (sA.length !== sB.length) an += " Die Zahlen haben unterschiedlich viele Stellen. Wo bei der kürzeren Zahl keine Ziffer steht, denke ich mir eine 0.";
+      if (/0/.test(sA.slice(1)) || /0/.test(sB.slice(1))) an += " Eine 0 heißt: In dieser Stelle ist nichts. Ich rechne mit der 0 ganz normal weiter.";
+      out.push(step("Aufgabe", "Die Aufgabe " + sf + " rechne ich schriftlich. " + an + " Ich schreibe die Zahlen so untereinander, dass Einer unter Einer, Zehner unter Zehner und Hunderter unter Hunderter stehen. Dann rechne ich Spalte für Spalte von rechts nach links.", tbl(-1)));
       cols.forEach(c => {
         if (c.e > top && !c.cout && c.dig === 0 && c.cin === 0) return;
         const nm = EXPN[c.e], nx = EXPN[c.e + 1];
-        let t;
+        let t, pl = "";
         if (add) {
-          t = nm + ": " + c.da + " + " + c.db + (c.cin ? " + " + c.cin + " (Übertrag)" : "") + " = " + c.s + " " + nm + ".";
-          if (c.s >= 10) t += " " + c.s + " " + nm + " sind 1 " + nx + " und " + c.dig + " " + nm + ". Ich bündele, das heißt: Ich räume die Zahl auf. Ich schreibe " + c.dig + " und merke mir 1 " + nx + " als Übertrag.";
+          t = nm + ": " + c.da + " (" + nm + ") plus " + c.db + " (" + nm + ")" + (c.cin ? " plus " + c.cin + " (Übertrag)" : "") + " gleich " + c.s + " (" + nm + ").";
+          if (c.s >= 10) t += " " + c.s + " " + nm + " sind 1 " + nx + " und " + c.dig + " " + nm + ". Ich bündele, das heißt: Ich räume die Zahl auf. Ich schreibe " + c.dig + " (" + nm + ") und übertrage 1 (" + nx + "). Ich merke mir den Übertrag.";
         } else {
           t = nm + ": ";
-          if (c.cin) t += c.da + " − 1 (entbündelt) = " + c.eff + " " + nm + ". ";
-          if (c.eff < c.db) t += c.eff + " − " + c.db + " geht nicht. Ich entbündele 1 " + nx + " zu 10 " + nm + ": " + (c.eff + 10) + " − " + c.db + " = " + c.dig + " " + nm + ".";
-          else t += c.eff + " − " + c.db + " = " + c.dig + " " + nm + ".";
+          if (c.cin) t += (c.eff < 0 ? "Ich muss 1 " + nm + " abgeben (entbündelt), aber hier steht " + c.da + ". " : c.da + " − 1 (entbündelt) = " + c.eff + " " + nm + ". ");
+          if (c.eff < c.db) t += (c.eff < 0 ? "" : c.eff + " − " + c.db + " geht nicht. ") + "Ich entbündele 1 " + nx + " zu 10 " + nm + ": Minussprechweise: " + (c.eff + 10) + " (" + nm + ") minus " + c.db + " (" + nm + ") gleich " + c.dig + " (" + nm + "). Der Minuend bleibt insgesamt unverändert: 1 " + nx + " ist so viel wie 10 " + nm + ".";
+          else t += "Minussprechweise: " + c.eff + " (" + nm + ") minus " + c.db + " (" + nm + ") gleich " + c.dig + " (" + nm + ").";
+          t += " Ich schreibe " + c.dig + ".";
+          pl = line("Plussprechweise (Ergänzen):", c.db + " (" + nm + ") plus " + c.dig + " (" + nm + ") gleich " + (c.eff < c.db ? c.eff + 10 : c.eff) + " (" + nm + ")");
         }
-        out.push(step(nm, t, tbl(c.e, c.e)));
+        out.push(step(nm, t, tbl(c.e, c.e) + pl));
       });
       let rr = '<div class="zbig">' + sf + " = " + T(gr(R), "zo") + "</div>";
       rr += line("Überschlag:", "Ich runde: " + gr(rnd(A)) + " " + sign + " " + gr(rnd(B)) + " = " + gr(add ? rnd(A) + rnd(B) : rnd(A) - rnd(B)) + ". Das passt ungefähr zum Ergebnis.");
       rr += line("Probe:", "Die Umkehraufgabe: " + gr(R) + " " + (add ? "−" : "+") + " " + gr(B) + " = " + gr(A));
-      out.push(step("Ergebnis", "Das Ergebnis ist " + T(gr(R), "zo") + ".", tbl(top + 2) + rr, "good", String(R)));
+      if (add) {
+        const tp = []; for (let e = top; e >= 0; e--) tp.push([dg(A, e) * P10(e), dg(B, e) * P10(e)]);
+        rr += line("Halbschriftlich stellenweise:", tp.map(x => gr(x[0]) + " + " + gr(x[1]) + " = " + gr(x[0] + x[1])).join("; ") + ". Alle Teilsummen zusammen: " + gr(R) + ".");
+        if (cols.some(c => c.cout)) rr += line("Lang- und Kurzschreibweise:", "Die kleinen Überträge in der Tabelle sind die Kurzschreibweise. In der Langschreibweise stehen die Teilsummen der Stellen untereinander und werden zum Schluss addiert. Beide Schreibweisen führen zum selben Ergebnis.");
+      } else if (cols.some(c => c.cout)) {
+        rr += line("Warum darfst du die Zahlen so verändern?", "Beim Entbündeln wird der Minuend nur anders geschrieben: 1 Zehner ist so viel wie 10 Einer. Sein Wert bleibt gleich. Das ist die erste Technik. Als zweite Technik kann man erweitern: Man macht den Minuenden um 10 größer und den Subtrahenden in der nächsthöheren Stelle um 1 größer. Beide Zahlen wachsen um gleich viel, darum bleibt die Differenz unverändert.");
+      }
+      out.push(step("Ergebnis", "Das Ergebnis ist " + T(gr(R), "zo") + (add ? ". Es ist die Summe der beiden Summanden." : ". Es ist die Differenz von Minuend und Subtrahend."), tbl(top + 2) + rr, "good", String(R)));
       return out;
     }
 
@@ -3462,7 +3555,7 @@ renderStell();
       const R = A * B, out = [], sf = T(gr(A), "zs") + " · " + T(gr(B), "zg"), la = String(A).length, lb = String(B).length;
       const part = n => { const s = String(n), p = []; for (let i = 0; i < s.length; i++) { const d = Number(s[i]); if (d) p.push(d * P10(s.length - 1 - i)); } return p; };
       const pa = part(A), pb = part(B);
-      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: " + gr(A) + "-mal " + gr(B) + ". Ich rechne in zwei Rechenwegen: erst mit einer Rechentabelle, dann schriftlich untereinander."));
+      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: " + gr(A) + "-mal " + gr(B) + ". Die Zahlen heißen Faktoren, das Ergebnis heißt Produkt. Ich rechne in zwei Rechenwegen: erst mit einer Rechentabelle (Malkreuz), dann schriftlich untereinander."));
       if (pa.length * pb.length > 1 || true) {
         let h = '<div class="dtw"><table class="dtab"><thead><tr><th class="dl">·</th>' + pb.map(x => '<th class="zg">' + gr(x) + "</th>").join("") + "</tr></thead><tbody>";
         pa.forEach(a => { h += '<tr><th class="dl zs">' + gr(a) + "</th>" + pb.map(b => '<td class="co">' + gr(a * b) + "</td>").join("") + "</tr>"; });
@@ -3470,36 +3563,37 @@ renderStell();
         const all = []; pa.forEach(a => pb.forEach(b => all.push(a * b)));
         h += line("Zerlegen:", gr(A) + " · " + gr(B) + " = " + pa.map(a => pb.map(b => gr(a) + " · " + gr(b)).join(" + ")).join(" + "));
         h += line("Addieren:", all.map(gr).join(" + ") + " = " + gr(R));
-        out.push(step("Rechentabelle", "Ich zerlege beide Zahlen nach Stellen: " + T(gr(A), "zs") + " = " + pa.map(gr).join(" + ") + " und " + T(gr(B), "zg") + " = " + pb.map(gr).join(" + ") + ". Jede Zelle der Tabelle ist eine Teilaufgabe. Zum Schluss addiere ich alle Teilprodukte.", h));
+        out.push(step("Rechentabelle (Malkreuz)", "Ich zerlege beide Zahlen nach Stellen: " + T(gr(A), "zs") + " = " + pa.map(gr).join(" + ") + " und " + T(gr(B), "zg") + " = " + pb.map(gr).join(" + ") + ". Jede Zelle der Tabelle ist eine Teilaufgabe, ihr Ergebnis heißt Teilprodukt. Zum Schluss addiere ich alle Teilprodukte.", h));
       }
       // schriftlicher Rechenweg: für jede Ziffer des zweiten Faktors eine Zeile, von links nach rechts
-      const rows = [{ label: "Aufgabe", cells: numCells(A, "cs"), cls: "" }], prods = [];
+      const rows = [{ label: "1. Faktor", cells: numCells(A, "cs"), cls: "" }], prods = [];
       for (let i = 0; i < lb; i++) {
         const e = lb - 1 - i, d = Number(String(B)[i]);
         if (d === 0) { prods.push({ e: e, d: d, p: 0, skip: true }); continue; }
         prods.push({ e: e, d: d, p: d * A, skip: false });
       }
-      const rowOf = (p, k) => ({ label: p.d + " " + EXPN[p.e] + " · " + gr(A), cells: numCells(p.p, COLS[k % 3], p.e), cls: "" });
+      const rowOf = (p, k) => ({ label: "Teilprodukt " + p.d + " " + EXPA[p.e] + " · " + gr(A), cells: numCells(p.p, COLS[k % 3], p.e), cls: "" });
       let k = 0;
       const shownRows = [];
       prods.forEach(p => {
         if (p.skip) {
-          out.push(step("Ziffer " + p.d + " in der " + EXPN[p.e] + "-Spalte", "Die Ziffer " + T("0", "zr") + " steht in der " + EXPN[p.e] + "-Spalte. 0 · " + gr(A) + " = 0. Diese Zeile lasse ich weg. Ich muss nur aufpassen, dass die nächste Zeile in der richtigen Spalte endet.", ntafel([{ label: "Aufgabe", cells: numCells(A, "cs") }].concat(shownRows), { col: p.e })));
+          out.push(step("Ziffer " + p.d + " in der " + EXPN[p.e] + "-Spalte", "Die Ziffer " + T("0", "zr") + " steht in der " + EXPN[p.e] + "-Spalte. 0 · " + gr(A) + " = 0. Diese Zeile lasse ich weg. Ich muss nur aufpassen, dass die nächste Zeile in der richtigen Spalte endet.", ntafel([{ label: "1. Faktor", cells: numCells(A, "cs") }].concat(shownRows), { col: p.e })));
           return;
         }
         const as = String(A); let c = 0; const lines = [];
-        for (let i = as.length - 1; i >= 0; i--) { const v = Number(as[i]) * p.d + c; lines.push(p.d + " · " + as[i] + (c ? " + " + c : "") + " = " + v + (as.length > 1 ? (i > 0 || v >= 10 ? ", ich schreibe " + (i > 0 ? v % 10 + " und merke " + Math.floor(v / 10) : v) : "") : "")); c = Math.floor(v / 10); }
+        for (let i = as.length - 1; i >= 0; i--) { const v = Number(as[i]) * p.d + c; lines.push(p.d + " · " + as[i] + (c ? " + " + c : "") + " = " + v + (as.length > 1 ? (i > 0 || v >= 10 ? ", ich schreibe " + (i > 0 ? v % 10 + " und merke mir den Übertrag " + Math.floor(v / 10) : v) : "") : "")); c = Math.floor(v / 10); }
         const rw = rowOf(p, k++); shownRows.push(rw);
         const zeros = p.e;
         out.push(step("Ziffer " + p.d + " in der " + EXPN[p.e] + "-Spalte",
-          T(p.d, "zg") + " " + EXPN[p.e] + " mal " + gr(A) + " = " + gr(p.p) + " " + EXPN[p.e] + (zeros ? " (also " + gr(p.p * P10(zeros)) + ")" : "") + ". " + (zeros ? "Ich schreibe " + gr(p.p) + " so, dass die letzte Ziffer in der " + EXPN[p.e] + "-Spalte steht. Darum kann ich die " + (zeros === 1 ? "Null" : zeros + " Nullen") + " am Ende weglassen. " : "") + "Rechnung: " + lines.join("; ") + ".",
-          ntafel([{ label: "Aufgabe", cells: numCells(A, "cs") }].concat(shownRows), { col: p.e })));
+          T(p.d, "zg") + " " + EXPN[p.e] + " mal " + gr(A) + " = " + gr(p.p) + " " + EXPN[p.e] + (zeros ? " (also " + gr(p.p * P10(zeros)) + ")" : "") + ". " + (zeros ? "Ich schreibe " + gr(p.p) + " so, dass die letzte Ziffer in der " + EXPN[p.e] + "-Spalte steht. Darum stehen die Teilprodukte versetzt untereinander, und ich kann die " + (zeros === 1 ? "Null" : zeros + " Nullen") + " am Ende weglassen. " : "") + "Rechnung: " + lines.join("; ") + ".",
+          ntafel([{ label: "1. Faktor", cells: numCells(A, "cs") }].concat(shownRows), { col: p.e })));
       });
-      const res = { label: "Ergebnis", cells: numCells(R, "co"), cls: "dres" };
+      const res = { label: "Produkt", cells: numCells(R, "co"), cls: "dres" };
       let rr = '<div class="zbig">' + sf + " = " + T(gr(R), "zo") + "</div>";
       rr += line("Überschlag:", "Ich runde: " + gr(rnd(A)) + " · " + gr(rnd(B)) + " = " + gr(rnd(A) * rnd(B)) + ". Das passt ungefähr zum Ergebnis.");
       rr += line("Probe:", "Die Tauschaufgabe: " + gr(B) + " · " + gr(A) + " = " + gr(R));
-      out.push(step("Ergebnis", "Jetzt addiere ich die Zeilen Spalte für Spalte (wie beim schriftlichen Addieren). Das Ergebnis ist " + T(gr(R), "zo") + ". Beide Rechenwege liefern dasselbe.", ntafel([{ label: "Aufgabe", cells: numCells(A, "cs") }].concat(shownRows, [res])) + rr, "good", String(R)));
+      rr += line("Malkreuz und schriftlich:", "Im Malkreuz stehen alle Teilprodukte einzeln in der Tabelle. Beim schriftlichen Multiplizieren stehen die Teilprodukte versetzt untereinander, jedes in der Spalte seiner Stelle. Die Summe der Teilprodukte ist in beiden Wegen das Produkt.");
+      out.push(step("Ergebnis", "Jetzt addiere ich die Teilprodukte Spalte für Spalte (wie beim schriftlichen Addieren). Das Produkt ist " + T(gr(R), "zo") + ". Beide Rechenwege liefern dasselbe.", ntafel([{ label: "1. Faktor", cells: numCells(A, "cs") }].concat(shownRows, [res])) + rr, "good", String(R)));
       return out;
     }
 
@@ -3984,7 +4078,7 @@ renderStell();
       ["Fragen zum Bild:", "Wie viele kleine Stücke gehören zu einem großen Stück? · Wie viele große Stücke hat der Streifen? · Ist der angemalte Teil genauso groß wie vorher? · Lassen sich Zähler und Nenner durch dieselbe Zahl teilen?"]
     ]);
     const C = BCOL.blue, C2 = BCOL.orange;
-    const arrows = (z, n, k, z2, n2) => '<div class="kpf"><span class="kfr">' + F(z, n, "zs") + '</span><span class="kmid"><span class="kup">: ' + k + '</span><span class="keq">=</span><span class="kup">: ' + k + '</span></span><span class="kfr">' + F(z2, n2, "zo") + "</span></div>";
+    const arrows = (z, n, k, z2, n2) => bogenHtml(F(z, n, "zs"), F(z2, n2, "zo"), ":", k);
     const reihe = k => Array.from({ length: Math.floor(12 / k) }, (_, i) => k * (i + 1)).join(", ");
     function oneCut(z, n, k, first) {
       const z2 = z / k, n2 = n / k, out = [];

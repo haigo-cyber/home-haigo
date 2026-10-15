@@ -848,6 +848,19 @@ function bindNav(host, pre) {
 }
 
 /* ===== Rechenbögen beim Erweitern und Kürzen: Bruch = Bruch mit Bogenpfeilen ===== */
+/* Darstellungen (Rechteck, Punktefeld, Streifen, Tafel ...) bleiben in den folgenden Schritten sichtbar, bis eine neue Darstellung kommt */
+const PICSEL = ".zq,.rrow,.mrows,.dsvgw,.dtw,.srow,.gpool,.gwrap,.gdots,svg,table";
+function carryPic(steps) {
+  let last = "";
+  steps.forEach(st => {
+    if (typeof st.v !== "string") return;
+    const tpl = document.createElement("template"); tpl.innerHTML = st.v;
+    const pics = [...tpl.content.children].filter(c => c.matches(PICSEL) || c.querySelector("svg,table"));
+    if (pics.length) { last = pics.map(c => c.outerHTML).join(""); }
+    else if (last) { st.h = st.h.replace("</div>", "</div>" + last); }
+  });
+  return steps;
+}
 function bogenHtml(l, r, op, k) {
   const lab = (op === "·" ? "·" : ":") + k;
   const arc = (d, ty) => '<path d="' + d + '" fill="none" stroke="#c3c8ce" stroke-width="2" marker-end="url(#bogh)"/><text x="75" y="' + ty + '" text-anchor="middle" font-size="17" font-weight="700" fill="#f2a900">' + lab + "</text>";
@@ -2228,7 +2241,7 @@ renderStell();
     for (let i = 0; i < k; i++) h += "<figure>" + rect({ W: dm.W, H: dm.H, cols: cols, rows: rows, fill: mk(i) }) + (cap ? '<figcaption class="rcap">' + cap(i) + "</figcaption>" : "") + "</figure>";
     return h + "</div>";
   }
-  const step = (t, txt, vis, cls) => ({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + (vis || "") });
+  const step = (t, txt, vis, cls) => ({ t: t, cls: cls, v: vis || "", h: '<div class="utext">' + txt + "</div>" + (vis || "") });
 
   /* --- Bruch mal ganze Zahl --- */
   function buildZahl() {
@@ -2394,7 +2407,7 @@ renderStell();
     const pr = problem();
     const nb = $("brNext"), bb = $("brBack"), ab = $("brAll");
     if (pr) { msg.className = "note err"; msg.textContent = pr; host.innerHTML = ""; nb.disabled = bb.disabled = ab.disabled = true; return; }
-    steps = op === "zahl" ? buildZahl() : op === "bb" ? buildBB() : op === "dz" ? buildDZ() : buildDB();
+    steps = carryPic(op === "zahl" ? buildZahl() : op === "bb" ? buildBB() : op === "dz" ? buildDZ() : buildDB());
     msg.className = "note";
     msg.textContent = NOTE[op] + " Mit „Nächster Schritt“ geht es weiter, der neueste Schritt steht immer oben.";
     if (shown > steps.length - 1) shown = steps.length - 1;
@@ -2496,7 +2509,7 @@ renderStell();
     return s + "</div></div>";
   }
   const solid = col => idx => null;
-  const step = (t, txt, vis, cls) => ({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + (vis || "") });
+  const step = (t, txt, vis, cls) => ({ t: t, cls: cls, v: vis || "", h: '<div class="utext">' + txt + "</div>" + (vis || "") });
 
   function build() {
     const a = V.a, b = V.b, c = V.c, d = V.d, out = [];
@@ -2602,7 +2615,7 @@ renderStell();
     $("baLegend").innerHTML = '<div style="font-size:.95rem;line-height:2"><i class="zsw" style="background:' + COL.blue + '"></i>erster Bruch &nbsp; <i class="zsw" style="background:' + (op === "add" ? COL.green : COL.red) + '"></i>zweiter Bruch' + (op === "sub" ? " (wird weggenommen und durchgestrichen)" : "") +
       ' &nbsp; <i class="zsw" style="background:' + COL.orange + '"></i>Ergebnis &nbsp; <i class="zsw" style="background:#fff;height:4px;width:18px"></i>dicke weiße Linie: Hier wird vergröbert (Teile zusammenfassen = kürzen) oder verfeinert (Teile teilen = erweitern)</div>';
     if (pr) { msg.className = "note err"; msg.textContent = pr; host.innerHTML = ""; nb.disabled = bb.disabled = ab.disabled = true; return; }
-    steps = build();
+    steps = carryPic(build());
     msg.className = "note";
     msg.textContent = "Fünf Schritte: Aufgabe, erst kürzen (vergröbern), auf einen gemeinsamen Nenner erweitern (verfeinern), " + (op === "add" ? "addieren" : "subtrahieren") + ", Ergebnis kürzen. Mit „Nächster Schritt“ geht es weiter, der neueste Schritt steht immer oben.";
     if (shown > steps.length - 1) shown = steps.length - 1;
@@ -2661,7 +2674,7 @@ renderStell();
   const cap = t => '<div class="gcap">' + t + "</div>";
   const pool = n => n > 0 ? '<div class="gpool" style="--cols:' + Math.min(n, 12) + '">' + sqs(n, C.steel) + "</div>" : '<div class="gpool"><span class="gnone">leer</span></div>';
   const rectOf = (rows, cols, col) => '<div class="grect" style="--cols:' + cols + '">' + sqs(rows * cols, col) + "</div>";
-  const step = (t, txt, vis, cls) => ({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + (vis || "") });
+  const step = (t, txt, vis, cls) => ({ t: t, cls: cls, v: vis || "", h: '<div class="utext">' + txt + "</div>" + (vis || "") });
   const wrap = parts => '<div class="gwrap">' + parts.map(p => "<div>" + p + "</div>").join("") + "</div>";
 
   function buildMul() {
@@ -2957,7 +2970,7 @@ renderStell();
   const F = (p, q, cls) => '<span class="ifr ' + (cls || "") + '"><span>' + p + "</span><span>" + q + "</span></span>";
   const T = (x, cls) => '<span class="' + cls + '">' + x + "</span>";
   const line = (lab, txt) => '<div class="zeq"><span class="usmall">' + lab + "</span>" + txt + "</div>";
-  const step = (t, txt, vis, cls, r) => ({ t: t, cls: cls, r: r, h: '<div class="utext">' + txt + "</div>" + (vis || "") });
+  const step = (t, txt, vis, cls, r) => ({ t: t, cls: cls, r: r, v: vis || "", h: '<div class="utext">' + txt + "</div>" + (vis || "") });
   const sw = c => '<i class="zsw" style="background:' + c + '"></i>';
   const ri = (x, y) => x + Math.floor(Math.random() * (y - x + 1));
   const P10 = k => Math.pow(10, k);
@@ -3094,7 +3107,7 @@ renderStell();
       const msg = $(o.pre + "Msg"), host = $(o.pre + "Steps");
       const r = o.build();
       if (typeof r === "string") { msg.className = "note err"; msg.textContent = r; host.innerHTML = ""; host.dataset.r = ""; nb().disabled = bb().disabled = ab().disabled = true; return; }
-      steps = r; msg.className = "note";
+      steps = o.carry === false ? r : carryPic(r); msg.className = "note";
       msg.textContent = o.note() + " Mit „Nächster Schritt“ geht es weiter, der neueste Schritt steht immer oben.";
       if (shown > steps.length - 1) shown = steps.length - 1;
       let h = "";
@@ -3239,7 +3252,7 @@ renderStell();
       out.push(step("Leere Spalten auffüllen und Ergebnis", filled ? "Es sind " + filled + (filled === 1 ? " Spalte" : " Spalten") + " frei geworden. Die fülle ich mit Nullen auf (orange). Das Ergebnis ist " + T(res, "zo") + "." : "Es sind keine Spalten frei geworden. Ich muss nichts auffüllen. Das Ergebnis ist " + T(res, "zo") + ".", rr, "good", res));
       return out;
     }
-    const sp = stepper({ pre: pre, build: build, note: () => "Kommaverschiebung: Die Ziffern wandern in der Stellentafel, das Komma bleibt zwischen E und z." });
+    const sp = stepper({ pre: pre, carry: false, build: build, note: () => "Kommaverschiebung: Die Ziffern wandern in der Stellentafel, das Komma bleibt zwischen E und z." });
     function inputs() {
       $(pre + "Row").innerHTML = txtIn(pre, "s", V.s, "#6cc0f5") + sym(op[0] === "m" ? "·" : ":") + '<div class="numbox"><input type="text" readonly value="' + P10(op.slice(1).length - 1) + '" style="color:#5fd06f;border-color:#5fd06f"></div>';
       $(pre + "Row").querySelector("[data-k]").addEventListener("input", e => { V.s = e.target.value; sp.reset(); sp.render(); });

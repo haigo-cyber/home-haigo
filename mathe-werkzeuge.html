@@ -412,9 +412,14 @@
   .qzdot.cur { border-color:var(--qa); box-shadow:0 0 0 3px rgba(255,255,255,.12); animation:qzpop 1s ease infinite; }
   .qzdot.boss { width:1.9rem; height:1.9rem; border-color:#f2a900; }
   .qzdot svg { width:1.2rem; height:1.2rem; fill:#f2a900; } .qzdot.ok svg, .qzdot.no svg { fill:#0d1016; }
-  .qztime { height:.7rem; border-radius:.4rem; background:var(--surface2); margin:0 0 .8rem; overflow:hidden; }
-  .qztime > div { height:100%; width:100%; background:var(--qa); transition:width .12s linear; }
-  .qztime > div.low { background:#ff6b5e; }
+  .qztime { display:flex; align-items:center; gap:.8rem; margin:0 0 .8rem; }
+  .qzbarw { flex:1; height:.8rem; border-radius:.4rem; background:var(--surface2); overflow:hidden; }
+  .qzbarw > div { height:100%; width:100%; background:var(--qa); transition:width .12s linear; }
+  .qzbarw > div.low { background:#ff6b5e; }
+  .qzcdnum { font-size:1.9rem; font-weight:900; min-width:2.4rem; text-align:center; font-variant-numeric:tabular-nums; }
+  .qztime.out .qzcdnum { color:var(--muted); } .qztime.out .qzbarw > div { background:#4a4f55; }
+  .qzlate { font-weight:800; color:#ffb347; }
+  .qzpts.late { color:var(--muted); }
   .qzcard { position:relative; overflow:hidden; animation:qzin .35s ease; }
   .qzcard.boss { border:2px solid #f2a900; box-shadow:0 0 22px rgba(242,169,0,.25); }
   .qzcard.shake { animation:qzshake .45s ease; }
@@ -4703,7 +4708,7 @@ document.querySelectorAll(".card").forEach(c => {
   };
   const HEART = on => '<svg class="qzheart' + (on ? "" : " off") + '" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
   const STAR = on => '<svg class="qzstar' + (on ? " on" : "") + '" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
-  const BADGES = { clean: ["Fehlerfrei", "Alle 10 Aufgaben beim ersten Versuch richtig"], streak: ["Serienstar", "Fünf Aufgaben hintereinander richtig"], boss: ["Bossbezwinger", "Die Bossaufgabe gelöst"], blitz: ["Blitzdenker", "Eine Runde mit Zeitdruck geschafft"] };
+  const BADGES = { clean: ["Fehlerfrei", "Alle 10 Aufgaben beim ersten Versuch richtig"], streak: ["Serienstar", "Fünf Aufgaben hintereinander richtig"], boss: ["Bossbezwinger", "Die Bossaufgabe gelöst"], blitz: ["Blitzdenker", "Eine Runde mit Countdown geschafft, immer rechtzeitig"] };
   function confetti(host, n) {
     if (calm()) return;
     const cols = ["#6cc0f5", "#5fd06f", "#ffb347", "#c4a1ff", "#ff6b5e", "#f2a900"];
@@ -4716,9 +4721,9 @@ document.querySelectorAll(".card").forEach(c => {
   const plain = h => h.replace(/<svg[\s\S]*?<\/svg>/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
   function build(rub) {
-    const host = document.getElementById("panel-" + rub), info = RUB[rub], N = 10, TIME = 45;
+    const host = document.getElementById("panel-" + rub), info = RUB[rub], N = 10, TIME = 12;
     const id = s => rub + s, $ = s => document.getElementById(id(s));
-    let top = "alle", timerOn = false, st = null, Q = null, sel = {}, checked = false, tmr = null, rem = TIME, usedJoker = false, boss = false;
+    let top = "alle", timerOn = store.get("msw_qz_cd") !== "0", expired = false, st = null, Q = null, sel = {}, checked = false, tmr = null, rem = TIME, usedJoker = false, boss = false;
     host.style.setProperty("--qa", info.col);
     host.innerHTML = '<div class="qzwrap" id="' + id("Stage") + '"></div>';
     const stage = () => $("Stage");
@@ -4735,24 +4740,24 @@ document.querySelectorAll(".card").forEach(c => {
       const best = loadBest(), bd = loadBadges();
       stage().innerHTML = '<div class="card qzstart">' +
         '<div class="qzarena">' + info.arena + '</div>' +
-        '<p class="qzlead">10 Aufgaben, 3 Leben. Bei jeder Aufgabe stehen 7 Möglichkeiten da. Finde <b>alle</b> richtigen und drücke „Prüfen“. Die letzte Aufgabe ist der Boss und zählt doppelt.</p>' +
+        '<p class="qzlead">10 Aufgaben, 3 Leben. Bei jeder Aufgabe stehen 7 Möglichkeiten da. Finde <b>alle</b> richtigen und drücke „Prüfen“. Die letzte Aufgabe ist der Boss und zählt doppelt.</p>' + (timerOn ? '<p class="qzlead">Mit Countdown hast du ' + TIME + ' Sekunden pro Aufgabe. Danach gibt es für diese Aufgabe keine Punkte mehr, lösen kannst du sie aber trotzdem.</p>' : '') +
         '<div class="qzsec">Thema</div><div class="controls" id="' + id("Chips") + '">' + [["alle", "Alle Themen"]].concat(info.tops).map(x => '<button class="tab" data-top="' + x[0] + '" aria-selected="' + (x[0] === top) + '">' + x[1] + "</button>").join("") + "</div>" +
-        '<div class="qzsec">Einstellungen</div><div class="controls"><button class="tab" id="' + id("Timer") + '" aria-pressed="' + timerOn + '" aria-selected="' + timerOn + '">Zeitdruck: ' + (timerOn ? "an (" + TIME + " s)" : "aus") + '</button><button class="tab" id="' + id("Snd") + '" aria-selected="' + soundOn + '">Ton: ' + (soundOn ? "an" : "aus") + "</button></div>" +
+        '<div class="qzsec">Einstellungen</div><div class="controls"><button class="tab" id="' + id("Timer") + '" aria-pressed="' + timerOn + '" aria-selected="' + timerOn + '">Countdown: ' + (timerOn ? "an (" + TIME + " s)" : "aus") + '</button><button class="tab" id="' + id("Snd") + '" aria-selected="' + soundOn + '">Ton: ' + (soundOn ? "an" : "aus") + "</button></div>" +
         '<div class="qzbest">' + (best ? "Bestleistung bei „" + topName() + "“: <b>" + best.pts + " Punkte</b> " + stars(best.stars) : "Noch keine Runde bei „" + topName() + "“ gespielt.") + "</div>" +
         (bd.length ? '<div class="qzbadges">' + bd.map(b => '<span class="qzbadge" title="' + BADGES[b][1] + '">' + BADGES[b][0] + "</span>").join("") + "</div>" : "") +
         '<div class="controls qzgo"><button class="qzbig" id="' + id("Go") + '">Spiel starten</button><button id="' + id("Prac") + '">Üben ohne Punkte</button></div></div>';
       $("Chips").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { top = b.dataset.top; showStart(); }));
-      $("Timer").addEventListener("click", () => { timerOn = !timerOn; showStart(); });
+      $("Timer").addEventListener("click", () => { timerOn = !timerOn; store.set("msw_qz_cd", timerOn ? "1" : "0"); showStart(); });
       $("Snd").addEventListener("click", () => { soundOn = !soundOn; store.set("msw_qz_snd", soundOn ? "1" : "0"); showStart(); SFX.tick(); });
       $("Go").addEventListener("click", () => start(false)); $("Prac").addEventListener("click", () => start(true));
     }
     function start(practice) {
-      st = { practice: practice, idx: 0, lives: 3, score: 0, streak: 0, maxStreak: 0, correct: 0, jokers: 2, log: [], bossOk: false, timer: timerOn && !practice };
+      st = { practice: practice, idx: 0, lives: 3, score: 0, streak: 0, maxStreak: 0, correct: 0, late: 0, jokers: 2, log: [], bossOk: false, timer: timerOn && !practice };
       SFX.tick(); nextQ();
     }
     function nextQ() {
       boss = !st.practice && st.idx === N - 1;
-      Q = gen(rub, top, boss ? 2 : 0); sel = {}; checked = false; usedJoker = false;
+      Q = gen(rub, top, boss ? 2 : 0); sel = {}; checked = false; usedJoker = false; expired = false;
       renderPlay(); if (boss) SFX.boss();
       if (st.timer) startTimer();
     }
@@ -4771,7 +4776,7 @@ document.querySelectorAll(".card").forEach(c => {
     }
     function renderPlay() {
       const g = !st.practice;
-      let h = g ? hudHtml() + pathHtml() + (st.timer ? '<div class="qztime"><div id="' + id("Bar") + '"></div></div>' : "") : '<div class="controls" style="margin-bottom:.6rem"><span class="qzbadge">Üben ohne Punkte</span><button id="' + id("Quit") + '">Zurück zum Start</button></div>';
+      let h = g ? hudHtml() + pathHtml() + (st.timer ? '<div class="qztime" id="' + id("Tm") + '"><div class="qzbarw"><div id="' + id("Bar") + '"></div></div><span class="qzcdnum" id="' + id("Cd") + '">' + TIME + '</span><span class="qzlate" id="' + id("Late") + '" hidden>Keine Punkte mehr für diese Aufgabe</span></div>' : "") : '<div class="controls" style="margin-bottom:.6rem"><span class="qzbadge">Üben ohne Punkte</span><button id="' + id("Quit") + '">Zurück zum Start</button></div>';
       h += '<div class="card qzcard' + (boss ? " boss" : "") + '" id="' + id("Card") + '">' +
         '<div class="qzmeta">' + (g ? (boss ? "BOSSAUFGABE · doppelte Punkte" : "Aufgabe " + (st.idx + 1) + " von " + N) : "Übungsaufgabe") + " · " + topLabel(Q.top) + "</div>" +
         '<div class="utext qzq">' + Q.q + "</div>" +
@@ -4798,13 +4803,21 @@ document.querySelectorAll(".card").forEach(c => {
       cand.forEach(i => { const b = stage().querySelector('.qzopt[data-i="' + i + '"]'); b.classList.add("qzgone"); b.disabled = true; });
       usedJoker = true; st.jokers--; $("Joker").innerHTML = "50:50 <b>" + st.jokers + "</b>"; $("Joker").disabled = true; SFX.joker();
     }
+    function paintTimer() {
+      const bar = $("Bar"), cd = $("Cd");
+      if (bar) { bar.style.width = Math.max(0, rem / TIME * 100) + "%"; bar.classList.toggle("low", rem < 4); }
+      if (cd) cd.textContent = Math.max(0, Math.ceil(rem));
+    }
+    function expire() {
+      if (expired || checked) return; expired = true; rem = 0; stopTimer(); paintTimer();
+      const t = $("Tm"); if (t) t.classList.add("out"); const l = $("Late"); if (l) l.hidden = false; tone([196], 0.25, "square", 0.08);
+    }
     function startTimer() {
-      stopTimer(); rem = TIME; let last = Date.now();
+      stopTimer(); rem = TIME; let last = Date.now(); paintTimer();
       tmr = setInterval(() => {
         const now = Date.now(); if (host.hidden || checked) { last = now; return; }
-        rem -= (now - last) / 1000; last = now;
-        const bar = $("Bar"); if (bar) { bar.style.width = Math.max(0, rem / TIME * 100) + "%"; bar.classList.toggle("low", rem < 10); }
-        if (rem <= 0) { stopTimer(); if (!checked) check(true); }
+        rem -= (now - last) / 1000; last = now; paintTimer();
+        if (rem <= 0) expire();
       }, 100);
     }
     function floatText(t, cls) { const f = $("Fl"); if (!f) return; const e = document.createElement("div"); e.className = "qzpts " + (cls || ""); e.textContent = t; f.appendChild(e); setTimeout(() => e.remove(), 1500); }
@@ -4832,18 +4845,20 @@ document.querySelectorAll(".card").forEach(c => {
         if (perfect) {
           let base = 100 + 50 * (Q.k - 1); lines.push(base + " Grundpunkte");
           const sb = Math.min(st.streak, 4) * 25; if (sb) { lines.push(sb + " Serienbonus"); base += sb; }
-          let t = 0; if (st.timer) { t = Math.max(0, Math.ceil(rem)) * 2; if (t) lines.push(t + " Zeitbonus"); }
+          let t = 0; if (st.timer && !expired) { t = Math.max(0, Math.ceil(rem)) * 5; if (t) lines.push(t + " Zeitbonus"); }
           pts = base; if (boss) { pts *= 2; lines.push("Boss: alles mal 2"); }
           if (usedJoker) { pts = Math.round(pts / 2); lines.push("50:50 benutzt: halbe Punkte"); }
           pts += t;
-          st.score += pts; st.streak++; st.maxStreak = Math.max(st.maxStreak, st.streak); st.correct++; if (boss) st.bossOk = true;
-          SFX.good(); floatText("+" + pts, "gain"); confetti(stage().querySelector(".qzcard"), boss ? 70 : 18);
+          if (expired) { pts = 0; lines.length = 0; lines.push("Die Zeit war schon abgelaufen"); st.late++; }
+          st.score += pts; st.correct++; if (boss) st.bossOk = true;
+          if (!expired) { st.streak++; st.maxStreak = Math.max(st.maxStreak, st.streak); }
+          SFX.good(); floatText(expired ? "0 Punkte" : "+" + pts, expired ? "late" : "gain"); if (!expired) confetti(stage().querySelector(".qzcard"), boss ? 70 : 18);
         } else {
           st.lives--; st.streak = 0; SFX.bad(); floatText("−1 Leben", "loss"); if (!calm()) { const c = stage().querySelector(".qzcard"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); }
         }
         st.log[st.idx] = { res: perfect ? "ok" : "no", q: Q.q, corr: Q.opts.filter(o => o.ok).map(o => o.h), pts: pts };
-        fb = '<div class="qzfb ' + (perfect ? "good" : "no") + '"><b>' + (perfect ? "Richtig! +" + pts + " Punkte" : timeUp ? "Die Zeit ist abgelaufen. Du verlierst ein Leben." : "Nicht ganz. Du verlierst ein Leben.") + "</b> " +
-          (perfect ? "(" + lines.join(", ") + ")" : hit + " von " + Q.k + " richtigen gefunden" + (bad ? ", " + bad + " falsche angeklickt" : "") + ".") + "</div>";
+        fb = '<div class="qzfb ' + (perfect ? "good" : "no") + '"><b>' + (perfect ? (expired ? "Richtig! Aber keine Punkte, die Zeit war abgelaufen." : "Richtig! +" + pts + " Punkte") : timeUp ? "Die Zeit ist abgelaufen. Du verlierst ein Leben." : "Nicht ganz. Du verlierst ein Leben.") + "</b> " +
+          (perfect ? (expired ? "" : "(" + lines.join(", ") + ")") : hit + " von " + Q.k + " richtigen gefunden" + (bad ? ", " + bad + " falsche angeklickt" : "") + ".") + "</div>";
         updateHud();
         const last = st.lives <= 0 || st.idx >= N - 1;
         $("Next").hidden = false; $("Next").textContent = last ? "Ergebnis ansehen" : "Weiter";
@@ -4865,7 +4880,7 @@ document.querySelectorAll(".card").forEach(c => {
       const best = loadBest(), record = !best || st.score > best.pts;
       if (record && st.score > 0) store.set(bkey(), JSON.stringify({ pts: st.score, stars: nst })); else if (best && nst > best.stars) store.set(bkey(), JSON.stringify({ pts: best.pts, stars: nst }));
       const have = loadBadges(), got = [];
-      if (win && st.correct === N) got.push("clean"); if (st.maxStreak >= 5) got.push("streak"); if (st.bossOk) got.push("boss"); if (win && st.timer) got.push("blitz");
+      if (win && st.correct === N) got.push("clean"); if (st.maxStreak >= 5) got.push("streak"); if (st.bossOk) got.push("boss"); if (win && st.timer && st.late === 0) got.push("blitz");
       const fresh = got.filter(b => have.indexOf(b) < 0); if (fresh.length) store.set(gkey(), JSON.stringify(have.concat(fresh)));
       const missed = st.log.filter(x => x && x.res === "no");
       stage().innerHTML = '<div class="card qzend' + (win ? " win" : "") + '" id="' + id("Card") + '">' +
@@ -4888,7 +4903,7 @@ document.querySelectorAll(".card").forEach(c => {
     showStart();
     return {
       setTop: t => { top = t; showStart(); }, start: (practice, timer) => { timerOn = !!timer; start(!!practice); },
-      state: () => ({ Q: Q, sel: sel, st: st, checked: checked }), toggle: toggle, check: () => check(false), timeout: () => check(true), next: next, joker: joker, home: showStart, retry: retry
+      state: () => ({ Q: Q, sel: sel, st: st, checked: checked }), toggle: toggle, check: () => check(false), expire: () => expire(), next: next, joker: joker, home: showStart, retry: retry
     };
   }
   const inst = {};

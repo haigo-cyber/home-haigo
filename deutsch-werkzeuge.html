@@ -220,10 +220,24 @@
   .tk-timer.low .sec { color:var(--bad); animation:throb .45s ease-in-out infinite alternate; } @keyframes throb { from { transform:scale(1); } to { transform:scale(1.18); } }
   .chip { font-size:1.3rem; padding:.55rem 1.1rem; background:#1d2f4d; }
   button.primary { box-shadow:0 .2rem 0 #8e98a8; } button.primary:active { box-shadow:0 .04rem 0 #8e98a8; }
+  /* Spielbereich: passt in eine Bildschirmhöhe */
+  .tb-sub { display:none; } .topbar { padding:.55rem 1rem; }
+  .play { grid-template-columns:minmax(18rem, 33rem) 1fr; align-items:start; }
+  .boardwrap { position:sticky; top:.6rem; }
+  .board { width:max(14rem, min(100%, calc(100vh - 15rem))); margin:0 auto; }
+  .bfoot { display:flex; align-items:center; gap:.7rem; margin-top:.7rem; } .bfoot .bmsg { flex:1; text-align:left; margin:0; min-height:0; font-size:1rem; } .bfoot .bmsg.win { font-size:1.05rem; } .bfoot button { flex:none; }
+  .sechead { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.5rem; margin:1.2rem 0 .65rem; } .sechead .sec { margin:0; }
+  .task { position:sticky; top:.6rem; max-height:calc(100vh - 6rem); overflow:auto; }
+  .tk-bar { position:sticky; top:0; z-index:3; }
+  .tk-act { position:sticky; bottom:0; z-index:3; background:var(--surface); padding:.6rem 0 .15rem; margin-top:.5rem; }
+  .tk-titlerow { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:.2rem .9rem; margin-bottom:.4rem; } .tk-titlerow .tk-title { margin:0; } .tk-titlerow .stake { margin:0; }
+  .how { display:block; padding:0; border:0; background:none; margin:0 0 .65rem; font-size:.9rem; color:var(--muted); }
+  .tk-feed { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem .8rem; } .tk-feed .gcs { margin:0; } .tk-feed .fs { flex-basis:100%; }
   @media (max-width:820px) {
     .side { position:fixed; z-index:20; left:0; top:0; box-shadow:0 0 2rem #000; }
     .play { grid-template-columns:minmax(0,1fr); } .score { grid-template-columns:1fr 1fr; } .mid { grid-column:1 / -1; flex-direction:row; gap:.6rem; order:3; }
     .fld { font-size:3rem; }
+    .boardwrap, .task { position:static; max-height:none; overflow:visible; } .tk-act { position:static; } .tk-bar { position:static; }
     .hud { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } .hvs { grid-column:1 / -1; order:3; display:flex; gap:.6rem; justify-content:center; align-items:baseline; } .hvs b { display:inline; }
     .score { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:.5rem; } .steps { margin-left:0; }
     .pl { padding:.6rem .55rem .7rem; gap:.45rem; } .pl-top { gap:.4rem; } .pl .sym { width:2.1rem; height:2.1rem; font-size:1.3rem; } .pl .nm { font-size:.95rem; } .pl .rk { font-size:.72rem; }
@@ -263,8 +277,7 @@
         <div class="boardwrap">
           <div class="hud" id="hud"></div>
           <div class="board" id="board" role="grid" aria-label="Spielfeld 3 mal 3"></div>
-          <div class="bmsg" id="bmsg" aria-live="polite"></div>
-          <div class="bact"><button id="newRound">Neue Runde</button><button id="resetAll">Alles neu (Punkte löschen)</button></div>
+          <div class="bfoot"><div class="bmsg" id="bmsg" aria-live="polite"></div><button id="newRound">Neue Runde</button></div>
         </div>
         <div class="task" id="task" aria-live="polite"></div>
       </div>
@@ -305,7 +318,7 @@
         </div>
         <p class="note">Änderungen gelten ab der nächsten Aufgabe. Die Namen gelten sofort.</p>
       </details>
-      <h2 class="sec">Spieler und Fortschritt</h2>
+      <div class="sechead"><h2 class="sec">Spieler und Fortschritt</h2><button id="resetAll">Alles neu (Punkte löschen)</button></div>
       <div class="score" id="score"></div>
     <details class="card" id="trophy"><summary>Trophäen und Fortschritt</summary><div id="trophyBody"></div><div class="set-row"><button id="resetProg">Fortschritt und Trophäen löschen</button></div></details>
     </main>
@@ -723,13 +736,13 @@
       t.className = "task" + (wi >= 0 ? " active" : ""); t.style.setProperty("--c", wi >= 0 ? PCOL[wi] : "#9aa1a9");
       const rows = [0, 1].map(i => { const R = RS[i]; return '<tr style="--c:' + PCOL[i] + '"><td>' + esc(nameOf(i)) + "</td><td>" + R.ok + "</td><td>" + R.bad + "</td><td>+" + R.xp + " XP</td><td>" + (R.mDone ? "geschafft" : "offen") + (R.newB.length ? '<div class="nb">Neu: ' + esc(R.newB.join(", ")) + "</div>" : "") + "</td></tr>"; }).join("");
       t.innerHTML = '<div class="tk-bar"><span class="who">Runde beendet</span></div><div class="tk-body"><div class="endmsg">' + esc(G.msg) + '</div><table class="sumtab"><thead><tr><th>Spieler</th><th>Richtig</th><th>Falsch</th><th>Punkte</th><th>Mission</th></tr></thead><tbody>' + rows + '</tbody></table><div class="tk-act"><button class="primary" id="again">Neue Runde starten</button></div></div>';
-      $("again").onclick = newRound; return;
+      t.scrollTop = 0; $("again").onclick = newRound; return;
     }
     t.className = "task active"; t.style.setProperty("--c", PCOL[G.cur]);
     t.innerHTML = '<div class="tk-bar"><span class="sym">' + SYM[G.cur] + '</span><span class="who">' + esc(nameOf(G.cur)) + " ist dran</span>" + STEPS + '</div><div class="tk-body"><div class="tk-title">Wähle ein freies Feld auf dem Spielfeld.</div><div class="howto">' +
       '<div class="hstep first"><b><i>1</i>Feld wählen</b><span>Tippe auf ein freies Feld im Spielfeld.</span></div><div class="hstep"><b><i>2</i>Aufgabe lösen</b><span>Hier im Aufgabenfeld erscheinen die umrandeten Eingabefelder.</span></div><div class="hstep"><b><i>3</i>Feld gewinnen</b><span>Richtig gelöst, dann gehört dir das Feld. Drei in einer Reihe gewinnen.</span></div></div>' +
       '<div class="note">Deine Mission: ' + esc(RS[G.cur].mission.t) + " (+" + RS[G.cur].mission.xp + ' XP). Extrapunkte gibt es außerdem für Serien und schnelle Antworten. Einmal pro Runde kannst du den Tipp-Joker nutzen.</div></div>';
-    setStep(1);
+    setStep(1); t.scrollTop = 0;
   }
   const PH = { a: "Artikel", w: "Verbform", t: "Wort" };
   const slotHtml = (s, i) => {
@@ -739,7 +752,7 @@
   };
   function stakeHtml(T) {
     const lim = +S.lim, base = 10 + 5 * T.slots.length, mult = Math.min(3, 1 + 0.5 * SK[G.cur]), mx = Math.round((base + (lim ? 10 : 0)) * mult);
-    return '<div class="stake">Belohnung: <b>bis zu ' + mx + " XP</b>" + (SK[G.cur] > 0 ? "<span>Serie-Faktor x" + String(mult).replace(".", ",") + "</span>" : "") + (lim ? "<span>Zeitbonus bis +10</span>" : "") + "<span>Joker halbiert die Punkte</span></div>";
+    return '<div class="stake">Belohnung: <b>bis zu ' + mx + " XP</b>" + (SK[G.cur] > 0 ? "<span>Serie-Faktor x" + String(mult).replace(".", ",") + "</span>" : "") + (lim ? "<span>Zeitbonus bis +10</span>" : "") + "</div>";
   }
   function renderTaskOpen() {
     const T = G.task, t = $("task"), wr = S.ans === "type";
@@ -756,20 +769,20 @@
     }
     const lim = +S.lim;
     t.className = "task active"; t.style.setProperty("--c", PCOL[G.cur]);
-    t.innerHTML = '<div class="tk-bar"><span class="sym">' + SYM[G.cur] + '</span><span class="who">' + esc(nameOf(G.cur)) + " ist dran</span>" + STEPS + '</div><div class="tk-body"><div class="tk-title">' + esc(T.title) + "</div>" + stakeHtml(T) + '<div class="how"><span class="hn">So geht es</span><span>' +
-      (wr ? "Schreibe die Lösung in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke unten die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.") + "</span></div>" +
+    t.innerHTML = '<div class="tk-bar"><span class="sym">' + SYM[G.cur] + '</span><span class="who">' + esc(nameOf(G.cur)) + " ist dran</span>" + STEPS + '</div><div class="tk-body"><div class="tk-titlerow"><div class="tk-title">' + esc(T.title) + "</div>" + stakeHtml(T) + '</div><div class="how">' +
+      (wr ? "Schreibe in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.") + "</div>" +
       (lim ? '<div class="tk-timer"><div class="bar"><i id="tkBar"></i></div><span class="sec" id="tkSec">' + lim + " s</span></div>" : "") +
       '<div class="tw">' + tab + "</div>" + (wr ? "" : '<div class="chips" id="chips"></div>') +
       '<div class="tk-feed" id="tkFeed"></div>' +
-      '<div class="tk-act">' + (wr ? "" : '<button id="tkClear">Letzte Eingabe löschen</button>') + '<button class="primary" id="tkCheck">Prüfen</button>' + (RS[G.cur].joker > 0 ? '<button class="jk-btn" id="tkJoker">Tipp-Joker (' + RS[G.cur].joker + ")</button>" : "") + '<button id="tkNext" hidden class="primary">Weiter</button></div></div>';
-    setStep(2);
+      '<div class="tk-act">' + (wr ? "" : '<button id="tkClear">Letzte Eingabe löschen</button>') + '<button class="primary" id="tkCheck">Prüfen</button>' + (RS[G.cur].joker > 0 ? '<button class="jk-btn" id="tkJoker" title="Füllt eine Lücke aus. Die Aufgabe bringt dann nur halbe Punkte.">Tipp-Joker (' + RS[G.cur].joker + ")</button>" : "") + '<button id="tkNext" hidden class="primary">Weiter</button></div></div>';
+    setStep(2); t.scrollTop = 0;
     $("tkCheck").onclick = check;
     $("tkNext").onclick = afterTask;
     if ($("tkJoker")) $("tkJoker").onclick = useJoker;
     if (wr) {
       const ins = Array.from(t.querySelectorAll(".sin"));
       ins.forEach((el, i) => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (i < ins.length - 1) ins[i + 1].focus(); else check(); } }));
-      if (ins[0]) ins[0].focus();
+      if (ins[0]) ins[0].focus({ preventScroll: true });
     } else {
       $("tkClear").onclick = () => { const k = T.fill.map((x, i) => x !== null ? i : -1).filter(i => i >= 0); if (k.length) { T.fill[k[k.length - 1]] = null; renderChips(); } };
       t.querySelectorAll(".slot").forEach(el => { const f = () => { const i = +el.dataset.s; if (!T.done && T.fill[i] !== null) { T.fill[i] = null; renderChips(); } }; el.onclick = f; el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); f(); } }; });
@@ -790,7 +803,7 @@
     const T = buildTask(); T.field = i; T.done = false; T.frac = 1; T.jok = false; T.fill = T.slots.map(() => null); T.res = null;
     G.task = T; G.last = -1; G.msg = "";
     renderBoard(); renderTaskOpen(); startTimer();
-    try { $("task").scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e) { /* egal */ }
+    try { if (window.matchMedia("(max-width:820px)").matches) $("task").scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { /* egal */ }
   }
   function useJoker() {
     const T = G.task, R = RS[G.cur]; if (!T || T.done || R.joker < 1) return;
@@ -890,6 +903,7 @@
     G.task = null; G.last = -1;
     if (!G.over) { G.cur = 1 - G.cur; G.msg = ""; }
     renderScore(); renderBoard(); renderIdle();
+    try { if (window.matchMedia("(max-width:820px)").matches) $("board").scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) { /* egal */ }
   }
   function newRound() {
     clearInterval(timer);

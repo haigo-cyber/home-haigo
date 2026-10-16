@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0d1016">
+<title>Seifferts Deutsch-Werkzeuge</title>
+<style>
+  :root { --bg:#0d1016; --surface:#141922; --surface2:#1a202b; --hair:rgba(255,255,255,.08); --hair2:rgba(255,255,255,.15); --text:#e6e8eb; --muted:#9aa1a9;
+          --p1:#6cc0f5; --p2:#ffb347; --ok:#5fd06f; --bad:#ff6b5e; --gold:#f2a900; --sbw:15.5rem; }
+  * { box-sizing:border-box; }
+  html { font-size:calc(17px * var(--k, 1)); }
+  body { margin:0; min-height:100vh; font-family:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--text);
+         background:radial-gradient(58rem 30rem at 85% -8%, rgba(86,120,196,.17), transparent 62%), radial-gradient(47rem 29rem at 0% 105%, rgba(140,100,220,.08), transparent 60%), var(--bg) fixed; }
+  [hidden] { display:none !important; }
+  button { font:inherit; color:var(--text); background:rgba(255,255,255,.06); border:1px solid var(--hair); border-radius:.6rem; padding:.47rem .88rem; cursor:pointer; transition:background .15s, border-color .15s, transform .05s; }
+  button:hover { background:rgba(255,255,255,.12); border-color:var(--hair2); }
+  button:active { transform:translateY(1px); }
+  button:disabled { opacity:.35; cursor:default; }
+  button.primary { background:#e8eaed; color:#0d1016; font-weight:700; border-color:transparent; }
+  button.primary:hover { background:#fff; }
+  input, select { font:inherit; color:var(--text); background:#0b0e13; border:1px solid var(--hair2); border-radius:.6rem; padding:.4rem .6rem; }
+  select { cursor:pointer; }
+  label { display:flex; flex-direction:column; gap:.25rem; font-size:.92rem; color:var(--muted); }
+  label.ck { flex-direction:row; align-items:center; gap:.45rem; color:var(--text); cursor:pointer; font-size:1rem; }
+  input[type=checkbox] { accent-color:#9aa1a9; width:1.1rem; height:1.1rem; }
+  .app { display:flex; min-height:100vh; }
+  .side { width:var(--sbw); flex:none; background:var(--surface); border-right:1px solid var(--hair); display:flex; flex-direction:column; position:sticky; top:0; height:100vh; }
+  .side-head { display:flex; gap:.7rem; align-items:center; padding:1rem; border-bottom:1px solid var(--hair); }
+  .brand-text { font-weight:700; line-height:1.2; } .brand-text small { display:block; color:var(--muted); font-weight:400; font-size:.78rem; margin-top:.15rem; }
+  .side-nav { flex:1; padding:.7rem; overflow:auto; }
+  .nav-g { font-size:.75rem; color:var(--muted); text-transform:none; margin:.4rem .4rem .35rem; }
+  .nav-b { display:flex; width:100%; gap:.6rem; align-items:center; text-align:left; padding:.55rem .6rem; border:1px solid transparent; background:transparent; }
+  .nav-b[aria-selected="true"] { background:rgba(255,255,255,.1); border-color:var(--hair2); font-weight:700; }
+  .nav-b svg { width:1.3rem; height:1.3rem; flex:none; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .side-foot { padding:.8rem 1rem 1rem; border-top:1px solid var(--hair); display:flex; flex-direction:column; gap:.6rem; font-size:.85rem; color:var(--muted); }
+  .side-foot input[type=range] { width:100%; }
+  .content { flex:1; min-width:0; }
+  .topbar { display:flex; align-items:center; gap:.8rem; padding:.8rem 1rem; border-bottom:1px solid var(--hair); }
+  .icon-btn { padding:.4rem; width:2.4rem; height:2.4rem; display:grid; place-items:center; }
+  .icon-btn svg { width:1.3rem; height:1.3rem; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .tb-title h1 { margin:0; font-size:1.35rem; } .tb-sub { margin:.1rem 0 0; color:var(--muted); font-size:.9rem; }
+  body.side-closed .side { display:none; }
+  main { max-width:66rem; margin:0 auto; padding:1rem; }
+  .card { background:var(--surface); border:1px solid var(--hair); border-radius:1.05rem; padding:1.05rem 1.15rem; margin-bottom:.95rem; }
+  details.card > summary { cursor:pointer; font-weight:700; font-size:1.05rem; }
+  .set-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(13rem, 1fr)); gap:.8rem 1rem; margin-top:.9rem; }
+  .set-row { display:flex; flex-wrap:wrap; gap:.6rem 1.4rem; margin-top:.9rem; align-items:center; }
+  .note { color:var(--muted); font-size:.92rem; margin:.5rem 0 0; }
+  /* Spielstand */
+  .score { display:grid; grid-template-columns:1fr auto 1fr; gap:.8rem; align-items:stretch; margin-bottom:.95rem; }
+  .pl { display:flex; align-items:center; gap:.8rem; padding:.7rem 1rem; background:var(--surface); border:2px solid var(--hair); border-radius:1.05rem; transition:border-color .2s, box-shadow .2s; }
+  .pl.on { border-color:var(--c); box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 25%, transparent); }
+  .pl .sym { font-size:2.1rem; font-weight:700; color:var(--c); width:2.6rem; text-align:center; line-height:1; }
+  .pl .nm { font-weight:700; font-size:1.15rem; overflow-wrap:anywhere; } .pl .sub { color:var(--muted); font-size:.85rem; }
+  .pl .pts { margin-left:auto; font-size:2rem; font-weight:700; }
+  .mid { display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:.85rem; min-width:4.5rem; text-align:center; }
+  .mid b { color:var(--text); font-size:1.3rem; }
+  /* Spiel */
+  .play { display:grid; grid-template-columns:minmax(16rem, 24rem) 1fr; gap:1rem; align-items:start; }
+  .boardwrap { background:var(--surface); border:1px solid var(--hair); border-radius:1.05rem; padding:1rem; }
+  .board { display:grid; grid-template-columns:repeat(3, 1fr); gap:.5rem; }
+  .fld { aspect-ratio:1; font-size:3.6rem; font-weight:700; padding:0; border-radius:.8rem; background:#0d1117; border:2px solid var(--hair2); display:grid; place-items:center; line-height:1; }
+  .fld:disabled { opacity:1; cursor:default; }
+  .fld.X { color:var(--p1); } .fld.O { color:var(--p2); }
+  .fld.free:not(:disabled):hover { border-color:rgba(255,255,255,.5); background:#121823; }
+  .fld.cur { border-color:var(--gold); box-shadow:0 0 0 3px rgba(242,169,0,.3); }
+  .fld.win { border-color:var(--ok); background:rgba(95,208,111,.15); animation:pop .5s ease; }
+  .fld.new span { animation:pop .35s ease; display:block; }
+  @keyframes pop { 0% { transform:scale(.4); } 60% { transform:scale(1.25); } 100% { transform:scale(1); } }
+  .bmsg { margin-top:.8rem; text-align:center; font-weight:700; font-size:1.05rem; min-height:1.6rem; }
+  .bmsg.win { color:var(--ok); font-size:1.25rem; }
+  .bact { display:flex; gap:.6rem; justify-content:center; flex-wrap:wrap; margin-top:.6rem; }
+  /* Aufgabenfeld */
+  .play > * { min-width:0; }
+  .task { background:var(--surface); border:1px solid var(--hair); border-radius:1.05rem; padding:1rem 1.1rem; min-height:14rem; }
+  .tk-idle { color:var(--muted); font-size:1.1rem; display:flex; flex-direction:column; gap:.6rem; align-items:flex-start; }
+  .tk-head { font-size:1.1rem; margin-bottom:.6rem; display:flex; flex-wrap:wrap; gap:.4rem .8rem; align-items:center; }
+  .tk-head .pill { font-weight:700; font-size:1.2rem; color:var(--c); }
+  .tk-head .ttl { color:var(--muted); }
+  .tk-timer { display:flex; align-items:center; gap:.7rem; margin:.3rem 0 .8rem; }
+  .tk-timer .bar { flex:1; height:.7rem; border-radius:1rem; background:rgba(255,255,255,.1); overflow:hidden; }
+  .tk-timer .bar i { display:block; height:100%; width:100%; background:var(--ok); transition:width .25s linear, background .3s; }
+  .tk-timer .sec { font-weight:700; min-width:3.5rem; text-align:right; font-variant-numeric:tabular-nums; }
+  .tw { overflow-x:auto; }
+  table.tk { border-collapse:collapse; width:100%; font-size:1.15rem; }
+  table.tk th { text-align:left; font-size:.85rem; color:var(--muted); font-weight:400; padding:.3rem .5rem; border-bottom:1px solid var(--hair2); }
+  table.tk td { padding:.55rem .5rem; border-bottom:1px solid var(--hair); vertical-align:top; }
+  table.tk td.vb { font-weight:700; font-size:1.25rem; border-right:1px solid var(--hair2); white-space:nowrap; }
+  .given { font-size:.85rem; color:var(--muted); margin-bottom:.2rem; }
+  .cellw { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
+  .cellw.sent { display:block; line-height:2.4; }
+  .cellw.sent .sin, .cellw.sent .slot { line-height:1.2; }
+  .sin.art { width:4.8rem; }
+  .pro { color:var(--muted); }
+  .sw { display:inline-flex; flex-direction:column; align-items:flex-start; vertical-align:middle; }
+  .sw .solw .sol { display:block; margin-top:.15rem; }
+  .sin { width:7rem; font-size:1.15rem; padding:.35rem .5rem; }
+  .sin.art { width:5.5rem; }
+  .slot { display:inline-block; min-width:5rem; min-height:2.1rem; padding:.2rem .6rem; border:2px dashed var(--hair2); border-radius:.6rem; text-align:center; font-weight:700; cursor:pointer; vertical-align:middle; }
+  .slot.fill { border-style:solid; border-color:rgba(255,255,255,.35); background:rgba(255,255,255,.07); }
+  .sw.ok .sin, .sw.ok .slot { border-color:var(--ok); background:rgba(95,208,111,.14); }
+  .sw.no .sin, .sw.no .slot { border-color:var(--bad); background:rgba(255,107,94,.12); }
+  .sol { color:var(--ok); font-size:.9rem; margin-top:.25rem; font-weight:700; }
+  .noun { color:var(--muted); font-size:.9rem; margin-left:.3rem; white-space:nowrap; }
+  .hint { color:var(--gold); font-size:.9rem; white-space:nowrap; }
+  .chips { display:flex; flex-wrap:wrap; gap:.55rem; margin:.9rem 0 .2rem; }
+  .chip { font-size:1.2rem; font-weight:700; padding:.5rem 1rem; border-radius:.8rem; background:rgba(255,255,255,.1); }
+  .tk-act { display:flex; flex-wrap:wrap; gap:.6rem; margin-top:.9rem; }
+  .tk-feed { margin-top:.8rem; font-weight:700; font-size:1.1rem; }
+  .tk-feed.ok { color:var(--ok); } .tk-feed.no { color:var(--bad); }
+
+  /* Spielfortschritt */
+  .pl { flex-wrap:wrap; position:relative; }
+  .pl-g { flex-basis:100%; display:flex; flex-direction:column; gap:.35rem; }
+  .pl .lv { font-size:.92rem; color:var(--muted); display:flex; gap:.5rem; align-items:baseline; flex-wrap:wrap; } .pl .lv b { color:var(--c); font-size:1rem; } .pl .xpn { margin-left:auto; font-variant-numeric:tabular-nums; }
+  .xpbar { height:.55rem; border-radius:1rem; background:rgba(255,255,255,.1); overflow:hidden; } .xpbar i { display:block; height:100%; background:linear-gradient(90deg, var(--c), var(--gold)); transition:width .6s ease; }
+  .tags { display:flex; flex-wrap:wrap; gap:.35rem; font-size:.8rem; }
+  .tag { padding:.12rem .55rem; border-radius:1rem; border:1px solid var(--hair2); color:var(--muted); }
+  .tag.combo { color:#1a1100; background:linear-gradient(90deg, #ff9a3c, #ffd23c); border-color:transparent; font-weight:700; animation:glow 1s ease-in-out infinite alternate; }
+  .tag.jk { color:var(--p1); border-color:var(--p1); } .tag.mis { color:var(--text); } .tag.mis.done { color:var(--ok); border-color:var(--ok); }
+  @keyframes glow { from { box-shadow:0 0 .2rem rgba(255,170,60,.4); } to { box-shadow:0 0 .9rem rgba(255,170,60,.95); } }
+  .xpfloat { position:absolute; right:1.2rem; top:.4rem; font-weight:700; font-size:1.3rem; color:var(--gold); pointer-events:none; animation:floatup 1.6s ease-out forwards; }
+  @keyframes floatup { 0% { opacity:0; transform:translateY(.8rem) scale(.7); } 15% { opacity:1; transform:translateY(0) scale(1.2); } 100% { opacity:0; transform:translateY(-2.6rem) scale(1); } }
+  .task.shake { animation:shake .45s ease; } @keyframes shake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-.6rem); } 40% { transform:translateX(.6rem); } 60% { transform:translateX(-.4rem); } 80% { transform:translateX(.4rem); } }
+  .task.glowok { animation:okflash .8s ease; } @keyframes okflash { 0% { box-shadow:0 0 0 0 rgba(95,208,111,.9); } 100% { box-shadow:0 0 0 1.4rem rgba(95,208,111,0); } }
+  .jk-btn { color:var(--p1); border-color:var(--p1); }
+  .sin.jok { border-color:var(--p1); background:rgba(108,192,245,.14); }
+  .sumrow { color:var(--text); font-size:1rem; padding:.45rem .7rem; border-left:4px solid var(--c); background:rgba(255,255,255,.04); border-radius:.4rem; }
+  .toasts { position:fixed; right:1rem; bottom:1rem; z-index:60; display:flex; flex-direction:column-reverse; gap:.6rem; width:min(22rem, calc(100vw - 2rem)); pointer-events:none; }
+  .toast { background:var(--surface2); border:2px solid var(--gold); border-radius:.9rem; padding:.7rem .9rem; box-shadow:0 .5rem 1.6rem rgba(0,0,0,.6); animation:tin .4s ease; }
+  .toast b { display:block; font-size:1.1rem; color:var(--gold); } .toast span { color:var(--text); font-size:.95rem; }
+  .toast.lvl { border-color:var(--ok); } .toast.lvl b { color:var(--ok); } .toast.joker { border-color:var(--p1); } .toast.joker b { color:var(--p1); }
+  @keyframes tin { from { transform:translateX(110%); opacity:0; } to { transform:none; opacity:1; } }
+  #fx { position:fixed; left:0; top:0; width:100vw; height:100vh; pointer-events:none; z-index:50; }
+  .tp { margin-top:1rem; } .tp h3 { margin:0 0 .5rem; color:var(--c); } .tp h3 small { color:var(--muted); font-weight:400; font-size:.85rem; margin-left:.4rem; }
+  .bg { display:grid; grid-template-columns:repeat(auto-fill, minmax(11rem, 1fr)); gap:.5rem; }
+  .bd { padding:.5rem .65rem; border-radius:.7rem; border:1px solid var(--hair); opacity:.4; font-size:.85rem; } .bd b { display:block; font-size:.95rem; } .bd span { color:var(--muted); }
+  .bd.on { opacity:1; border-color:var(--c); background:color-mix(in srgb, var(--c) 14%, transparent); }
+  @media (max-width:820px) {
+    .side { position:fixed; z-index:20; left:0; top:0; box-shadow:0 0 2rem #000; }
+    .play { grid-template-columns:minmax(0,1fr); } .score { grid-template-columns:1fr 1fr; } .mid { grid-column:1 / -1; flex-direction:row; gap:.6rem; order:3; }
+    .fld { font-size:3rem; }
+  }
+  @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<canvas id="fx" aria-hidden="true"></canvas>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="app">
+  <aside class="side" id="side" aria-label="Themenauswahl">
+    <div class="side-head">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect x="2" y="2" width="26" height="26" rx="6" fill="#e4572e"/><path d="M8 20l4-10 4 10M9.4 17h5.2M19 10v10" stroke="#0d1016" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="brand-text">Seifferts<br>Deutsch-Werkzeuge<small>für die digitale Tafel</small></div>
+    </div>
+    <nav class="side-nav" aria-label="Themen">
+      <div class="nav-g">Spiele</div>
+      <button class="nav-b" aria-selected="true"><svg viewBox="0 0 24 24"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>Tic-Tac-Toe</button>
+    </nav>
+    <div class="side-foot">
+      <label>Schriftgröße <span id="fszVal">100 %</span><input type="range" id="fszR" min="70" max="180" step="5" value="100" aria-label="Schriftgröße"></label>
+      <button id="fsBtn">Vollbild</button>
+    </div>
+  </aside>
+  <div class="content">
+    <header class="topbar">
+      <button class="icon-btn" id="sideToggle" aria-label="Themenleiste ein- oder ausklappen"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="tb-title"><h1>Tic-Tac-Toe: Verben und Kasus</h1><p class="tb-sub">Zwei Spieler: Ein Feld bekommst du nur, wenn du die Aufgabe richtig löst.</p></div>
+    </header>
+    <main>
+      <details class="card" id="setBox" open>
+        <summary>Einstellungen</summary>
+        <div class="set-grid">
+          <label>Name Spieler 1 (X)<input id="n1" maxlength="20" value="Spieler 1"></label>
+          <label>Name Spieler 2 (O)<input id="n2" maxlength="20" value="Spieler 2"></label>
+          <label>Aufgabenart
+            <select id="sMode">
+              <option value="pre">Konjugieren: Gegenwart</option>
+              <option value="prt">Vergangenheit: Präteritum</option>
+              <option value="vk1">Verbklammer: Gegenwart (trennbare Verben)</option>
+              <option value="vk2">Verbklammer: Präteritum (trennbare Verben)</option>
+              <option value="kas">Kasus: Verben mit Akkusativ oder Dativ</option>
+              <option value="kd">Kasus: Verben mit Dativ und Akkusativ</option>
+              <option value="wp">Kasus: Wechselpräpositionen (wo? wohin?)</option>
+              <option value="fp">Kasus: Präpositionen mit festem Kasus</option>
+              <option value="mix">Alles gemischt</option>
+            </select></label>
+          <label>Antworten
+            <select id="sAns">
+              <option value="type">Wörter selbst schreiben</option>
+              <option value="click">Wörter anklicken (der Reihe nach)</option>
+            </select></label>
+          <label>Zeitlimit pro Zug
+            <select id="sLim">
+              <option value="0">Kein Zeitlimit</option><option value="30">30 Sekunden</option><option value="45">45 Sekunden</option><option value="60">60 Sekunden</option><option value="90">90 Sekunden</option><option value="120">120 Sekunden</option>
+            </select></label>
+          <label>Verben (Konjugieren und Verbklammer)
+            <select id="sVb">
+              <option value="reg">Nur regelmäßige Verben</option><option value="mix">Regelmäßige und unregelmäßige</option><option value="irr">Nur unregelmäßige Verben</option>
+            </select></label>
+        </div>
+        <div class="set-row">
+          <label class="ck"><input type="checkbox" id="sHelp"> Beim Kasus als Hilfe zeigen, ob Akkusativ oder Dativ gefragt ist</label>
+          <label class="ck"><input type="checkbox" id="sSnd" checked> Ton</label>
+        </div>
+        <p class="note">Änderungen gelten ab der nächsten Aufgabe. Die Namen gelten sofort.</p>
+      </details>
+      <div class="score" id="score"></div>
+      <div class="play">
+        <div class="boardwrap">
+          <div class="board" id="board" role="grid" aria-label="Spielfeld 3 mal 3"></div>
+          <div class="bmsg" id="bmsg" aria-live="polite"></div>
+          <div class="bact"><button id="newRound">Neue Runde</button><button id="resetAll">Alles neu (Punkte löschen)</button></div>
+        </div>
+        <div class="task" id="task" aria-live="polite"></div>
+      </div>
+    <details class="card" id="trophy"><summary>Trophäen und Fortschritt</summary><div id="trophyBody"></div><div class="set-row"><button id="resetProg">Fortschritt und Trophäen löschen</button></div></details>
+    </main>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const LS = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* egal */ } } };
+  const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const shuf = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i), t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
+  const pick = a => a[ri(0, a.length - 1)];
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+  /* ---------- Verben: Infinitiv ; Gegenwart ich|du|wir ; Präteritum ich|du|wir ; 1 = regelmäßig ; Alternativen mit / ---------- */
+  const RAW = [
+    ["spielen", "spiele|spielst|spielen", "spielte|spieltest|spielten", 1], ["lernen", "lerne|lernst|lernen", "lernte|lerntest|lernten", 1],
+    ["machen", "mache|machst|machen", "machte|machtest|machten", 1], ["kaufen", "kaufe|kaufst|kaufen", "kaufte|kauftest|kauften", 1],
+    ["wohnen", "wohne|wohnst|wohnen", "wohnte|wohntest|wohnten", 1], ["lachen", "lache|lachst|lachen", "lachte|lachtest|lachten", 1],
+    ["malen", "male|malst|malen", "malte|maltest|malten", 1], ["hören", "höre|hörst|hören", "hörte|hörtest|hörten", 1],
+    ["fragen", "frage|fragst|fragen", "fragte|fragtest|fragten", 1], ["suchen", "suche|suchst|suchen", "suchte|suchtest|suchten", 1],
+    ["tanzen", "tanze|tanzt|tanzen", "tanzte|tanztest|tanzten", 1], ["arbeiten", "arbeite|arbeitest|arbeiten", "arbeitete|arbeitetest|arbeiteten", 1],
+    ["warten", "warte|wartest|warten", "wartete|wartetest|warteten", 1], ["öffnen", "öffne|öffnest|öffnen", "öffnete|öffnetest|öffneten", 1],
+    ["baden", "bade|badest|baden", "badete|badetest|badeten", 1], ["reisen", "reise|reist|reisen", "reiste|reistest|reisten", 1],
+    ["rechnen", "rechne|rechnest|rechnen", "rechnete|rechnetest|rechneten", 1], ["antworten", "antworte|antwortest|antworten", "antwortete|antwortetest|antworteten", 1],
+    ["zeichnen", "zeichne|zeichnest|zeichnen", "zeichnete|zeichnetest|zeichneten", 1], ["kochen", "koche|kochst|kochen", "kochte|kochtest|kochten", 1],
+    ["putzen", "putze|putzt|putzen", "putzte|putztest|putzten", 1], ["sagen", "sage|sagst|sagen", "sagte|sagtest|sagten", 1],
+    ["glauben", "glaube|glaubst|glauben", "glaubte|glaubtest|glaubten", 1], ["brauchen", "brauche|brauchst|brauchen", "brauchte|brauchtest|brauchten", 1],
+    ["besuchen", "besuche|besuchst|besuchen", "besuchte|besuchtest|besuchten", 1], ["legen", "lege|legst|legen", "legte|legtest|legten", 1],
+    ["stellen", "stelle|stellst|stellen", "stellte|stelltest|stellten", 1], ["haben", "habe|hast|haben", "hatte|hattest|hatten", 0],
+    ["fahren", "fahre|fährst|fahren", "fuhr|fuhrst|fuhren", 0], ["laufen", "laufe|läufst|laufen", "lief|liefst|liefen", 0],
+    ["schlafen", "schlafe|schläfst|schlafen", "schlief|schliefst|schliefen", 0], ["sehen", "sehe|siehst|sehen", "sah|sahst|sahen", 0],
+    ["lesen", "lese|liest|lesen", "las|last/lasest|lasen", 0], ["geben", "gebe|gibst|geben", "gab|gabst|gaben", 0],
+    ["nehmen", "nehme|nimmst|nehmen", "nahm|nahmst|nahmen", 0], ["essen", "esse|isst|essen", "aß|aßt/aßest|aßen", 0],
+    ["helfen", "helfe|hilfst|helfen", "half|halfst|halfen", 0], ["sprechen", "spreche|sprichst|sprechen", "sprach|sprachst|sprachen", 0],
+    ["treffen", "treffe|triffst|treffen", "traf|trafst|trafen", 0], ["werfen", "werfe|wirfst|werfen", "warf|warfst|warfen", 0],
+    ["gehen", "gehe|gehst|gehen", "ging|gingst|gingen", 0], ["kommen", "komme|kommst|kommen", "kam|kamst|kamen", 0],
+    ["stehen", "stehe|stehst|stehen", "stand|standst|standen", 0], ["singen", "singe|singst|singen", "sang|sangst|sangen", 0],
+    ["trinken", "trinke|trinkst|trinken", "trank|trankst|tranken", 0], ["schreiben", "schreibe|schreibst|schreiben", "schrieb|schriebst|schrieben", 0],
+    ["bleiben", "bleibe|bleibst|bleiben", "blieb|bliebst|blieben", 0], ["finden", "finde|findest|finden", "fand|fandest/fandst|fanden", 0],
+    ["schwimmen", "schwimme|schwimmst|schwimmen", "schwamm|schwammst|schwammen", 0], ["sitzen", "sitze|sitzt|sitzen", "saß|saßt/saßest|saßen", 0],
+    ["liegen", "liege|liegst|liegen", "lag|lagst|lagen", 0], ["bringen", "bringe|bringst|bringen", "brachte|brachtest|brachten", 0],
+    ["denken", "denke|denkst|denken", "dachte|dachtest|dachten", 0], ["wissen", "weiß|weißt|wissen", "wusste|wusstest|wussten", 0],
+    ["sein", "bin|bist|sind", "war|warst|waren", 0], ["werden", "werde|wirst|werden", "wurde|wurdest|wurden", 0],
+    ["können", "kann|kannst|können", "konnte|konntest|konnten", 0], ["müssen", "muss|musst|müssen", "musste|musstest|mussten", 0],
+    ["wollen", "will|willst|wollen", "wollte|wolltest|wollten", 0], ["dürfen", "darf|darfst|dürfen", "durfte|durftest|durften", 0],
+    ["sollen", "soll|sollst|sollen", "sollte|solltest|sollten", 0], ["halten", "halte|hältst|halten", "hielt|hieltst|hielten", 0],
+    ["rufen", "rufe|rufst|rufen", "rief|riefst|riefen", 0], ["heißen", "heiße|heißt|heißen", "hieß|hießt/hießest|hießen", 0],
+    ["tragen", "trage|trägst|tragen", "trug|trugst|trugen", 0], ["waschen", "wasche|wäschst|waschen", "wusch|wuschst|wuschen", 0],
+    ["schlagen", "schlage|schlägst|schlagen", "schlug|schlugst|schlugen", 0], ["fallen", "falle|fällst|fallen", "fiel|fielst|fielen", 0],
+    ["lassen", "lasse|lässt|lassen", "ließ|ließest/ließt|ließen", 0], ["gewinnen", "gewinne|gewinnst|gewinnen", "gewann|gewannst|gewannen", 0],
+    ["beginnen", "beginne|beginnst|beginnen", "begann|begannst|begannen", 0], ["springen", "springe|springst|springen", "sprang|sprangst|sprangen", 0],
+    ["ziehen", "ziehe|ziehst|ziehen", "zog|zogst|zogen", 0], ["fliegen", "fliege|fliegst|fliegen", "flog|flogst|flogen", 0],
+    ["schließen", "schließe|schließt|schließen", "schloss|schlossest/schlosst|schlossen", 0], ["kennen", "kenne|kennst|kennen", "kannte|kanntest|kannten", 0],
+    ["rennen", "renne|rennst|rennen", "rannte|ranntest|rannten", 0]
+  ];
+  const VERBS = RAW.map(r => ({ inf: r[0], pre: r[1].split("|").map(x => x.split("/")), prt: r[2].split("|").map(x => x.split("/")), reg: !!r[3] }));
+  const PERS = [["ich", "1. Person Singular"], ["du", "2. Person Singular"], ["wir", "1. Person Plural"]];
+
+  /* ---------- Trennbare Verben (Verbklammer): Infinitiv ; Vorsilbe ; Gegenwart ; Präteritum ; Satz ; 1 = regelmäßig ---------- */
+  const VKR = [
+    ["anrufen", "an", "rufe|rufst|rufen", "rief|riefst|riefen", "{S} {V} heute den Opa {A}.", 0],
+    ["aufstehen", "auf", "stehe|stehst|stehen", "stand|standst|standen", "{S} {V} jeden Tag früh {A}.", 0],
+    ["einkaufen", "ein", "kaufe|kaufst|kaufen", "kaufte|kauftest|kauften", "{S} {V} im Supermarkt {A}.", 1],
+    ["mitkommen", "mit", "komme|kommst|kommen", "kam|kamst|kamen", "{S} {V} heute ins Kino {A}.", 0],
+    ["ankommen", "an", "komme|kommst|kommen", "kam|kamst|kamen", "{S} {V} um acht Uhr am Bahnhof {A}.", 0],
+    ["abfahren", "ab", "fahre|fährst|fahren", "fuhr|fuhrst|fuhren", "{S} {V} um neun Uhr {A}.", 0],
+    ["einsteigen", "ein", "steige|steigst|steigen", "stieg|stiegst|stiegen", "{S} {V} in den Bus {A}.", 0],
+    ["aussteigen", "aus", "steige|steigst|steigen", "stieg|stiegst|stiegen", "{S} {V} an der Schule {A}.", 0],
+    ["zumachen", "zu", "mache|machst|machen", "machte|machtest|machten", "{S} {V} das Fenster {A}.", 1],
+    ["aufmachen", "auf", "mache|machst|machen", "machte|machtest|machten", "{S} {V} die Tür {A}.", 1],
+    ["anziehen", "an", "ziehe|ziehst|ziehen", "zog|zogst|zogen", "{S} {V} eine warme Jacke {A}.", 0],
+    ["ausziehen", "aus", "ziehe|ziehst|ziehen", "zog|zogst|zogen", "{S} {V} die Schuhe {A}.", 0],
+    ["aufräumen", "auf", "räume|räumst|räumen", "räumte|räumtest|räumten", "{S} {V} das Zimmer {A}.", 1],
+    ["abholen", "ab", "hole|holst|holen", "holte|holtest|holten", "{S} {V} den Freund vom Bahnhof {A}.", 1],
+    ["einladen", "ein", "lade|lädst|laden", "lud|ludst/ludest|luden", "{S} {V} die Klasse zur Party {A}.", 0],
+    ["fernsehen", "fern", "sehe|siehst|sehen", "sah|sahst|sahen", "{S} {V} am Abend {A}.", 0],
+    ["mitnehmen", "mit", "nehme|nimmst|nehmen", "nahm|nahmst|nahmen", "{S} {V} den Ball {A}.", 0],
+    ["weggehen", "weg", "gehe|gehst|gehen", "ging|gingst|gingen", "{S} {V} nach der Schule {A}.", 0],
+    ["zurückkommen", "zurück", "komme|kommst|kommen", "kam|kamst|kamen", "{S} {V} um fünf Uhr {A}.", 0],
+    ["anfangen", "an", "fange|fängst|fangen", "fing|fingst|fingen", "{S} {V} mit den Hausaufgaben {A}.", 0],
+    ["aufhören", "auf", "höre|hörst|hören", "hörte|hörtest|hörten", "{S} {V} mit dem Spiel {A}.", 1],
+    ["zuhören", "zu", "höre|hörst|hören", "hörte|hörtest|hörten", "{S} {V} dem Lehrer genau {A}.", 1],
+    ["vorlesen", "vor", "lese|liest|lesen", "las|last/lasest|lasen", "{S} {V} den Kindern eine Geschichte {A}.", 0],
+    ["mitspielen", "mit", "spiele|spielst|spielen", "spielte|spieltest|spielten", "{S} {V} beim Fußball {A}.", 1],
+    ["ausschalten", "aus", "schalte|schaltest|schalten", "schaltete|schaltetest|schalteten", "{S} {V} das Licht {A}.", 1],
+    ["einschalten", "ein", "schalte|schaltest|schalten", "schaltete|schaltetest|schalteten", "{S} {V} den Fernseher {A}.", 1],
+    ["anschauen", "an", "schaue|schaust|schauen", "schaute|schautest|schauten", "{S} {V} das Bild {A}.", 1],
+    ["aufschreiben", "auf", "schreibe|schreibst|schreiben", "schrieb|schriebst|schrieben", "{S} {V} die Hausaufgaben {A}.", 0],
+    ["ausfüllen", "aus", "fülle|füllst|füllen", "füllte|füllten|füllten", "{S} {V} das Formular {A}.", 1],
+    ["mitbringen", "mit", "bringe|bringst|bringen", "brachte|brachtest|brachten", "{S} {V} Kuchen {A}.", 0],
+    ["aufwachen", "auf", "wache|wachst|wachen", "wachte|wachtest|wachten", "{S} {V} um sieben Uhr {A}.", 1],
+    ["einschlafen", "ein", "schlafe|schläfst|schlafen", "schlief|schliefst|schliefen", "{S} {V} sofort {A}.", 0],
+    ["umziehen", "um", "ziehe|ziehst|ziehen", "zog|zogst|zogen", "{S} {V} nach Köln {A}.", 0],
+    ["zurückgeben", "zurück", "gebe|gibst|geben", "gab|gabst|gaben", "{S} {V} das Buch {A}.", 0],
+    ["aufpassen", "auf", "passe|passt|passen", "passte|passtest|passten", "{S} {V} auf den Hund {A}.", 1]
+  ].map(r => ({ inf: r[0], pf: r[1], pre: r[2].split("|").map(x => x.split("/")), prt: r[3].split("|").map(x => x.split("/")), s: r[4], reg: !!r[5] }));
+  const PREFIXES = ["an", "auf", "aus", "ab", "ein", "mit", "zu", "vor", "um", "fern", "weg", "zurück"];
+
+  /* ---------- Nomen ---------- */
+  const NG = {};
+  const defN = (cls, str) => str.split(",").forEach(s => { const q = s.trim().split(" "); NG[q[0]] = { n: q[0], g: q[1], c: cls }; });
+  defN("P", "Lehrer m,Freund m,Vater m,Bruder m,Nachbar m,Opa m,Trainer m,Koch m,Lehrerin f,Mutter f,Freundin f,Oma f,Schwester f,Nachbarin f,Ärztin f,Kind n,Mädchen n,Baby n");
+  defN("A", "Hund m,Katze f,Pferd n,Tier n,Kaninchen n");
+  defN("T", "Ball m,Stift m,Brief m,Buch n,Heft n,Fahrrad n,Auto n,Bild n,Handy n,Tasche f,Blume f,Zeitung f,Karte f,Foto n,Paket n,Nachricht f");
+  defN("F", "Apfel m,Kuchen m,Brot n,Ei n,Eis n,Banane f,Suppe f,Pizza f");
+  defN("D", "Saft m,Tee m,Wasser n,Milch f,Limonade f");
+  defN("W", "Pullover m,Schal m,Hut m,Hemd n,Kleid n,Jacke f,Mütze f,Hose f");
+  defN("B", "Fenster n,Haus n,Turm m,Tür f,Zaun m,Mauer f,Brücke f,Garage f");
+  defN("L", "Zimmer n,Schule f,Garten m,Keller m,Küche f,Kino n,Park m,Stadt f,Wand f,Schrank m,Regal n,Tisch m,Stuhl m,Bett n,Couch f,Boden m,Fensterbank f,Tafel f,Sofa n,Baum m,Lampe f,Decke f,Wald m,Teich m,Platz m,Frühstück n,Training n,Unterricht m");
+  defN("X", "Regel f,Aufgabe f,Spiel n,Weg m,Geschichte f,Witz m,Film m,Ausflug m,Glück n,Erfolg m,Spaß m,Salz n,Lied n");
+  const nounsOf = sel => (Array.isArray(sel) ? sel.map(n => NG[n]) : Object.keys(NG).map(k => NG[k]).filter(x => sel.indexOf(x.c) >= 0));
+  const ART = { A: { m: "den", f: "die", n: "das" }, D: { m: "dem", f: "der", n: "dem" } };
+  const NOM = { m: "der", f: "die", n: "das" };
+  const CASEN = { A: "Akkusativ (wen oder was?)", D: "Dativ (wem?)" };
+
+  /* ---------- Kasus: Verben mit Akkusativ oder Dativ: Verb ; Satz ; Kasus ; erlaubte Nomen (Klassen oder Liste) ---------- */
+  const KVR = [
+    ["sehen", "Ich sehe ___ {N}.", "A", "PAT"], ["besuchen", "Ich besuche ___ {N}.", "A", "P"], ["fragen", "Ich frage ___ {N}.", "A", "P"], ["rufen", "Ich rufe ___ {N}.", "A", "PA"],
+    ["suchen", "Ich suche ___ {N}.", "A", "PAT"], ["hören", "Ich höre ___ {N}.", "A", "PA"], ["treffen", "Ich treffe ___ {N}.", "A", "P"], ["begrüßen", "Ich begrüße ___ {N}.", "A", "P"],
+    ["brauchen", "Ich brauche ___ {N}.", "A", "PAT"], ["kennen", "Ich kenne ___ {N}.", "A", "P"], ["lieben", "Ich liebe ___ {N}.", "A", "PA"], ["fotografieren", "Ich fotografiere ___ {N}.", "A", "PAT"],
+    ["unterstützen", "Ich unterstütze ___ {N}.", "A", "P"], ["einladen", "Ich lade ___ {N} ein.", "A", "P"], ["abholen", "Ich hole ___ {N} ab.", "A", "P"], ["füttern", "Ich füttere ___ {N}.", "A", "A"],
+    ["essen", "Ich esse ___ {N}.", "A", "F"], ["trinken", "Ich trinke ___ {N}.", "A", "D"], ["kaufen", "Ich kaufe ___ {N}.", "A", "TFW"],
+    ["lesen", "Ich lese ___ {N}.", "A", ["Buch", "Brief", "Zeitung", "Heft", "Karte", "Nachricht"]], ["malen", "Ich male ___ {N}.", "A", ["Hund", "Katze", "Pferd", "Blume", "Haus", "Baum"]],
+    ["öffnen", "Ich öffne ___ {N}.", "A", ["Tür", "Fenster", "Buch", "Brief", "Tasche", "Paket"]], ["nehmen", "Ich nehme ___ {N}.", "A", "TFW"],
+    ["tragen", "Ich trage ___ {N}.", "A", ["Tasche", "Buch", "Pullover", "Jacke", "Mütze", "Schal", "Hut"]],
+    ["waschen", "Ich wasche ___ {N}.", "A", ["Pullover", "Schal", "Hemd", "Kleid", "Jacke", "Mütze", "Hose", "Auto", "Hund"]],
+    ["anziehen", "Ich ziehe ___ {N} an.", "A", "W"], ["bauen", "Ich baue ___ {N}.", "A", ["Haus", "Turm", "Zaun", "Mauer", "Brücke", "Garage"]],
+    ["holen", "Ich hole ___ {N}.", "A", ["Ball", "Stift", "Buch", "Heft", "Brot", "Tasche", "Jacke", "Kuchen"]], ["finden", "Ich finde ___ {N}.", "A", "PAT"],
+    ["vergessen", "Ich vergesse ___ {N}.", "A", "TW"], ["verlieren", "Ich verliere ___ {N}.", "A", "TW"], ["bekommen", "Ich bekomme ___ {N}.", "A", "TF"],
+    ["mögen", "Ich mag ___ {N}.", "A", "PAF"], ["ärgern", "Ich ärgere ___ {N}.", "A", "P"], ["wecken", "Ich wecke ___ {N}.", "A", "P"], ["stören", "Ich störe ___ {N}.", "A", "P"],
+    ["überraschen", "Ich überrasche ___ {N}.", "A", "P"], ["zeichnen", "Ich zeichne ___ {N}.", "A", ["Hund", "Katze", "Pferd", "Haus", "Blume", "Baum"]],
+    ["putzen", "Ich putze ___ {N}.", "A", ["Fenster", "Tür", "Auto", "Tisch", "Schrank"]],
+    ["helfen", "Ich helfe ___ {N}.", "D", "P"], ["danken", "Ich danke ___ {N}.", "D", "P"], ["gehören", "Das Heft gehört ___ {N}.", "D", "P"], ["gefallen", "Das Lied gefällt ___ {N}.", "D", "P"],
+    ["folgen", "Ich folge ___ {N}.", "D", "PA"], ["antworten", "Ich antworte ___ {N}.", "D", "P"], ["glauben", "Ich glaube ___ {N}.", "D", "P"], ["schmecken", "Die Suppe schmeckt ___ {N}.", "D", "P"],
+    ["passen", "Die Jacke passt ___ {N}.", "D", "P"], ["zuhören", "Ich höre ___ {N} zu.", "D", "P"], ["begegnen", "Ich begegne ___ {N}.", "D", "P"], ["gratulieren", "Ich gratuliere ___ {N}.", "D", "P"],
+    ["fehlen", "Der Ball fehlt ___ {N}.", "D", "P"], ["winken", "Ich winke ___ {N}.", "D", "P"], ["widersprechen", "Ich widerspreche ___ {N}.", "D", "P"], ["zustimmen", "Ich stimme ___ {N} zu.", "D", "P"],
+    ["vertrauen", "Ich vertraue ___ {N}.", "D", "P"], ["verzeihen", "Ich verzeihe ___ {N}.", "D", "P"], ["raten", "Ich rate ___ {N}.", "D", "P"], ["wehtun", "Der Fuß tut ___ {N} weh.", "D", "P"],
+    ["nützen", "Die Hilfe nützt ___ {N}.", "D", "P"], ["ähneln", "Der Sohn ähnelt ___ {N}.", "D", "P"], ["ausweichen", "Ich weiche ___ {N} aus.", "D", "PA"], ["zusehen", "Ich sehe ___ {N} zu.", "D", "P"],
+    ["zuwinken", "Ich winke ___ {N} zu.", "D", "P"], ["nachlaufen", "Ich laufe ___ {N} nach.", "D", "PA"], ["gehorchen", "Ich gehorche ___ {N}.", "D", "P"], ["drohen", "Ich drohe ___ {N}.", "D", "P"],
+    ["schaden", "Rauchen schadet ___ {N}.", "D", "P"], ["imponieren", "Der Sportler imponiert ___ {N}.", "D", "P"], ["beistehen", "Ich stehe ___ {N} bei.", "D", "P"]
+  ].map(r => ({ v: r[0], s: r[1], c: r[2], n: r[3] }));
+
+  /* ---------- Verben mit Dativ und Akkusativ: Verb ; Satz ; Sachen ---------- */
+  const KDR = [
+    ["geben", "Ich gebe ___ {P} ___ {T}.", ["Buch", "Ball", "Heft", "Stift", "Handy"]], ["schenken", "Ich schenke ___ {P} ___ {T}.", ["Blume", "Buch", "Ball", "Karte", "Tasche", "Mütze"]],
+    ["zeigen", "Ich zeige ___ {P} ___ {T}.", ["Bild", "Heft", "Handy", "Fahrrad", "Auto", "Foto"]], ["schicken", "Ich schicke ___ {P} ___ {T}.", ["Brief", "Karte", "Foto", "Paket"]],
+    ["bringen", "Ich bringe ___ {P} ___ {T}.", ["Kuchen", "Buch", "Tasche", "Jacke"]], ["erklären", "Ich erkläre ___ {P} ___ {T}.", ["Regel", "Aufgabe", "Spiel", "Weg"]],
+    ["leihen", "Ich leihe ___ {P} ___ {T}.", ["Buch", "Ball", "Heft", "Stift", "Fahrrad"]], ["erzählen", "Ich erzähle ___ {P} ___ {T}.", ["Geschichte", "Witz"]],
+    ["schreiben", "Ich schreibe ___ {P} ___ {T}.", ["Brief", "Karte", "Nachricht"]], ["empfehlen", "Ich empfehle ___ {P} ___ {T}.", ["Buch", "Film", "Spiel"]],
+    ["verbieten", "Ich verbiete ___ {P} ___ {T}.", ["Handy", "Spiel"]], ["erlauben", "Ich erlaube ___ {P} ___ {T}.", ["Ausflug", "Eis"]],
+    ["wünschen", "Ich wünsche ___ {P} ___ {T}.", ["Glück", "Erfolg", "Spaß"]], ["kaufen", "Ich kaufe ___ {P} ___ {T}.", ["Eis", "Buch", "Ball", "Kuchen"]],
+    ["reichen", "Ich reiche ___ {P} ___ {T}.", ["Salz", "Brot", "Heft"]], ["vorlesen", "Ich lese ___ {P} ___ {T} vor.", ["Geschichte", "Zeitung", "Brief"]]
+  ].map(r => ({ v: r[0], s: r[1], t: r[2] }));
+
+  /* ---------- Präpositionen ---------- */
+  const WPR = [
+    ["in", "Ich gehe in ___ {N}.", "Ich bin in ___ {N}.", ["Zimmer", "Schule", "Garten", "Keller", "Küche", "Kino", "Park", "Stadt", "Haus"]],
+    ["an", "Ich hänge das Bild an ___ {N}.", "Das Bild hängt an ___ {N}.", ["Wand", "Tür", "Tafel", "Fenster", "Schrank", "Zaun"]],
+    ["auf", "Ich lege das Buch auf ___ {N}.", "Das Buch liegt auf ___ {N}.", ["Tisch", "Stuhl", "Bett", "Regal", "Fensterbank", "Couch", "Boden"]],
+    ["hinter", "Der Ball rollt hinter ___ {N}.", "Der Ball liegt hinter ___ {N}.", ["Schrank", "Tür", "Haus", "Sofa", "Baum", "Mauer"]],
+    ["neben", "Ich stelle den Stuhl neben ___ {N}.", "Der Stuhl steht neben ___ {N}.", ["Tisch", "Lampe", "Schrank", "Bett", "Tür", "Regal"]],
+    ["über", "Ich hänge die Lampe über ___ {N}.", "Die Lampe hängt über ___ {N}.", ["Tisch", "Bett", "Tür", "Sofa"]],
+    ["unter", "Die Katze kriecht unter ___ {N}.", "Die Katze schläft unter ___ {N}.", ["Tisch", "Bett", "Sofa", "Decke", "Baum", "Brücke"]],
+    ["vor", "Ich stelle das Fahrrad vor ___ {N}.", "Das Fahrrad steht vor ___ {N}.", ["Haus", "Tür", "Schule", "Garage", "Kino", "Schrank"]],
+    ["zwischen", "Ich stelle den Stuhl zwischen ___ {N} und das Regal.", "Der Stuhl steht zwischen ___ {N} und dem Regal.", ["Tisch", "Bett", "Sofa", "Schrank", "Lampe"]]
+  ].map(r => ({ p: r[0], a: r[1], d: r[2], n: r[3] }));
+  const FPR = [
+    ["durch", "A", "Wir laufen durch ___ {N}.", ["Wald", "Park", "Stadt", "Tür", "Garten"]], ["für", "A", "Das Geschenk ist für ___ {N}.", "P"],
+    ["gegen", "A", "Wir spielen gegen ___ {N}.", "P"], ["ohne", "A", "Ich gehe nicht ohne ___ {N} los.", "P"], ["um", "A", "Wir laufen um ___ {N}.", ["Haus", "Park", "Teich", "Schule", "Tisch", "Platz"]],
+    ["aus", "D", "Sie kommt aus ___ {N}.", ["Haus", "Schule", "Zimmer", "Stadt", "Küche", "Garten"]], ["bei", "D", "Ich wohne bei ___ {N}.", "P"], ["mit", "D", "Ich spiele mit ___ {N}.", "P"],
+    ["nach", "D", "Wir gehen nach ___ {N} spazieren.", ["Schule", "Frühstück", "Training", "Unterricht"]], ["von", "D", "Das Geschenk ist von ___ {N}.", "P"], ["zu", "D", "Ich gehe zu ___ {N}.", "P"]
+  ].map(r => ({ p: r[0], c: r[1], s: r[2], n: r[3] }));
+
+  /* ---------- Einstellungen ---------- */
+  const DEFS = { mode: "pre", ans: "type", lim: "0", vb: "mix", help: false, snd: true, n1: "Spieler 1", n2: "Spieler 2" };
+  const MODES = ["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp", "mix"];
+  let S = Object.assign({}, DEFS);
+  try { Object.assign(S, JSON.parse(LS.get("msd_ttt") || "{}")); } catch (e) { /* Standardwerte */ }
+  if (MODES.indexOf(S.mode) < 0) S.mode = "pre";
+  const saveS = () => LS.set("msd_ttt", JSON.stringify(S));
+  function applyS() {
+    $("sMode").value = S.mode; $("sAns").value = S.ans; $("sLim").value = S.lim; $("sVb").value = S.vb; $("sHelp").checked = !!S.help; $("sSnd").checked = !!S.snd;
+    $("n1").value = S.n1; $("n2").value = S.n2;
+  }
+
+  /* ---------- Ton ---------- */
+  let AC = null;
+  function tone(fr, d, type, vol) {
+    if (!S.snd) return;
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      const t0 = AC.currentTime;
+      fr.forEach((f, i) => { const o = AC.createOscillator(), g = AC.createGain(); o.type = type || "triangle"; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t0 + i * d); g.gain.exponentialRampToValueAtTime(vol || 0.14, t0 + i * d + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0 + (i + 1) * d);
+        o.connect(g); g.connect(AC.destination); o.start(t0 + i * d); o.stop(t0 + (i + 1) * d + 0.03); });
+    } catch (e) { /* kein Ton */ }
+  }
+  const SFX = { good: () => tone([523, 659, 784], 0.09), bad: () => tone([233, 175], 0.17, "sawtooth", 0.08), win: () => tone([392, 523, 659, 784, 1047], 0.12), time: () => tone([300, 300], 0.12, "square", 0.06), lvl: () => tone([523, 659, 784, 1047, 1319], 0.1), badge: () => tone([880, 1175], 0.12, "sine", 0.12) };
+
+  /* ---------- Spielzustand ---------- */
+  const SYM = ["X", "O"], PCOL = ["var(--p1)", "var(--p2)"];
+  const LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+  const G = { board: Array(9).fill(""), cur: 0, start: 0, score: [0, 0], draws: 0, rounds: 0, over: false, win: null, task: null, last: -1, msg: "" };
+  const used = {};
+  let timer = null;
+  const nameOf = i => (i === 0 ? S.n1 : S.n2).trim() || (i === 0 ? "Spieler 1" : "Spieler 2");
+
+  /* ---------- Spielfortschritt: Punkte, Level, Serien, Joker, Missionen, Trophäen ---------- */
+  const TITLES = ["Buchstabenfan", "Wortsammler", "Satzbauer", "Grammatik-Lehrling", "Verbflüsterer", "Kasus-Knacker", "Satzbau-Profi", "Grammatik-Ass", "Sprachmeister", "Grammatik-Legende"];
+  const lvlOf = xp => Math.floor(Math.sqrt(xp / 40)) + 1, lvlStart = l => 40 * (l - 1) * (l - 1), titleOf = l => TITLES[Math.min(l - 1, TITLES.length - 1)];
+  const newP = () => ({ xp: 0, badges: {}, stat: { correct: 0, maxS: 0, wins: 0, clean: 0, come: 0, diag: 0, blitz: 0, konj: 0, vk: 0, kasus: 0, missions: 0, types: {} } });
+  let PR = [newP(), newP()];
+  try { const x = JSON.parse(LS.get("msd_ttt_prog") || "null"); if (Array.isArray(x) && x.length === 2) PR = x.map(q => { const n = newP(); n.xp = +q.xp || 0; Object.assign(n.badges, q.badges || {}); Object.assign(n.stat, q.stat || {}); n.stat.types = Object.assign({}, (q.stat || {}).types); return n; }); } catch (e) { /* neu beginnen */ }
+  const savePR = () => LS.set("msd_ttt_prog", JSON.stringify(PR));
+  const BADGES = [
+    ["first", "Erster Treffer", "Die erste Aufgabe richtig gelöst", P => P.stat.correct >= 1], ["ten", "Zehn richtig", "10 Aufgaben richtig gelöst", P => P.stat.correct >= 10], ["fifty", "Fünfzig richtig", "50 Aufgaben richtig gelöst", P => P.stat.correct >= 50],
+    ["s3", "Dreierserie", "3 richtige Antworten in Folge", P => P.stat.maxS >= 3], ["s5", "Fünferserie", "5 richtige Antworten in Folge", P => P.stat.maxS >= 5], ["s10", "Zehnerserie", "10 richtige Antworten in Folge", P => P.stat.maxS >= 10],
+    ["blitz", "Blitzmerker", "Richtig mit über 70 Prozent der Zeit übrig", P => P.stat.blitz >= 1],
+    ["win", "Rundensieger", "Eine Runde gewonnen", P => P.stat.wins >= 1], ["win5", "Fünf Siege", "5 Runden gewonnen", P => P.stat.wins >= 5],
+    ["clean", "Saubere Runde", "Eine Runde ohne Fehler gewonnen", P => P.stat.clean >= 1], ["come", "Comeback", "Eine Runde nach mindestens 2 Fehlern gewonnen", P => P.stat.come >= 1],
+    ["diag", "Diagonalkönig", "Mit einer Diagonale gewonnen", P => P.stat.diag >= 1], ["all", "Alleskönner", "In allen 8 Aufgabenarten richtig gelöst", P => Object.keys(P.stat.types).length >= 8],
+    ["konj", "Konjugations-Profi", "10 Konjugations-Aufgaben richtig", P => P.stat.konj >= 10], ["klam", "Klammer-Profi", "10 Verbklammer-Aufgaben richtig", P => P.stat.vk >= 10], ["kasus", "Kasus-Knacker", "10 Kasus-Aufgaben richtig", P => P.stat.kasus >= 10],
+    ["mis", "Missionar", "3 Missionen erfüllt", P => P.stat.missions >= 3],
+    ["l3", "Level 3", "Level 3 erreicht", P => lvlOf(P.xp) >= 3], ["l5", "Level 5", "Level 5 erreicht", P => lvlOf(P.xp) >= 5], ["l8", "Level 8", "Level 8 erreicht", P => lvlOf(P.xp) >= 8]
+  ];
+  const MIS = [
+    { t: "3 richtige Antworten in Folge in dieser Runde", xp: 25, ok: (me, R) => R.rs >= 3 },
+    { t: "Das Mittelfeld erobern", xp: 15, ok: me => G.board[4] === SYM[me] },
+    { t: "Zwei Eckfelder erobern", xp: 20, ok: me => [0, 2, 6, 8].filter(i => G.board[i] === SYM[me]).length >= 2 },
+    { t: "Die Runde ohne Joker gewinnen", xp: 25, win: true, ok: (me, R) => R.jused === 0 }
+  ];
+  const mkR = () => ({ rs: 0, ok: 0, bad: 0, joker: 1, jused: 0, xp: 0, mission: pick(MIS), mDone: false, newB: [] });
+  let RS = [mkR(), mkR()];
+  const SK = [0, 0];
+  function toast(title, sub, cls) {
+    const el = document.createElement("div"); el.className = "toast " + (cls || ""); el.innerHTML = "<b>" + esc(title) + "</b><span>" + esc(sub) + "</span>";
+    $("toasts").appendChild(el); while ($("toasts").children.length > 3) $("toasts").firstChild.remove(); setTimeout(() => el.remove(), 4200);
+  }
+  const FX = { ps: [], run: false };
+  function confetti(n, cols, ox, oy) {
+    if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const cv = $("fx"); if (!FX.run) { cv.width = innerWidth; cv.height = innerHeight; }
+    for (let i = 0; i < n; i++) FX.ps.push({ x: ox * cv.width, y: oy * cv.height, vx: (Math.random() - .5) * 14, vy: -Math.random() * 13 - 3, s: 5 + Math.random() * 7, c: pick(cols), r: Math.random() * 6, vr: (Math.random() - .5) * .4, life: 80 + Math.random() * 70 });
+    if (!FX.run) { FX.run = true; requestAnimationFrame(fxLoop); }
+  }
+  function fxLoop() {
+    const cv = $("fx"), c = cv.getContext("2d"); c.clearRect(0, 0, cv.width, cv.height);
+    FX.ps = FX.ps.filter(q => q.life > 0 && q.y < cv.height + 30);
+    FX.ps.forEach(q => { q.vy += .35; q.x += q.vx; q.y += q.vy; q.r += q.vr; q.life--; c.save(); c.translate(q.x, q.y); c.rotate(q.r); c.fillStyle = q.c; c.fillRect(-q.s / 2, -q.s / 4, q.s, q.s / 2); c.restore(); });
+    if (FX.ps.length) requestAnimationFrame(fxLoop); else { FX.run = false; c.clearRect(0, 0, cv.width, cv.height); }
+  }
+  const CONF = ["#6cc0f5", "#ffb347", "#5fd06f", "#f2a900", "#ff6b5e", "#c58cff"];
+  function grant(i, n) {
+    const P = PR[i], l0 = lvlOf(P.xp); P.xp += n; RS[i].xp += n;
+    const l1 = lvlOf(P.xp);
+    if (l1 > l0) { toast("Level " + l1 + " erreicht!", nameOf(i) + " ist jetzt: " + titleOf(l1), "lvl"); SFX.lvl(); confetti(70, CONF, .5, .35); }
+  }
+  function checkBadges(i) {
+    const P = PR[i];
+    BADGES.forEach(b => { if (!P.badges[b[0]] && b[3](P)) { P.badges[b[0]] = Date.now(); RS[i].newB.push(b[1]); toast("Trophäe: " + b[1], nameOf(i) + ": " + b[2]); SFX.badge(); } });
+  }
+  function missionCheck(i, w) {
+    const R = RS[i], m = R.mission;
+    if (R.mDone || (m.win && !w) || !m.ok(i, R)) return;
+    R.mDone = true; PR[i].stat.missions++; grant(i, m.xp); toast("Mission erfüllt!", nameOf(i) + ": " + m.t + " (+" + m.xp + " XP)", "lvl");
+  }
+  function renderTrophy() {
+    $("trophyBody").innerHTML = [0, 1].map(i => { const P = PR[i], l = lvlOf(P.xp);
+      return '<div class="tp" style="--c:' + PCOL[i] + '"><h3>' + esc(nameOf(i)) + " <small>Level " + l + ", " + titleOf(l) + ", " + P.xp + ' XP</small></h3><div class="bg">' +
+        BADGES.map(b => '<div class="bd' + (P.badges[b[0]] ? " on" : "") + '"><b>' + esc(b[1]) + "</b><span>" + esc(b[2]) + "</span></div>").join("") + '</div><p class="note">' + Object.keys(P.badges).length + " von " + BADGES.length + " Trophäen</p></div>"; }).join("");
+  }
+  function winnerOf(b) { for (const l of LINES) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[1]] === b[l[2]]) return l; return null; }
+
+  /* Auswahl ohne Wiederholung, bis alle einmal dran waren */
+  function fresh(key, list, id) {
+    const u = used[key] = used[key] || [];
+    let free = list.filter(x => u.indexOf(id(x)) < 0);
+    if (!free.length) { used[key] = []; free = list; }
+    const x = pick(free); used[key].push(id(x)); return x;
+  }
+  const verbPool = list => { const p = list.filter(v => S.vb === "mix" || (S.vb === "reg" ? v.reg : !v.reg)); return p.length ? p : list; };
+  const slotOf = (acc, kind, extra) => Object.assign({ acc: acc, show: acc[0], kind: kind }, extra || {});
+  const chipsOf = (slots, dist) => shuf(slots.map(s => s.show).concat(dist)).map((t, i) => ({ id: i, t: t }));
+  const ARTS = ["den", "dem", "der", "die", "das"];
+  const artSlot = (c, n) => { const art = ART[c][n.g]; return slotOf([art], "a", { noun: n.n, c: c }); };
+  const textPieces = (str) => str.split(/(\{[A-Z]\})/).filter(Boolean);
+
+  /* ---------- Aufgaben bauen ---------- */
+  function buildConj(type) {
+    const v = fresh(type, verbPool(VERBS), x => x.inf), forms = type === "pre" ? v.pre : v.prt, other = type === "pre" ? v.prt : v.pre;
+    const slots = PERS.map((p, i) => slotOf(forms[i], "w", { pron: p[0], given: type === "prt" ? p[0] + " " + v.pre[i][0] : "" }));
+    const all = new Set(); slots.forEach(s => s.acc.forEach(a => all.add(a)));
+    const cand = []; other.forEach(f => f.forEach(x => cand.push(x)));
+    const wirF = forms[2][0]; if (/en$/.test(wirF)) cand.push(wirF.slice(0, -2) + "t", wirF.slice(0, -2) + "st"); else if (/n$/.test(wirF)) cand.push(wirF.slice(0, -1) + "t");
+    const dist = shuf(Array.from(new Set(cand))).filter(x => !all.has(x)).slice(0, 3);
+    return { type: type, layout: "conj", verb: v.inf, slots: slots, chips: chipsOf(slots, dist), title: type === "pre" ? "Konjugiere das Verb in der Gegenwart." : "Setze die Verbformen in die Vergangenheit (Präteritum)." };
+  }
+  function buildVk(type) {
+    const v = fresh(type, verbPool(VKR), x => x.inf), forms = type === "vk1" ? v.pre : v.prt, other = type === "vk1" ? v.prt : v.pre;
+    const slots = [], rows = [];
+    PERS.forEach((p, i) => {
+      const a = slots.length; slots.push(slotOf(forms[i], "t")); slots.push(slotOf([v.pf], "t"));
+      const pieces = v.s.replace("{S}", cap(p[0])).split(/(\{[VA]\})/).filter(Boolean).map(x => x === "{V}" ? { s: a } : x === "{A}" ? { s: a + 1 } : { t: x });
+      rows.push({ pieces: pieces, left: "", note: "", hint: "" });
+    });
+    const own = new Set(); slots.forEach(s => s.acc.forEach(x => own.add(x)));
+    const dist = shuf(PREFIXES.filter(x => x !== v.pf)).slice(0, 2);
+    const oth = shuf(other.map(f => f[0]).filter(x => !own.has(x)));
+    if (oth.length) dist.push(oth[0]);
+    return { type: type, layout: "rows", verb: v.inf, leftOnce: v.inf, leftHead: "Verb", slots: slots, rows: rows, chips: chipsOf(slots, dist),
+      title: "Verbklammer: Das konjugierte Verb steht an zweiter Stelle, die Vorsilbe am Ende. " + (type === "vk1" ? "Gegenwart." : "Vergangenheit (Präteritum).") };
+  }
+  function buildKas() {
+    let rows = [];
+    for (let t = 0; t < 60; t++) {
+      const cand = [fresh("kas", KVR, x => x.v), fresh("kas", KVR, x => x.v), fresh("kas", KVR, x => x.v)];
+      if (new Set(cand.map(c => c.v)).size === 3 && cand.some(k => k.c === "A") && cand.some(k => k.c === "D")) { rows = cand; break; }
+    }
+    if (!rows.length) rows = [pick(KVR.filter(k => k.c === "A")), pick(KVR.filter(k => k.c === "D")), pick(KVR)];
+    rows = shuf(rows);
+    const slots = [], out = rows.map(k => {
+      const nn = pick(nounsOf(k.n)), s = artSlot(k.c, nn), idx = slots.length; slots.push(s);
+      const parts = k.s.split("___");
+      return { left: k.v, pieces: [{ t: parts[0].trim() }, { s: idx }, { t: parts[1].replace("{N}", nn.n).trim() }], note: "(" + NOM[nn.g] + " " + nn.n + ")", hint: CASEN[k.c] };
+    });
+    return { type: "kas", layout: "rows", leftHead: "Verb", slots: slots, rows: out, chips: chipsOf(slots, shuf(ARTS).slice(0, 3)), title: "Setze den richtigen Artikel ein. Das Verb bestimmt den Kasus." };
+  }
+  function buildKd() {
+    const vs = []; for (let t = 0; t < 10 && vs.length < 2; t++) { const v = fresh("kd", KDR, x => x.v); if (!vs.some(x => x.v === v.v)) vs.push(v); }
+    const slots = [], rows = vs.map(k => {
+      const pn = pick(nounsOf("P")), tn = NG[pick(k.t)], i1 = slots.length;
+      slots.push(artSlot("D", pn)); slots.push(artSlot("A", tn));
+      const parts = k.s.split("___"), p2 = parts[1].replace("{P}", pn.n).trim(), p3 = parts[2].replace("{T}", tn.n).trim();
+      return { left: k.v, pieces: [{ t: parts[0].trim() }, { s: i1 }, { t: p2 }, { s: i1 + 1 }, { t: p3 }], note: "(" + NOM[pn.g] + " " + pn.n + ", " + NOM[tn.g] + " " + tn.n + ")", hint: "1. Lücke: Dativ (wem?) · 2. Lücke: Akkusativ (was?)" };
+    });
+    return { type: "kd", layout: "rows", leftHead: "Verb", slots: slots, rows: rows, chips: chipsOf(slots, shuf(ARTS).slice(0, 3)), title: "Setze die richtigen Artikel ein. Bei diesen Verben stehen zwei Objekte: wem? im Dativ, was oder wen? im Akkusativ." };
+  }
+  function buildWp() {
+    const preps = []; for (let t = 0; t < 20 && preps.length < 3; t++) { const p = fresh("wp", WPR, x => x.p); if (!preps.some(x => x.p === p.p)) preps.push(p); }
+    let cases = shuf(["A", "D", pick(["A", "D"])]);
+    const slots = [], rows = preps.map((w, i) => {
+      const c = cases[i], nn = NG[pick(w.n)], idx = slots.length; slots.push(artSlot(c, nn));
+      const parts = (c === "A" ? w.a : w.d).split("___");
+      return { left: w.p, pieces: [{ t: parts[0].trim() }, { s: idx }, { t: parts[1].replace("{N}", nn.n).trim() }], note: "(" + NOM[nn.g] + " " + nn.n + ")", hint: c === "A" ? "Wohin? Akkusativ" : "Wo? Dativ" };
+    });
+    return { type: "wp", layout: "rows", leftHead: "Präposition", slots: slots, rows: rows, chips: chipsOf(slots, shuf(ARTS).slice(0, 3)), title: "Setze den richtigen Artikel ein. Wohin? verlangt den Akkusativ, wo? verlangt den Dativ." };
+  }
+  function buildFp() {
+    let preps = [];
+    for (let t = 0; t < 60; t++) {
+      const c = [fresh("fp", FPR, x => x.p), fresh("fp", FPR, x => x.p), fresh("fp", FPR, x => x.p)];
+      if (new Set(c.map(x => x.p)).size === 3 && c.some(x => x.c === "A") && c.some(x => x.c === "D")) { preps = c; break; }
+    }
+    if (!preps.length) preps = [FPR[0], FPR[5], FPR[2]];
+    preps = shuf(preps);
+    const slots = [], rows = preps.map(w => {
+      const nn = pick(nounsOf(w.n)), idx = slots.length; slots.push(artSlot(w.c, nn));
+      const parts = w.s.split("___");
+      return { left: w.p, pieces: [{ t: parts[0].trim() }, { s: idx }, { t: parts[1].replace("{N}", nn.n).trim() }], note: "(" + NOM[nn.g] + " " + nn.n + ")", hint: CASEN[w.c] };
+    });
+    return { type: "fp", layout: "rows", leftHead: "Präposition", slots: slots, rows: rows, chips: chipsOf(slots, shuf(ARTS).slice(0, 3)), title: "Setze den richtigen Artikel ein. Die Präposition bestimmt den Kasus." };
+  }
+  function buildTask() {
+    const t = S.mode === "mix" ? pick(["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp"]) : S.mode;
+    return t === "kas" ? buildKas() : t === "kd" ? buildKd() : t === "wp" ? buildWp() : t === "fp" ? buildFp() : (t === "vk1" || t === "vk2") ? buildVk(t) : buildConj(t);
+  }
+
+  /* ---------- Zeichnen ---------- */
+  function renderScore() {
+    const pl = i => {
+      const P = PR[i], R = RS[i], l = lvlOf(P.xp), a = lvlStart(l), b = lvlStart(l + 1), pc = Math.round((P.xp - a) / (b - a) * 100), mult = Math.min(3, 1 + 0.5 * (SK[i] - 1));
+      return '<div class="pl' + (!G.over && G.cur === i ? " on" : "") + '" data-p="' + i + '" style="--c:' + PCOL[i] + '"><div class="sym">' + SYM[i] + '</div><div><div class="nm">' + esc(nameOf(i)) + '</div><div class="sub">' + (!G.over && G.cur === i ? "ist dran" : "&nbsp;") + '</div></div><div class="pts" aria-label="Runden gewonnen">' + G.score[i] + "</div>" +
+        '<div class="pl-g"><div class="lv"><b>Level ' + l + "</b> " + titleOf(l) + '<span class="xpn">' + P.xp + " XP</span></div>" +
+        '<div class="xpbar" title="Fortschritt bis zum nächsten Level"><i style="width:' + pc + '%"></i></div><div class="tags">' +
+        (SK[i] >= 2 ? '<span class="tag combo">Serie ' + SK[i] + ", Faktor " + String(mult).replace(".", ",") + "</span>" : "") +
+        '<span class="tag jk">Joker ' + R.joker + '</span><span class="tag mis' + (R.mDone ? " done" : "") + '">Mission: ' + esc(R.mission.t) + " (+" + R.mission.xp + ")" + (R.mDone ? " geschafft" : "") + "</span></div></div></div>";
+    };
+    $("score").innerHTML = pl(0) + '<div class="mid"><span>Runde</span><b>' + (G.rounds + 1) + "</b><span>Unentschieden: " + G.draws + "</span></div>" + pl(1);
+    renderTrophy();
+  }
+  function renderBoard() {
+    const idle = !G.over && !G.task;
+    $("board").innerHTML = G.board.map((v, i) => '<button class="fld ' + (v || "free") + (G.win && G.win.indexOf(i) >= 0 ? " win" : "") + (G.task && G.task.field === i ? " cur" : "") + (G.last === i ? " new" : "") + '" data-f="' + i + '" role="gridcell" aria-label="Feld ' + (i + 1) + (v ? ", " + v : ", frei") + '"' + (v || !idle ? " disabled" : "") + "><span>" + v + "</span></button>").join("");
+    $("bmsg").className = "bmsg" + (G.win ? " win" : "");
+    $("bmsg").textContent = G.msg;
+  }
+  function renderIdle() {
+    const t = $("task");
+    if (G.over) {
+      const sum = [0, 1].map(i => { const R = RS[i]; return '<div class="sumrow" style="--c:' + PCOL[i] + '"><b>' + esc(nameOf(i)) + "</b>: " + R.ok + " richtig, " + R.bad + " falsch, +" + R.xp + " XP" + (R.mDone ? ", Mission geschafft" : "") + (R.newB.length ? ". Neue Trophäen: " + esc(R.newB.join(", ")) : "") + "</div>"; }).join("");
+      t.innerHTML = '<div class="tk-idle"><div><b>' + esc(G.msg) + "</b></div>" + sum + '<button class="primary" id="again">Neue Runde</button></div>'; $("again").onclick = newRound; return;
+    }
+    t.innerHTML = '<div class="tk-idle"><div><b style="color:' + PCOL[G.cur] + '">' + esc(nameOf(G.cur)) + " (" + SYM[G.cur] + ")</b>, tippe auf ein freies Feld.</div><div class=\"note\">Dann bekommst du eine Aufgabe. Löst du sie richtig, gehört das Feld dir und du bekommst Punkte. Serien, schnelle Antworten und Missionen bringen Extrapunkte. Drei in einer Reihe gewinnen: waagerecht, senkrecht oder schräg.</div></div>";
+  }
+  const slotHtml = (s, i) => {
+    const wr = S.ans === "type";
+    return '<span class="sw" data-i="' + i + '">' + (wr ? '<input class="sin' + (s.kind === "a" ? " art" : "") + '" data-i="' + i + '" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Antwort ' + (i + 1) + '">'
+      : '<span class="slot" data-s="' + i + '" tabindex="0" role="button" aria-label="Lücke ' + (i + 1) + '"></span>') + '<span class="solw"></span></span>';
+  };
+  function renderTaskOpen() {
+    const T = G.task, t = $("task"), wr = S.ans === "type";
+    let tab = "";
+    if (T.layout === "conj") {
+      tab = '<table class="tk"><thead><tr><th>Verb</th>' + PERS.map(p => "<th>" + p[1] + "</th>").join("") + '</tr></thead><tbody><tr><td class="vb">' + esc(T.verb) + "</td>" +
+        T.slots.map((s, i) => "<td>" + (s.given ? '<div class="given">Gegenwart: ' + esc(s.given) + "</div>" : "") + '<div class="cellw"><span class="pro">' + s.pron + "</span> " + slotHtml(s, i) + "</div></td>").join("") + "</tr></tbody></table>";
+    } else {
+      tab = '<table class="tk"><thead><tr><th>' + T.leftHead + "</th><th>Satz</th></tr></thead><tbody>" + T.rows.map((r, ri_) => {
+        const body = r.pieces.map(p => p.s !== undefined ? slotHtml(T.slots[p.s], p.s) : "<span>" + esc(p.t) + "</span>").join(" ");
+        const left = T.leftOnce ? (ri_ === 0 ? '<td class="vb" rowspan="' + T.rows.length + '">' + esc(T.leftOnce) + "</td>" : "") : '<td class="vb">' + esc(r.left) + "</td>";
+        return "<tr>" + left + '<td><div class="cellw sent">' + body + (r.note ? ' <span class="noun">' + esc(r.note) + "</span>" : "") + "</div>" + (S.help && r.hint ? '<div class="hint">' + esc(r.hint) + "</div>" : "") + "</td></tr>";
+      }).join("") + "</tbody></table>";
+    }
+    const lim = +S.lim;
+    t.innerHTML = '<div class="tk-head"><span class="pill" style="--c:' + PCOL[G.cur] + '">' + SYM[G.cur] + "</span><b>" + esc(nameOf(G.cur)) + '</b><span class="ttl">' + esc(T.title) + "</span></div>" +
+      (lim ? '<div class="tk-timer"><div class="bar"><i id="tkBar"></i></div><span class="sec" id="tkSec">' + lim + " s</span></div>" : "") +
+      '<div class="tw">' + tab + "</div>" + (wr ? "" : '<div class="chips" id="chips"></div>') +
+      '<div class="tk-act">' + (wr ? "" : '<button id="tkClear">Letzte Eingabe löschen</button>') + '<button class="primary" id="tkCheck">Prüfen</button>' + (RS[G.cur].joker > 0 ? '<button class="jk-btn" id="tkJoker">Tipp-Joker (' + RS[G.cur].joker + ")</button>" : "") + '<button id="tkNext" hidden class="primary">Weiter</button></div><div class="tk-feed" id="tkFeed"></div>';
+    $("tkCheck").onclick = check;
+    $("tkNext").onclick = afterTask;
+    if ($("tkJoker")) $("tkJoker").onclick = useJoker;
+    if (wr) {
+      const ins = Array.from(t.querySelectorAll(".sin"));
+      ins.forEach((el, i) => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (i < ins.length - 1) ins[i + 1].focus(); else check(); } }));
+      if (ins[0]) ins[0].focus();
+    } else {
+      $("tkClear").onclick = () => { const k = T.fill.map((x, i) => x !== null ? i : -1).filter(i => i >= 0); if (k.length) { T.fill[k[k.length - 1]] = null; renderChips(); } };
+      t.querySelectorAll(".slot").forEach(el => { const f = () => { const i = +el.dataset.s; if (!T.done && T.fill[i] !== null) { T.fill[i] = null; renderChips(); } }; el.onclick = f; el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); f(); } }; });
+      renderChips();
+    }
+  }
+  function renderChips() {
+    const T = G.task, usedIds = T.fill.filter(x => x !== null);
+    $("chips").innerHTML = T.chips.map(c => '<button class="chip" data-c="' + c.id + '"' + (usedIds.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("");
+    $("chips").querySelectorAll(".chip").forEach(b => b.onclick = () => { const i = T.fill.indexOf(null); if (i >= 0 && !T.done) { T.fill[i] = +b.dataset.c; renderChips(); } });
+    $("task").querySelectorAll(".slot").forEach((el, i) => { const id = T.fill[i]; el.textContent = id === null ? "" : T.chips.find(c => c.id === id).t; el.className = "slot" + (id !== null ? " fill" : ""); });
+    $("tkCheck").disabled = T.done || T.fill.indexOf(null) >= 0;
+  }
+
+  /* ---------- Ablauf ---------- */
+  function openTask(i) {
+    if (G.over || G.task || G.board[i]) return;
+    const T = buildTask(); T.field = i; T.done = false; T.frac = 1; T.jok = false; T.fill = T.slots.map(() => null); T.res = null;
+    G.task = T; G.last = -1; G.msg = "";
+    renderBoard(); renderTaskOpen(); startTimer();
+  }
+  function useJoker() {
+    const T = G.task, R = RS[G.cur]; if (!T || T.done || R.joker < 1) return;
+    if (S.ans === "type") {
+      const ins = Array.from($("task").querySelectorAll(".sin")), i = ins.findIndex((e, k) => !slotOk(T.slots[k], e.value)); if (i < 0) return;
+      ins[i].value = T.slots[i].show; ins[i].classList.add("jok"); ins[i].readOnly = true;
+    } else {
+      const i = T.fill.indexOf(null); if (i < 0) return;
+      const c = T.chips.find(x => x.t === T.slots[i].show && T.fill.indexOf(x.id) < 0); if (!c) return;
+      T.fill[i] = c.id; renderChips();
+    }
+    T.jok = true; R.joker--; R.jused++; renderScore();
+    const jb = $("tkJoker"); if (jb) { if (R.joker > 0) jb.textContent = "Tipp-Joker (" + R.joker + ")"; else jb.hidden = true; }
+  }
+  function startTimer() {
+    clearInterval(timer); const lim = +S.lim; if (!lim) return;
+    const t0 = Date.now(), T = G.task;
+    timer = setInterval(() => {
+      if (!G.task || G.task !== T || T.done) { clearInterval(timer); return; }
+      const left = Math.max(0, lim - (Date.now() - t0) / 1000); T.frac = left / lim;
+      const bar = $("tkBar"), sec = $("tkSec");
+      if (bar) { bar.style.width = (left / lim * 100) + "%"; bar.style.background = left < lim * .2 ? "var(--bad)" : left < lim * .5 ? "var(--gold)" : "var(--ok)"; }
+      if (sec) sec.textContent = Math.ceil(left) + " s";
+      if (left <= 0) { clearInterval(timer); finishTask(true); }
+    }, 200);
+  }
+  const normA = v => String(v).toLowerCase().replace(/\s+/g, " ").trim();
+  function slotOk(s, val) {
+    let v = normA(val);
+    if (s.kind === "w") { if (v.indexOf(s.pron + " ") === 0) v = v.slice(s.pron.length + 1).trim(); return s.acc.some(a => normA(a) === v); }
+    if (s.kind === "t") return s.acc.some(a => normA(a) === v);
+    const tk = v.split(" ");
+    if (tk[0] !== normA(s.show)) return false;
+    return tk.length === 1 || (tk.length === 2 && tk[1] === normA(s.noun));
+  }
+  function answers() {
+    const T = G.task;
+    if (S.ans === "type") return Array.from($("task").querySelectorAll(".sin")).map(e => e.value);
+    return T.fill.map(id => id === null ? "" : T.chips.find(c => c.id === id).t);
+  }
+  function check() { if (!G.task || G.task.done) return; const a = answers(); if (a.some(x => !x.trim())) { $("tkFeed").className = "tk-feed no"; $("tkFeed").textContent = "Bitte fülle alle Felder aus."; return; } finishTask(false, a); }
+  function finishTask(timeout, ans) {
+    const T = G.task; if (!T || T.done) return;
+    clearInterval(timer);
+    const a = ans || answers();
+    T.res = T.slots.map((s, i) => !timeout && slotOk(s, a[i]));
+    const ok = T.res.every(Boolean);
+    T.done = true;
+    $("task").querySelectorAll(".sw").forEach(w => {
+      const i = +w.dataset.i; w.classList.add(T.res[i] ? "ok" : "no");
+      if (!T.res[i]) w.querySelector(".solw").innerHTML = '<span class="sol">richtig: ' + esc(T.slots[i].show) + "</span>";
+    });
+    $("task").querySelectorAll(".sin").forEach(e => e.disabled = true);
+    if (S.ans === "click") renderChips();
+    const feed = $("tkFeed"), nm = nameOf(G.cur), me = G.cur;
+    const lim = +S.lim, R = RS[me], P = PR[me];
+    let info = "";
+    if (ok) {
+      G.board[T.field] = SYM[me]; G.last = T.field;
+      const w = winnerOf(G.board);
+      SFX.good();
+      SK[me]++; R.rs++; R.ok++; P.stat.correct++; P.stat.maxS = Math.max(P.stat.maxS, SK[me]); P.stat.types[T.type] = 1;
+      if (T.type === "pre" || T.type === "prt") P.stat.konj++; else if (T.type === "vk1" || T.type === "vk2") P.stat.vk++; else P.stat.kasus++;
+      const mult = Math.min(3, 1 + 0.5 * (SK[me] - 1)), base = 10 + 5 * T.slots.length, tb = lim ? Math.round(10 * T.frac) : 0;
+      let gain = Math.round((base + tb) * mult); if (T.jok) gain = Math.round(gain / 2);
+      if (lim && T.frac > 0.7) P.stat.blitz++;
+      grant(me, gain);
+      info = " +" + gain + " XP" + (SK[me] >= 2 ? " (Serie " + SK[me] + ", Faktor " + String(mult).replace(".", ",") + ")" : "") + (tb ? ", Zeitbonus " + tb : "") + (T.jok ? ", Joker halbiert" : "") + ".";
+      if (SK[me] % 3 === 0 && R.joker < 3) { R.joker++; toast("Extra-Joker!", nm + " bekommt einen zusätzlichen Tipp-Joker.", "joker"); }
+      if (w) {
+        G.over = true; G.win = w; G.score[me]++; G.msg = nm + " gewinnt die Runde!"; setTimeout(SFX.win, 350);
+        P.stat.wins++; if (R.bad === 0) P.stat.clean++; if (R.bad >= 2) P.stat.come++; if (w.join() === "0,4,8" || w.join() === "2,4,6") P.stat.diag++;
+        grant(me, 30); info += " Rundensieg +30 XP.";
+        confetti(160, CONF, .25, .5); confetti(160, CONF, .75, .5);
+      } else if (G.board.every(Boolean)) { G.over = true; G.draws++; G.msg = "Unentschieden. Alle Felder sind besetzt."; grant(0, 10); grant(1, 10); info += " Unentschieden: beide +10 XP."; }
+      missionCheck(me, w);
+      $("task").classList.add("glowok"); setTimeout(() => $("task").classList.remove("glowok"), 900);
+      feed.className = "tk-feed ok"; feed.textContent = "Richtig!" + info + " " + (G.over ? G.msg : "Das Feld gehört " + nm + ".");
+    } else {
+      SFX[timeout ? "time" : "bad"]();
+      SK[me] = 0; R.rs = 0; R.bad++;
+      const part = T.res.filter(Boolean).length; if (part) { grant(me, part * 3); info = " Teilpunkte: +" + part * 3 + " XP."; }
+      feed.className = "tk-feed no"; feed.textContent = (timeout ? "Die Zeit ist abgelaufen." : "Leider nicht ganz richtig.") + info + " Das Feld bleibt frei. Der Zug geht an " + nameOf(1 - me) + ".";
+      const tk = $("task"); tk.classList.remove("shake"); void tk.offsetWidth; tk.classList.add("shake"); setTimeout(() => tk.classList.remove("shake"), 500);
+    }
+    checkBadges(0); checkBadges(1); savePR();
+    $("tkCheck").hidden = true; const tc = $("tkClear"); if (tc) tc.hidden = true; const tj = $("tkJoker"); if (tj) tj.hidden = true;
+    $("tkNext").hidden = false; $("tkNext").focus();
+    renderScore(); renderBoard();
+    if (ok) { const el = document.querySelector('.pl[data-p="' + me + '"]'); if (el) { const f = document.createElement("span"); f.className = "xpfloat"; f.textContent = info.trim().split(" ")[0] + " XP"; el.appendChild(f); } }
+  }
+  function afterTask() {
+    if (!G.task) return;
+    G.task = null; G.last = -1;
+    if (!G.over) { G.cur = 1 - G.cur; G.msg = ""; }
+    renderScore(); renderBoard(); renderIdle();
+  }
+  function newRound() {
+    clearInterval(timer);
+    if (G.over) G.rounds++;
+    G.board = Array(9).fill(""); G.over = false; G.win = null; G.task = null; G.last = -1; G.msg = "";
+    G.start = 1 - G.start; G.cur = G.start; RS = [mkR(), mkR()];
+    renderScore(); renderBoard(); renderIdle();
+  }
+  function resetAll() { SK[0] = SK[1] = 0; G.score = [0, 0]; G.draws = 0; G.rounds = 0; G.over = false; newRound(); }
+
+  /* ---------- Bindungen ---------- */
+  $("board").addEventListener("click", e => { const b = e.target.closest(".fld"); if (b) openTask(+b.dataset.f); });
+  $("newRound").onclick = () => { if (G.task && !G.task.done && !confirm("Die laufende Aufgabe wird abgebrochen. Neue Runde starten?")) return; newRound(); };
+  $("resetAll").onclick = () => { if (confirm("Alle Punkte löschen und neu beginnen?")) resetAll(); };
+  const bind = (id, key) => $(id).addEventListener("change", () => { S[key] = $(id).type === "checkbox" ? $(id).checked : $(id).value; saveS(); });
+  bind("sMode", "mode"); bind("sAns", "ans"); bind("sLim", "lim"); bind("sVb", "vb"); bind("sHelp", "help"); bind("sSnd", "snd");
+  ["n1", "n2"].forEach(id => $(id).addEventListener("input", () => { S[id] = $(id).value; saveS(); renderScore(); if (G.task && !G.task.done) { const h = $("task").querySelector(".tk-head b"); if (h) h.textContent = nameOf(G.cur); } else renderIdle(); }));
+  $("resetProg").onclick = () => { if (confirm("Alle Level, Punkte und Trophäen beider Spieler löschen?")) { PR = [newP(), newP()]; savePR(); RS = [mkR(), mkR()]; SK[0] = SK[1] = 0; renderScore(); } };
+  $("sideToggle").onclick = () => document.body.classList.toggle("side-closed");
+  if (window.innerWidth < 820) document.body.classList.add("side-closed");
+  $("fszR").addEventListener("input", () => { const v = +$("fszR").value; document.documentElement.style.setProperty("--k", v / 100); $("fszVal").textContent = v + " %"; LS.set("msd_fsz", String(v)); });
+  const fz = +LS.get("msd_fsz"); if (fz >= 70 && fz <= 180) { $("fszR").value = fz; document.documentElement.style.setProperty("--k", fz / 100); $("fszVal").textContent = fz + " %"; }
+  $("fsBtn").onclick = () => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch (e) { /* nicht möglich */ } };
+
+  applyS(); renderScore(); renderBoard(); renderIdle();
+
+  /* Prüfzugriff für Tests */
+  window.__de = { PR: () => PR, RS: () => RS, SK: SK, BADGES: BADGES, useJoker: useJoker, lvlOf: lvlOf, G: G, S: S, VERBS: VERBS, VKR: VKR, KVR: KVR, KDR: KDR, WPR: WPR, FPR: FPR, NG: NG, ART: ART, open: openTask, check: check, next: afterTask, newRound: newRound, buildTask: buildTask, slotOk: slotOk,
+    setS: o => { Object.assign(S, o); applyS(); }, sol: () => G.task ? G.task.slots.map(s => s.show) : [] };
+})();
+</script>
+</body>
+</html>

@@ -233,11 +233,40 @@
   .tk-titlerow { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:.2rem .9rem; margin-bottom:.4rem; } .tk-titlerow .tk-title { margin:0; } .tk-titlerow .stake { margin:0; }
   .how { display:block; padding:0; border:0; background:none; margin:0 0 .65rem; font-size:.9rem; color:var(--muted); }
   .tk-feed { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem .8rem; } .tk-feed .gcs { margin:0; } .tk-feed .fs { flex-basis:100%; }
+  /* Aufgabenfeld: Wortauswahl und Knöpfe bleiben immer sichtbar */
+  :root { --off:6rem; --offb:15rem; }
+  .board { width:max(14rem, min(100%, calc(100vh - var(--offb)))); }
+  .task { display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - var(--off)); }
+  .tk-bar { position:static; flex:none; }
+  .tk-body { flex:1 1 auto; min-height:0; overflow:auto; }
+  .tk-dock { flex:none; padding:.65rem 1.1rem .85rem; border-top:2px solid var(--line); background:var(--surface2); }
+  .tk-dock .chips { margin:0 0 .65rem; } .tk-dock .tk-act { position:static; padding:0; margin:0; background:none; }
+  .task.fin .chips { display:none; }
+  @media (min-width:821px) and (max-height:800px) {
+    :root { --off:4rem; --offb:11.5rem; }
+    .topbar { padding:.3rem 1rem; } .tb-title h1 { font-size:1.05rem; } .brandmark { width:1.9rem; height:1.9rem; } .icon-btn { width:2rem; height:2rem; }
+    main { padding:.5rem 1rem; } .play { margin-bottom:.6rem; }
+    .how { display:none; } .steps { display:none; }
+    .stake span { display:none; } .stake { margin:0; } .tk-titlerow { gap:.1rem .8rem; }
+    .tk-timer { margin:.1rem 0 .35rem; } .tk-timer .bar { height:.5rem; } .tk-timer .sec { font-size:.95rem; min-width:2.6rem; }
+    table.tk.rw thead { display:none; }
+    .tk-dock .tk-act { gap:.4rem; } .tk-dock .tk-act button { padding:.3rem .7rem; }
+    .tk-bar { padding:.3rem .8rem; } .tk-bar .sym { width:1.6rem; height:1.6rem; font-size:1rem; } .tk-bar .who { font-size:1rem; }
+    .tk-body { padding:.55rem .9rem .6rem; } .tk-title { font-size:1rem; } .tk-titlerow { margin-bottom:.3rem; }
+    table.tk { font-size:1.05rem; } table.tk td { padding:.25rem .4rem; } table.tk td.vb { font-size:1.05rem; } .cellw.sent { line-height:2.1; }
+    .tk-dock { padding:.45rem .9rem .55rem; } .tk-dock .chips { margin-bottom:.45rem; gap:.4rem; } .chip { font-size:1.05rem; padding:.28rem .75rem; }
+    .hud { margin-bottom:.45rem; } .boardwrap { padding:.55rem; } .bfoot { margin-top:.5rem; }
+  }
+  @media (min-width:821px) and (max-height:620px) {
+    .stake { display:none; } .tk-title { font-size:.95rem; } .tk-bar { padding:.2rem .8rem; }
+    table.tk td { padding:.12rem .4rem; } .cellw.sent { line-height:1.95; } .noun, .hint { font-size:.8rem; } .tk-timer { margin:0 0 .25rem; }
+    .tk-dock { padding:.35rem .9rem .45rem; } .tk-dock .chips { margin-bottom:.35rem; }
+  }
   @media (max-width:820px) {
     .side { position:fixed; z-index:20; left:0; top:0; box-shadow:0 0 2rem #000; }
     .play { grid-template-columns:minmax(0,1fr); } .score { grid-template-columns:1fr 1fr; } .mid { grid-column:1 / -1; flex-direction:row; gap:.6rem; order:3; }
     .fld { font-size:3rem; }
-    .boardwrap, .task { position:static; max-height:none; overflow:visible; } .tk-act { position:static; } .tk-bar { position:static; }
+    .boardwrap, .task { position:static; max-height:none; overflow:visible; } .tk-body { overflow:visible; } .tk-dock { background:none; border-top:0; padding:0 1.1rem 1rem; }
     .hud { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } .hvs { grid-column:1 / -1; order:3; display:flex; gap:.6rem; justify-content:center; align-items:baseline; } .hvs b { display:inline; }
     .score { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:.5rem; } .steps { margin-left:0; }
     .pl { padding:.6rem .55rem .7rem; gap:.45rem; } .pl-top { gap:.4rem; } .pl .sym { width:2.1rem; height:2.1rem; font-size:1.3rem; } .pl .nm { font-size:.95rem; } .pl .rk { font-size:.72rem; }
@@ -761,7 +790,7 @@
       tab = '<table class="tk"><thead><tr><th>Verb</th>' + PERS.map(p => "<th>" + p[1] + "</th>").join("") + '</tr></thead><tbody><tr><td class="vb">' + esc(T.verb) + "</td>" +
         T.slots.map((s, i) => "<td>" + (s.given ? '<div class="given">Gegenwart: ' + esc(s.given) + "</div>" : "") + '<div class="cellw"><span class="pro">' + s.pron + "</span> " + slotHtml(s, i) + "</div></td>").join("") + "</tr></tbody></table>";
     } else {
-      tab = '<table class="tk"><thead><tr><th>' + T.leftHead + "</th><th>Satz</th></tr></thead><tbody>" + T.rows.map((r, ri_) => {
+      tab = '<table class="tk rw"><thead><tr><th>' + T.leftHead + "</th><th>Satz</th></tr></thead><tbody>" + T.rows.map((r, ri_) => {
         const body = r.pieces.map(p => p.s !== undefined ? slotHtml(T.slots[p.s], p.s) : "<span>" + esc(p.t) + "</span>").join(" ");
         const left = T.leftOnce ? (ri_ === 0 ? '<td class="vb" rowspan="' + T.rows.length + '">' + esc(T.leftOnce) + "</td>" : "") : '<td class="vb">' + esc(r.left) + "</td>";
         return "<tr>" + left + '<td><div class="cellw sent">' + body + (r.note ? ' <span class="noun">' + esc(r.note) + "</span>" : "") + "</div>" + (S.help && r.hint ? '<div class="hint">' + esc(r.hint) + "</div>" : "") + "</td></tr>";
@@ -772,8 +801,9 @@
     t.innerHTML = '<div class="tk-bar"><span class="sym">' + SYM[G.cur] + '</span><span class="who">' + esc(nameOf(G.cur)) + " ist dran</span>" + STEPS + '</div><div class="tk-body"><div class="tk-titlerow"><div class="tk-title">' + esc(T.title) + "</div>" + stakeHtml(T) + '</div><div class="how">' +
       (wr ? "Schreibe in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.") + "</div>" +
       (lim ? '<div class="tk-timer"><div class="bar"><i id="tkBar"></i></div><span class="sec" id="tkSec">' + lim + " s</span></div>" : "") +
-      '<div class="tw">' + tab + "</div>" + (wr ? "" : '<div class="chips" id="chips"></div>') +
-      '<div class="tk-feed" id="tkFeed"></div>' +
+      '<div class="tw">' + tab + "</div>" +
+      '<div class="tk-feed" id="tkFeed"></div></div>' +
+      '<div class="tk-dock">' + (wr ? "" : '<div class="chips" id="chips"></div>') +
       '<div class="tk-act">' + (wr ? "" : '<button id="tkClear">Letzte Eingabe löschen</button>') + '<button class="primary" id="tkCheck">Prüfen</button>' + (RS[G.cur].joker > 0 ? '<button class="jk-btn" id="tkJoker" title="Füllt eine Lücke aus. Die Aufgabe bringt dann nur halbe Punkte.">Tipp-Joker (' + RS[G.cur].joker + ")</button>" : "") + '<button id="tkNext" hidden class="primary">Weiter</button></div></div>';
     setStep(2); t.scrollTop = 0;
     $("tkCheck").onclick = check;
@@ -891,7 +921,7 @@
       feed.className = "tk-feed no"; feed.innerHTML = '<div class="fh">' + (timeout ? "Zeit abgelaufen" : "Nicht ganz richtig") + "</div>" + (parts.length ? '<div class="gcs">' + parts.map(x => '<span class="gc">' + esc(x) + "</span>").join("") + "</div>" : "") + '<div class="fs">Das Feld bleibt frei. Der Zug geht an ' + esc(nameOf(1 - me)) + ".</div>";
       const tk = $("task"); tk.classList.remove("shake"); void tk.offsetWidth; tk.classList.add("shake"); setTimeout(() => tk.classList.remove("shake"), 500);
     }
-    dXp = R.xp - xp0; setStep(4);
+    dXp = R.xp - xp0; setStep(4); $("task").classList.add("fin");
     checkBadges(0); checkBadges(1); savePR();
     $("tkCheck").hidden = true; const tc = $("tkClear"); if (tc) tc.hidden = true; const tj = $("tkJoker"); if (tj) tj.hidden = true;
     $("tkNext").hidden = false; $("tkNext").focus();

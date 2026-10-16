@@ -75,9 +75,6 @@
   .play > * { min-width:0; }
   .task { background:var(--surface); border:1px solid var(--hair); border-radius:1.05rem; padding:1rem 1.1rem; min-height:14rem; }
   .tk-idle { color:var(--muted); font-size:1.1rem; display:flex; flex-direction:column; gap:.6rem; align-items:flex-start; }
-  .tk-head { font-size:1.1rem; margin-bottom:.6rem; display:flex; flex-wrap:wrap; gap:.4rem .8rem; align-items:center; }
-  .tk-head .pill { font-weight:700; font-size:1.2rem; color:var(--c); }
-  .tk-head .ttl { color:var(--muted); }
   .tk-timer { display:flex; align-items:center; gap:.7rem; margin:.3rem 0 .8rem; }
   .tk-timer .bar { flex:1; height:.7rem; border-radius:1rem; background:rgba(255,255,255,.1); overflow:hidden; }
   .tk-timer .bar i { display:block; height:100%; width:100%; background:var(--ok); transition:width .25s linear, background .3s; }
@@ -86,7 +83,7 @@
   table.tk { border-collapse:collapse; width:100%; font-size:1.15rem; }
   table.tk th { text-align:left; font-size:.85rem; color:var(--muted); font-weight:400; padding:.3rem .5rem; border-bottom:1px solid var(--hair2); }
   table.tk td { padding:.55rem .5rem; border-bottom:1px solid var(--hair); vertical-align:top; }
-  table.tk td.vb { font-weight:700; font-size:1.25rem; border-right:1px solid var(--hair2); white-space:nowrap; }
+  table.tk td.vb { font-weight:700; font-size:1.15rem; border-right:1px solid var(--hair2); overflow-wrap:anywhere; min-width:6rem; }
   .given { font-size:.85rem; color:var(--muted); margin-bottom:.2rem; }
   .cellw { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
   .cellw.sent { display:block; line-height:2.4; }
@@ -97,7 +94,7 @@
   .sw .solw .sol { display:block; margin-top:.15rem; }
   .sin { width:7rem; font-size:1.15rem; padding:.35rem .5rem; }
   .sin.art { width:5.5rem; }
-  .slot { display:inline-block; min-width:5rem; min-height:2.1rem; padding:.2rem .6rem; border:2px dashed var(--hair2); border-radius:.6rem; text-align:center; font-weight:700; cursor:pointer; vertical-align:middle; }
+  .slot { display:inline-block; min-width:4.4rem; min-height:2.1rem; padding:.2rem .6rem; border:2px dashed var(--hair2); border-radius:.6rem; text-align:center; font-weight:700; cursor:pointer; vertical-align:middle; }
   .slot.fill { border-style:solid; border-color:rgba(255,255,255,.35); background:rgba(255,255,255,.07); }
   .sw.ok .sin, .sw.ok .slot { border-color:var(--ok); background:rgba(95,208,111,.14); }
   .sw.no .sin, .sw.no .slot { border-color:var(--bad); background:rgba(255,107,94,.12); }
@@ -110,37 +107,92 @@
   .tk-feed { margin-top:.8rem; font-weight:700; font-size:1.1rem; }
   .tk-feed.ok { color:var(--ok); } .tk-feed.no { color:var(--bad); }
 
-  /* Spielfortschritt */
-  .pl { flex-wrap:wrap; position:relative; }
-  .pl-g { flex-basis:100%; display:flex; flex-direction:column; gap:.35rem; }
-  .pl .lv { font-size:.92rem; color:var(--muted); display:flex; gap:.5rem; align-items:baseline; flex-wrap:wrap; } .pl .lv b { color:var(--c); font-size:1rem; } .pl .xpn { margin-left:auto; font-variant-numeric:tabular-nums; }
-  .xpbar { height:.55rem; border-radius:1rem; background:rgba(255,255,255,.1); overflow:hidden; } .xpbar i { display:block; height:100%; background:linear-gradient(90deg, var(--c), var(--gold)); transition:width .6s ease; }
-  .tags { display:flex; flex-wrap:wrap; gap:.35rem; font-size:.8rem; }
-  .tag { padding:.12rem .55rem; border-radius:1rem; border:1px solid var(--hair2); color:var(--muted); }
-  .tag.combo { color:#1a1100; background:linear-gradient(90deg, #ff9a3c, #ffd23c); border-color:transparent; font-weight:700; animation:glow 1s ease-in-out infinite alternate; }
-  .tag.jk { color:var(--p1); border-color:var(--p1); } .tag.mis { color:var(--text); } .tag.mis.done { color:var(--ok); border-color:var(--ok); }
-  @keyframes glow { from { box-shadow:0 0 .2rem rgba(255,170,60,.4); } to { box-shadow:0 0 .9rem rgba(255,170,60,.95); } }
-  .xpfloat { position:absolute; right:1.2rem; top:.4rem; font-weight:700; font-size:1.3rem; color:var(--gold); pointer-events:none; animation:floatup 1.6s ease-out forwards; }
-  @keyframes floatup { 0% { opacity:0; transform:translateY(.8rem) scale(.7); } 15% { opacity:1; transform:translateY(0) scale(1.2); } 100% { opacity:0; transform:translateY(-2.6rem) scale(1); } }
-  .task.shake { animation:shake .45s ease; } @keyframes shake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-.6rem); } 40% { transform:translateX(.6rem); } 60% { transform:translateX(-.4rem); } 80% { transform:translateX(.4rem); } }
+  /* Klare Kontur und Spielstand */
+  :root { --line:#3d4757; --line-hi:#7b8aa0; }
+  .card, .boardwrap { border:1.5px solid var(--line); }
+  .score { grid-template-columns:1fr 6.5rem 1fr; align-items:stretch; }
+  .pl { display:flex; flex-direction:column; align-items:stretch; gap:.6rem; padding:.8rem .95rem .9rem; border:2px solid var(--line); border-top:5px solid var(--c); border-radius:1rem; background:var(--surface); position:relative; }
+  .pl.on { border-color:var(--c); box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent); background:linear-gradient(180deg, color-mix(in srgb, var(--c) 10%, var(--surface)), var(--surface)); }
+  .pl-top { display:flex; align-items:center; gap:.7rem; }
+  .pl .sym { font-size:1.8rem; width:2.7rem; height:2.7rem; display:grid; place-items:center; border:2px solid var(--c); border-radius:.65rem; color:var(--c); font-weight:700; line-height:1; flex:none; }
+  .pl .who { min-width:0; flex:1; } .pl .nm { font-weight:700; font-size:1.1rem; overflow-wrap:anywhere; line-height:1.2; } .pl .rk { color:var(--muted); font-size:.85rem; }
+  .pl .wins { text-align:center; min-width:3.2rem; padding-left:.6rem; border-left:1.5px solid var(--line); } .pl .wins b { display:block; font-size:1.7rem; line-height:1; } .pl .wins span { font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .turn { position:absolute; right:.9rem; top:-.85rem; font-size:.72rem; font-weight:700; padding:.12rem .6rem; border-radius:1rem; background:var(--c); color:#0d1016; }
+  .xpbar { height:.6rem; border-radius:1rem; background:rgba(255,255,255,.1); overflow:hidden; border:1px solid var(--line); } .xpbar i { display:block; height:100%; background:var(--c); transition:width .6s ease; }
+  .xpl { display:flex; justify-content:space-between; gap:.5rem; font-size:.78rem; color:var(--muted); margin-top:.25rem; font-variant-numeric:tabular-nums; }
+  .kpis { display:grid; grid-template-columns:repeat(3, 1fr); gap:.4rem; }
+  .kpi { border:1.5px solid var(--line); border-radius:.6rem; padding:.3rem .5rem; min-width:0; } .kpi span { display:block; font-size:.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; } .kpi b { font-size:1rem; white-space:nowrap; }
+  .kpi.hot { border-color:var(--gold); } .kpi.hot b { color:var(--gold); } .kpi.done { border-color:var(--ok); } .kpi.done b { color:var(--ok); }
+  .mtext { font-size:.8rem; color:var(--muted); line-height:1.3; } .mtext.done { color:var(--ok); }
+  .xpfloat { position:absolute; right:1rem; top:3.4rem; font-weight:700; font-size:1.3rem; color:var(--gold); pointer-events:none; animation:floatup 1.6s ease-out forwards; }
+  @keyframes floatup { 0% { opacity:0; transform:translateY(.8rem); } 15% { opacity:1; transform:translateY(0); } 100% { opacity:0; transform:translateY(-2.2rem); } }
+  /* Spielfeld */
+  .fld { border:2px solid var(--line-hi); }
+  .board.pick .fld.free:not(:disabled) { border-color:var(--c); animation:pickp 1.8s ease-in-out infinite; }
+  @keyframes pickp { 0%,100% { box-shadow:0 0 0 0 transparent; } 50% { box-shadow:0 0 0 .3rem color-mix(in srgb, var(--c) 30%, transparent); } }
+  .bmsg { color:var(--text); }
+  /* Aufgabenfeld */
+  .task { padding:0; overflow:hidden; border:2px solid var(--line); border-radius:1rem; min-height:14rem; }
+  .task.active { border-color:var(--c); box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent); }
   .task.glowok { animation:okflash .8s ease; } @keyframes okflash { 0% { box-shadow:0 0 0 0 rgba(95,208,111,.9); } 100% { box-shadow:0 0 0 1.4rem rgba(95,208,111,0); } }
-  .jk-btn { color:var(--p1); border-color:var(--p1); }
-  .sin.jok { border-color:var(--p1); background:rgba(108,192,245,.14); }
-  .sumrow { color:var(--text); font-size:1rem; padding:.45rem .7rem; border-left:4px solid var(--c); background:rgba(255,255,255,.04); border-radius:.4rem; }
-  .toasts { position:fixed; right:1rem; bottom:1rem; z-index:60; display:flex; flex-direction:column-reverse; gap:.6rem; width:min(22rem, calc(100vw - 2rem)); pointer-events:none; }
-  .toast { background:var(--surface2); border:2px solid var(--gold); border-radius:.9rem; padding:.7rem .9rem; box-shadow:0 .5rem 1.6rem rgba(0,0,0,.6); animation:tin .4s ease; }
-  .toast b { display:block; font-size:1.1rem; color:var(--gold); } .toast span { color:var(--text); font-size:.95rem; }
-  .toast.lvl { border-color:var(--ok); } .toast.lvl b { color:var(--ok); } .toast.joker { border-color:var(--p1); } .toast.joker b { color:var(--p1); }
+  .task.shake { animation:shake .45s ease; } @keyframes shake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-.6rem); } 40% { transform:translateX(.6rem); } 60% { transform:translateX(-.4rem); } 80% { transform:translateX(.4rem); } }
+  .tk-bar { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem .8rem; padding:.6rem 1rem; background:var(--c); color:#0d1016; font-weight:700; }
+  .tk-bar .sym { width:2rem; height:2rem; display:grid; place-items:center; border-radius:.5rem; background:#0d1016; color:var(--c); font-size:1.2rem; line-height:1; }
+  .tk-bar .who { font-size:1.1rem; }
+  .steps { display:flex; gap:.4rem; margin:0 0 0 auto; padding:0; list-style:none; flex-wrap:wrap; }
+  .steps li { display:flex; align-items:center; gap:.35rem; font-size:.8rem; padding:.12rem .6rem .12rem .2rem; border:1.5px solid rgba(13,16,22,.5); border-radius:1rem; opacity:.7; }
+  .steps li i { font-style:normal; width:1.3rem; height:1.3rem; border-radius:50%; background:rgba(13,16,22,.25); display:grid; place-items:center; font-size:.75rem; }
+  .steps li.cur { opacity:1; background:#0d1016; color:var(--c); border-color:#0d1016; } .steps li.cur i { background:var(--c); color:#0d1016; }
+  .steps li.done { opacity:1; } .steps li.done i { background:#0d1016; color:var(--c); }
+  .tk-body { padding:.9rem 1.1rem 1.1rem; }
+  .tk-title { font-size:1.1rem; font-weight:700; margin-bottom:.55rem; }
+  .how { display:flex; gap:.6rem; align-items:baseline; padding:.5rem .75rem; margin-bottom:.8rem; border:1.5px solid var(--line-hi); border-left:5px solid var(--c); border-radius:.6rem; background:rgba(255,255,255,.03); font-size:.95rem; }
+  .how .hn { font-weight:700; color:var(--c); white-space:nowrap; }
+  .howto { display:grid; grid-template-columns:repeat(auto-fit, minmax(8.5rem, 1fr)); gap:.6rem; margin:.2rem 0 .8rem; }
+  .hstep { border:1.5px solid var(--line-hi); border-radius:.8rem; padding:.7rem .8rem; } .hstep b { display:flex; align-items:center; gap:.5rem; margin-bottom:.3rem; } .hstep span { color:var(--muted); font-size:.92rem; }
+  .hstep i { font-style:normal; width:1.5rem; height:1.5rem; border-radius:50%; background:var(--c); color:#0d1016; display:grid; place-items:center; font-size:.85rem; flex:none; }
+  .hstep.first { border-color:var(--c); background:color-mix(in srgb, var(--c) 10%, transparent); }
+  table.tk { border:1.5px solid var(--line); border-radius:.6rem; } table.tk th { background:rgba(255,255,255,.04); }
+  .sin { border:2px solid var(--line-hi); border-radius:.55rem; background:#0b0e13; }
+  .sin:focus { outline:none; border-color:var(--c); box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent); }
+  .sin::placeholder { color:#6f7a8b; font-size:.8em; }
+  .slot { border:2px dashed var(--line-hi); } .slot:empty::before { content:attr(data-ph); color:#6f7a8b; font-weight:400; font-size:.8em; }
+  .slot.next { border-style:solid; border-color:var(--c); box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 28%, transparent); }
+  .chip { border:2px solid var(--line-hi); } .chip:not(:disabled):hover { border-color:var(--c); }
+  .jk-btn { color:var(--p1); border:2px solid var(--p1); } .sin.jok { border-color:var(--p1); background:rgba(108,192,245,.14); }
+  button { border-width:1.5px; border-color:var(--line-hi); }
+  button.primary { border-color:transparent; }
+  .tk-feed:empty { display:none; } .tk-feed { margin:.9rem 0 0; }
+  .tk-feed { padding:.75rem .95rem; border:2px solid; border-radius:.8rem; font-weight:400; }
+  .tk-feed.ok { border-color:var(--ok); background:rgba(95,208,111,.08); color:var(--text); } .tk-feed.no { border-color:var(--bad); background:rgba(255,107,94,.08); color:var(--text); }
+  .tk-feed .fh { font-size:1.25rem; font-weight:700; } .tk-feed.ok .fh { color:var(--ok); } .tk-feed.no .fh { color:var(--bad); }
+  .gcs { display:flex; flex-wrap:wrap; gap:.4rem; margin:.45rem 0; } .gc { padding:.12rem .65rem; border:1.5px solid var(--gold); color:var(--gold); border-radius:1rem; font-size:.88rem; font-weight:700; }
+  .tk-feed .fs { color:var(--text); }
+  .endmsg { font-size:1.3rem; font-weight:700; margin-bottom:.7rem; }
+  table.sumtab { width:100%; border-collapse:collapse; margin-bottom:.8rem; } .sumtab th { text-align:left; font-size:.78rem; color:var(--muted); font-weight:400; padding:.3rem .5rem; border-bottom:1.5px solid var(--line-hi); }
+  .sumtab td { padding:.5rem; border-bottom:1px solid var(--line); } .sumtab tr td:first-child { font-weight:700; border-left:5px solid var(--c); } .sumtab .nb { color:var(--gold); font-size:.88rem; }
+  /* Meldungen */
+  .toasts { position:fixed; right:1rem; bottom:1rem; z-index:60; display:flex; flex-direction:column-reverse; gap:.5rem; width:min(20rem, calc(100vw - 2rem)); pointer-events:none; }
+  .toast { background:var(--surface2); border:1.5px solid var(--line-hi); border-left:6px solid var(--k, var(--gold)); border-radius:.7rem; padding:.55rem .8rem; box-shadow:0 .4rem 1.2rem rgba(0,0,0,.55); animation:tin .35s ease; }
+  .toast small { display:block; font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; color:var(--k, var(--gold)); font-weight:700; } .toast b { display:block; font-size:1rem; } .toast span { color:var(--muted); font-size:.88rem; }
+  .toast.lvl { --k:var(--ok); } .toast.mis { --k:#c58cff; } .toast.jok { --k:var(--p1); }
   @keyframes tin { from { transform:translateX(110%); opacity:0; } to { transform:none; opacity:1; } }
   #fx { position:fixed; left:0; top:0; width:100vw; height:100vh; pointer-events:none; z-index:50; }
-  .tp { margin-top:1rem; } .tp h3 { margin:0 0 .5rem; color:var(--c); } .tp h3 small { color:var(--muted); font-weight:400; font-size:.85rem; margin-left:.4rem; }
+  /* Trophäen */
+  .tp { margin-top:1.1rem; padding-top:.2rem; } .tp h3 { margin:0 0 .6rem; color:var(--c); padding-bottom:.4rem; border-bottom:2px solid var(--c); } .tp h3 small { color:var(--muted); font-weight:400; font-size:.85rem; margin-left:.5rem; }
+  .tcat { font-size:.78rem; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin:.7rem 0 .35rem; font-weight:700; }
   .bg { display:grid; grid-template-columns:repeat(auto-fill, minmax(11rem, 1fr)); gap:.5rem; }
-  .bd { padding:.5rem .65rem; border-radius:.7rem; border:1px solid var(--hair); opacity:.4; font-size:.85rem; } .bd b { display:block; font-size:.95rem; } .bd span { color:var(--muted); }
+  .bd { padding:.5rem .65rem; border-radius:.7rem; border:1.5px solid var(--line); opacity:.45; font-size:.85rem; } .bd b { display:block; font-size:.95rem; } .bd span { color:var(--muted); }
   .bd.on { opacity:1; border-color:var(--c); background:color-mix(in srgb, var(--c) 14%, transparent); }
   @media (max-width:820px) {
     .side { position:fixed; z-index:20; left:0; top:0; box-shadow:0 0 2rem #000; }
     .play { grid-template-columns:minmax(0,1fr); } .score { grid-template-columns:1fr 1fr; } .mid { grid-column:1 / -1; flex-direction:row; gap:.6rem; order:3; }
     .fld { font-size:3rem; }
+    .score { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:.5rem; } .steps { margin-left:0; }
+    .pl { padding:.6rem .55rem .7rem; gap:.45rem; } .pl-top { gap:.4rem; } .pl .sym { width:2.1rem; height:2.1rem; font-size:1.3rem; } .pl .nm { font-size:.95rem; } .pl .rk { font-size:.72rem; }
+    .pl .wins { min-width:1.8rem; padding-left:.4rem; } .pl .wins b { font-size:1.3rem; } .pl .wins span { display:none; }
+    .kpis { grid-template-columns:repeat(3, minmax(0,1fr)); gap:.25rem; } .kpi { padding:.2rem .3rem; } .kpi span { font-size:.55rem; letter-spacing:0; } .kpi b { font-size:.78rem; }
+    .mtext, .xpl span:last-child { display:none; } .turn { right:.5rem; }
   }
   @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }
 </style>
@@ -451,9 +503,10 @@
   const mkR = () => ({ rs: 0, ok: 0, bad: 0, joker: 1, jused: 0, xp: 0, mission: pick(MIS), mDone: false, newB: [] });
   let RS = [mkR(), mkR()];
   const SK = [0, 0];
-  function toast(title, sub, cls) {
-    const el = document.createElement("div"); el.className = "toast " + (cls || ""); el.innerHTML = "<b>" + esc(title) + "</b><span>" + esc(sub) + "</span>";
-    $("toasts").appendChild(el); while ($("toasts").children.length > 3) $("toasts").firstChild.remove(); setTimeout(() => el.remove(), 4200);
+  const KICK = { lvl: "Level", tro: "Trophäe", mis: "Mission", jok: "Joker" };
+  function toast(kind, title, sub) {
+    const el = document.createElement("div"); el.className = "toast " + kind; el.innerHTML = "<small>" + KICK[kind] + "</small><b>" + esc(title) + "</b><span>" + esc(sub) + "</span>";
+    $("toasts").appendChild(el); while ($("toasts").children.length > 3) $("toasts").firstChild.remove(); setTimeout(() => el.remove(), 3600);
   }
   const FX = { ps: [], run: false };
   function confetti(n, cols, ox, oy) {
@@ -472,21 +525,23 @@
   function grant(i, n) {
     const P = PR[i], l0 = lvlOf(P.xp); P.xp += n; RS[i].xp += n;
     const l1 = lvlOf(P.xp);
-    if (l1 > l0) { toast("Level " + l1 + " erreicht!", nameOf(i) + " ist jetzt: " + titleOf(l1), "lvl"); SFX.lvl(); confetti(70, CONF, .5, .35); }
+    if (l1 > l0) { toast("lvl", "Level " + l1 + " erreicht", nameOf(i) + " ist jetzt: " + titleOf(l1)); SFX.lvl(); }
   }
   function checkBadges(i) {
     const P = PR[i];
-    BADGES.forEach(b => { if (!P.badges[b[0]] && b[3](P)) { P.badges[b[0]] = Date.now(); RS[i].newB.push(b[1]); toast("Trophäe: " + b[1], nameOf(i) + ": " + b[2]); SFX.badge(); } });
+    BADGES.forEach(b => { if (!P.badges[b[0]] && b[3](P)) { P.badges[b[0]] = Date.now(); RS[i].newB.push(b[1]); toast("tro", b[1], nameOf(i) + ": " + b[2]); SFX.badge(); } });
   }
   function missionCheck(i, w) {
     const R = RS[i], m = R.mission;
     if (R.mDone || (m.win && !w) || !m.ok(i, R)) return;
-    R.mDone = true; PR[i].stat.missions++; grant(i, m.xp); toast("Mission erfüllt!", nameOf(i) + ": " + m.t + " (+" + m.xp + " XP)", "lvl");
+    R.mDone = true; PR[i].stat.missions++; grant(i, m.xp); toast("mis", "Mission erfüllt", nameOf(i) + ": " + m.t + " (+" + m.xp + " XP)");
   }
+  const TCATS = [["Einstieg und Level", ["first", "ten", "fifty", "l3", "l5", "l8"]], ["Serien und Tempo", ["s3", "s5", "s10", "blitz"]], ["Runden und Missionen", ["win", "win5", "clean", "come", "diag", "mis"]], ["Fachkönnen", ["all", "konj", "klam", "kasus"]]];
   function renderTrophy() {
     $("trophyBody").innerHTML = [0, 1].map(i => { const P = PR[i], l = lvlOf(P.xp);
-      return '<div class="tp" style="--c:' + PCOL[i] + '"><h3>' + esc(nameOf(i)) + " <small>Level " + l + ", " + titleOf(l) + ", " + P.xp + ' XP</small></h3><div class="bg">' +
-        BADGES.map(b => '<div class="bd' + (P.badges[b[0]] ? " on" : "") + '"><b>' + esc(b[1]) + "</b><span>" + esc(b[2]) + "</span></div>").join("") + '</div><p class="note">' + Object.keys(P.badges).length + " von " + BADGES.length + " Trophäen</p></div>"; }).join("");
+      return '<div class="tp" style="--c:' + PCOL[i] + '"><h3>' + esc(nameOf(i)) + " <small>Level " + l + ", " + titleOf(l) + ", " + P.xp + " XP, " + Object.keys(P.badges).length + " von " + BADGES.length + " Trophäen</small></h3>" +
+        TCATS.map(c => { const bs = BADGES.filter(b => c[1].indexOf(b[0]) >= 0), n = bs.filter(b => P.badges[b[0]]).length;
+          return '<div class="tcat">' + c[0] + " (" + n + " von " + bs.length + ')</div><div class="bg">' + bs.map(b => '<div class="bd' + (P.badges[b[0]] ? " on" : "") + '"><b>' + esc(b[1]) + "</b><span>" + esc(b[2]) + "</span></div>").join("") + "</div>"; }).join("") + "</div>"; }).join("");
   }
   function winnerOf(b) { for (const l of LINES) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[1]] === b[l[2]]) return l; return null; }
 
@@ -588,11 +643,12 @@
   function renderScore() {
     const pl = i => {
       const P = PR[i], R = RS[i], l = lvlOf(P.xp), a = lvlStart(l), b = lvlStart(l + 1), pc = Math.round((P.xp - a) / (b - a) * 100), mult = Math.min(3, 1 + 0.5 * (SK[i] - 1));
-      return '<div class="pl' + (!G.over && G.cur === i ? " on" : "") + '" data-p="' + i + '" style="--c:' + PCOL[i] + '"><div class="sym">' + SYM[i] + '</div><div><div class="nm">' + esc(nameOf(i)) + '</div><div class="sub">' + (!G.over && G.cur === i ? "ist dran" : "&nbsp;") + '</div></div><div class="pts" aria-label="Runden gewonnen">' + G.score[i] + "</div>" +
-        '<div class="pl-g"><div class="lv"><b>Level ' + l + "</b> " + titleOf(l) + '<span class="xpn">' + P.xp + " XP</span></div>" +
-        '<div class="xpbar" title="Fortschritt bis zum nächsten Level"><i style="width:' + pc + '%"></i></div><div class="tags">' +
-        (SK[i] >= 2 ? '<span class="tag combo">Serie ' + SK[i] + ", Faktor " + String(mult).replace(".", ",") + "</span>" : "") +
-        '<span class="tag jk">Joker ' + R.joker + '</span><span class="tag mis' + (R.mDone ? " done" : "") + '">Mission: ' + esc(R.mission.t) + " (+" + R.mission.xp + ")" + (R.mDone ? " geschafft" : "") + "</span></div></div></div>";
+      const fmt = x => String(x).replace(".", ",");
+      return '<div class="pl' + (!G.over && G.cur === i ? " on" : "") + '" data-p="' + i + '" style="--c:' + PCOL[i] + '">' + (!G.over && G.cur === i ? '<span class="turn">Am Zug</span>' : "") +
+        '<div class="pl-top"><div class="sym">' + SYM[i] + '</div><div class="who"><div class="nm">' + esc(nameOf(i)) + '</div><div class="rk">Level ' + l + ", " + titleOf(l) + '</div></div><div class="wins" aria-label="Runden gewonnen"><b>' + G.score[i] + "</b><span>Siege</span></div></div>" +
+        '<div><div class="xpbar" title="Fortschritt bis zum nächsten Level"><i style="width:' + pc + '%"></i></div><div class="xpl"><span>' + P.xp + " XP</span><span>noch " + (b - P.xp) + " bis Level " + (l + 1) + "</span></div></div>" +
+        '<div class="kpis"><div class="kpi' + (SK[i] >= 2 ? " hot" : "") + '"><span>Serie</span><b>' + SK[i] + (SK[i] >= 2 ? " (x" + fmt(mult) + ")" : "") + '</b></div><div class="kpi"><span>Joker</span><b>' + R.joker + '</b></div><div class="kpi' + (R.mDone ? " done" : "") + '"><span>Mission</span><b>' + (R.mDone ? "geschafft" : "offen") + "</b></div></div>" +
+        '<div class="mtext' + (R.mDone ? " done" : "") + '">' + esc(R.mission.t) + " (+" + R.mission.xp + " XP)</div></div>";
     };
     $("score").innerHTML = pl(0) + '<div class="mid"><span>Runde</span><b>' + (G.rounds + 1) + "</b><span>Unentschieden: " + G.draws + "</span></div>" + pl(1);
     renderTrophy();
@@ -601,20 +657,31 @@
     const idle = !G.over && !G.task;
     $("board").innerHTML = G.board.map((v, i) => '<button class="fld ' + (v || "free") + (G.win && G.win.indexOf(i) >= 0 ? " win" : "") + (G.task && G.task.field === i ? " cur" : "") + (G.last === i ? " new" : "") + '" data-f="' + i + '" role="gridcell" aria-label="Feld ' + (i + 1) + (v ? ", " + v : ", frei") + '"' + (v || !idle ? " disabled" : "") + "><span>" + v + "</span></button>").join("");
     $("bmsg").className = "bmsg" + (G.win ? " win" : "");
-    $("bmsg").textContent = G.msg;
+    $("board").className = "board" + (idle ? " pick" : ""); $("board").style.setProperty("--c", PCOL[G.cur]);
+    $("bmsg").textContent = G.msg || (idle ? nameOf(G.cur) + ": Wähle ein freies Feld." : G.task && !G.task.done ? "Aufgabe läuft: Antwort im Aufgabenfeld eintragen." : "");
   }
+  const STEPS = '<ol class="steps"><li><i>1</i>Feld wählen</li><li><i>2</i>Antworten</li><li><i>3</i>Prüfen</li></ol>';
+  function setStep(n) { document.querySelectorAll("#task .steps li").forEach((li, i) => { li.className = i < n - 1 ? "done" : i === n - 1 ? "cur" : ""; }); }
   function renderIdle() {
     const t = $("task");
     if (G.over) {
-      const sum = [0, 1].map(i => { const R = RS[i]; return '<div class="sumrow" style="--c:' + PCOL[i] + '"><b>' + esc(nameOf(i)) + "</b>: " + R.ok + " richtig, " + R.bad + " falsch, +" + R.xp + " XP" + (R.mDone ? ", Mission geschafft" : "") + (R.newB.length ? ". Neue Trophäen: " + esc(R.newB.join(", ")) : "") + "</div>"; }).join("");
-      t.innerHTML = '<div class="tk-idle"><div><b>' + esc(G.msg) + "</b></div>" + sum + '<button class="primary" id="again">Neue Runde</button></div>'; $("again").onclick = newRound; return;
+      const wi = G.win ? (G.board[G.win[0]] === "X" ? 0 : 1) : -1;
+      t.className = "task" + (wi >= 0 ? " active" : ""); t.style.setProperty("--c", wi >= 0 ? PCOL[wi] : "#9aa1a9");
+      const rows = [0, 1].map(i => { const R = RS[i]; return '<tr style="--c:' + PCOL[i] + '"><td>' + esc(nameOf(i)) + "</td><td>" + R.ok + "</td><td>" + R.bad + "</td><td>+" + R.xp + " XP</td><td>" + (R.mDone ? "geschafft" : "offen") + (R.newB.length ? '<div class="nb">Neu: ' + esc(R.newB.join(", ")) + "</div>" : "") + "</td></tr>"; }).join("");
+      t.innerHTML = '<div class="tk-bar"><span class="who">Runde beendet</span></div><div class="tk-body"><div class="endmsg">' + esc(G.msg) + '</div><table class="sumtab"><thead><tr><th>Spieler</th><th>Richtig</th><th>Falsch</th><th>Punkte</th><th>Mission</th></tr></thead><tbody>' + rows + '</tbody></table><div class="tk-act"><button class="primary" id="again">Neue Runde starten</button></div></div>';
+      $("again").onclick = newRound; return;
     }
-    t.innerHTML = '<div class="tk-idle"><div><b style="color:' + PCOL[G.cur] + '">' + esc(nameOf(G.cur)) + " (" + SYM[G.cur] + ")</b>, tippe auf ein freies Feld.</div><div class=\"note\">Dann bekommst du eine Aufgabe. Löst du sie richtig, gehört das Feld dir und du bekommst Punkte. Serien, schnelle Antworten und Missionen bringen Extrapunkte. Drei in einer Reihe gewinnen: waagerecht, senkrecht oder schräg.</div></div>";
+    t.className = "task active"; t.style.setProperty("--c", PCOL[G.cur]);
+    t.innerHTML = '<div class="tk-bar"><span class="sym">' + SYM[G.cur] + '</span><span class="who">' + esc(nameOf(G.cur)) + " ist dran</span>" + STEPS + '</div><div class="tk-body"><div class="tk-title">Wähle ein freies Feld auf dem Spielfeld.</div><div class="howto">' +
+      '<div class="hstep first"><b><i>1</i>Feld wählen</b><span>Tippe auf ein freies Feld im Spielfeld.</span></div><div class="hstep"><b><i>2</i>Aufgabe lösen</b><span>Hier im Aufgabenfeld erscheinen die umrandeten Eingabefelder.</span></div><div class="hstep"><b><i>3</i>Feld gewinnen</b><span>Richtig gelöst, dann gehört dir das Feld. Drei in einer Reihe gewinnen.</span></div></div>' +
+      '<div class="note">Deine Mission: ' + esc(RS[G.cur].mission.t) + " (+" + RS[G.cur].mission.xp + ' XP). Extrapunkte gibt es außerdem für Serien und schnelle Antworten. Einmal pro Runde kannst du den Tipp-Joker nutzen.</div></div>';
+    setStep(1);
   }
+  const PH = { a: "Artikel", w: "Verbform", t: "Wort" };
   const slotHtml = (s, i) => {
     const wr = S.ans === "type";
-    return '<span class="sw" data-i="' + i + '">' + (wr ? '<input class="sin' + (s.kind === "a" ? " art" : "") + '" data-i="' + i + '" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Antwort ' + (i + 1) + '">'
-      : '<span class="slot" data-s="' + i + '" tabindex="0" role="button" aria-label="Lücke ' + (i + 1) + '"></span>') + '<span class="solw"></span></span>';
+    return '<span class="sw" data-i="' + i + '">' + (wr ? '<input class="sin' + (s.kind === "a" ? " art" : "") + '" data-i="' + i + '" placeholder="' + PH[s.kind] + '" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Antwort ' + (i + 1) + '">'
+      : '<span class="slot" data-s="' + i + '" data-ph="' + PH[s.kind] + '" tabindex="0" role="button" aria-label="Lücke ' + (i + 1) + '"></span>') + '<span class="solw"></span></span>';
   };
   function renderTaskOpen() {
     const T = G.task, t = $("task"), wr = S.ans === "type";
@@ -630,10 +697,14 @@
       }).join("") + "</tbody></table>";
     }
     const lim = +S.lim;
-    t.innerHTML = '<div class="tk-head"><span class="pill" style="--c:' + PCOL[G.cur] + '">' + SYM[G.cur] + "</span><b>" + esc(nameOf(G.cur)) + '</b><span class="ttl">' + esc(T.title) + "</span></div>" +
+    t.className = "task active"; t.style.setProperty("--c", PCOL[G.cur]);
+    t.innerHTML = '<div class="tk-bar"><span class="sym">' + SYM[G.cur] + '</span><span class="who">' + esc(nameOf(G.cur)) + " ist dran</span>" + STEPS + '</div><div class="tk-body"><div class="tk-title">' + esc(T.title) + '</div><div class="how"><span class="hn">So geht es</span><span>' +
+      (wr ? "Schreibe die Lösung in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke unten die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.") + "</span></div>" +
       (lim ? '<div class="tk-timer"><div class="bar"><i id="tkBar"></i></div><span class="sec" id="tkSec">' + lim + " s</span></div>" : "") +
       '<div class="tw">' + tab + "</div>" + (wr ? "" : '<div class="chips" id="chips"></div>') +
-      '<div class="tk-act">' + (wr ? "" : '<button id="tkClear">Letzte Eingabe löschen</button>') + '<button class="primary" id="tkCheck">Prüfen</button>' + (RS[G.cur].joker > 0 ? '<button class="jk-btn" id="tkJoker">Tipp-Joker (' + RS[G.cur].joker + ")</button>" : "") + '<button id="tkNext" hidden class="primary">Weiter</button></div><div class="tk-feed" id="tkFeed"></div>';
+      '<div class="tk-feed" id="tkFeed"></div>' +
+      '<div class="tk-act">' + (wr ? "" : '<button id="tkClear">Letzte Eingabe löschen</button>') + '<button class="primary" id="tkCheck">Prüfen</button>' + (RS[G.cur].joker > 0 ? '<button class="jk-btn" id="tkJoker">Tipp-Joker (' + RS[G.cur].joker + ")</button>" : "") + '<button id="tkNext" hidden class="primary">Weiter</button></div></div>';
+    setStep(2);
     $("tkCheck").onclick = check;
     $("tkNext").onclick = afterTask;
     if ($("tkJoker")) $("tkJoker").onclick = useJoker;
@@ -651,7 +722,7 @@
     const T = G.task, usedIds = T.fill.filter(x => x !== null);
     $("chips").innerHTML = T.chips.map(c => '<button class="chip" data-c="' + c.id + '"' + (usedIds.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("");
     $("chips").querySelectorAll(".chip").forEach(b => b.onclick = () => { const i = T.fill.indexOf(null); if (i >= 0 && !T.done) { T.fill[i] = +b.dataset.c; renderChips(); } });
-    $("task").querySelectorAll(".slot").forEach((el, i) => { const id = T.fill[i]; el.textContent = id === null ? "" : T.chips.find(c => c.id === id).t; el.className = "slot" + (id !== null ? " fill" : ""); });
+    $("task").querySelectorAll(".slot").forEach((el, i) => { const id = T.fill[i]; el.textContent = id === null ? "" : T.chips.find(c => c.id === id).t; el.className = "slot" + (id !== null ? " fill" : (i === T.fill.indexOf(null) && !T.done ? " next" : "")); });
     $("tkCheck").disabled = T.done || T.fill.indexOf(null) >= 0;
   }
 
@@ -661,6 +732,7 @@
     const T = buildTask(); T.field = i; T.done = false; T.frac = 1; T.jok = false; T.fill = T.slots.map(() => null); T.res = null;
     G.task = T; G.last = -1; G.msg = "";
     renderBoard(); renderTaskOpen(); startTimer();
+    try { $("task").scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e) { /* egal */ }
   }
   function useJoker() {
     const T = G.task, R = RS[G.cur]; if (!T || T.done || R.joker < 1) return;
@@ -716,8 +788,8 @@
     $("task").querySelectorAll(".sin").forEach(e => e.disabled = true);
     if (S.ans === "click") renderChips();
     const feed = $("tkFeed"), nm = nameOf(G.cur), me = G.cur;
-    const lim = +S.lim, R = RS[me], P = PR[me];
-    let info = "";
+    const lim = +S.lim, R = RS[me], P = PR[me], xp0 = R.xp, parts = [];
+    let dXp = 0;
     if (ok) {
       G.board[T.field] = SYM[me]; G.last = T.field;
       const w = winnerOf(G.board);
@@ -728,29 +800,30 @@
       let gain = Math.round((base + tb) * mult); if (T.jok) gain = Math.round(gain / 2);
       if (lim && T.frac > 0.7) P.stat.blitz++;
       grant(me, gain);
-      info = " +" + gain + " XP" + (SK[me] >= 2 ? " (Serie " + SK[me] + ", Faktor " + String(mult).replace(".", ",") + ")" : "") + (tb ? ", Zeitbonus " + tb : "") + (T.jok ? ", Joker halbiert" : "") + ".";
-      if (SK[me] % 3 === 0 && R.joker < 3) { R.joker++; toast("Extra-Joker!", nm + " bekommt einen zusätzlichen Tipp-Joker.", "joker"); }
+      parts.push("+" + gain + " XP"); if (SK[me] >= 2) parts.push("Serie " + SK[me] + ", Faktor " + String(mult).replace(".", ",")); if (tb) parts.push("Zeitbonus " + tb); if (T.jok) parts.push("Joker: halbe Punkte");
+      if (SK[me] % 3 === 0 && R.joker < 3) { R.joker++; toast("jok", "Extra-Joker", nm + " bekommt einen zusätzlichen Tipp-Joker."); }
       if (w) {
         G.over = true; G.win = w; G.score[me]++; G.msg = nm + " gewinnt die Runde!"; setTimeout(SFX.win, 350);
         P.stat.wins++; if (R.bad === 0) P.stat.clean++; if (R.bad >= 2) P.stat.come++; if (w.join() === "0,4,8" || w.join() === "2,4,6") P.stat.diag++;
-        grant(me, 30); info += " Rundensieg +30 XP.";
-        confetti(160, CONF, .25, .5); confetti(160, CONF, .75, .5);
-      } else if (G.board.every(Boolean)) { G.over = true; G.draws++; G.msg = "Unentschieden. Alle Felder sind besetzt."; grant(0, 10); grant(1, 10); info += " Unentschieden: beide +10 XP."; }
+        grant(me, 30); parts.push("Rundensieg +30 XP");
+        confetti(90, CONF, .25, .5); confetti(90, CONF, .75, .5);
+      } else if (G.board.every(Boolean)) { G.over = true; G.draws++; G.msg = "Unentschieden. Alle Felder sind besetzt."; grant(0, 10); grant(1, 10); parts.push("Unentschieden: beide +10 XP"); }
       missionCheck(me, w);
       $("task").classList.add("glowok"); setTimeout(() => $("task").classList.remove("glowok"), 900);
-      feed.className = "tk-feed ok"; feed.textContent = "Richtig!" + info + " " + (G.over ? G.msg : "Das Feld gehört " + nm + ".");
+      feed.className = "tk-feed ok"; feed.innerHTML = '<div class="fh">Richtig</div><div class="gcs">' + parts.map(x => '<span class="gc">' + esc(x) + "</span>").join("") + '</div><div class="fs">' + esc(G.over ? G.msg : "Das Feld gehört " + nm + ".") + "</div>";
     } else {
       SFX[timeout ? "time" : "bad"]();
       SK[me] = 0; R.rs = 0; R.bad++;
-      const part = T.res.filter(Boolean).length; if (part) { grant(me, part * 3); info = " Teilpunkte: +" + part * 3 + " XP."; }
-      feed.className = "tk-feed no"; feed.textContent = (timeout ? "Die Zeit ist abgelaufen." : "Leider nicht ganz richtig.") + info + " Das Feld bleibt frei. Der Zug geht an " + nameOf(1 - me) + ".";
+      const part = T.res.filter(Boolean).length; if (part) { grant(me, part * 3); parts.push("Teilpunkte +" + part * 3 + " XP"); }
+      feed.className = "tk-feed no"; feed.innerHTML = '<div class="fh">' + (timeout ? "Zeit abgelaufen" : "Nicht ganz richtig") + "</div>" + (parts.length ? '<div class="gcs">' + parts.map(x => '<span class="gc">' + esc(x) + "</span>").join("") + "</div>" : "") + '<div class="fs">Das Feld bleibt frei. Der Zug geht an ' + esc(nameOf(1 - me)) + ".</div>";
       const tk = $("task"); tk.classList.remove("shake"); void tk.offsetWidth; tk.classList.add("shake"); setTimeout(() => tk.classList.remove("shake"), 500);
     }
+    dXp = R.xp - xp0; setStep(4);
     checkBadges(0); checkBadges(1); savePR();
     $("tkCheck").hidden = true; const tc = $("tkClear"); if (tc) tc.hidden = true; const tj = $("tkJoker"); if (tj) tj.hidden = true;
     $("tkNext").hidden = false; $("tkNext").focus();
     renderScore(); renderBoard();
-    if (ok) { const el = document.querySelector('.pl[data-p="' + me + '"]'); if (el) { const f = document.createElement("span"); f.className = "xpfloat"; f.textContent = info.trim().split(" ")[0] + " XP"; el.appendChild(f); } }
+    if (ok) { const el = document.querySelector('.pl[data-p="' + me + '"]'); if (el) { const f = document.createElement("span"); f.className = "xpfloat"; f.textContent = "+" + dXp + " XP"; el.appendChild(f); } }
   }
   function afterTask() {
     if (!G.task) return;
@@ -773,7 +846,7 @@
   $("resetAll").onclick = () => { if (confirm("Alle Punkte löschen und neu beginnen?")) resetAll(); };
   const bind = (id, key) => $(id).addEventListener("change", () => { S[key] = $(id).type === "checkbox" ? $(id).checked : $(id).value; saveS(); });
   bind("sMode", "mode"); bind("sAns", "ans"); bind("sLim", "lim"); bind("sVb", "vb"); bind("sHelp", "help"); bind("sSnd", "snd");
-  ["n1", "n2"].forEach(id => $(id).addEventListener("input", () => { S[id] = $(id).value; saveS(); renderScore(); if (G.task && !G.task.done) { const h = $("task").querySelector(".tk-head b"); if (h) h.textContent = nameOf(G.cur); } else renderIdle(); }));
+  ["n1", "n2"].forEach(id => $(id).addEventListener("input", () => { S[id] = $(id).value; saveS(); renderScore(); if (G.task && !G.task.done) { const h = $("task").querySelector(".tk-bar .who"); if (h) h.textContent = nameOf(G.cur) + " ist dran"; } else renderIdle(); }));
   $("resetProg").onclick = () => { if (confirm("Alle Level, Punkte und Trophäen beider Spieler löschen?")) { PR = [newP(), newP()]; savePR(); RS = [mkR(), mkR()]; SK[0] = SK[1] = 0; renderScore(); } };
   $("sideToggle").onclick = () => document.body.classList.toggle("side-closed");
   if (window.innerWidth < 820) document.body.classList.add("side-closed");

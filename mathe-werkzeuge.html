@@ -245,6 +245,9 @@
   .hf { display:grid; grid-template-columns:repeat(10, 1.05rem); gap:2px; padding:5px; border:2px solid #c3c8ce; border-radius:4px; width:max-content; background:#14161a; }
   .hf i { display:block; width:1.05rem; height:1.05rem; background:#1d2229; border-radius:2px; }
   .hf i.on { background:#ffb347; }
+  .qegiven { position:sticky; z-index:25; display:flex; flex-wrap:wrap; align-items:baseline; gap:0.3rem 0.9rem; padding:0.55rem 1rem; margin:0 0 0.7rem; background:#1b2a41; border:2px solid #6cc0f5; border-radius:0.8rem; box-shadow:0 0.3rem 0.8rem rgba(0,0,0,.45); }
+  .qegiven[hidden] { display:none; }
+  .qg-l { color:#9fb0c6; font-size:0.95rem; } .qg-eq { font-size:1.5rem; font-weight:800; color:#e8edf5; }
   .dsvgw { overflow-x:auto; margin-top:0.5rem; }
   .rsq { display:block; width:0.941rem; height:0.941rem; background:#5aaee8; border-radius:2px; }
   .unav { flex:none; display:flex; flex-direction:column; justify-content:center; gap:0.706rem; align-self:center; width:11.176rem; }
@@ -5065,7 +5068,18 @@ renderStell();
         if (Math.abs(V.a) > 20 || Math.abs(V.b) > 99 || Math.abs(V.c) > 99) return "Die Zahl vor x² darf höchstens 20 sein, die anderen Zahlen höchstens 99.";
         return mode === "sv" ? buildSv() : buildGl();
       },
-      note: () => mode === "sv" ? "Scheitelpunktform: Ich ergänze zum vollständigen Quadrat und lese den Scheitelpunkt ab." : "Quadratische Gleichung: Ich ergänze zum vollständigen Quadrat, ziehe die Wurzel und löse nach x auf." });
+      note: () => mode === "sv" ? "Scheitelpunktform: Ich ergänze zum vollständigen Quadrat und lese den Scheitelpunkt ab." : "Quadratische Gleichung: Ich ergänze zum vollständigen Quadrat, ziehe die Wurzel und löse nach x auf.",
+      after: () => given() });
+    /* Die Ausgangsaufgabe bleibt oben am Bildschirmrand stehen, damit niemand den Überblick verliert */
+    function given() {
+      let g = $(pre + "Given");
+      if (!g) { g = document.createElement("div"); g.id = pre + "Given"; g.className = "qegiven"; const host = $(pre + "Steps"); host.parentNode.insertBefore(g, host); }
+      const ok = ["a", "b", "c"].every(k => Number.isInteger(V[k])) && V.a !== 0;
+      g.hidden = !ok; if (!ok) return;
+      const a = Q(V.a), b = Q(V.b), c = Q(V.c), tb = document.querySelector(".topbar");
+      g.style.top = (tb ? tb.offsetHeight : 0) + "px";
+      g.innerHTML = '<span class="qg-l">' + (mode === "sv" ? "Aufgabe: Scheitelpunktform von" : "Aufgabe: Löse") + '</span><span class="qg-eq">' + (mode === "sv" ? "f(x) = " + fx(a, b, c) : fx(a, b, c) + " = 0") + "</span>";
+    }
     function inputs() {
       const row = $(pre + "Row");
       const num = (k, col) => '<div class="numbox"><input type="number" data-k="' + k + '" value="' + (Number.isNaN(V[k]) ? "" : V[k]) + '" step="1" style="color:' + col + ";border-color:" + col + '"></div>';

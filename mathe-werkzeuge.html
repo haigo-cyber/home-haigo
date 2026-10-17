@@ -1823,7 +1823,8 @@ renderStell();
       t: "Aufgabe",
       h: '<div class="ubig">Erweitere ' + col("uorig", fr(z, n)) + ' auf einen Bruch mit einer Stufenzahl im Nenner.</div>' +
         '<div class="utext">Stufenzahlen sind 10, 100, 1000, 10000, ... Erweitern heißt: Zähler und Nenner mit derselben Zahl multiplizieren. Im Bild verfeinere ich die Einteilung. ' +
-        "Der Anteil bleibt gleich groß, die Brüche sind gleichwertig. Hundertstelbrüche kann man auch als Prozent schreiben (pro Hundert).</div>"
+        "Der Anteil bleibt gleich groß, die Brüche sind gleichwertig. Hundertstelbrüche kann man auch als Prozent schreiben (pro Hundert).</div>" +
+        (z <= n ? '<div style="margin-top:8px" class="strips">' + strip(z, n, "uorig", "#e4572e") + '</div><div class="usmall">So groß ist der Anteil am Streifen.</div>' : "")
     });
 
     if (g > 1) {
@@ -1882,7 +1883,8 @@ renderStell();
     out.push({
       t: "Zähler und Nenner mit " + f + " multiplizieren",
       h: bogenHtml(col("uorig", fr(zz, nn)), col("ures", fr(nz, S)), "·", f) +
-        '<div class="utext">Der Zähler wird ' + zz + " · " + f + " = " + nz + ", der Nenner wird " + nn + " · " + f + " = " + S + ".</div>"
+        '<div class="utext">Der Zähler wird ' + zz + " · " + f + " = " + nz + ", der Nenner wird " + nn + " · " + f + " = " + S + ".</div>" +
+        (z <= n ? '<div style="margin-top:8px" class="strips">' + strip(zz, nn, "uorig", "#e4572e") + strip(nz, S, "ures", "#2e86ab") + '</div><div class="usmall">Jedes Stück wird in ' + f + " kleinere Stücke zerlegt. Der gefärbte Anteil bleibt gleich groß.</div>" : "")
     });
 
     // Ergebnis
@@ -3263,6 +3265,15 @@ renderStell();
     return h + "</div>";
   }
 
+  // Streifenbild: z von n gleich grossen Stuecken gefaerbt (nur fuer echte Brueche mit kleinem Nenner)
+  function sstrip(z, n, col) {
+    if (!(z > 0 && z < n && n <= 24)) return "";
+    const W = Math.min(600, 36 * n), cw = W / n;
+    let h = '<svg viewBox="-2 -2 ' + (W + 4) + ' 48" style="width:min(100%,' + (W + 4) + 'px);display:block;margin:6px 0" role="img" aria-label="Streifen mit ' + n + " Stücken, davon " + z + ' gefärbt">';
+    for (let i = 0; i < n; i++) h += '<rect x="' + (i * cw).toFixed(1) + '" y="0" width="' + cw.toFixed(1) + '" height="44" fill="' + (i < z ? col : "#14161a") + '" stroke="#c3c8ce" stroke-width="2"/>';
+    return h + "</svg>" + '<div class="note">' + z + " von " + n + " gleich großen Stücken sind gefärbt.</div>";
+  }
+
   /* ---- schriftliches Dividieren Stelle für Stelle ---- */
   function ldiv(A, m, pa, maxExtra) {
     const ds = String(A).padStart(pa + 1, "0"), L = ds.length, rows = [];
@@ -3370,7 +3381,7 @@ renderStell();
       while (m % 5 === 0) { m /= 5; a5++; }
       const k = Math.max(a2, a5), term = m === 1 && k <= 6;
       const sf = F(z, n, "zs");
-      out.push(step("Aufgabe", "Ich wandle " + sf + " in eine Dezimalzahl um. Eine Dezimalzahl ist ein Bruch mit einer Stufenzahl im Nenner: Zehntel (10), Hundertstel (100), Tausendstel (1000) …"));
+      out.push(step("Aufgabe", "Ich wandle " + sf + " in eine Dezimalzahl um. Eine Dezimalzahl ist ein Bruch mit einer Stufenzahl im Nenner: Zehntel (10), Hundertstel (100), Tausendstel (1000) …", sstrip(z, n, "#6cc0f5")));
       if (g > 1) out.push(step("Erst kürzen", sf + " kann ich kürzen: Ich vergröbere die Einteilung. Zähler und Nenner teile ich durch " + g + ". Das ergibt " + F(z1, n1, "zo") + ". Dann ist der Nenner kleiner und leichter zu prüfen. " + '<span class="usmall">Mathesprache: ' + z + " : " + g + " = " + z1 + " und " + n + " : " + g + " = " + n1 + "</span>"));
       if (term) {
         const e = P10(k) / n1, num = z1 * e, dec = fmt(num, k), whole = Math.floor(num / P10(k)), frac = num % P10(k);
@@ -3381,7 +3392,7 @@ renderStell();
         out.push(step("Auf eine Stufenzahl erweitern",
           e === 1 ? "Der Nenner " + n1 + " ist schon eine Stufenzahl. Ich muss nicht erweitern." :
             "Ich suche eine Stufenzahl, die zum Nenner " + n1 + " passt: " + n1 + " · " + e + " = " + P10(k) + ". Ich verfeinere die Einteilung und erweitere mit " + e + ". " +
-            '<span class="usmall">Mathesprache: ' + F(z1 + " · " + e, n1 + " · " + e) + " = " + F(num, P10(k), "zo") + "</span>"));
+            '<span class="usmall">Mathesprache: ' + F(z1 + " · " + e, n1 + " · " + e) + " = " + F(num, P10(k), "zo") + "</span>", sstrip(z1, n1, "#6cc0f5") + (k <= 2 && frac > 0 && whole === 0 ? '<div class="rrow"><div class="rgw">' + hfeld(frac, k) + '<div class="rcap">' + frac + " von " + P10(k) + " Feldern gefärbt</div></div></div>" : "")));
         const rowc = { label: "Zahl", cells: cells(num, k, "co") };
         let vis = tafel([rowc]);
         if (k <= 2 && num <= 200) vis += '<div class="rrow" style="align-items:flex-start;gap:1.2rem">' + '<div class="rgw">' + hfeld(k === 1 ? frac : frac, k) + '<div class="rcap">' + (whole ? whole + " Ganze und " : "") + frac + " von " + P10(k) + " Feldern gefärbt</div></div></div>";
@@ -3407,7 +3418,7 @@ renderStell();
       const q = parse(V.s, 4, 3);
       if (!q) return "Bitte eine Dezimalzahl mit höchstens 4 Stellen vor und 3 Stellen nach dem Komma eingeben, zum Beispiel 0,375.";
       const n = q.n, p = q.p, out = [], D = P10(p), whole = Math.floor(n / D), frac = n % D;
-      out.push(step("Aufgabe", "Ich wandle " + T(fmt(n, p), "zs") + " in einen Bruch um."));
+      out.push(step("Aufgabe", "Ich wandle " + T(fmt(n, p), "zs") + " in einen Bruch um.", tafel([{ label: "Zahl", cells: cells(n, p, "cs") }]) + (p >= 1 && p <= 2 && frac > 0 && whole === 0 ? '<div class="rrow"><div class="rgw">' + hfeld(frac, p) + '<div class="rcap">' + frac + " von " + P10(p) + " Feldern gefärbt</div></div></div>" : "")));
       let vis = tafel([{ label: "Zahl", cells: cells(n, p, "cs") }]);
       if (p >= 1 && p <= 2 && frac > 0) vis += '<div class="rrow"><div class="rgw">' + hfeld(frac, p) + '<div class="rcap">' + frac + " von " + D + " Feldern gefärbt</div></div></div>";
       out.push(step("In der Stellentafel lesen", p === 0 ? "Die Zahl hat keine Nachkommastelle. Sie ist eine ganze Zahl." : "Die letzte Ziffer steht in der " + UN(p) + "-Spalte. Also lese ich: " + n + " " + UN(p) + ". Der Nenner ist deshalb " + D + ".", vis));
@@ -3470,7 +3481,7 @@ renderStell();
       let rr = '<div class="zbig">' + sf + " = " + T(res, "zo") + "</div>";
       rr += line("Kurz gesagt:", "Das Komma springt " + s + (s === 1 ? " Stelle" : " Stellen") + " nach " + (sgn > 0 ? "rechts" : "links") + ". Eigentlich wandern aber die Ziffern, das Komma bleibt.");
       rr += line("Probe:", "Die Umkehraufgabe: " + probe);
-      out.push(step("Leere Spalten auffüllen und Ergebnis", filled ? "Es sind " + filled + (filled === 1 ? " Spalte" : " Spalten") + " frei geworden. Die fülle ich mit Nullen auf (orange). Das Ergebnis ist " + T(res, "zo") + "." : "Es sind keine Spalten frei geworden. Ich muss nichts auffüllen. Das Ergebnis ist " + T(res, "zo") + ".", rr, "good", res));
+      out.push(step("Leere Spalten auffüllen und Ergebnis", filled ? "Es sind " + filled + (filled === 1 ? " Spalte" : " Spalten") + " frei geworden. Die fülle ich mit Nullen auf (orange). Das Ergebnis ist " + T(res, "zo") + "." : "Es sind keine Spalten frei geworden. Ich muss nichts auffüllen. Das Ergebnis ist " + T(res, "zo") + ".", tafel([{ label: "Ergebnis", cls: "dres", cells: mv.cells }]) + rr, "good", res));
       return out;
     }
     const sp = stepper({ pre: pre, carry: false, build: build, note: () => "Kommaverschiebung: Die Ziffern wandern in der Stellentafel, das Komma bleibt zwischen E und z." });
@@ -3605,7 +3616,7 @@ renderStell();
       if (qa.n === 0 || qb.n === 0) return "Bitte Zahlen größer als 0 eingeben.";
       const A = qa.n, B = qb.n, pa = qa.p, pb = qb.p, S = pa + pb, N = A * B, out = [], res = fmtS(N, S);
       const sf = T(fmt(A, pa), "zs") + " · " + T(fmt(B, pb), "zg");
-      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: " + fmt(A, pa) + "-mal " + fmt(B, pb) + ". Ich rechne in Einheiten und achte darauf, was für Stücke ich zähle."));
+      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: " + fmt(A, pa) + "-mal " + fmt(B, pb) + ". Ich rechne in Einheiten und achte darauf, was für Stücke ich zähle.", tafel([{ label: "erste Zahl", cells: cells(A, pa, "cs") }, { label: "zweite Zahl", cells: cells(B, pb, "cg") }])));
       const nameA = A + " " + UN(pa), nameB = B + " " + UN(pb);
       out.push(step("In Einheiten umschreiben", T(fmt(A, pa), "zs") + " sind " + nameA + ". " + T(fmt(B, pb), "zg") + " sind " + nameB + ". " + (S === 0 ? "Beides sind ganze Zahlen." :
         UN(pa) + " mal " + UN(pb) + ": " + F(1, P10(pa)) + " · " + F(1, P10(pb)) + " = " + F(1, P10(S)) + ". Das Ergebnis zählt also in " + UN(S) + ". ") + '<span class="usmall">Mathesprache: ' + A + " · " + B + " = ? " + UN(S) + "</span>"));
@@ -3644,7 +3655,7 @@ renderStell();
       if (qm.n < 2) return "Die ganze Zahl muss mindestens 2 sein.";
       const A = qa.n, pa = qa.p, M = qm.n, out = [];
       const sf = T(fmt(A, pa), "zs") + " : " + T(M, "zg");
-      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: Ich teile " + fmt(A, pa) + " gerecht in " + M + " gleich große Teile. Das Ergebnis ist ein Teil."));
+      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: Ich teile " + fmt(A, pa) + " gerecht in " + M + " gleich große Teile. Das Ergebnis ist ein Teil.", tafel([{ label: "Zahl", cells: cells(A, pa, "cs") }])));
       out.push(step("In Einheiten umschreiben", T(fmt(A, pa), "zs") + " sind " + A + " " + UN(pa) + ". Ich teile " + A + " " + UN(pa) + " durch " + M + ". " + (A % M === 0 ? "Das geht ohne Rest auf: " + A + " : " + M + " = " + A / M + ". Also sind es " + A / M + " " + UN(pa) + "." : "Das geht nicht ohne Rest auf. Darum entbündele ich Stelle für Stelle.") + ' <span class="usmall">Mathesprache: ' + A + " " + UN(pa) + " : " + M + "</span>"));
       const d = divSteps(out, A, pa, M, 0, sf, M, M, 0, false);
       out.push(step("Ergebnis", "Jeder Teil ist " + T(d.rs, "zo") + (d.ld.per >= 0 ? ". Die Ziffern wiederholen sich." : "."), d.rr, "good", d.rp));
@@ -3656,7 +3667,7 @@ renderStell();
       if (qb.n === 0) return "Durch 0 kann man nicht teilen.";
       const k = Math.max(qa.p, qb.p), A2 = qa.n * P10(k - qa.p), B2 = qb.n * P10(k - qb.p), out = [];
       const sf = T(fmt(qa.n, qa.p), "zs") + " : " + T(fmt(qb.n, qb.p), "zg");
-      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: Wie oft passt " + T(fmt(qb.n, qb.p), "zg") + " in " + T(fmt(qa.n, qa.p), "zs") + "? Dazu bringe ich beide Zahlen in dieselbe Einheit."));
+      out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: Wie oft passt " + T(fmt(qb.n, qb.p), "zg") + " in " + T(fmt(qa.n, qa.p), "zs") + "? Dazu bringe ich beide Zahlen in dieselbe Einheit.", tafel([{ label: "erste Zahl", cells: cells(qa.n, qa.p, "cs") }, { label: "zweite Zahl", cells: cells(qb.n, qb.p, "cg") }])));
       let vis = "";
       if (k > 0) {
         const m1 = movedCells(qa.n, qa.p, k, 1), m2 = movedCells(qb.n, qb.p, k, 1, "cg");
@@ -4490,6 +4501,47 @@ renderStell();
     ]);
     const gcdf = (x, y) => y ? gcdf(y, x % y) : x;
     const lcmf = (x, y) => x / gcdf(x, y) * y;
+    const GCA = "#6cc0f5", GCB = "#ffb347", GCG = "#5fd06f";
+    // Stangenbild: zwei Stangen der Laengen a und b, in Stuecke der Laenge g zerlegt (g = 0: ohne Zerlegung)
+    function barsSvg(a, b, g) {
+      const W = 1000, X0 = 20, X1 = 920, mx = Math.max(a, b), x = v => X0 + (X1 - X0) * v / mx;
+      let s = '<svg viewBox="0 0 1000 150" style="width:100%;max-width:62rem;display:block" role="img" aria-label="Zwei Stangen mit den Längen ' + a + " und " + b + (g ? ", zerlegt in Stücke der Länge " + g : "") + '">';
+      [[a, 0, GCA], [b, 1, GCB]].forEach(r => {
+        const v = r[0], y = 14 + r[1] * 70, h = 46;
+        s += '<rect x="' + X0 + '" y="' + y + '" width="' + (x(v) - X0).toFixed(1) + '" height="' + h + '" rx="4" fill="' + r[2] + '" fill-opacity="' + (g ? 0.9 : 0.55) + '"/>';
+        if (g) {
+          const n = v / g;
+          if (n <= 60) for (let k = 1; k < n; k++) s += '<line x1="' + x(k * g).toFixed(1) + '" y1="' + y + '" x2="' + x(k * g).toFixed(1) + '" y2="' + (y + h) + '" stroke="#0e1624" stroke-width="3"/>';
+          if (x(g) - X0 >= 34) s += '<text x="' + ((X0 + x(g)) / 2).toFixed(1) + '" y="' + (y + h / 2 + 8) + '" text-anchor="middle" font-size="22" font-weight="700" fill="#0e1624">' + g + "</text>";
+        }
+        s += '<text x="' + (x(v) + 10).toFixed(1) + '" y="' + (y + h / 2 + 9) + '" font-size="26" font-weight="700" fill="' + r[2] + '">' + v + "</text>";
+      });
+      return s + "</svg>" + '<div class="note">' + (g ? "Beide Stangen sind in Stücke der Länge " + g + " zerlegt. Es bleibt kein Rest. Ein längeres Stück passt nicht in beide Stangen ohne Rest." : "Zwei Stangen: Länge " + a + " (blau) und Länge " + b + " (orange).") + "</div>";
+    }
+    // Zahlenstrahl-Spruenge: Spruenge der Groesse a und b bis zum gemeinsamen Vielfachen l; which = "a", "b" oder "ab"
+    function hopsSvg(a, b, l, which) {
+      if (l / a > 25 || l / b > 25) return "";
+      const X0 = 30, X1 = 940, x = v => X0 + (X1 - X0) * v / l, rows = [];
+      if (which.indexOf("a") >= 0) rows.push([a, GCA]);
+      if (which.indexOf("b") >= 0) rows.push([b, GCB]);
+      const H = 20 + rows.length * 120;
+      let s = '<svg viewBox="0 0 1000 ' + H + '" style="width:100%;max-width:62rem;display:block" role="img" aria-label="Sprünge auf dem Zahlenstrahl bis ' + l + '">';
+      rows.forEach((r, i) => {
+        const st = r[0], col = r[1], y0 = 70 + i * 120, n = l / st;
+        s += '<line x1="' + (X0 - 10) + '" y1="' + y0 + '" x2="' + (X1 + 20) + '" y2="' + y0 + '" stroke="#8a93a3" stroke-width="2"/>';
+        for (let k = 0; k <= n; k++) {
+          s += '<line x1="' + x(k * st).toFixed(1) + '" y1="' + (y0 - 8) + '" x2="' + x(k * st).toFixed(1) + '" y2="' + (y0 + 8) + '" stroke="' + col + '" stroke-width="3"/>';
+          if (k >= 1) {
+            const x1 = x((k - 1) * st), x2 = x(k * st), h = Math.min(40, (x2 - x1) * 0.5);
+            s += '<path d="M' + (x1 + 1).toFixed(1) + " " + (y0 - 4) + " Q" + ((x1 + x2) / 2).toFixed(1) + " " + (y0 - 4 - 2 * h).toFixed(1) + " " + x2.toFixed(1) + " " + (y0 - 4) + '" fill="none" stroke="' + col + '" stroke-width="3"/>';
+          }
+          if (k === 0 || n <= 14 || k === n) s += '<text x="' + x(k * st).toFixed(1) + '" y="' + (y0 + 32) + '" text-anchor="middle" font-size="22" font-weight="' + (k === n ? 700 : 400) + '" fill="' + (k === n ? GCG : "#cfd6e0") + '">' + k * st + "</text>";
+        }
+        s += '<circle cx="' + x(l).toFixed(1) + '" cy="' + y0 + '" r="8" fill="' + GCG + '"/>';
+      });
+      if (rows.length === 2) s += '<line x1="' + x(l).toFixed(1) + '" y1="70" x2="' + x(l).toFixed(1) + '" y2="190" stroke="' + GCG + '" stroke-width="2.5" stroke-dasharray="6 4"/>';
+      return s + "</svg>" + '<div class="note">' + (rows.length === 2 ? "Oben springe ich in " + a + "er-Schritten, unten in " + b + "er-Schritten. Beide landen zum ersten Mal bei " + l + " (grün)." : "Ich springe in " + (which === "a" ? a : b) + "er-Schritten von 0 bis " + l + ".") + "</div>";
+    }
     const divisors = n => { const lo = [], hi = []; for (let d = 1; d * d <= n; d++) if (n % d === 0) { lo.push(d); if (d * d !== n) hi.unshift(n / d); } return lo.concat(hi); };
     const pfac = n => { const out = []; let m = n; for (let p = 2; p * p <= m; p++) while (m % p === 0) { out.push(p); m /= p; } if (m > 1) out.push(m); return out; };
     const emap = arr => arr.reduce((o, p) => { o[p] = (o[p] || 0) + 1; return o; }, {});
@@ -4509,30 +4561,30 @@ renderStell();
     const anwH = (a, b, l) => "Anwendung beim Addieren von Brüchen: Hat ein Bruch den Nenner " + a + " und der andere den Nenner " + b + ", ist " + T(l, "zg") + " der Hauptnenner (der kleinste gemeinsame Nenner). Ich erweitere " + F(1, a, "zs") + " mit " + l / a + " zu " + F(l / a, l, "zs") + " und " + F(1, b, "zo") + " mit " + l / b + " zu " + F(l / b, l, "zo") + ".";
     function buildGm() {
       const a = V.a, b = V.b, g = gcdf(a, b), da = divisors(a), db = divisors(b), com = da.filter(x => b % x === 0), out = [];
-      out.push(step("Aufgabe", "Ich suche den <b>ggT</b> von " + T(a, "zs") + " und " + T(b, "zo") + ". ggT heißt: größter gemeinsamer Teiler. Das ist die größte Zahl, durch die sich beide Zahlen ohne Rest teilen lassen."));
+      out.push(step("Aufgabe", "Ich suche den <b>ggT</b> von " + T(a, "zs") + " und " + T(b, "zo") + ". ggT heißt: größter gemeinsamer Teiler. Das ist die größte Zahl, durch die sich beide Zahlen ohne Rest teilen lassen. Im Bild: zwei Stangen mit den Längen " + a + " und " + b + ". Ich suche das längste Stück, mit dem ich beide Stangen ohne Rest auslegen kann.", barsSvg(a, b, 0)));
       [[a, da, "zs", "ersten"], [b, db, "zo", "zweiten"]].forEach(x => {
         const n = x[0], d = x[1], pairs = d.filter(t => t * t <= n).map(t => t + " · " + n / t).join(", ");
         out.push(step("Teiler von " + n, "Ich suche alle Teiler von " + T(n, x[2]) + ". Ich probiere der Reihe nach 1, 2, 3, … Geht " + n + " : t ohne Rest auf, dann sind t und " + n + " : t Teiler. Teiler kommen immer als Paar vor. Die Paare: " + pairs + ".", '<div class="zbig">T(' + n + ") = " + setS(d, null, x[2]) + "</div>"));
       });
       out.push(step("Gemeinsame Teiler", "Ich vergleiche beide Mengen. Die Zahlen, die in beiden Mengen stehen, sind die <b>gemeinsamen Teiler</b>. Sie sind grün.",
         '<div class="zbig">T(' + a + ") = " + setS(da, com) + "</div>" + '<div class="zbig">T(' + b + ") = " + setS(db, com) + "</div>" + line("Gemeinsame Teiler:", setS(com, com))));
-      out.push(step("Der größte gemeinsame Teiler", "Der größte Teiler in der grünen Menge ist " + T(g, "zg") + ". Das ist der ggT. Mathesprache: ggT(" + a + ", " + b + ") = " + g, '<div class="zbig">ggT(' + a + ", " + b + ") = " + T(g, "zg") + "</div>"));
+      out.push(step("Der größte gemeinsame Teiler", "Der größte Teiler in der grünen Menge ist " + T(g, "zg") + ". Das ist der ggT. Mathesprache: ggT(" + a + ", " + b + ") = " + g, '<div class="zbig">ggT(' + a + ", " + b + ") = " + T(g, "zg") + "</div>" + barsSvg(a, b, g)));
       out.push(step("Probe", "Ich teile beide Zahlen durch " + g + ": " + a + " : " + g + " = " + a / g + " und " + b + " : " + g + " = " + b / g + ". Beide Rechnungen gehen ohne Rest auf. " + (gcdf(a / g, b / g) === 1 ? "Danach haben " + a / g + " und " + b / g + " außer 1 keinen gemeinsamen Teiler mehr (sie sind teilerfremd). Also ist " + g + " wirklich der größte." : "")));
       out.push(step("Wozu brauche ich das?", anwK(a, b, g)));
-      out.push(step("Ergebnis", "Der größte gemeinsame Teiler von " + a + " und " + b + " ist " + T(g, "zg") + ".", '<div class="zbig">ggT(' + a + ", " + b + ") = " + T(g, "zg") + "</div>", "good", String(g)));
+      out.push(step("Ergebnis", "Der größte gemeinsame Teiler von " + a + " und " + b + " ist " + T(g, "zg") + ".", '<div class="zbig">ggT(' + a + ", " + b + ") = " + T(g, "zg") + "</div>" + barsSvg(a, b, g), "good", String(g)));
       return out;
     }
     function buildKm() {
       const a = V.a, b = V.b, g = gcdf(a, b), l = lcmf(a, b), na = l / a, nb = l / b, out = [];
       const va = Array.from({ length: na }, (_, i) => a * (i + 1)), vb = Array.from({ length: nb }, (_, i) => b * (i + 1));
       out.push(step("Aufgabe", "Ich suche das <b>kgV</b> von " + T(a, "zs") + " und " + T(b, "zo") + ". kgV heißt: kleinstes gemeinsames Vielfaches. Das ist die kleinste Zahl, die in der " + a + "er-Reihe und in der " + b + "er-Reihe vorkommt."));
-      out.push(step("Vielfache von " + a, "Ich zähle in " + T(a, "zs") + "er-Schritten: " + a + " · 1, " + a + " · 2, " + a + " · 3, … Ich höre auf, wenn ich eine Zahl aus der anderen Reihe treffe. Die Reihe der Vielfachen ist die <b>Vielfachenmenge</b>.", '<div class="zbig">V(' + a + ") = " + setS(va, [l], "zs").replace("}", ", …}") + "</div>"));
-      out.push(step("Vielfache von " + b, "Ich zähle in " + T(b, "zo") + "er-Schritten: " + b + " · 1, " + b + " · 2, " + b + " · 3, …", '<div class="zbig">V(' + b + ") = " + setS(vb, [l], "zo").replace("}", ", …}") + "</div>"));
+      out.push(step("Vielfache von " + a, "Ich zähle in " + T(a, "zs") + "er-Schritten: " + a + " · 1, " + a + " · 2, " + a + " · 3, … Ich höre auf, wenn ich eine Zahl aus der anderen Reihe treffe. Die Reihe der Vielfachen ist die <b>Vielfachenmenge</b>.", '<div class="zbig">V(' + a + ") = " + setS(va, [l], "zs").replace("}", ", …}") + "</div>" + hopsSvg(a, b, l, "a")));
+      out.push(step("Vielfache von " + b, "Ich zähle in " + T(b, "zo") + "er-Schritten: " + b + " · 1, " + b + " · 2, " + b + " · 3, …", '<div class="zbig">V(' + b + ") = " + setS(vb, [l], "zo").replace("}", ", …}") + "</div>" + hopsSvg(a, b, l, "b")));
       out.push(step("Das erste gemeinsame Vielfache", "Ich vergleiche beide Reihen. Die erste Zahl, die in beiden Reihen steht, ist " + T(l, "zg") + ". Das ist das kgV. Alle weiteren gemeinsamen Vielfachen sind Vielfache von " + l + ": " + l + ", " + 2 * l + ", " + 3 * l + ", …",
-        '<div class="zbig">V(' + a + ") = " + setS(va, [l]).replace("}", ", …}") + "</div>" + '<div class="zbig">V(' + b + ") = " + setS(vb, [l]).replace("}", ", …}") + "</div>" + '<div class="zbig">kgV(' + a + ", " + b + ") = " + T(l, "zg") + "</div>"));
+        '<div class="zbig">V(' + a + ") = " + setS(va, [l]).replace("}", ", …}") + "</div>" + '<div class="zbig">V(' + b + ") = " + setS(vb, [l]).replace("}", ", …}") + "</div>" + '<div class="zbig">kgV(' + a + ", " + b + ") = " + T(l, "zg") + "</div>" + hopsSvg(a, b, l, "ab")));
       out.push(step("Probe", "Ich teile durch beide Zahlen: " + l + " : " + a + " = " + na + " und " + l + " : " + b + " = " + nb + ". Beide Rechnungen gehen ohne Rest auf. Es gibt außerdem einen Zusammenhang: " + a + " · " + b + " = " + a * b + " und ggT · kgV = " + g + " · " + l + " = " + g * l + ". Beide Ergebnisse sind gleich."));
       out.push(step("Wozu brauche ich das?", anwH(a, b, l)));
-      out.push(step("Ergebnis", "Das kleinste gemeinsame Vielfache von " + a + " und " + b + " ist " + T(l, "zg") + ".", '<div class="zbig">kgV(' + a + ", " + b + ") = " + T(l, "zg") + "</div>", "good", String(l)));
+      out.push(step("Ergebnis", "Das kleinste gemeinsame Vielfache von " + a + " und " + b + " ist " + T(l, "zg") + ".", '<div class="zbig">kgV(' + a + ", " + b + ") = " + T(l, "zg") + "</div>" + hopsSvg(a, b, l, "ab"), "good", String(l)));
       return out;
     }
     function buildPf(isG) {
@@ -4562,7 +4614,7 @@ renderStell();
         ? "Ich teile beide Zahlen durch " + g + ": " + a + " : " + g + " = " + a / g + " und " + b + " : " + g + " = " + b / g + ". Beide Rechnungen gehen ohne Rest auf. " + (gcdf(a / g, b / g) === 1 ? "Danach gibt es keinen gemeinsamen Primfaktor mehr: " + a / g + " und " + b / g + " sind teilerfremd." : "")
         : "Ich teile durch beide Zahlen: " + l + " : " + a + " = " + l / a + " und " + l + " : " + b + " = " + l / b + ". Beide Rechnungen gehen ohne Rest auf. Außerdem gilt: " + a + " · " + b + " = " + a * b + " und ggT · kgV = " + g + " · " + l + " = " + g * l + "."));
       out.push(step("Wozu brauche ich das?", isG ? anwK(a, b, g) : anwH(a, b, l)));
-      out.push(step("Ergebnis", (isG ? "Der größte gemeinsame Teiler" : "Das kleinste gemeinsame Vielfache") + " von " + a + " und " + b + " ist " + T(res, "zg") + ".", '<div class="zbig">' + name + "(" + a + ", " + b + ") = " + T(res, "zg") + "</div>", "good", String(res)));
+      out.push(step("Ergebnis", (isG ? "Der größte gemeinsame Teiler" : "Das kleinste gemeinsame Vielfache") + " von " + a + " und " + b + " ist " + T(res, "zg") + ".", '<div class="zbig">' + name + "(" + a + ", " + b + ") = " + T(res, "zg") + "</div>" + (isG ? barsSvg(a, b, g) : hopsSvg(a, b, l, "ab")), "good", String(res)));
       return out;
     }
     const sp = stepper({ pre: pre, build: () => {
@@ -5538,7 +5590,7 @@ renderStell();
       Object.assign(V, { a: a, b: b, c: c, d: d }); sp.reset(); inputs(); refresh();
     });
     setMode("e2");
-    window.__dz = Object.assign(window.__dz || {}, { wtOk: () => WT && WT.opts.map(x => !!x.ok), setAq: (m, a, b, c, d) => { mode = m; Object.assign(V, { a: a, b: b, c: c, d: d }); mark(m); sp.reset(); inputs(); refresh(); } });
+    window.__dz = Object.assign(window.__dz || {}, { aeqPicQ: (a, b, c, d) => pic({ lx: Q(a), lk: Q(b), rx: Q(c), rk: Q(d) }, null, null, ""), wtOk: () => WT && WT.opts.map(x => !!x.ok), setAq: (m, a, b, c, d) => { mode = m; Object.assign(V, { a: a, b: b, c: c, d: d }); mark(m); sp.reset(); inputs(); refresh(); } });
   })();
 
 })();
@@ -5605,7 +5657,7 @@ document.querySelectorAll(".card").forEach(c => {
     const corr = ps.map(x => O(x[0] + " · " + x[1], x[0] + " · " + x[1])), wrong = [];
     ps.forEach(x => [[x[0] + 1, x[1]], [x[0] - 1, x[1]], [x[0], x[1] + 1], [x[0], x[1] - 1]].forEach(y => { if (y[0] >= 2 && y[0] <= 10 && y[1] >= 2 && y[1] <= 10 && y[0] * y[1] !== N) wrong.push(O(y[0] + " · " + y[1], y[0] + " · " + y[1], tw(y[0] * y[1]))); }));
     for (let i = 0; i < 10; i++) { const x = ri(2, 10), y = ri(2, 10); if (x * y !== N) wrong.push(O(x + " · " + y, x + " · " + y, tw(x * y))); }
-    return { top: "ein", kind: "tgt", tgt: String(N), q: "Welche Malaufgaben haben das Ergebnis " + T(N, "zo") + "?", corr: corr, wrong: wrong,
+    return { top: "ein", kind: "tgt", tgt: String(N), q: "Welche Malaufgaben haben das Ergebnis " + T(N, "zo") + "?" + qField(N), corr: corr, wrong: wrong,
       expl: c => "Richtig: " + c.map(o => o.p + " = " + N).join(", ") + ". Auch die Tauschaufgabe hat dasselbe Ergebnis." };
   }
   function gGeteilt() {
@@ -5625,7 +5677,7 @@ document.querySelectorAll(".card").forEach(c => {
     };
     add(N, corr, true);
     (RR === 20 ? [-3, -2, -1, 1, 2, 3] : [-10, -2, -1, 1, 2, 10]).forEach(dl => { if (N + dl >= wlo && N + dl <= whi) add(N + dl, wrong, false); });
-    return { top: "uez", kind: "tgt", tgt: String(N), q: "Welche Aufgaben haben das Ergebnis " + T(N, "zo") + "? (Alle Aufgaben gehen über einen Zehner.)", corr: corr, wrong: wrong,
+    return { top: "uez", kind: "tgt", tgt: String(N), q: "Welche Aufgaben haben das Ergebnis " + T(N, "zo") + "? (Alle Aufgaben gehen über einen Zehner.)" + qPlace(Math.floor(N / 1000), Math.floor(N / 100) % 10, Math.floor(N / 10) % 10, N % 10), corr: corr, wrong: wrong,
       expl: c => "Richtig: " + c.map(o => o.p + " = " + N).join(", ") + ". Beim Addieren bündelst du 10 Einer zu 1 Zehner, beim Subtrahieren entbündelst du 1 Zehner." };
   }
   function gStell() {
@@ -5643,7 +5695,7 @@ document.querySelectorAll(".card").forEach(c => {
     W([th * 1000, h * 10, t * 10, e]); W([th * 100, h * 100, t * 10, e]); W([th * 1000, h * 1000, t * 10, e]); W([th * 1000, h * 100, t, e]);
     W([th * 1000, h * 100, t * 100, e]); W([th * 1000, h * 100, t * 10, e * 10]); W([h * 1000, th * 100, t * 10, e]); W([th * 1000, h * 100, e * 10, t]);
     W([th * 1000, h * 100, t * 10 + e * 10]); W([th * 1000 + h * 10, t * 10, e]); W([th * 100, h * 10, t, e]);
-    return { top: "stell", kind: "tgt", tgt: String(N), q: "Welche Schreibweisen zeigen die Zahl " + T(N, "zo") + "?", corr: corr, wrong: wrong,
+    return { top: "stell", kind: "tgt", tgt: String(N), q: "Welche Schreibweisen zeigen die Zahl " + T(N, "zo") + "?" + qPlace(th, h, t, e), corr: corr, wrong: wrong,
       expl: c => "Richtig sind alle Zerlegungen, die zusammen " + N + " ergeben. Jede Ziffer steht für ihren Stellenwert: " + [th + " T", h + " H", t + " Z", e + " E"].join(", ") + "." };
   }
   function gFl() {
@@ -5663,7 +5715,7 @@ document.querySelectorAll(".card").forEach(c => {
     });
     Wf(a + " · 10 − " + a + " · " + (9 - b), a * 10 - a * (9 - b));
     Wf(a + " · " + b + " + " + b, a * b + b);
-    return { top: "fl", kind: "tgt", tgt: String(N), q: "Du rechnest " + T(a, "zs") + " · " + T(b, "zg") + " am Rechteckfeld. Welche Zerlegungen führen zum richtigen Ergebnis?", corr: corr, wrong: wrong,
+    return { top: "fl", kind: "tgt", tgt: String(N), q: "Du rechnest " + T(a, "zs") + " · " + T(b, "zg") + " am Rechteckfeld. Welche Zerlegungen führen zum richtigen Ergebnis?" + qRect(a, b), corr: corr, wrong: wrong,
       expl: c => "Wenn du eine Seite des Rechtecks zerlegst, musst du jeden Teil mit der anderen Seite multiplizieren. Das Ergebnis ist " + N + ". Richtig: " + c.map(o => o.p).join("; ") + "." };
   }
   /* Schriftlich rechnen: Welche Rechnungen stimmen? */
@@ -5728,7 +5780,7 @@ document.querySelectorAll(".card").forEach(c => {
       W((b - a) * m, b * m, "Das ist der Anteil, der nicht gefärbt ist.");
     }
     W(b, a, "Zähler und Nenner sind vertauscht.");
-    return { top: "gl", kind: "tgt", tgt: a + "/" + b, q: "Welche Brüche sind gleich " + fr(a, b) + "?", corr: corr, wrong: wrong,
+    return { top: "gl", kind: "tgt", tgt: a + "/" + b, q: "Welche Brüche sind gleich " + fr(a, b) + "?" + strip(a, b), corr: corr, wrong: wrong,
       expl: c => "Gleichwertige Brüche entstehen, wenn du Zähler und Nenner mit derselben Zahl multiplizierst (erweitern) oder durch dieselbe Zahl teilst (kürzen). Richtig: " + c.map(o => o.h).join(", ") + "." };
   }
   function gKue() {
@@ -5746,7 +5798,7 @@ document.querySelectorAll(".card").forEach(c => {
     });
     W(Q / g + 1, P / g, "Zähler und Nenner sind vertauscht oder falsch geteilt.");
     W(x + 1, y, "Das ist ein anderer Bruch.");
-    return { top: "kue", kind: "tgt", tgt: P + "/" + Q, q: "Auf welche Brüche kannst du " + fr(P, Q) + " kürzen?", corr: corr, wrong: wrong,
+    return { top: "kue", kind: "tgt", tgt: P + "/" + Q, q: "Auf welche Brüche kannst du " + fr(P, Q) + " kürzen?" + strip(P, Q), corr: corr, wrong: wrong,
       expl: c => "Du kürzt, wenn du Zähler und Nenner durch dieselbe Zahl teilst. " + fr(P, Q) + " kannst du durch " + dv.join(", ") + " kürzen. Gekürzt auf " + fr(x, y) + " ist der Bruch so weit wie möglich gekürzt." };
   }
   function gGem() {
@@ -5786,14 +5838,148 @@ document.querySelectorAll(".card").forEach(c => {
       Wf(w * n, n - 0, "");
     }
     for (let i = wrong.length - 1; i >= 0; i--) if (!wrong[i].why) wrong.splice(i, 1);
-    return { top: "gem", kind: "tgt", tgt: toMixed ? z + "/" + n : w + " " + r + "/" + n, q: toMixed ? "Welche gemischten Zahlen sind gleich " + fr(z, n) + "?" : "Welche Brüche sind gleich " + w + " " + fr(r, n) + "?", corr: corr, wrong: wrong,
+    return { top: "gem", kind: "tgt", tgt: toMixed ? z + "/" + n : w + " " + r + "/" + n, q: (toMixed ? "Welche gemischten Zahlen sind gleich " + fr(z, n) + "?" : "Welche Brüche sind gleich " + w + " " + fr(r, n) + "?") + qMixed(z, n), corr: corr, wrong: wrong,
       expl: c => (toMixed ? z + " : " + n + " = " + w + " Rest " + r + ". Das sind " + w + " Ganze und " + r + " von " + n + " Stücken: " + w + " " + fr(r, n) + ". " : w + " Ganze sind " + w + " · " + n + " = " + w * n + " Stücke. Dazu kommen " + r + " Stücke: " + fr(z, n) + ". ") + "Auch erweiterte oder gekürzte Schreibweisen sind richtig. Richtig: " + c.map(o => o.h).join(", ") + "." };
   }
   function strip(m, n) {
     const w = 360, h = 52, cw = w / n;
     let s = '<svg viewBox="0 0 ' + (w + 4) + " " + (h + 4) + '" style="width:100%;max-width:26rem;display:block;margin:.5rem 0" role="img" aria-label="Streifen mit ' + n + " gleich großen Stücken, " + m + ' davon gefärbt">';
-    for (let i = 0; i < n; i++) s += '<rect x="' + (2 + i * cw).toFixed(1) + '" y="2" width="' + cw.toFixed(1) + '" height="' + h + '" fill="' + (i < m ? "#6cc0f5" : "#10131a") + '" stroke="#e6e8eb" stroke-width="2"/>';
+    for (let i = 0; i < n; i++) s += '<rect x="' + (2 + i * cw).toFixed(1) + '" y="2" width="' + cw.toFixed(1) + '" height="' + h + '" fill="' + (i < m ? "#6cc0f5" : "#10131a") + '" stroke="#e6e8eb" stroke-width="' + (n > 24 ? 0.8 : 2) + '"/>';
     return s + "</svg>";
+  }
+
+  /* ---------- Bildhilfen fuer die Aufgabenstaemme (ikonische Darstellung) ---------- */
+  const QB = "#6cc0f5", QB2 = "#9bd0f3", QG = "#5fd06f", QO = "#ffb347";
+  const qsvg = (w, h, label, maxrem) => '<svg viewBox="0 0 ' + w + " " + h + '" style="width:100%;max-width:' + (maxrem || 26) + 'rem;display:block;margin:.5rem 0" role="img" aria-label="' + label + '">';
+  // N Kaestchen in Zehnerreihen (Fuenfergruppen)
+  function qField(N) {
+    if (N > 100) return "";
+    const c = 22, g = 4, gg = 8, rows = Math.ceil(N / 10), W = 10 * (c + g) + gg, H = rows * (c + g);
+    let h = qsvg(W, H, N + " Kästchen in Zehnerreihen", 20);
+    for (let i = 0; i < N; i++) { const r = Math.floor(i / 10), k = i % 10; h += '<rect x="' + (k * (c + g) + (k >= 5 ? gg : 0)) + '" y="' + r * (c + g) + '" width="' + c + '" height="' + c + '" rx="3" fill="' + (k < 5 ? QB : QB2) + '"/>'; }
+    return h + "</svg>" + '<div class="note">' + N + " Kästchen</div>";
+  }
+  // Rechteckfeld a (Breite) mal b (Hoehe), jedes Einzelfeld sichtbar
+  function qRect(a, b) {
+    if (a > 30 || b > 12) return "";
+    const u = Math.min(24, 480 / a, 230 / b), L = 34, T0 = 26, W = a * u + L + 6, H = b * u + T0 + 4;
+    let h = qsvg(W.toFixed(0), H.toFixed(0), "Rechteckfeld " + a + " mal " + b, 24);
+    for (let r = 0; r < b; r++) for (let k = 0; k < a; k++) h += '<rect x="' + (L + k * u).toFixed(1) + '" y="' + (T0 + r * u).toFixed(1) + '" width="' + u.toFixed(1) + '" height="' + u.toFixed(1) + '" fill="' + QB + '" fill-opacity=".85" stroke="#0e1624" stroke-width="1.5"/>';
+    h += '<text x="' + (L + a * u / 2).toFixed(1) + '" y="18" text-anchor="middle" font-size="18" font-weight="700" fill="' + QB + '">' + a + "</text>";
+    h += '<text x="' + (L - 8) + '" y="' + (T0 + b * u / 2 + 6).toFixed(1) + '" text-anchor="end" font-size="18" font-weight="700" fill="' + QG + '">' + b + "</text>";
+    return h + "</svg>";
+  }
+  // z Stuecke auf Streifen mit je n Stuecken (unechter Bruch / gemischte Zahl)
+  function qMixed(z, n) {
+    const rows = Math.ceil(z / n), cw = 40, H = rows * 52;
+    let h = qsvg(n * cw + 4, H + 4, z + " Stücke auf Streifen mit je " + n + " Stücken", Math.max(10, n * 3.2));
+    for (let r = 0; r < rows; r++) for (let k = 0; k < n; k++) h += '<rect x="' + (2 + k * cw) + '" y="' + (2 + r * 52) + '" width="' + cw + '" height="44" fill="' + (r * n + k < z ? QB : "#10131a") + '" stroke="#e6e8eb" stroke-width="2"/>';
+    return h + "</svg>";
+  }
+  // Stellenwertmaterial: Tausender, Hunderter, Zehner, Einer
+  function qPlace(th, hu, te, ei) {
+    const cols = [[th, "T", 26, 5], [hu, "H", 20, 5], [te, "Z", 12, 5], [ei, "E", 10, 5]].filter(x => x[0] > 0);
+    if (!cols.length) return "";
+    const CW = 150; let h = qsvg(cols.length * CW, 96, "Stellenwertmaterial", cols.length * 9);
+    cols.forEach((c, i) => {
+      const x0 = i * CW + 6;
+      for (let k = 0; k < c[0]; k++) {
+        const r = Math.floor(k / 5), q = k % 5;
+        if (c[1] === "T") h += '<rect x="' + (x0 + q * 28) + '" y="' + (r * 30) + '" width="24" height="24" rx="3" fill="' + QO + '"/>';
+        else if (c[1] === "H") h += '<rect x="' + (x0 + q * 26) + '" y="' + (r * 26) + '" width="20" height="20" rx="2" fill="' + QB + '"/>';
+        else if (c[1] === "Z") h += '<rect x="' + (x0 + q * 24) + '" y="' + (r * 38) + '" width="10" height="32" rx="2" fill="' + QG + '"/>';
+        else h += '<circle cx="' + (x0 + q * 24 + 6) + '" cy="' + (r * 22 + 6) + '" r="6" fill="#e6e8eb"/>';
+      }
+      h += '<text x="' + (x0 + 50) + '" y="92" text-anchor="middle" font-size="16" font-weight="700" fill="#9aa3b2">' + { T: "Tausender", H: "Hunderter", Z: "Zehner", E: "Einer" }[c[1]] + " (" + c[0] + ")</text>";
+    });
+    return h + "</svg>";
+  }
+  // Stellentafel mit dem Zielwert (Kommaverschiebung)
+  function qTafel(str) {
+    const parts = String(str).split(","), ip = parts[0], fp = parts[1] || "", HI = ["E", "Z", "H", "T"], HF = ["z", "h", "t"];
+    const cs = "padding:.15rem .55rem;border:1px solid #3a4150;text-align:center;";
+    let t = '<table style="border-collapse:collapse;margin:.5rem 0;font-weight:700"><thead><tr>';
+    for (let i = 0; i < ip.length; i++) t += '<th style="' + cs + 'color:#9aa3b2">' + HI[ip.length - 1 - i] + "</th>";
+    if (fp) { t += '<th style="width:.6rem;border:0"></th>'; for (let i = 0; i < fp.length; i++) t += '<th style="' + cs + 'color:#9aa3b2">' + HF[i] + "</th>"; }
+    t += "</tr></thead><tbody><tr>";
+    for (let i = 0; i < ip.length; i++) t += '<td style="' + cs + "color:" + QO + ';font-size:1.3em">' + ip[i] + "</td>";
+    if (fp) { t += '<td style="border:0;color:' + QO + ';font-size:1.3em;text-align:center">,</td>'; for (let i = 0; i < fp.length; i++) t += '<td style="' + cs + "color:" + QO + ';font-size:1.3em">' + fp[i] + "</td>"; }
+    return t + "</tr></tbody></table>";
+  }
+  // zwei Bruchstreifen mit Rechenzeichen
+  function qStrips2(a, b, c, d, sg) {
+    const box = (m, n) => '<div style="flex:1 1 11rem;min-width:9rem">' + fr(m, n) + strip(m, n) + "</div>";
+    return '<div style="display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center;margin:.4rem 0">' + box(a, b) + '<div style="font-size:1.6em;font-weight:700">' + sg + "</div>" + box(c, d) + "</div>";
+  }
+  // Prozentstreifen: oben die Werte, unten die Prozente
+  function qProz(typ, G, p, W, unit) {
+    const ext = typ === "auf", full = ext ? 100 + p : 100, L = 40, WID = 480, x = v => L + WID * v / full;
+    const u = unit ? " " + unit : "";
+    let h = qsvg(580, 128, "Prozentstreifen", 34);
+    const lab = (xx, y, t, col, anchor) => '<text x="' + xx.toFixed(1) + '" y="' + y + '" text-anchor="' + (anchor || "middle") + '" font-size="17" font-weight="700" fill="' + col + '">' + t + "</text>";
+    h += '<rect x="' + L + '" y="44" width="' + (ext ? x(100) - L : WID) + '" height="38" fill="#10131a" stroke="#c3c8ce" stroke-width="2"/>';
+    if (ext) h += '<rect x="' + x(100) + '" y="44" width="' + (x(full) - x(100)) + '" height="38" fill="' + QO + '" fill-opacity=".85" stroke="#c3c8ce" stroke-width="2"/>';
+    if (ext) h += '<rect x="' + L + '" y="44" width="' + (x(100) - L) + '" height="38" fill="' + QB + '" fill-opacity=".85"/>';
+    else h += '<rect x="' + L + '" y="44" width="' + (x(p) - L) + '" height="38" fill="' + (typ === "rab" ? QO : QB) + '" fill-opacity=".85"/>';
+    const tops = [], bots = [];
+    tops.push([x(0), "0" + u, "#cfd6e0"]); bots.push([x(0), "0 %", "#cfd6e0"]);
+    if (typ === "w") { tops.push([x(p), "?", QO]); tops.push([x(100), G + u, QB]); bots.push([x(p), p + " %", QB]); bots.push([x(100), "100 %", "#cfd6e0"]); }
+    else if (typ === "p") { tops.push([x(p), W + u, QB]); tops.push([x(100), G + u, "#cfd6e0"]); bots.push([x(p), "? %", QO]); bots.push([x(100), "100 %", "#cfd6e0"]); }
+    else if (typ === "g") { tops.push([x(p), W + u, QB]); tops.push([x(100), "?", QO]); bots.push([x(p), p + " %", QB]); bots.push([x(100), "100 %", "#cfd6e0"]); }
+    else if (typ === "rab") { tops.push([x(p), "?", QO]); tops.push([x(100), G + u, "#cfd6e0"]); bots.push([x(p), p + " %", QO]); bots.push([x(100), "100 %", "#cfd6e0"]); }
+    else { tops.push([x(100), G + u, QB]); tops.push([x(full), "?", QO]); bots.push([x(100), "100 %", QB]); bots.push([(x(100) + x(full)) / 2, "+ " + p + " %", QO]); }
+    const tweak = t => (t[0] <= x(0) + 1 ? [t[0] - 4, "end"] : t[0] - x(0) < 60 && t[0] > x(0) ? [t[0] - 2, "start"] : [t[0], "middle"]);
+    tops.forEach(t => { const tw2 = tweak(t); h += lab(tw2[0], 36, t[1], t[2], tw2[1]); h += '<line x1="' + t[0].toFixed(1) + '" y1="40" x2="' + t[0].toFixed(1) + '" y2="46" stroke="' + t[2] + '" stroke-width="2"/>'; });
+    bots.forEach(t => { const tw2 = tweak(t); h += lab(tw2[0], 108, t[1], t[2], tw2[1]); h += '<line x1="' + t[0].toFixed(1) + '" y1="82" x2="' + t[0].toFixed(1) + '" y2="88" stroke="' + t[2] + '" stroke-width="2"/>'; });
+    return h + "</svg>";
+  }
+  // Dreisatz-Tafel: Zuordnung mit Spalte fuer eine Portion
+  function qDrei(n1, n2, a, b, v1, u1, u2) {
+    const cs = "padding:.2rem .7rem;border:1px solid #3a4150;text-align:center;";
+    const row = (nm, c1, c2, c3, col) => "<tr><th style=\"" + cs + 'text-align:left;color:#9aa3b2">' + nm + "</th><td style=\"" + cs + 'color:' + col + '">' + c1 + "</td><td style=\"" + cs + 'color:' + col + '">' + c2 + "</td><td style=\"" + cs + 'color:' + col + '">' + c3 + "</td></tr>";
+    return '<table style="border-collapse:collapse;margin:.5rem 0;font-weight:700">' + row(n1, a, "1", b, QB) + row(n2, v1 + (u2 || ""), "?", "?", QO) + "</table>";
+  }
+
+  // Rechteckmodell fuer Bruch mal Bruch: Breite a/b, Hoehe c/d
+  function qRect2(a, b, c, d) {
+    const u = Math.min(36, 300 / b, 200 / d), W = b * u + 4, H = d * u + 4;
+    let h = qsvg(W.toFixed(0), H.toFixed(0), "Rechteckmodell: " + a + "/" + b + " der Breite und " + c + "/" + d + " der Höhe", 20);
+    for (let r = 0; r < d; r++) for (let k = 0; k < b; k++) {
+      const cb = k < a, rb = r < c;
+      h += '<rect x="' + (2 + k * u).toFixed(1) + '" y="' + (2 + r * u).toFixed(1) + '" width="' + u.toFixed(1) + '" height="' + u.toFixed(1) + '" fill="' + (cb && rb ? QB : cb ? QB : rb ? QO : "#10131a") + '" fill-opacity="' + (cb && rb ? 1 : cb || rb ? 0.3 : 1) + '" stroke="#e6e8eb" stroke-width="1.5"/>';
+    }
+    return h + "</svg>" + '<div class="note">Blau: ' + a + " von " + b + " Spalten. Orange: " + c + " von " + d + " Zeilen. Kräftig blau: Hier gehören beide Brüche zusammen.</div>";
+  }
+  // z-mal ein Bruch am Streifen
+  function qRep(a, b, z) {
+    const cw = Math.min(40, 360 / b), W = b * cw + 4;
+    let h = qsvg(W.toFixed(0), z * 52 + 4, z + " Streifen, auf jedem " + a + " von " + b + " Stücken gefärbt", 22);
+    for (let r = 0; r < z; r++) for (let k = 0; k < b; k++) h += '<rect x="' + (2 + k * cw).toFixed(1) + '" y="' + (2 + r * 52) + '" width="' + cw.toFixed(1) + '" height="44" fill="' + (k < a ? QB : "#10131a") + '" stroke="#e6e8eb" stroke-width="2"/>';
+    return h + "</svg>";
+  }
+  // ein Bruch am Streifen, jedes gefaerbte Stueck in z gleiche Teile geteilt
+  function qSplit(a, b, z) {
+    const cw = Math.min(40, 360 / b), W = b * cw + 4;
+    let h = qsvg(W.toFixed(0), 50, a + " von " + b + " Stücken, jedes in " + z + " Teile geteilt", 22);
+    for (let k = 0; k < b; k++) h += '<rect x="' + (2 + k * cw).toFixed(1) + '" y="2" width="' + cw.toFixed(1) + '" height="44" fill="' + (k < a ? QB : "#10131a") + '" stroke="#e6e8eb" stroke-width="2"/>';
+    for (let k = 0; k < a; k++) for (let j = 1; j < z; j++) h += '<line x1="' + (2 + k * cw + j * cw / z).toFixed(1) + '" y1="2" x2="' + (2 + k * cw + j * cw / z).toFixed(1) + '" y2="46" stroke="#0e1624" stroke-width="1.5"/>';
+    for (let k = 0; k < a; k++) h += '<rect x="' + (2 + k * cw).toFixed(1) + '" y="2" width="' + (cw / z).toFixed(1) + '" height="44" fill="' + QO + '" fill-opacity=".9" stroke="#e6e8eb" stroke-width="1"/>';
+    return h + "</svg>" + '<div class="note">Jedes gefärbte Stück ist in ' + z + " gleich große Teile geteilt. Orange: ein Teil von jedem Stück.</div>";
+  }
+  // Koordinatensystem mit Kurven y = f(x); curves: [{ f, col, dash }]
+  function qGraph(xr, yr, curves, S) {
+    S = S || 16; const pad = 18, W = 2 * xr * S, H = 2 * yr * S, X = x => pad + (x + xr) * S, Y = y => pad + (yr - y) * S, id = "qg" + ri(1000, 99999), st = xr > 8 ? 2 : 1;
+    let h = qsvg(W + 2 * pad, H + 2 * pad, "Koordinatensystem", (W + 2 * pad) / 16 * 1.15);
+    h += '<defs><clipPath id="' + id + '"><rect x="' + pad + '" y="' + pad + '" width="' + W + '" height="' + H + '"/></clipPath></defs><rect x="' + pad + '" y="' + pad + '" width="' + W + '" height="' + H + '" fill="#14161a"/>';
+    for (let i = -xr; i <= xr; i++) h += '<line x1="' + X(i) + '" y1="' + pad + '" x2="' + X(i) + '" y2="' + (pad + H) + '" stroke="' + (i ? "#2a2f3a" : "#c3c8ce") + '" stroke-width="' + (i ? 1 : 2) + '"/>';
+    for (let i = -yr; i <= yr; i++) h += '<line x1="' + pad + '" y1="' + Y(i) + '" x2="' + (pad + W) + '" y2="' + Y(i) + '" stroke="' + (i ? "#2a2f3a" : "#c3c8ce") + '" stroke-width="' + (i ? 1 : 2) + '"/>';
+    for (let i = -xr + 1; i <= xr - 1; i++) if (i && i % st === 0) h += '<text x="' + X(i) + '" y="' + (Y(0) + 13) + '" text-anchor="middle" font-size="10" fill="#9aa3b2">' + i + "</text>";
+    for (let i = -yr + 1; i <= yr - 1; i++) if (i && i % 2 === 0) h += '<text x="' + (X(0) - 4) + '" y="' + (Y(i) + 4) + '" text-anchor="end" font-size="10" fill="#9aa3b2">' + i + "</text>";
+    curves.forEach(c => {
+      let d = ""; for (let x = -xr; x <= xr + 1e-9; x += 0.1) { const y = c.f(x); if (isFinite(y)) d += (d ? "L" : "M") + X(x).toFixed(1) + " " + Y(Math.max(-yr * 3, Math.min(yr * 3, y))).toFixed(1); }
+      h += '<path d="' + d + '" fill="none" stroke="' + c.col + '" stroke-width="3.2" ' + (c.dash ? 'stroke-dasharray="9 6" ' : "") + 'clip-path="url(#' + id + ')"/>';
+    });
+    return h + "</svg>";
   }
   function gAnteil() {
     const n = pick([3, 4, 5, 6, 8, 10, 12]), m = ri(1, n - 1), t = R(m, n), corr = [], wrong = [];
@@ -5842,7 +6028,7 @@ document.querySelectorAll(".card").forEach(c => {
     }
     const sg = add ? "+" : "−";
     const ex = "Gemeinsamer Nenner " + L + ": " + fr(a, b) + " = " + fr(a * L / b, L) + " und " + fr(c, d) + " = " + fr(c * L / d, L) + ". " + (add ? "Addieren: " : "Subtrahieren: ") + fr(a * L / b, L) + " " + sg + " " + fr(c * L / d, L) + " = " + fr(add ? a * L / b + c * L / d : a * L / b - c * L / d, L) + (Req(R(add ? a * L / b + c * L / d : a * L / b - c * L / d, L), r) && r.d !== L ? " = " + fmtH(r) : "") + ".";
-    return resSpec("addsub", "Welche Ergebnisse sind richtig? " + fr(a, b) + " " + sg + " " + fr(c, d) + " = ?", a + "/" + b + " " + sg + " " + c + "/" + d, r, W, () => ex + " Alle richtigen Schreibweisen haben denselben Wert.");
+    return resSpec("addsub", "Welche Ergebnisse sind richtig? " + fr(a, b) + " " + sg + " " + fr(c, d) + " = ?" + qStrips2(a, b, c, d, sg), a + "/" + b + " " + sg + " " + c + "/" + d, r, W, () => ex + " Alle richtigen Schreibweisen haben denselben Wert.");
   }
   function gMulDiv() {
     const type = pick(["bb", "bb", "bz", "dz", "db"]);
@@ -5851,10 +6037,10 @@ document.querySelectorAll(".card").forEach(c => {
       tries++;
       const a = ri(1, 6), b = ri(a + 1, 8), c = ri(1, 6), d = ri(c + 1, 8), z = ri(2, 6);
       const A = R(a, b), C = R(c, d), W = [], push = (n, dd, why) => W.push({ r: R(n, dd), why: why });
-      let r, qh, ep, ex;
+      let r, qh, ep, ex, pic = "";
       if (type === "bb") {
         r = Rt(A, C); if (r.d > 40 || tries < 60 && a * c === 0) continue;
-        qh = fr(a, b) + " · " + fr(c, d); ep = a + "/" + b + " · " + c + "/" + d;
+        qh = fr(a, b) + " · " + fr(c, d); pic = qRect2(a, b, c, d); ep = a + "/" + b + " · " + c + "/" + d;
         push(a * c, b + d, "Die Nenner werden multipliziert, nicht addiert."); push(a + c, b * d, "Die Zähler werden multipliziert, nicht addiert.");
         push(a * d, b * c, "Das wäre eine Division. Hier wird multipliziert: Zähler mal Zähler, Nenner mal Nenner.");
         push(a * c, b, "Auch die Nenner werden multipliziert."); push(a * c, d, "Auch die Nenner werden multipliziert."); push(r.n + 1, r.d, "Hier hat sich ein Zähler verrechnet."); push(r.n, r.d + 1, "Hier hat sich ein Nenner verrechnet.");
@@ -5862,27 +6048,27 @@ document.querySelectorAll(".card").forEach(c => {
         ex = "Zähler mal Zähler, Nenner mal Nenner: " + fr(a, b) + " · " + fr(c, d) + " = " + fr(a * c, b * d) + (a * c / gcd(a * c, b * d) !== a * c ? " = " + fmtH(r) : "") + ". Am Rechteck: Du nimmst " + fr(a, b) + " von " + fr(c, d) + ".";
       } else if (type === "bz") {
         r = Rt(A, R(z, 1)); if (r.d > 40) continue;
-        qh = fr(a, b) + " · " + z; ep = a + "/" + b + " · " + z;
+        qh = fr(a, b) + " · " + z; pic = qRep(a, b, z); ep = a + "/" + b + " · " + z;
         push(a * z, b * z, "Nur der Zähler wird mit " + z + " multipliziert, der Nenner bleibt."); push(a, b * z, "Hier wurde der Nenner multipliziert. Der Nenner bleibt, der Zähler wird mit " + z + " multipliziert.");
         push(a + z, b, "Hier wurde addiert statt multipliziert."); push(a * z, b + z, "Der Nenner bleibt gleich."); push(r.n + 1, r.d, "Hier hat sich ein Zähler verrechnet."); push(r.n, r.d + 1, "Hier hat sich ein Nenner verrechnet.");
         push(a * z + 1, b, "Hier hat sich ein Zähler verrechnet.");
         ex = z + " mal " + fr(a, b) + ": Du legst " + z + " mal " + a + " Stücke von " + b + ". Das sind " + fr(a * z, b) + (a * z > b ? " = " + fmtH(R(a * z, b)) : "") + ".";
       } else if (type === "dz") {
         r = Rd(A, R(z, 1)); if (r.d > 40) continue;
-        qh = fr(a, b) + " : " + z; ep = a + "/" + b + " : " + z;
+        qh = fr(a, b) + " : " + z; pic = qSplit(a, b, z); ep = a + "/" + b + " : " + z;
         push(a * z, b, "Hier wurde multipliziert statt dividiert."); 
         push(r.n + 1, r.d, "Hier hat sich ein Zähler verrechnet."); push(r.n, r.d + 1, "Hier hat sich ein Nenner verrechnet."); push(b, a * z, "Zähler und Nenner sind vertauscht."); push(a - z, b, "Hier wurde subtrahiert.");
         ex = "Teilen durch " + z + " heißt: Ich teile den Bruch in " + z + " gleich große Teile. Dazu mache ich die Stücke " + z + " mal kleiner: " + fr(a, b) + " : " + z + " = " + fr(a, b * z) + (R(a, b * z).d !== b * z ? " = " + fmtFH(r) : "") + ".";
       } else {
         r = Rd(A, C); if (r.d > 40 || r.n > 60) continue;
-        qh = fr(a, b) + " : " + fr(c, d); ep = a + "/" + b + " : " + c + "/" + d;
+        qh = fr(a, b) + " : " + fr(c, d); pic = qStrips2(a, b, c, d, ":"); ep = a + "/" + b + " : " + c + "/" + d;
         push(a * c, b * d, "Du hast mit dem Bruch selbst multipliziert. Du musst mit dem Kehrbruch multiplizieren.");
         push(b * c, a * d, "Hier wurde der falsche Bruch umgedreht. Der zweite Bruch wird umgedreht.");
         push(a * d, b + c, "Der Nenner wird multipliziert, nicht addiert.");
         push(r.n + 1, r.d, "Hier hat sich ein Zähler verrechnet."); push(r.n, r.d + 1, "Hier hat sich ein Nenner verrechnet."); push(a - c, b - d, "Brüche werden nicht stellenweise subtrahiert.");
         ex = "Durch einen Bruch teilen heißt: mit dem Kehrbruch multiplizieren. " + fr(a, b) + " : " + fr(c, d) + " = " + fr(a, b) + " · " + fr(d, c) + " = " + fr(a * d, b * c) + (R(a * d, b * c).d !== b * c || R(a * d, b * c).n !== a * d ? " = " + fmtH(r) : "") + ".";
       }
-      return resSpec("muldiv", "Welche Ergebnisse sind richtig? " + qh + " = ?", ep, r, W, () => ex + " Alle richtigen Schreibweisen haben denselben Wert.");
+      return resSpec("muldiv", "Welche Ergebnisse sind richtig? " + qh + " = ?" + pic, ep, r, W, () => ex + " Alle richtigen Schreibweisen haben denselben Wert.");
     }
   }
   function gStufe() {
@@ -5900,7 +6086,7 @@ document.querySelectorAll(".card").forEach(c => {
     });
     W2(wrong, a, bb, t);
     function W2(w, aa, b2, tt) { [[b2, aa * 10], [aa + 10, b2 + 10]].forEach(x => { if (!Req(R(x[0], x[1]), tt) && x[0] >= 1) w.push(fo(x[0], x[1], "Zähler und Nenner sind nicht richtig erweitert.")); }); }
-    return { top: "stufe", kind: "tgt", tgt: a + "/" + bb, q: "Welche Brüche mit einer Stufenzahl (10, 100 oder 1000) im Nenner sind gleich " + fr(a, bb) + "?", corr: corr, wrong: wrong,
+    return { top: "stufe", kind: "tgt", tgt: a + "/" + bb, q: "Welche Brüche mit einer Stufenzahl (10, 100 oder 1000) im Nenner sind gleich " + fr(a, bb) + "?" + strip(a, bb), corr: corr, wrong: wrong,
       expl: c => "Du erweiterst " + fr(a, bb) + " auf eine Stufenzahl: Zähler und Nenner mit derselben Zahl multiplizieren. Richtig: " + c.map(o => o.h).join(", ") + "." };
   }
 
@@ -5925,7 +6111,7 @@ document.querySelectorAll(".card").forEach(c => {
     const add = (n, d, why) => { if (n >= 1 && !Req(R(n, d), t)) wrong.push(fo(n, d, why)); };
     add(v, D * 10, "Hier stimmt der Nenner nicht."); add(v, D / 10, "Hier stimmt der Nenner nicht."); add(v + 1, D, "Hier hat sich der Zähler verrechnet."); add(v - 1, D, "Hier hat sich der Zähler verrechnet.");
     add(a, D, "Der Zähler muss mit erweitert werden."); add(b, a * 10, "Zähler und Nenner sind vertauscht.");
-    return { top: "bd", kind: "tgt", tgt: a + "/" + b, q: "Welche Schreibweisen bedeuten dasselbe wie " + fr(a, b) + "?", corr: corr, wrong: wrong,
+    return { top: "bd", kind: "tgt", tgt: a + "/" + b, q: "Welche Schreibweisen bedeuten dasselbe wie " + fr(a, b) + "?" + strip(a, b), corr: corr, wrong: wrong,
       expl: c => "Ein Bruch ist eine Divisionsaufgabe: " + a + " : " + b + " = " + dec(v, p) + ". Als Bruch mit Stufenzahl: " + fr(v, D) + ". Richtig: " + c.map(o => o.h).join(", ") + "." };
   }
   function gKomma() {
@@ -5947,7 +6133,7 @@ document.querySelectorAll(".card").forEach(c => {
       });
     });
     function fmtDec(r) { let q = 0; while (q < 7 && (r.n * Math.pow(10, q)) % r.d !== 0) q++; return dec(r.n * Math.pow(10, q) / r.d, q); }
-    return { top: "komma", kind: "tgt", tgt: tgtS, q: "Welche Rechnungen haben das Ergebnis " + T(tgtS, "zo") + "?", corr: corr, wrong: wrong,
+    return { top: "komma", kind: "tgt", tgt: tgtS, q: "Welche Rechnungen haben das Ergebnis " + T(tgtS, "zo") + "?" + qTafel(tgtS), corr: corr, wrong: wrong,
       expl: c => "Beim Malnehmen mit 10, 100, 1000 wandern die Ziffern in der Stellentafel nach links (das Komma scheinbar nach rechts), beim Teilen nach rechts. Richtig: " + c.map(o => o.p + " = " + tgtS).join(", ") + "." };
   }
   function gDadd() {
@@ -6025,7 +6211,7 @@ document.querySelectorAll(".card").forEach(c => {
     let a1 = nz(), b1 = nz(), a2 = nz(), b2 = nz(), x = ri(-6, 6), y = ri(-6, 6), c1, c2;
     if (kind === "one") { while (a1 * b2 - a2 * b1 === 0) { a2 = nz(); b2 = nz(); } c1 = a1 * x + b1 * y; c2 = a2 * x + b2 * y; }
     else { const m = pick([2, 3, -1, -2]); a2 = a1 * m; b2 = b1 * m; c1 = a1 * ri(-5, 5) + b1 * ri(-5, 5); if (!c1) c1 = 3 * a1; c2 = kind === "inf" ? c1 * m : c1 * m + pick([1, 2, -1, -3]); if (Math.abs(a2) > 15 || Math.abs(b2) > 15) { a2 = a1 * 2; b2 = b1 * 2; c2 = kind === "inf" ? c1 * 2 : c1 * 2 + 1; } }
-    const q = "Gegeben ist das Gleichungssystem (I) " + lt(a1, b1, c1) + " und (II) " + lt(a2, b2, c2) + ". Welche Aussagen stimmen?";
+    const q = "Gegeben ist das Gleichungssystem (I) " + lt(a1, b1, c1) + " und (II) " + lt(a2, b2, c2) + ". Welche Aussagen stimmen?" + qGraph(8, 8, [{ f: X => (c1 - a1 * X) / b1, col: QB }, { f: X => (c2 - a2 * X) / b2, col: QO, dash: true }], 18) + '<div class="note">Gleichung (I): blaue Gerade. Gleichung (II): orange gestrichelte Gerade.</div>';
     const P = (t, why) => O(t, t, why);
     let corr, wrong;
     if (kind === "one") {
@@ -6069,7 +6255,7 @@ document.querySelectorAll(".card").forEach(c => {
     add(-d, c, a, "Hier ist d falsch und das ergänzte Quadrat wurde nicht abgezogen.", [0, 1, 3]);
     if (a !== 1) add(d, e, 1, "Der Faktor " + sg(a) + " vor der Klammer fehlt. Er gehört zur Scheitelpunktform.", [2]);
     wrong.push(P("S(" + sg(-b / 2) + " | " + sg(e) + ")", "Hier wurde die Zahl vor x einfach halbiert. Man muss erst durch die Zahl vor x² teilen und dann halbieren: d = " + sg(d) + "."));
-    return { top: "qe", kind: "eqs", q: "Gegeben ist f(x) = " + fxs(a, b, c) + ". Welche Aussagen über die Scheitelpunktform stimmen?", corr: nrm(corr), wrong: nrm(wrong),
+    return { top: "qe", kind: "eqs", q: "Gegeben ist f(x) = " + fxs(a, b, c) + ". Welche Aussagen über die Scheitelpunktform stimmen?" + qGraph(10, 12, [{ f: X => a * X * X + b * X + c, col: QB }], 14), corr: nrm(corr), wrong: nrm(wrong),
       expl: () => "Ich klammere die Zahl vor x² aus, halbiere die Zahl vor x, quadriere sie, addiere und subtrahiere sie. Dann steht eine binomische Formel in der Klammer. Aus a(x − d)² + e lese ich den Scheitelpunkt S(d | e) ab. In der Klammer steht x − d: Aus x + 3 wird d = −3." };
   }
   function gQgl() {
@@ -6087,7 +6273,7 @@ document.querySelectorAll(".card").forEach(c => {
     w(r1 + 1, r2, "Die Probe stimmt nicht. Setze die Zahlen in die Gleichung ein.");
     w(r1, r2 - 1, "Die Probe stimmt nicht. Setze die Zahlen in die Gleichung ein.");
     wrong.push(P(one(r1), "Eine quadratische Gleichung hat hier zwei Lösungen: " + sg(r1) + " und " + sg(r2) + ". Nach dem Wurzelziehen gibt es plus und minus."), P(one(r2), "Eine quadratische Gleichung hat hier zwei Lösungen: " + sg(r1) + " und " + sg(r2) + ". Nach dem Wurzelziehen gibt es plus und minus."), P("L = { }", "Die Gleichung hat Lösungen: " + sg(r1) + " und " + sg(r2) + ". Rechts steht nach der Ergänzung eine positive Zahl."));
-    return { top: "qgl", kind: "eqs", q: "Gegeben ist die Gleichung " + fxs(a, b, c) + " = 0. Welche Aussagen über die Lösungen stimmen?", corr: nrm(corr), wrong: nrm(wrong),
+    return { top: "qgl", kind: "eqs", q: "Gegeben ist die Gleichung " + fxs(a, b, c) + " = 0. Welche Aussagen über die Lösungen stimmen?" + qGraph(9, 12, [{ f: X => a * X * X + b * X + c, col: QB }], 14) + '<div class="note">Graph von f(x) = ' + fxs(a, b, c) + ".</div>", corr: nrm(corr), wrong: nrm(wrong),
       expl: () => "Ich teile durch die Zahl vor x², bringe das Glied ohne x nach rechts, ergänze auf beiden Seiten das Quadrat, schreibe links die binomische Formel und ziehe die Wurzel. Es gibt zwei Möglichkeiten: plus und minus. Zur Probe setze ich die Lösungen in die Gleichung ein." };
   }
 
@@ -6129,16 +6315,18 @@ document.querySelectorAll(".card").forEach(c => {
         P("Beim Startwert, also bei x = 0, ist f(0) = " + sgn(m) + ".", "Bei x = 0 ist f(0) = n = " + sgn(n) + ". Das ist der Startwert.")
       ];
       const r = mix(corr, wr);
-      return { top: "lf", kind: "eqs", q: "Gegeben ist die lineare Funktion f(x) = " + term(m, n) + ". Welche Aussagen stimmen?", corr: r.corr, wrong: r.wrong,
+      return { top: "lf", kind: "eqs", q: "Gegeben ist die lineare Funktion f(x) = " + term(m, n) + ". Welche Aussagen stimmen?" + lineSvg(m, n), corr: r.corr, wrong: r.wrong,
         expl: () => "Bei f(x) = m · x + n ist n der Startwert (y-Achsenabschnitt): der Wert bei x = 0. m ist die Änderungsrate (Steigung): Wenn x um 1 größer wird, ändert sich f(x) um m. Einen Funktionswert findest du, indem du x einsetzt: f(" + sgn(k) + ") = " + sgn(m) + " · " + sgn(k) + " + " + sgn(n) + " = " + sgn(fk) + ". Ist m positiv, steigt der Graph, ist m negativ, fällt er." };
     }
 
-    function lineSvg(m, n) {
+    function lineSvg(m, n, pts, noLine) {
       const S = 20, R = 6, W = 2 * R * S, pad = 16, X = x => pad + (x + R) * S, Y = y => pad + (R - y) * S, T = W + 2 * pad, id = "lfs" + ri(1000, 9999);
       let s = '<svg viewBox="0 0 ' + T + " " + T + '" width="' + Math.round(T * 1.15) + '" role="img" aria-label="Eine Gerade im Koordinatensystem" style="max-width:100%;display:block;margin:.4rem auto"><defs><clipPath id="' + id + '"><rect x="' + pad + '" y="' + pad + '" width="' + W + '" height="' + W + '"/></clipPath></defs><rect x="' + pad + '" y="' + pad + '" width="' + W + '" height="' + W + '" fill="#14161a"/>';
       for (let i = -R; i <= R; i++) { s += '<path d="M' + X(i) + "," + pad + "V" + (pad + W) + 'M' + pad + "," + Y(i) + "H" + (pad + W) + '" stroke="' + (i ? "#2a2f3a" : "#c3c8ce") + '" stroke-width="' + (i ? 1 : 2) + '" fill="none"/>'; }
       for (let i = -R + 1; i <= R - 1; i++) if (i) s += '<text x="' + X(i) + '" y="' + (Y(0) + 13) + '" text-anchor="middle" font-size="10" fill="#9aa3b2">' + i + '</text><text x="' + (X(0) - 5) + '" y="' + (Y(i) + 4) + '" text-anchor="end" font-size="10" fill="#9aa3b2">' + i + "</text>";
       s += '<line x1="' + X(-R) + '" y1="' + Y(m * -R + n) + '" x2="' + X(R) + '" y2="' + Y(m * R + n) + '" stroke="#6cc0f5" stroke-width="3.5" clip-path="url(#' + id + ')"/>';
+      if (noLine) s = s.replace(/<line x1="[^"]*" y1="[^"]*" x2="[^"]*" y2="[^"]*" stroke="#6cc0f5" stroke-width="3.5"[^>]*\/>$/, "");
+      (pts || []).forEach(q => { s += '<circle cx="' + X(q.x) + '" cy="' + Y(q.y) + '" r="5" fill="#ffb347" stroke="#0e1624" stroke-width="1.5"/><text x="' + (X(q.x) + 8) + '" y="' + (Y(q.y) - 8) + '" font-size="14" font-weight="700" fill="#ffb347">' + q.l + "</text>"; });
       return s + "</svg>";
     }
     function gLfg() {
@@ -6181,7 +6369,7 @@ document.querySelectorAll(".card").forEach(c => {
         P("Der Punkt (" + sgn(y3) + " | " + sgn(x3) + ") liegt auf der Geraden.", "Die Koordinaten sind vertauscht. Zuerst steht der x-Wert: (" + sgn(x3) + " | " + sgn(y3) + ").")
       ];
       const r = mix(corr, wr);
-      return { top: "lp", kind: "eqs", q: "Eine Gerade verläuft durch die Punkte " + P1 + " und " + Q1 + ". Welche Aussagen stimmen?", corr: r.corr, wrong: r.wrong,
+      return { top: "lp", kind: "eqs", q: "Eine Gerade verläuft durch die Punkte " + P1 + " und " + Q1 + ". Welche Aussagen stimmen?" + ([x1, y1, x2, y2].every(v => Math.abs(v) <= 6) ? lineSvg(m, n, [{ x: x1, y: y1, l: "P" }, { x: x2, y: y2, l: "Q" }], true) : ""), corr: r.corr, wrong: r.wrong,
         expl: () => "Die Änderungsrate (Steigung) ist Δy : Δx = (" + sgn(y2) + " − " + sgn(y1) + ") : (" + sgn(x2) + " − " + sgn(x1) + ") = " + sgn(dy) + " : " + sgn(dx) + " = " + sgn(m) + ". Dann setzt du einen Punkt in y = m · x + n ein und löst nach n auf. Das ist der Startwert: n = " + sgn(n) + ". Die Gleichung ist f(x) = " + term(m, n) + "." };
     }
 
@@ -6215,9 +6403,9 @@ document.querySelectorAll(".card").forEach(c => {
     }
 
     function gDreis() {
-      const anti = Math.random() < 0.5; let q, res, a, b, typeOk, typeBad, oneOk, oneBad, ruleOk, ruleBad, w1, w2, w3, U, whyType, how;
+      const anti = Math.random() < 0.5; let paV, q, res, a, b, typeOk, typeBad, oneOk, oneBad, ruleOk, ruleBad, w1, w2, w3, U, whyType, how;
       if (!anti) {
-        const u = pick([2, 3, 4, 5, 1.5, 2.5]); a = ri(2, 6); b = a + ri(2, 6); const pa = u * a; res = u * b; U = " €";
+        const u = pick([2, 3, 4, 5, 1.5, 2.5]); a = ri(2, 6); b = a + ri(2, 6); const pa = u * a; paV = pa; res = u * b; U = " €";
         q = a + " Hefte kosten " + dz(pa) + " €. Wie viel kosten " + b + " Hefte?";
         typeOk = "Die Zuordnung Anzahl → Preis ist proportional."; typeBad = "Die Zuordnung Anzahl → Preis ist antiproportional.";
         oneOk = "Auf eine Portion runtergerechnet: 1 Heft kostet " + dz(u) + " €."; oneBad = "Auf eine Portion runtergerechnet: 1 Heft kostet " + dz(res) + " €.";
@@ -6239,7 +6427,7 @@ document.querySelectorAll(".card").forEach(c => {
       const corr = [P(typeOk), P("Das Ergebnis ist " + dz(res) + U + "."), P(oneOk), P("Rechnung: " + ruleOk)];
       const wr = [P(typeBad, whyType), P("Das Ergebnis ist " + dz(w1) + U + ".", "Hier wurde mit der falschen Zuordnung gerechnet. " + whyType + " Richtig ist " + dz(res) + U + "."), P("Das Ergebnis ist " + dz(w2) + U + ".", "Hier wurde addiert oder subtrahiert. Beim Hoch- und Runterrechnen rechnet man mit mal und geteilt. Richtig ist " + dz(res) + U + "."), P("Das Ergebnis ist " + dz(w3) + U + ".", "Das stimmt nicht. " + how + " Richtig ist " + dz(res) + U + "."), P("Rechnung: " + ruleBad, "Hier wurde mit der falschen Zuordnung gerechnet. " + whyType), P(oneBad, "Das passt nicht zur Aufgabe. Richtig: " + oneOk)];
       const r = mix(corr, wr);
-      return { top: "dreis", kind: "eqs", q: q + " Welche Aussagen stimmen?", corr: r.corr, wrong: r.wrong, expl: () => whyType + " " + how + " " + oneOk + " Ergebnis: " + dz(res) + U + "." };
+      return { top: "dreis", kind: "eqs", q: q + " Welche Aussagen stimmen?" + (anti ? qDrei("Arbeiter", "Tage", a, b, days, "", "") : qDrei("Hefte", "Preis in €", a, b, dz(paV), "", "")), corr: r.corr, wrong: r.wrong, expl: () => whyType + " " + how + " " + oneOk + " Ergebnis: " + dz(res) + U + "." };
     }
 
     function nice(G, p) { return (G * p) % 100 === 0; }
@@ -6277,7 +6465,7 @@ document.querySelectorAll(".card").forEach(c => {
         ex = p + " % von " + G + " € sind " + W + " €. Der neue Preis ist " + G + " € + " + W + " € = " + N + " €. Mit einem Faktor: " + (100 + p) + " % = " + dz((100 + p) / 100) + ", also " + G + " · " + dz((100 + p) / 100) + " = " + N + ".";
       }
       const r = mix(corr, wr);
-      return { top: "proz", kind: "eqs", q: q, corr: r.corr, wrong: r.wrong, expl: () => ex };
+      return { top: "proz", kind: "eqs", q: q + qProz(typ === "auf" ? "auf" : typ, G, p, W, typ === "rab" || typ === "auf" ? "€" : ""), corr: r.corr, wrong: r.wrong, expl: () => ex };
     }
 
     function gZins() {
@@ -6286,7 +6474,7 @@ document.querySelectorAll(".card").forEach(c => {
       const corr = [P("Der Zinssatz ist " + p + " %."), P("Die Zinsen für ein Jahr sind " + eur(Z * 100) + "."), P("Nach einem Jahr hat sie " + eur(K1 * 100) + "."), P("Man rechnet " + grp(String(K)) + " · " + p + " : 100 = " + dz2(Z) + ".")];
       const wr = [P("Die Zinsen für ein Jahr sind " + eur(K1 * 100) + ".", "Das ist das Kapital mit Zinsen. Die Zinsen allein sind " + eur(Z * 100) + "."), P("Nach einem Jahr hat sie " + eur(Z * 100) + ".", "Das sind nur die Zinsen. Das Kapital kommt noch dazu: " + eur(K1 * 100) + "."), P("Nach einem Jahr hat sie " + eur((K - Z) * 100) + ".", "Zinsen werden addiert, nicht abgezogen. Es sind " + eur(K1 * 100) + "."), P("Die Zinsen für ein Jahr sind " + eur(K * p * 100) + ".", "Du musst noch durch 100 teilen. Die Zinsen sind " + eur(Z * 100) + "."), P("Das Grundkapital ist " + eur(Z * 100) + ".", "Das Kapital (Grundwert) sind die " + grp(String(K)) + " €, die sie anlegt."), P("Die Zinsen sind der Grundwert.", "Das Kapital ist der Grundwert. Die Zinsen sind der Prozentwert."), P("Man rechnet " + grp(String(K)) + " : " + p + " · 100.", "Das ist falsch. Richtig ist " + grp(String(K)) + " · " + p + " : 100.")];
       const r = mix(corr, wr);
-      return { top: "zins", kind: "eqs", q: q, corr: r.corr, wrong: r.wrong, expl: () => "Das Kapital ist der Grundwert, der Zinssatz der Prozentsatz und die Zinsen sind der Prozentwert. Z = K · p : 100 = " + grp(String(K)) + " · " + p + " : 100 = " + dz2(Z) + " €. Das Kapital nach einem Jahr ist " + grp(String(K)) + " € + " + dz2(Z) + " € = " + dz2(K1) + " €." };
+      return { top: "zins", kind: "eqs", q: q + qProz("w", grp(String(K)), p, "", "€"), corr: r.corr, wrong: r.wrong, expl: () => "Das Kapital ist der Grundwert, der Zinssatz der Prozentsatz und die Zinsen sind der Prozentwert. Z = K · p : 100 = " + grp(String(K)) + " · " + p + " : 100 = " + dz2(Z) + " €. Das Kapital nach einem Jahr ist " + grp(String(K)) + " € + " + dz2(Z) + " € = " + dz2(K1) + " €." };
     }
 
     function gZz() {
@@ -6342,7 +6530,7 @@ document.querySelectorAll(".card").forEach(c => {
       }
       wr.push(P("Die unbekannte Zahl ist x = " + sgn(-s) + ".", "Mache die Kontrolle: Setze " + sgn(-s) + " in " + orig + " ein. Es kommen verschiedene Werte heraus. Richtig: x = " + sgn(s) + "."), P("Die unbekannte Zahl ist x = " + sgn(s + 1) + ".", "Mache die Kontrolle. Links und rechts ergeben nicht dasselbe."), P("L = {" + sgn(-s) + "}", "Mache die Kontrolle. Richtig ist L = {" + sgn(s) + "}."), P("Kontrolle: Die Seiten sind verschieden.", "Die Kontrolle stimmt: Beide Seiten ergeben " + sgn(V) + "."), P("Die Gleichungen " + orig + " und x = " + sgn(s + 1) + " beschreiben dieselbe unbekannte Zahl.", "Die Zahl " + sgn(s + 1) + " passt nicht in " + orig + ". Die unbekannte Zahl ist " + sgn(s) + "."));
       const r = mix(corr, wr);
-      return { top: "aeq", kind: "eqs", q: "Gesucht ist die unbekannte Zahl x in der Gleichung " + orig + ". Man sucht einfachere Gleichungen, die dieselbe unbekannte Zahl beschreiben (Äquivalenzumformung). Hinter dem senkrechten Strich steht, was auf beiden Seiten getan wird. Welche Aussagen stimmen?", corr: r.corr, wrong: r.wrong,
+      return { top: "aeq", kind: "eqs", q: "Gesucht ist die unbekannte Zahl x in der Gleichung " + orig + "." + (window.__dz && window.__dz.aeqPicQ ? (() => { try { return window.__dz.aeqPicQ(a, b, c, d); } catch (e) { return ""; } })() : "") + " Man sucht einfachere Gleichungen, die dieselbe unbekannte Zahl beschreiben (Äquivalenzumformung). Hinter dem senkrechten Strich steht, was auf beiden Seiten getan wird. Welche Aussagen stimmen?", corr: r.corr, wrong: r.wrong,
         expl: () => "Man sucht einfachere Gleichungen, die dieselbe unbekannte Zahl beschreiben. Dazu tut man auf beiden Seiten dasselbe, wie auf einer Waage (Äquivalenzumformung). Erst bringt man die Glieder mit x auf eine Seite, dann die Zahlen auf die andere, dann teilt man durch die Zahl vor x. Zur Kontrolle setzt man die Zahl in die ursprüngliche Gleichung ein." };
     }
     return { aeq: gAeq, lf: gLf, lfg: gLfg, lp: gLp, prop: gProp, dreis: gDreis, proz: gProz, zins: gZins, zz: gZz };

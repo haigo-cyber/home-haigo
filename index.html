@@ -649,6 +649,10 @@
   .ws-gsi{flex:none;min-width:22px;text-align:center}
   .ws-gst{flex:1;min-width:0;word-break:break-word;font-size:14px}
   .ws-gsw{font-size:11.5px;color:var(--muted,#8b93a1);text-decoration:none;display:inline-block}
+
+  /* Fälligkeit, Deadline und Meta-Stern stehen immer sichtbar neben dem Text, auch in der schlanken Ansicht */
+  .ws-dchips{display:inline-flex;gap:4px;align-items:center;flex:none;flex-wrap:wrap}
+  .ws-dchips:empty{display:none}
 </style>
 </head>
 <body>
@@ -3511,7 +3515,7 @@ function wsNewDoc(title){
 }
 function wsNewBlock(type){
   if(type==="text") return {id:wsId(), type:"text", text:"", tag:""};
-  if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:"", collapsed:false, lvl:1, done:false};
+  if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:"", collapsed:false, lvl:1, done:false, date:"", dur:0, dl:"", meta:false};
   if(type==="outline") return {id:wsId(), type:"outline", items:[wsNewNode("")], tag:""};
   if(type==="table") return {id:wsId(), type:"table", cols:["Spalte 1","Spalte 2","Spalte 3"], rows:[["","",""],["","",""]], tag:""};
   return null;
@@ -3534,7 +3538,7 @@ function wsNormalizeDocs(arr){
       if(!b || typeof b!=="object") return;
       const id = b.id||wsId();
       if(b.type==="text") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag)});
-      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag), collapsed:!!b.collapsed, lvl:(b.lvl>=2)?2:1, done:!!b.done});
+      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag), collapsed:!!b.collapsed, lvl:(b.lvl>=2)?2:1, done:!!b.done, date:wsIsDate(b.date)?b.date:"", dur:(b.dur>0 && b.dur<=3660)?Math.floor(b.dur):0, dl:wsIsDate(b.dl)?b.dl:"", meta:!!b.meta});
       else if(b.type==="outline") doc.blocks.push({id, type:"outline", items:wsNormNodes(b.items), tag:wsNormTag(b.tag)});
       else if(b.type==="table"){
         const cols = (Array.isArray(b.cols) && b.cols.length) ? b.cols.map(String) : ["Spalte 1"];
@@ -3823,12 +3827,45 @@ function wsGanttRows(roots, sel, em, sort){
   (sort ? sort(roots) : roots).forEach(n=>walk(n, 0));
   return rows;
 }
-/* oberste Meta-Projekte (nicht verschachtelt gesammelt) aus allen Dokumenten */
+/* Überschrift (Ebene 1 oder 2) samt Abschnitt als Punkt-ähnliches Objekt (nur zum Lesen: Gantt, Listen). Die Punkte darunter sind die echten Punkte. */
+function wsHeadVirt(doc, i, end){
+  const blocks = doc.blocks, h = blocks[i];
+  const n = wsNewNode(h.text); n.id = h.id; n.done = !!h.done; n.date = h.date||""; n.dur = h.dur||0; n.dl = h.dl||""; n.meta = !!h.meta; n.tag = h.tag||""; n.head = true;
+  let j = i+1;
+  while(j<end){
+    const b = blocks[j];
+    if(b.type==="heading"){ const e = Math.min(wsSecEnd(blocks, j), end); n.children.push(wsHeadVirt(doc, j, e)); j = e; continue; }
+    if(b.type==="outline") b.items.forEach(x=>n.children.push(x));
+    j++;
+  }
+  return n;
+}
+/* oberste Meta-Projekte (nicht verschachtelt gesammelt) aus allen Dokumenten; auch Überschriften können Meta-Projekte sein */
 function wsMetaRoots(docs){
   const out = [];
   const walk = (items)=>items.forEach(n=>{ if(n.meta) out.push(n); else walk(n.children); });
-  docs.forEach(d=>d.blocks.forEach(b=>{ if(b.type==="outline") walk(b.items); }));
+  docs.forEach(d=>{
+    let skip = -1;
+    d.blocks.forEach((b,i)=>{
+      if(i<skip) return;
+      if(b.type==="heading" && b.meta){ const e = wsSecEnd(d.blocks, i); out.push(wsHeadVirt(d, i, e)); skip = e; return; }
+      if(b.type==="outline") walk(b.items);
+    });
+  });
   return out;
+}
+/* Gantt-Wurzeln eines Dokuments: hat eine Überschrift eigene Termine oder ist Meta-Projekt, bildet die Überschrift eine Ebene; sonst wie bisher alle Punkte */
+function wsDocGanttRoots(d){
+  const flat = []; d.blocks.forEach(b=>{ if(b.type==="outline") flat.push(...b.items); });
+  if(!d.blocks.some(b=>b.type==="heading" && (b.date || b.dl || b.dur || b.meta))) return flat;
+  const roots = []; let i = 0;
+  while(i<d.blocks.length){
+    const b = d.blocks[i];
+    if(b.type==="heading"){ const e = wsSecEnd(d.blocks, i); roots.push(wsHeadVirt(d, i, e)); i = e; continue; }
+    if(b.type==="outline") roots.push(...b.items);
+    i++;
+  }
+  return roots;
 }
 
 /* ---- Blöcke und Tabellen ---- */
@@ -3852,7 +3889,7 @@ function wsSecEnd(blocks, i){
 }
 /* Abschnitt (Überschrift mit allem darunter) in einen Punkt umwandeln: Listen werden Unterpunkte, Notizen und Tabellen Anhänge, Unterüberschriften Unterpunkte */
 function wsSecToNode(blocks, i, end){
-  const h = blocks[i], n = wsNewNode(h.text); n.tag = h.tag || "";
+  const h = blocks[i], n = wsNewNode(h.text); n.tag = h.tag || ""; n.date = h.date || ""; n.dur = h.dur || 0; n.dl = h.dl || ""; n.meta = !!h.meta; n.done = !!h.done;
   let j = i+1;
   while(j<end){
     const b = blocks[j];
@@ -3923,7 +3960,7 @@ function wsPromoteNode(doc, nid, lvl, at){
   r.list.splice(r.index, 1);
   let tail = [];
   if(!at && !r.parent){ tail = r.list.splice(r.index); }
-  const h = wsNewBlock("heading"); h.text = n.text; h.tag = n.tag || ""; h.lvl = lvl===2 ? 2 : 1;
+  const h = wsNewBlock("heading"); h.text = n.text; h.tag = n.tag || ""; h.lvl = lvl===2 ? 2 : 1; h.date = n.date || ""; h.dur = n.dur || 0; h.dl = n.dl || ""; h.meta = !!n.meta; h.done = !!n.done;
   const ins = [h];
   n.att.forEach(a=>{
     if(a.type==="text"){ const t = wsNewBlock("text"); t.text = a.text; t.tag = a.tag || ""; ins.push(t); }
@@ -4030,6 +4067,7 @@ function wsDeadlineItems(docs, today){
       if(!n.dl || n.done) return;
       out.push({doc, node:n, dl:n.dl, days:wsDayDiff(today, n.dl)});
     });
+    doc.blocks.forEach(b=>{ if(b.type==="heading" && b.dl && !b.done) out.push({doc, node:b, dl:b.dl, days:wsDayDiff(today, b.dl)}); });
   });
   out.sort((a,b)=> a.days-b.days || (a.node.text||"").localeCompare(b.node.text||""));
   return out;
@@ -4250,7 +4288,7 @@ function wsGraph(docs, o){
       if(b.type==="outline"){ walk(b.items, parent); return; }
       const id = "b:"+b.id;
       const label = b.type==="heading" ? first(b.text) : b.type==="table" ? "Tabelle" : first(b.text);
-      if(!add({id, kind:"block", type:b.type, label:label||(b.type==="heading"?"(Überschrift)":"(Text)"), doc:doc.id, ref:b.id, eff:bt[b.id]||"", done:false})) return;
+      if(!add({id, kind:"block", type:b.type, label:label||(b.type==="heading"?"(Überschrift)":"(Text)"), doc:doc.id, ref:b.id, eff:bt[b.id]||"", done:b.type==="heading" ? !!b.done : false, meta:b.type==="heading" && !!b.meta, date:b.type==="heading" ? (b.date||"") : "", dl:b.type==="heading" ? (b.dl||"") : ""})) return;
       link(b.type==="heading" ? did : parent, id); ownTag(id, b.tag);
       if(b.type==="heading") parent = id;
     });
@@ -4266,7 +4304,8 @@ let wsF = (()=>{ try{ return wsFNorm(JSON.parse(localStorage.getItem("wsFilter")
 let wsFOpen = (()=>{ try{ return localStorage.getItem("wsFOpen")==="1"; }catch(e){ return false; } })();
 const wsColl = new Map();   // nur für diese Sitzung: Auf-/Zuklappen, solange ein Filter aktiv ist
 function wsFSave(){ try{ localStorage.setItem("wsFilter", JSON.stringify(wsF)); }catch(e){} wsColl.clear(); }
-function wsVis(n, inh){ return wsNodeShown(n, wsF, todayKey(), inh); }
+let wsMetaOv = false;       // beim Zeichnen eines Abschnitts unter einer Meta-Überschrift gilt der Filter "Nur Meta" nicht
+function wsVis(n, inh){ return wsNodeShown(n, wsMetaOv ? Object.assign({}, wsF, {meta:false}) : wsF, todayKey(), inh); }
 const wsOpenMap = new Map();   // nur für diese Sitzung: einzeln auf- oder zugeklappte Notizen, Tabellen und Gliederungen
 function wsFoldOpen(id, kind){
   if(wsOpenMap.has(id)) return wsOpenMap.get(id);
@@ -4291,11 +4330,14 @@ function wsHeadChain(doc, bid){
 }
 /* Welche Blöcke blendet eine eingeklappte Überschrift aus? Ebene 1 schließt Ebene 2 und 3 mit ein. */
 function wsHiddenByHeads(doc){
-  const hidden = new Set(), counts = {}, indent = {}, base = {};
-  let closedLvl = 0, cur = null, lvl = 0, doneLvl = 0;
+  const hidden = new Set(), counts = {}, indent = {}, base = {}, metaIn = new Set();
+  let closedLvl = 0, cur = null, lvl = 0, doneLvl = 0, metaLvl = 0;
   doc.blocks.forEach(b=>{
     if(b.type==="heading"){
       const L = wsHeadLvl(b); lvl = L; indent[b.id] = L-1;
+      if(metaLvl && L<=metaLvl) metaLvl = 0;
+      if(b.meta && !metaLvl) metaLvl = L;
+      if(metaLvl) metaIn.add(b.id);
       if(doneLvl && L<=doneLvl) doneLvl = 0;
       if(closedLvl && L<=closedLvl){ closedLvl = 0; cur = null; }
       if(closedLvl){ hidden.add(b.id); counts[cur.id]++; return; }
@@ -4304,11 +4346,12 @@ function wsHiddenByHeads(doc){
       if(wsHeadClosed(b)){ closedLvl = L; cur = b; counts[b.id] = 0; }
     }else{
       indent[b.id] = lvl ? lvl-1 : 0; base[b.id] = lvl+1;
+      if(metaLvl) metaIn.add(b.id);
       if(closedLvl){ hidden.add(b.id); counts[cur.id]++; }
       else if(doneLvl) hidden.add(b.id);
     }
   });
-  return {hidden, counts, indent, base};
+  return {hidden, counts, indent, base, metaIn};
 }
 function wsSetAllFolds(doc, closed){
   const walk = list=>list.forEach(n=>{
@@ -4497,21 +4540,34 @@ async function wsRefreshIfIdle(){
 function wsDateTime(iso){
   try{ return new Date(iso).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}); }catch(e){ return ""; }
 }
-function wsNodeChips(n){
+function wsNodeChips(n, part){
   const att = wsIsAtt(n);
+  const wantD = part!=="rest", wantR = part!=="dates";
   const sp = att ? null : wsSpan(n);
   const today = todayKey();
   let h = "";
-  if(!att && n.meta) h += `<button class="ws-lnk ws-metachip" data-wsact="link-menu" title="Meta-Projekt (oberste Ebene im Gantt)">★</button>`;
-  if(n.date){
+  if(wantD && !att && n.meta) h += `<button class="ws-lnk ws-metachip" data-wsact="link-menu" title="Meta-Projekt (oberste Ebene im Gantt)">★</button>`;
+  if(wantD && n.date){
     const over = !n.done && (sp ? sp.end : n.date) < today;
     h += `<button class="ws-date${over?" over":""}" data-wsact="link-menu" title="Termine und Verknüpfung einstellen">${esc(wsShortDate(n.date))}${(!att && n.dur)?" +"+n.dur+"T":""}</button>`;
-  }else if(sp){
+  }else if(wantD && sp){
     h += `<button class="ws-date" data-wsact="link-menu" title="Zeitraum rückwärts von der Deadline berechnet">${esc(wsShortDate(sp.start))} ➜</button>`;
   }
-  if(!att && n.dl) h += `<button class="ws-date dl${sp && sp.end>n.dl?" over":""}" data-wsact="link-menu" title="Deadline${sp && sp.end>n.dl?": Laufzeit reicht darüber hinaus":""}">⚑ ${esc(wsShortDate(n.dl))}</button>`;
-  if(n.link) h += `<button class="ws-lnk" data-wsact="link-menu" title="${n.link.kind==="goal"?"Verknüpft mit Tages-Ziel":"Verknüpft mit ToDo"}${wsLinkDay(n)?" am "+wsShortDate(wsLinkDay(n)):""}${n.link.cal?" und Kalender":""}">${n.link.kind==="goal"?"🎯":"☑"}${n.link.cal?"📆":""}${(n.ld && n.ld!==n.date)?" "+esc(wsShortDate(n.ld)):""}</button>`;
-  if(!n.date && !n.link && !sp && !(!att && n.meta)) h += `<button class="ws-mini" data-wsact="link-menu" title="Termine setzen oder als ToDo / Tages-Ziel anlegen">📅</button>`;
+  if(wantD && !att && n.dl) h += `<button class="ws-date dl${sp && sp.end>n.dl?" over":""}" data-wsact="link-menu" title="Deadline${sp && sp.end>n.dl?": Laufzeit reicht darüber hinaus":""}">⚑ ${esc(wsShortDate(n.dl))}</button>`;
+  if(wantR && n.link) h += `<button class="ws-lnk" data-wsact="link-menu" title="${n.link.kind==="goal"?"Verknüpft mit Tages-Ziel":"Verknüpft mit ToDo"}${wsLinkDay(n)?" am "+wsShortDate(wsLinkDay(n)):""}${n.link.cal?" und Kalender":""}">${n.link.kind==="goal"?"🎯":"☑"}${n.link.cal?"📆":""}${(n.ld && n.ld!==n.date)?" "+esc(wsShortDate(n.ld)):""}</button>`;
+  if(wantR && !n.date && !n.link && !sp && !(!att && n.meta)) h += `<button class="ws-mini" data-wsact="link-menu" title="Termine setzen oder als ToDo / Tages-Ziel anlegen">📅</button>`;
+  return h;
+}
+/* Termine und Meta-Projekt einer Überschrift als Chips (sichtbar auch in der schlanken Ansicht) */
+function wsHeadChips(b){
+  const sp = wsSpan(b), today = todayKey();
+  let h = "";
+  if(b.meta) h += `<button class="ws-lnk ws-metachip" data-wsact="head-menu" title="Meta-Projekt (oberste Ebene im Gantt und in Heute)">★</button>`;
+  if(b.date){
+    const over = !b.done && (sp ? sp.end : b.date) < today;
+    h += `<button class="ws-date${over?" over":""}" data-wsact="head-menu" title="Fälligkeit und Termine einstellen">${esc(wsShortDate(b.date))}${b.dur?" +"+b.dur+"T":""}</button>`;
+  }
+  if(b.dl) h += `<button class="ws-date dl${sp && sp.end>b.dl?" over":""}" data-wsact="head-menu" title="Deadline">⚑ ${esc(wsShortDate(b.dl))}</button>`;
   return h;
 }
 function wsTableBody(b, drag){
@@ -4576,8 +4632,9 @@ function wsNodeHtml(n, depth, inh, base){
       <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
       <button class="ws-plus" data-wsact="plus" data-kind="node" data-id="${n.id}" title="Hinzufügen: Punkt, Unterpunkt, Überschrift, Anhang …">+</button>
       <button class="ws-more${mo?" on":""}" data-wsact="more" data-mid="${n.id}" title="${mo?"Knöpfe dieses Punkts wieder einklappen":"Alle Knöpfe dieses Punkts anzeigen"}">${mo?"‹ zu":"⋯"}</button>
+      <span class="ws-dchips">${wsNodeChips(n, "dates")}</span>
       <span class="ws-nright">
-      ${wsNodeChips(n)}
+      ${wsNodeChips(n, "rest")}
       ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}${(hasKids && coll)?`<span class="ws-hcnt" title="ausgeblendete Unterpunkte">▸ ${wsDescCount(n)}</span>`:""}
       ${wsF.noAtt?"":`<button class="ws-attbtn${n.att.length?" has":""}" data-wsact="att-toggle" title="Text, Notiz oder Tabelle an diesen Punkt anhängen">📎 ${n.att.length?n.att.length:"Anhang"}</button>`}
       <button class="ws-mini ws-tagb${n.tag?" on":(eff?" inh":"")}" data-wsact="tag-node" title="${n.tag?"Eigener Tag, gilt auch für alle Unterpunkte und Anhänge":(eff?"Tag geerbt von oben, hier änderbar":"Tag setzen (gilt auch für alle Unterpunkte und Anhänge)")}">🏷${eff?" "+esc(eff):""}</button>
@@ -4590,7 +4647,12 @@ function wsNodeHtml(n, depth, inh, base){
     </div>${attOn?wsAttsHtml(n, eff):""}${sub}
   </li>`;
 }
-function wsBlockHtml(b, eff, hidN, ind, base){
+function wsBlockHtml(b, eff, hidN, ind, base, inMeta){
+  let body = "";
+  wsMetaOv = !!(inMeta && wsF.meta);
+  try{ return wsBlockHtml2(b, eff, hidN, ind, base); }finally{ wsMetaOv = false; }
+}
+function wsBlockHtml2(b, eff, hidN, ind, base){
   let body = "";
   if(wsF.tag && b.type!=="outline" && !wsTagMatch(eff, wsF.tag)) return "";
   if(b.type==="text"){
@@ -4599,7 +4661,7 @@ function wsBlockHtml(b, eff, hidN, ind, base){
       + (open ? `<textarea class="ws-in ws-ta" data-wsf="text" rows="1" placeholder="Text">${esc(b.text)}</textarea>` : "");
   }else if(b.type==="heading"){
     const hc = wsHeadClosed(b), L = wsHeadLvl(b);
-    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alles darunter bis zur nächsten Überschrift derselben oder einer höheren Ebene">${hc?"▸":"▾"}</button><span class="ws-lvs">${[1,2,3].map(k=>`<button class="ws-lvb${L===k?" on":""}" data-wsact="head-set" data-k="${k}" title="${k===3?"Zum Punkt (Ebene 3) machen":"Zu Ebene "+k+" machen"}">E${k}</button>`).join("")}</span><button class="ws-chk${b.done?" on":""}" data-wsact="hdone" title="${b.done?"Wieder öffnen":"Als erledigt markieren (fragt nach, wenn darunter noch etwas offen ist)"}">${b.done?"✓":""}</button><input type="text" class="ws-in ws-h ws-h${L}" data-wsf="text" value="${esc(b.text)}" placeholder="Ebene ${L}">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
+    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alles darunter bis zur nächsten Überschrift derselben oder einer höheren Ebene">${hc?"▸":"▾"}</button><span class="ws-lvs">${[1,2,3].map(k=>`<button class="ws-lvb${L===k?" on":""}" data-wsact="head-set" data-k="${k}" title="${k===3?"Zum Punkt (Ebene 3) machen":"Zu Ebene "+k+" machen"}">E${k}</button>`).join("")}</span><button class="ws-chk${b.done?" on":""}" data-wsact="hdone" title="${b.done?"Wieder öffnen":"Als erledigt markieren (fragt nach, wenn darunter noch etwas offen ist)"}">${b.done?"✓":""}</button><input type="text" class="ws-in ws-h ws-h${L}" data-wsf="text" value="${esc(b.text)}" placeholder="Ebene ${L}">${wsHeadChips(b)}${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
   }else if(b.type==="outline"){
     const vis = (wsF.manual ? b.items : wsUrgSort(b.items)).filter(n=>wsVis(n, eff));
     if(wsF.tag && !vis.length) return "";
@@ -4616,6 +4678,7 @@ function wsBlockHtml(b, eff, hidN, ind, base){
     ${b.type==="outline"?"":`<button class="ws-plus" data-wsact="plus" data-kind="block" data-id="${b.id}" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>`}
     <button class="ws-more${bmo?" on":""}" data-wsact="more" data-mid="${b.id}" title="${bmo?"Knöpfe dieses Blocks wieder einklappen":"Alle Knöpfe dieses Blocks anzeigen"}">${bmo?"‹ zu":"⋯"}</button>
     <button class="ws-x ws-tagb${b.tag?" on":(eff?" inh":"")}" data-wsact="tag-block" title="${b.type==="heading"?"Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)":(b.tag?"Eigener Tag des Blocks":(eff?"Tag geerbt von oben, hier änderbar":"Tag für diesen Block setzen"))}">🏷${eff?" "+esc(eff):""}</button>
+    ${b.type==="heading"?`<button class="ws-x" data-wsact="head-menu" title="Fälligkeit, Deadline und Meta-Projekt für diese Überschrift">📅</button>`:""}
     ${b.type==="heading"?`<button class="ws-x" data-wsact="move-head" title="Diese Überschrift samt allem darunter verschieben (auch in ein anderes Dokument)">⇄</button>`:""}
     ${b.type==="outline"?"":`<button class="ws-x ws-fobtn${wsFocusHas(wsFocusDocOf(b.id),b.id)?" on":""}" data-wsact="focus" data-fid="${b.id}" title="In Heute als Fokus anzeigen / Fokus aufheben">📌</button>`}
     <button class="ws-x" data-wsact="del-block" title="Block löschen">✕</button>
@@ -4673,7 +4736,7 @@ function wsEditorHtml(doc, mode){
   if(mode==="today" || !wsF.tag) h += wsFilterHtml([doc]);
   const bt = wsBlockTags(doc);
   const hh = wsHiddenByHeads(doc);
-  const parts = doc.blocks.map(b=>hh.hidden.has(b.id) ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], hh.indent[b.id], hh.base[b.id])).filter(Boolean);
+  const parts = doc.blocks.map(b=>hh.hidden.has(b.id) ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], hh.indent[b.id], hh.base[b.id], hh.metaIn.has(b.id))).filter(Boolean);
   h += `<div class="ws-blocks">${parts.length ? parts.join("") : (doc.blocks.length ? `<div class="ws-empty">In diesem Dokument ist nichts für diese Ansicht.</div>` : `<div class="ws-empty">Noch leer. Unten einen Block hinzufügen.</div>`)}</div>
     <div class="ws-add">
       <button class="ws-addbtn ws-plusend" data-wsact="plus" data-kind="end" data-id="" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">＋ Hinzufügen</button>
@@ -4771,7 +4834,7 @@ function wsFocusBody(doc, id, kind){
   }
   const i = doc.blocks.findIndex(b=>b.id===id); if(i<0) return "";
   const end = kind==="heading" ? wsSecEnd(doc.blocks, i) : i+1;
-  const parts = doc.blocks.slice(i, end).map(b=>hh.hidden.has(b.id) && b.id!==id ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], 0, hh.base[b.id])).filter(Boolean);
+  const parts = doc.blocks.slice(i, end).map(b=>hh.hidden.has(b.id) && b.id!==id ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], 0, hh.base[b.id], hh.metaIn.has(b.id))).filter(Boolean);
   return parts.join("");
 }
 function wsFocusInner(doc, id, kind){
@@ -6192,7 +6255,7 @@ main.addEventListener("click", e=>{
   }
   if(act==="meta-done"){
     const hit = wsMetaNodes().find(h=>h.node.id===a.dataset.nid); if(!hit) return;
-    hit.node.done = true; wsTouch(hit.doc); render();
+    hit.node.done = true; wsFocusDrop(hit.doc, hit.node.id); wsTouch(hit.doc); render();
     if(hit.node.link) wsLinkRun(()=>wsPushDone(hit.doc, hit.node));
     return;
   }
@@ -6202,7 +6265,10 @@ main.addEventListener("click", e=>{
     wsTab = "docs"; localStorage.setItem("wsTab", wsTab); view = "notes"; render(); return;
   }
   if(act==="dl-done"){
-    const d = wsGet(a.dataset.did), r = d ? wsFindNode(d, a.dataset.nid) : null; if(!r) return;
+    const d = wsGet(a.dataset.did), r0 = d ? wsFindNode(d, a.dataset.nid) : null;
+    const hb = (d && !r0) ? d.blocks.find(x=>x.id===a.dataset.nid && x.type==="heading") : null;
+    if(hb){ hb.done = true; wsFocusDrop(d, hb.id); wsTouch(d); render(); return; }
+    const r = r0; if(!r) return;
     r.node.done = true; wsTouch(d); render();
     if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(d, node)); }
     return;
@@ -6245,6 +6311,7 @@ main.addEventListener("click", e=>{
     wsOpenLevelMenu(doc.id, "head", block.id); return;
   }
   if(act==="f-done"){ wsF = wsFNorm({...wsF, hideDone:a.dataset.v==="1"}); wsFSave(); render(); toast(wsF.hideDone ? "Erledigte sind ausgeblendet" : "Erledigte werden angezeigt"); return; }
+  if(act==="head-menu" && block && block.type==="heading"){ wsOpenHeadMenu(doc.id, block.id); return; }
   if(act==="move-head" && block && block.type==="heading"){ wsOpenMoveHead(doc.id, block.id); return; }
   if(act==="hdone" && block && block.type==="heading"){ wsToggleHeadDone(doc, block); return; }
   if(act==="hfold" && block && block.type==="heading"){
@@ -6669,7 +6736,7 @@ function wsGanttDraw(){
   if(!opts.some(o=>o.v===ganttSel)) ganttSel = hasMeta ? "meta" : (wsDocs[0] ? wsDocs[0].id : "meta");
   let roots;
   if(ganttSel==="meta") roots = wsMetaRoots(wsDocs);
-  else{ const d = wsGet(ganttSel); roots = []; if(d) d.blocks.forEach(b=>{ if(b.type==="outline") roots.push(...b.items); }); }
+  else{ const d = wsGet(ganttSel); roots = d ? wsDocGanttRoots(d) : []; }
   const rows = wsGanttRows(roots, wsF.tag, wsEffMap(), wsSorter());
   box.innerHTML = `<div class="g-bar-top"><select id="wsGanttSel">${opts.map(o=>`<option value="${esc(o.v)}"${o.v===ganttSel?" selected":""}>${esc(o.t)}</option>`).join("")}</select></div>`
     + (ganttSel==="meta" && !roots.length
@@ -6938,11 +7005,15 @@ function wsEffMap(){
 function wsTagChip(t){ return t ? `<span class="ws-tgc">🏷 ${esc(t)}</span>` : ""; }
 /* Punkt über alle Dokumente finden (Gantt, Heute, Deadlines kennen nur die Punkt-ID) */
 function wsFindNodeAnyDoc(nid){
-  for(const doc of wsDocs){ const r = wsFindNode(doc, nid); if(r) return {doc, node:r.node}; }
+  for(const doc of wsDocs){
+    const r = wsFindNode(doc, nid); if(r) return {doc, node:r.node};
+    const b = doc.blocks.find(x=>x.id===nid && x.type==="heading"); if(b) return {doc, node:b, head:true};
+  }
   return null;
 }
 function wsEditNode(nid){
-  const h = wsFindNodeAnyDoc(nid); if(h) wsOpenLinkMenu(h.doc.id, nid);
+  const h = wsFindNodeAnyDoc(nid); if(!h) return;
+  if(h.head) wsOpenHeadMenu(h.doc.id, nid); else wsOpenLinkMenu(h.doc.id, nid);
 }
 let wsBack = null;      // "3d": Rücksprung zur 3D-Ansicht, solange man von dort aus geöffnet hat
 function wsNodePath(items, id, path){
@@ -7346,6 +7417,42 @@ function wsMoveHeadTo(srcDoc, dstDoc, bid, tgt){
   }
   return true;
 }
+/* Fälligkeit, Laufzeit, Deadline und Meta-Projekt einer Überschrift */
+function wsOpenHeadMenu(docId, bid){
+  if(document.getElementById("modalBg")) return;
+  const doc = wsGet(docId), h = doc && doc.blocks.find(b=>b.id===bid && b.type==="heading"); if(!h) return;
+  const inp = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:8px";
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>${esc((h.text||"(Überschrift ohne Text)").slice(0,60))}</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">Ebene ${wsHLvl(h)} · gilt für die ganze Überschrift samt allem darunter</p>
+      <label>Fälligkeitsdatum</label><input type="date" id="wsh_date" value="${esc(h.date||"")}" style="${inp}">
+      <label>Laufzeit in Tagen (Kalendertage, leer = keine)</label><input type="number" id="wsh_dur" min="0" max="3660" step="1" value="${h.dur||""}" placeholder="z. B. 5" style="${inp}">
+      <label>Deadline</label><input type="date" id="wsh_dl" value="${esc(h.dl||"")}" style="${inp}">
+      <div class="muted" style="font-size:12px;margin:0 0 6px" id="wsh_end"></div>
+      <div class="toggle-row"><div><div style="font-size:14px">Meta-Projekt</div>
+        <div class="muted" style="font-size:12px">Oberste Ebene im Gantt-Reiter und in Heute</div></div>
+        <button class="switch${h.meta?" on":""}" id="wsh_meta"></button></div>
+      <div class="modal-actions"><button class="btn-ghost" id="wsh_cancel">Abbrechen</button><button class="btn-ghost" id="wsh_clear">Termine löschen</button><button class="btn-primary" id="wsh_ok">Übernehmen</button></div>
+    </div></div>`);
+  const upEnd = ()=>{
+    const sp = wsSpan({date:$("wsh_date").value, dur:parseInt($("wsh_dur").value,10)||0, dl:$("wsh_dl").value});
+    $("wsh_end").textContent = sp ? "Zeitraum: "+wsShortDate(sp.start)+" bis "+wsShortDate(sp.end)+(($("wsh_dl").value && sp.end>$("wsh_dl").value) ? " (reicht über die Deadline hinaus)" : "") : "";
+  };
+  ["wsh_date","wsh_dur","wsh_dl"].forEach(id=>{ $(id).oninput = upEnd; $(id).onchange = upEnd; }); upEnd();
+  $("wsh_meta").onclick = ()=>$("wsh_meta").classList.toggle("on");
+  $("wsh_cancel").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  $("wsh_clear").onclick = ()=>{ $("wsh_date").value = ""; $("wsh_dur").value = ""; $("wsh_dl").value = ""; upEnd(); };
+  $("wsh_ok").onclick = ()=>{
+    const dur = parseInt($("wsh_dur").value, 10), d = $("wsh_date").value, dl = $("wsh_dl").value;
+    h.date = wsIsDate(d) ? d : ""; h.dl = wsIsDate(dl) ? dl : ""; h.dur = (dur>0 && dur<=3660) ? dur : 0;
+    h.meta = $("wsh_meta").classList.contains("on");
+    wsTouch(doc); $("modalBg").remove();
+    if(h.meta) toast("Meta-Projekt: erscheint in Heute unter Metaprojekten und im Gantt");
+    if(view==="notes" && wsTab==="docs") wsRerender(doc.id); else render();
+  };
+}
 function wsOpenMoveHead(docId, bid){
   if(document.getElementById("modalBg")) return;
   const doc = wsGet(docId), h = doc && wsBlock(doc, bid); if(!h) return;
@@ -7620,6 +7727,7 @@ function wsMetaNodes(){
   const out = [];
   wsDocs.forEach(doc=>{
     wsAllNodes(doc).forEach(n=>{ if(n.meta && !n.done) out.push({doc, node:n}); });
+    doc.blocks.forEach(b=>{ if(b.type==="heading" && b.meta && !b.done) out.push({doc, node:b}); });
   });
   return out;
 }

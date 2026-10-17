@@ -307,12 +307,12 @@
   .ws-chip{background:#14161a;border:1px solid #30343b;color:var(--text);border-radius:999px;padding:7px 13px;font-size:13px;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ws-chip.sel{background:var(--metal-hi);border-color:#7a818d;color:#fff}
   .ws-chip.new{color:var(--amber);border-style:dashed}
-  .ws-toolbar{display:flex;gap:6px;align-items:center;margin-bottom:2px}
+  .ws-toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:2px}
   .ws-tb{background:#14161a;border:1px solid #30343b;color:var(--text);border-radius:10px;padding:8px 10px;font-size:12.5px;cursor:pointer;white-space:nowrap}
   .ws-tb.on{border-color:var(--amber);color:var(--amber)}
   .ws-in{background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:7px 9px;font-size:14px;font-family:inherit;min-width:0}
   .ws-in:focus{outline:none;border-color:#7a818d;background:#15181d}
-  .ws-doctitle{flex:1;font-weight:700;font-size:16px}
+  .ws-doctitle{flex:1 1 220px;min-width:180px;font-weight:700;font-size:16px}
   .ws-blocks{margin-top:8px}
   .ws-block{display:flex;gap:6px;align-items:flex-start;padding:8px 4px 8px 0;margin-bottom:6px;border-radius:10px;border:1px solid transparent}
   .ws-block:hover{border-color:#2c3037}
@@ -602,7 +602,7 @@
   .ws-lean .ws-block:not(.more) .ws-hrow .ws-lvs{display:none}
   .ws-tbmore{display:none}
   .ws-lean .ws-tbmore{display:inline-block}
-  .ws-lean:not(.more) .ws-toolbar > .ws-tb:not([data-wsact="lean-toggle"]):not(.ws-tbmore){display:none}
+  .ws-lean:not(.more) .ws-toolbar > .ws-tb:not([data-wsact="lean-toggle"]):not(.ws-tbmore):not(.ws-donebtn){display:none}
   .ws-lean:not(.more) .ws-fbar{display:none}
 
   /* Plus: überall sichtbar, auch in der schlanken Ansicht */
@@ -630,6 +630,25 @@
   .ws-lean .ws-node:not(.more) > .ws-atts > .ws-add{display:none}
   .ws-lean .ws-node.more > .ws-atts .ws-addbtn{display:inline-block}
   .ws-lean .ws-node.more > .ws-atts .ws-nright{display:flex}
+
+  /* Überschriften: erledigt, Erledigte ein-/ausblenden, Eingang mit sichtbarem Fokus-Knopf */
+  .ws-block.hdone .ws-h{text-decoration:line-through;opacity:.55}
+  .ws-hrow .ws-chk{margin:0 2px}
+  .ws-donebtn{font-size:12px}
+  .ws-lean.ws-inboxdoc .ws-node:not(.more) > .ws-nrow .ws-nright{display:flex}
+  .ws-lean.ws-inboxdoc .ws-node:not(.more) > .ws-nrow .ws-nright > :not(.ws-fobtn){display:none}
+
+  /* Suche über alle Dokumente */
+  .ws-gsearch{margin:4px 0 8px}
+  .ws-gsearch #wsgs{width:100%;font-size:16px}
+  .ws-gsres{margin-top:6px;max-height:50vh;overflow:auto;border:1px solid #30343b;border-radius:10px;background:#101216}
+  .ws-gsn,.ws-gsnone{padding:6px 10px;font-size:12px;color:var(--muted,#8b93a1)}
+  .ws-gsrow{display:flex;gap:8px;align-items:flex-start;width:100%;text-align:left;background:transparent;border:0;border-top:1px solid #23272e;color:var(--text);padding:8px 10px;cursor:pointer;font:inherit}
+  .ws-gsrow:hover{background:#181b21}
+  .ws-gsrow.done .ws-gst{opacity:.6;text-decoration:line-through}
+  .ws-gsi{flex:none;min-width:22px;text-align:center}
+  .ws-gst{flex:1;min-width:0;word-break:break-word;font-size:14px}
+  .ws-gsw{font-size:11.5px;color:var(--muted,#8b93a1);text-decoration:none;display:inline-block}
 </style>
 </head>
 <body>
@@ -3492,7 +3511,7 @@ function wsNewDoc(title){
 }
 function wsNewBlock(type){
   if(type==="text") return {id:wsId(), type:"text", text:"", tag:""};
-  if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:"", collapsed:false, lvl:1};
+  if(type==="heading") return {id:wsId(), type:"heading", text:"", tag:"", collapsed:false, lvl:1, done:false};
   if(type==="outline") return {id:wsId(), type:"outline", items:[wsNewNode("")], tag:""};
   if(type==="table") return {id:wsId(), type:"table", cols:["Spalte 1","Spalte 2","Spalte 3"], rows:[["","",""],["","",""]], tag:""};
   return null;
@@ -3515,7 +3534,7 @@ function wsNormalizeDocs(arr){
       if(!b || typeof b!=="object") return;
       const id = b.id||wsId();
       if(b.type==="text") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag)});
-      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag), collapsed:!!b.collapsed, lvl:(b.lvl>=2)?2:1});
+      else if(b.type==="heading") doc.blocks.push({id, type:b.type, text:String(b.text||""), tag:wsNormTag(b.tag), collapsed:!!b.collapsed, lvl:(b.lvl>=2)?2:1, done:!!b.done});
       else if(b.type==="outline") doc.blocks.push({id, type:"outline", items:wsNormNodes(b.items), tag:wsNormTag(b.tag)});
       else if(b.type==="table"){
         const cols = (Array.isArray(b.cols) && b.cols.length) ? b.cols.map(String) : ["Spalte 1"];
@@ -4273,16 +4292,20 @@ function wsHeadChain(doc, bid){
 /* Welche Blöcke blendet eine eingeklappte Überschrift aus? Ebene 1 schließt Ebene 2 und 3 mit ein. */
 function wsHiddenByHeads(doc){
   const hidden = new Set(), counts = {}, indent = {}, base = {};
-  let closedLvl = 0, cur = null, lvl = 0;
+  let closedLvl = 0, cur = null, lvl = 0, doneLvl = 0;
   doc.blocks.forEach(b=>{
     if(b.type==="heading"){
       const L = wsHeadLvl(b); lvl = L; indent[b.id] = L-1;
+      if(doneLvl && L<=doneLvl) doneLvl = 0;
       if(closedLvl && L<=closedLvl){ closedLvl = 0; cur = null; }
       if(closedLvl){ hidden.add(b.id); counts[cur.id]++; return; }
+      if(doneLvl){ hidden.add(b.id); return; }
+      if(b.done && wsF.hideDone){ doneLvl = L; hidden.add(b.id); return; }
       if(wsHeadClosed(b)){ closedLvl = L; cur = b; counts[b.id] = 0; }
     }else{
       indent[b.id] = lvl ? lvl-1 : 0; base[b.id] = lvl+1;
       if(closedLvl){ hidden.add(b.id); counts[cur.id]++; }
+      else if(doneLvl) hidden.add(b.id);
     }
   });
   return {hidden, counts, indent, base};
@@ -4576,7 +4599,7 @@ function wsBlockHtml(b, eff, hidN, ind, base){
       + (open ? `<textarea class="ws-in ws-ta" data-wsf="text" rows="1" placeholder="Text">${esc(b.text)}</textarea>` : "");
   }else if(b.type==="heading"){
     const hc = wsHeadClosed(b), L = wsHeadLvl(b);
-    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alles darunter bis zur nächsten Überschrift derselben oder einer höheren Ebene">${hc?"▸":"▾"}</button><span class="ws-lvs">${[1,2,3].map(k=>`<button class="ws-lvb${L===k?" on":""}" data-wsact="head-set" data-k="${k}" title="${k===3?"Zum Punkt (Ebene 3) machen":"Zu Ebene "+k+" machen"}">E${k}</button>`).join("")}</span><input type="text" class="ws-in ws-h ws-h${L}" data-wsf="text" value="${esc(b.text)}" placeholder="Ebene ${L}">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
+    body = `<div class="ws-hrow"><button class="ws-tog" data-wsact="hfold" title="${hc?"Aufklappen":"Zuklappen"}: alles darunter bis zur nächsten Überschrift derselben oder einer höheren Ebene">${hc?"▸":"▾"}</button><span class="ws-lvs">${[1,2,3].map(k=>`<button class="ws-lvb${L===k?" on":""}" data-wsact="head-set" data-k="${k}" title="${k===3?"Zum Punkt (Ebene 3) machen":"Zu Ebene "+k+" machen"}">E${k}</button>`).join("")}</span><button class="ws-chk${b.done?" on":""}" data-wsact="hdone" title="${b.done?"Wieder öffnen":"Als erledigt markieren (fragt nach, wenn darunter noch etwas offen ist)"}">${b.done?"✓":""}</button><input type="text" class="ws-in ws-h ws-h${L}" data-wsf="text" value="${esc(b.text)}" placeholder="Ebene ${L}">${hc?`<span class="ws-hcnt" title="ausgeblendete Blöcke">▸ ${hidN||0}</span>`:""}</div>`;
   }else if(b.type==="outline"){
     const vis = (wsF.manual ? b.items : wsUrgSort(b.items)).filter(n=>wsVis(n, eff));
     if(wsF.tag && !vis.length) return "";
@@ -4587,12 +4610,13 @@ function wsBlockHtml(b, eff, hidN, ind, base){
     body = wsFoldBtn(open, "Tabelle · "+b.rows.length+(b.rows.length===1?" Zeile":" Zeilen")) + (open ? wsTableBody(b, true) : "");
   }
   const bmo = wsMore.has(b.id);
-  return `<div class="ws-block${bmo?" more":""}" data-bid="${b.id}" data-kind="${b.type}"${b.type==="heading"?` data-lvl="${wsHeadLvl(b)}"`:""}${ind?` style="margin-left:${ind*18}px"`:""}>
+  return `<div class="ws-block${bmo?" more":""}${(b.type==="heading" && b.done)?" hdone":""}" data-bid="${b.id}" data-kind="${b.type}"${b.type==="heading"?` data-lvl="${wsHeadLvl(b)}"`:""}${ind?` style="margin-left:${ind*18}px"`:""}>
     <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
     <div class="ws-bbody">${body}</div>
     ${b.type==="outline"?"":`<button class="ws-plus" data-wsact="plus" data-kind="block" data-id="${b.id}" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>`}
     <button class="ws-more${bmo?" on":""}" data-wsact="more" data-mid="${b.id}" title="${bmo?"Knöpfe dieses Blocks wieder einklappen":"Alle Knöpfe dieses Blocks anzeigen"}">${bmo?"‹ zu":"⋯"}</button>
     <button class="ws-x ws-tagb${b.tag?" on":(eff?" inh":"")}" data-wsact="tag-block" title="${b.type==="heading"?"Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)":(b.tag?"Eigener Tag des Blocks":(eff?"Tag geerbt von oben, hier änderbar":"Tag für diesen Block setzen"))}">🏷${eff?" "+esc(eff):""}</button>
+    ${b.type==="heading"?`<button class="ws-x" data-wsact="move-head" title="Diese Überschrift samt allem darunter verschieben (auch in ein anderes Dokument)">⇄</button>`:""}
     ${b.type==="outline"?"":`<button class="ws-x ws-fobtn${wsFocusHas(wsFocusDocOf(b.id),b.id)?" on":""}" data-wsact="focus" data-fid="${b.id}" title="In Heute als Fokus anzeigen / Fokus aufheben">📌</button>`}
     <button class="ws-x" data-wsact="del-block" title="Block löschen">✕</button>
   </div>`;
@@ -4630,12 +4654,14 @@ function wsFilterHtml(docs){
 }
 function wsHidCount(doc){ return wsAllNodes(doc).filter(n=>n.hid).length; }
 function wsEditorHtml(doc, mode){
-  let h = `<div class="ws-doc${wsLean?" ws-lean":""}${wsMore.has(doc.id)?" more":""}" data-doc="${doc.id}">`;
+  let h = `<div class="ws-doc${wsLean?" ws-lean":""}${wsMore.has(doc.id)?" more":""}${doc.inbox?" ws-inboxdoc":""}" data-doc="${doc.id}">`;
   if(mode==="tab"){
     h += `<div class="ws-toolbar">
       <input type="text" class="ws-in ws-doctitle" data-wsf="title" value="${esc(doc.title)}" placeholder="Titel des Dokuments">
       <button class="ws-plus" data-wsact="plus" data-kind="end" data-id="" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>
       <button class="ws-tb ws-tbmore" data-wsact="more" data-mid="${doc.id}" title="Alle Knöpfe dieses Dokuments ein- oder ausblenden">⋯</button>
+      <button class="ws-tb ws-donebtn${wsF.hideDone?"":" on"}" data-wsact="f-done" data-v="0" title="Erledigte Punkte und Überschriften anzeigen">✓ Erledigte einblenden</button>
+      <button class="ws-tb ws-donebtn${wsF.hideDone?" on":""}" data-wsact="f-done" data-v="1" title="Erledigte Punkte und Überschriften verbergen">Erledigte ausblenden</button>
       <button class="ws-tb${wsLean?" on":""}" data-wsact="lean-toggle" title="Schlanke Ansicht: alle Knöpfe eingeklappt, nur Pfeil, Haken und Text">☰</button>
       <button class="ws-tb" data-wsact="unhide-all" title="Alle ausgeblendeten Punkte dieses Dokuments wieder einblenden">👁 Alle ausgeblendeten einblenden${wsHidCount(doc)?" ("+wsHidCount(doc)+")":""}</button>
       <button class="ws-tb${doc.tag?" on":""}" data-wsact="tag-doc" title="Tag für das ganze Dokument">🏷${doc.tag?" "+esc(doc.tag):""}</button>
@@ -4703,6 +4729,7 @@ function wsFocusToggle(doc, id){
   if(!Array.isArray(doc.focus)) doc.focus = [];
   const k0 = wsFocusKind(doc, id);
   if(k0==="node" || k0==="att"){ const x = k0==="node" ? wsFindNode(doc, id).node : wsFindAny(doc, id); if(x && x.done && !doc.focus.includes(id)) return null; }
+  if(k0==="heading"){ const hb = wsBlock(doc, id); if(hb && hb.done && !doc.focus.includes(id)) return null; }
   const i = doc.focus.indexOf(id);
   if(i>=0) doc.focus.splice(i, 1); else doc.focus.push(id);
   doc.focus = doc.focus.filter(k=>wsFocusKind(doc, k));
@@ -4719,7 +4746,7 @@ function wsFocusItems(){
   const out = [];
   wsDocs.forEach(d=>{
     // auch wenn "erledigt" anderswo gesetzt wurde (z. B. über das verknüpfte ToDo): Fokus entfernen
-    const dn = (d.focus||[]).filter(id=>{ const k = wsFocusKind(d, id); if(k!=="node" && k!=="att") return false; const x = k==="node" ? wsFindNode(d, id).node : wsFindAny(d, id); return x && x.done; });
+    const dn = (d.focus||[]).filter(id=>{ const k = wsFocusKind(d, id); if(k==="heading"){ const hb = wsBlock(d, id); return !!(hb && hb.done); } if(k!=="node" && k!=="att") return false; const x = k==="node" ? wsFindNode(d, id).node : wsFindAny(d, id); return x && x.done; });
     if(dn.length){ dn.forEach(id=>wsFocusDrop(d, id)); wsTouch(d); }
     (d.focus||[]).forEach(id=>{ const k = wsFocusKind(d, id); if(k) out.push({doc:d, id, kind:k}); }); });
   return out;
@@ -4768,6 +4795,46 @@ function wsTagBarHtml(inline){
   if(wsTagOpen || wsF.tag) return `<div class="ws-tagbar"><button class="ws-tagtog on" data-wsact="tag-bar-toggle" title="Tag-Auswahl einklappen">🏷 ▴</button>${chip("", "Alle")}${tags.map(t=>chip(wsTagKey(t), "🏷 "+esc(t))).join("")}${chip("!none", "ohne Tag")}</div>`;
   return inline ? "" : `<div class="ws-tagbar"><button class="ws-tagtog" data-wsact="tag-bar-toggle" title="Nach Tag filtern">🏷 ▾</button></div>`;
 }
+/* ---- Suche über alle Dokumente des Arbeitsbereichs ---- */
+let wsGQ = "";
+function wsSearchAll(q, max){
+  q = String(q||"").trim().toLowerCase(); if(q.length<1) return [];
+  max = max||60;
+  const out = [], has = t=>String(t||"").toLowerCase().includes(q);
+  const snip = t=>{ const x = String(t||"").replace(/\s+/g, " ").trim(); const i = x.toLowerCase().indexOf(q); if(x.length<=90) return x; const a = Math.max(0, i-30); return (a?"…":"")+x.slice(a, a+90)+(a+90<x.length?"…":""); };
+  for(const doc of wsDocs){
+    if(has(doc.title)) out.push({docId:doc.id, kind:"doc", ref:doc.id, icon:"📄", text:doc.title||"(ohne Titel)", where:"Dokument", done:false});
+    let head = "";
+    for(const b of doc.blocks){
+      if(out.length>=max) return out;
+      const where = (doc.title||"(ohne Titel)")+(head?" › "+head:"");
+      if(b.type==="heading"){ head = (b.text||"").trim().slice(0,40); if(has(b.text)) out.push({docId:doc.id, kind:"block", ref:b.id, icon:wsHLvl(b)===1?"E1":"E2", text:b.text, where:doc.title||"(ohne Titel)", done:!!b.done}); }
+      else if(b.type==="text"){ if(has(b.text)) out.push({docId:doc.id, kind:"block", ref:b.id, icon:"📝", text:snip(b.text), where, done:false}); }
+      else if(b.type==="table"){ if(has(b.cols.join(" ")+" "+b.rows.map(r=>r.join(" ")).join(" "))) out.push({docId:doc.id, kind:"block", ref:b.id, icon:"▦", text:"Tabelle: "+snip(b.rows.map(r=>r.find(c=>has(c))||"").filter(Boolean)[0]||b.cols.find(c=>has(c))||""), where, done:false}); }
+      else if(b.type==="outline"){
+        const walk = (items, path)=>items.forEach(n=>{
+          if(has(n.text)) out.push({docId:doc.id, kind:"node", ref:n.id, icon:n.link?(n.link.kind==="goal"?"🎯":"☑"):"•", text:n.text||"(leer)", where:where+(path.length?" › "+path.join(" › "):""), done:!!n.done});
+          (n.att||[]).forEach(a=>{
+            const hay = (a.title||"")+" "+(a.text||"")+" "+(a.url||"")+" "+(a.name||"")+" "+(a.type==="table"?(a.cols||[]).join(" ")+" "+(a.rows||[]).map(r=>r.join(" ")).join(" "):"");
+            if(has(hay)) out.push({docId:doc.id, kind:"att", ref:a.id, icon:"📎", text:snip(a.title||a.name||a.text||a.url||"Anhang"), where:where+" › "+(n.text||"(leer)").slice(0,40), done:!!a.done});
+          });
+          walk(n.children, path.concat((n.text||"").slice(0,30)));
+        });
+        walk(b.items, []);
+      }
+    }
+  }
+  return out.slice(0, max);
+}
+function wsSearchResHtml(){
+  const q = wsGQ.trim(); if(!q) return "";
+  const res = wsSearchAll(q, 60);
+  if(!res.length) return `<div class="ws-gsres"><div class="ws-gsnone">Nichts gefunden für „${esc(q)}“.</div></div>`;
+  return `<div class="ws-gsres"><div class="ws-gsn">${res.length>=60?"Mehr als 60":res.length} ${res.length===1?"Treffer":"Treffer"}</div>${res.map((r,i)=>`<button class="ws-gsrow${r.done?" done":""}" data-wsact="gs-go" data-i="${i}"><span class="ws-gsi">${esc(r.icon)}</span><span class="ws-gst">${esc(r.text)}${r.done?" ✓":""}<br><span class="ws-gsw">${esc(r.where)}</span></span></button>`).join("")}</div>`;
+}
+function wsSearchBoxHtml(){
+  return `<div class="ws-gsearch"><input type="search" id="wsgs" class="ws-in" value="${esc(wsGQ)}" placeholder="🔍 Im Arbeitsbereich suchen (alle Dokumente)" autocomplete="off"><div id="wsgsres">${wsSearchResHtml()}</div></div>`;
+}
 function wsDocsTabHtml(){
   if(!wsLoaded){
     return `<div class="empty">Der Arbeitsbereich konnte nicht geladen werden.${wsLoadError?`<br><span class="muted" style="font-size:12px">${esc(wsLoadError.slice(0,200))}</span>`:""}<br><br><button class="btn-ghost" style="flex:none;padding:10px 18px" data-wsact="retry-load">Erneut versuchen</button></div>`;
@@ -4775,12 +4842,12 @@ function wsDocsTabHtml(){
   if(wsF.tag){
     let list = wsDocs.filter(d=>wsDocHasTag(d, wsF.tag));
     if(!wsF.manual){ list = list.map((d,i)=>({d,i,k:wsDocUrgKey(d)})).sort((a,b)=> (a.k?0:1)-(b.k?0:1) || (a.k<b.k?-1:a.k>b.k?1:0) || a.i-b.i).map(x=>x.d); }
-    return wsFilterHtml(list)
+    return wsSearchBoxHtml() + wsFilterHtml(list)
       + (list.length ? list.map(d=>`<div class="ws-card ws-mount" data-doc="${d.id}" data-mode="tab">${wsEditorHtml(d, "tab")}</div>`).join("")
                      : `<div class="empty">Kein Dokument hat Einträge mit diesem Tag.</div>`) + wsFooterHtml();
   }
   const cur = wsCurrentDoc();
-  let h = `<div class="ws-chips">${wsChipsInner(cur)}</div>`;
+  let h = wsSearchBoxHtml() + `<div class="ws-chips">${wsChipsInner(cur)}</div>`;
   if(!cur) return h + `<div class="empty">Noch kein Dokument. Mit "+ Neu" anlegen.</div>` + wsFooterHtml();
   return h + `<div class="ws-card ws-mount" data-doc="${cur.id}" data-mode="tab">${wsEditorHtml(cur, "tab")}</div>` + wsFooterHtml();
 }
@@ -5950,6 +6017,12 @@ main.addEventListener("input", e=>{
   else if(f==="cell"){ const b = wsTableOf(doc, el); if(b && b.rows[+el.dataset.ri]) b.rows[+el.dataset.ri][+el.dataset.ci] = el.value; }
   wsTouch(doc);
 });
+let wsGTimer = null;
+main.addEventListener("input", e=>{
+  const el = e.target; if(!(el.id==="wsgs")) return;
+  wsGQ = el.value; clearTimeout(wsGTimer);
+  wsGTimer = setTimeout(()=>{ const box = document.getElementById("wsgsres"); if(box) box.innerHTML = wsSearchResHtml(); }, 200);
+});
 let wsQTimer = null;
 main.addEventListener("input", e=>{
   const el = e.target; if(!(el.dataset && el.dataset.wsq)) return;
@@ -6134,6 +6207,11 @@ main.addEventListener("click", e=>{
     if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(d, node)); }
     return;
   }
+  if(act==="gs-go"){
+    const res = wsSearchAll(wsGQ, 60), r = res[+a.dataset.i]; if(!r) return;
+    if(r.kind==="doc"){ wsOpenDocId = r.docId; try{ localStorage.setItem("wsOpenDoc", r.docId); }catch(err){} render(); return; }
+    wsGoToItem(r.docId, r.kind, r.ref, false); return;
+  }
   if(act==="open-doc"){ wsOpenDocId = a.dataset.id; localStorage.setItem("wsOpenDoc", wsOpenDocId); render(); return; }
   if(!doc) return;
 
@@ -6166,6 +6244,9 @@ main.addEventListener("click", e=>{
   if(act==="head-lvl" && block && block.type==="heading"){
     wsOpenLevelMenu(doc.id, "head", block.id); return;
   }
+  if(act==="f-done"){ wsF = wsFNorm({...wsF, hideDone:a.dataset.v==="1"}); wsFSave(); render(); toast(wsF.hideDone ? "Erledigte sind ausgeblendet" : "Erledigte werden angezeigt"); return; }
+  if(act==="move-head" && block && block.type==="heading"){ wsOpenMoveHead(doc.id, block.id); return; }
+  if(act==="hdone" && block && block.type==="heading"){ wsToggleHeadDone(doc, block); return; }
   if(act==="hfold" && block && block.type==="heading"){
     const nc = !wsHeadClosed(block);
     if(wsFiltered()) wsColl.set(block.id, nc); else { block.collapsed = nc; wsTouch(doc); }
@@ -7182,6 +7263,123 @@ function wsOpenMove(docId, id){
     if(!ok){ toast(isAtt ? "Dort liegt der Anhang schon" : "Dorthin lässt sich der Punkt nicht verschieben"); return; }
     wsTouch(doc); if(dst!==doc) wsTouch(dst);
     $("modalBg").remove(); toast("Verschoben nach „"+(dst.title||"(ohne Titel)")+"“ · "+sec.label); render();
+  };
+}
+
+/* ---- Überschrift (E1/E2): erledigen mit Warnung, verschieben ---- */
+function wsHeadOpenInfo(doc, bid){
+  const i = doc.blocks.findIndex(b=>b.id===bid); if(i<0) return {nodes:0, heads:0, list:[], subs:[]};
+  const end = wsSecEnd(doc.blocks, i), list = [], subs = [];
+  let nodes = 0, heads = 0;
+  const walk = items=>items.forEach(n=>{ if(!n.done){ nodes++; list.push(n); } walk(n.children); });
+  doc.blocks.slice(i+1, end).forEach(b=>{
+    if(b.type==="outline"){
+      const all = []; const w2 = items=>items.forEach(n=>{ all.push(n); w2(n.children); }); w2(b.items);
+      all.forEach(n=>{ if(!n.done){ nodes++; list.push(n); } });
+    }else if(b.type==="heading"){ subs.push(b); if(!b.done) heads++; }
+  });
+  return {nodes, heads, list, subs};
+}
+function wsAskHeadDone(title, info){
+  return new Promise(resolve=>{
+    if(document.getElementById("modalBg")){ resolve(null); return; }
+    const parts = [];
+    if(info.nodes) parts.push(info.nodes+(info.nodes===1?" offener Punkt":" offene Punkte"));
+    if(info.heads) parts.push(info.heads+(info.heads===1?" offene Unterüberschrift":" offene Unterüberschriften"));
+    document.body.insertAdjacentHTML("beforeend",
+      `<div class="modal-bg" id="modalBg"><div class="modal">
+        <h2>Darunter ist noch etwas offen</h2>
+        <p style="font-size:14px;margin-bottom:12px">Unter „${esc((title||"Überschrift").slice(0,60))}“ ${info.nodes+info.heads===1?"ist":"sind"} noch ${esc(parts.join(" und "))}. Was soll geschehen?</p>
+        <div class="modal-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+          <button class="btn-primary" id="wsh_all">Alles darunter ebenfalls erledigen</button>
+          <button class="btn-ghost" id="wsh_head">Nur die Überschrift erledigen</button>
+          <button class="btn-ghost" id="wsh_cancel">Abbrechen</button>
+        </div></div></div>`);
+    const done = v=>{ const m = $("modalBg"); if(m) m.remove(); resolve(v); };
+    $("wsh_all").onclick = ()=>done("all");
+    $("wsh_head").onclick = ()=>done("head");
+    $("wsh_cancel").onclick = ()=>done(null);
+    $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") done(null); };
+  });
+}
+function wsApplyHeadDone(doc, block, all){
+  const info = wsHeadOpenInfo(doc, block.id);
+  block.done = true; wsFocusDrop(doc, block.id);
+  if(all){
+    info.list.forEach(n=>{ n.done = true; wsFocusDrop(doc, n.id); if(n.link){ const node = n; wsLinkRun(()=>wsPushDone(doc, node)); } });
+    info.subs.forEach(h=>{ h.done = true; wsFocusDrop(doc, h.id); });
+  }
+  wsTouch(doc);
+}
+async function wsToggleHeadDone(doc, block){
+  if(block.done){ block.done = false; wsTouch(doc); wsRerender(doc.id); return; }
+  const info = wsHeadOpenInfo(doc, block.id);
+  let all = false;
+  if(info.nodes + info.heads > 0){
+    const r = await wsAskHeadDone(block.text, info);
+    if(!r) return;
+    all = r==="all";
+  }
+  wsApplyHeadDone(doc, block, all);
+  if(wsF.hideDone) toast("Erledigt und ausgeblendet. Mit „Erledigte einblenden“ wieder sichtbar.");
+  if(view==="today") render(); else wsRerender(doc.id);
+}
+/* Überschrift samt Abschnitt in dasselbe oder ein anderes Dokument verschieben. tgt: {kind:"top"|"end"|"before"|"into", id} */
+function wsMoveHeadTo(srcDoc, dstDoc, bid, tgt){
+  const i = srcDoc.blocks.findIndex(b=>b.id===bid); if(i<0 || srcDoc.blocks[i].type!=="heading") return false;
+  const end = wsSecEnd(srcDoc.blocks, i);
+  if(srcDoc===dstDoc && tgt.id){ const ti = srcDoc.blocks.findIndex(b=>b.id===tgt.id); if(ti>=i && ti<end) return false; }
+  if(tgt.id && !dstDoc.blocks.some(b=>b.id===tgt.id)) return false;
+  const slice = srcDoc.blocks.splice(i, end-i);
+  let at;
+  if(tgt.kind==="top") at = 0;
+  else if(tgt.kind==="end") at = dstDoc.blocks.length;
+  else if(tgt.kind==="before") at = dstDoc.blocks.findIndex(b=>b.id===tgt.id);
+  else { const hi = dstDoc.blocks.findIndex(b=>b.id===tgt.id); at = wsSecEnd(dstDoc.blocks, hi); }
+  dstDoc.blocks.splice(at, 0, ...slice);
+  if(tgt.kind==="before") wsSetHeadLvl(dstDoc, bid, wsHLvl(wsBlock(dstDoc, tgt.id)));
+  else if(tgt.kind==="into") wsSetHeadLvl(dstDoc, bid, 2);
+  if(srcDoc!==dstDoc && Array.isArray(srcDoc.focus)){
+    if(!Array.isArray(dstDoc.focus)) dstDoc.focus = [];
+    const mv = srcDoc.focus.filter(id=>!wsFocusKind(srcDoc, id) && wsFocusKind(dstDoc, id));
+    if(mv.length){ srcDoc.focus = srcDoc.focus.filter(id=>!mv.includes(id)); dstDoc.focus.push(...mv); }
+  }
+  return true;
+}
+function wsOpenMoveHead(docId, bid){
+  if(document.getElementById("modalBg")) return;
+  const doc = wsGet(docId), h = doc && wsBlock(doc, bid); if(!h) return;
+  const sel = "width:100%;padding:10px;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;margin-bottom:8px";
+  const i0 = doc.blocks.indexOf(h), e0 = wsSecEnd(doc.blocks, i0);
+  const posOpts = d=>{
+    const out = [`<option value="top:">Ganz oben im Dokument</option>`, `<option value="end:">Ganz unten im Dokument</option>`];
+    d.blocks.forEach((b,k)=>{
+      if(b.type!=="heading") return;
+      if(d===doc && k>=i0 && k<e0) return;                                // nie in den eigenen Abschnitt
+      const t = esc((b.text||"(Überschrift ohne Text)").slice(0,50));
+      out.push(`<option value="before:${esc(b.id)}">vor ${wsHLvl(b)===1?"E1":"E2"}: ${t}</option>`);
+      if(wsHLvl(b)===1) out.push(`<option value="into:${esc(b.id)}">als E2 unter E1: ${t}</option>`);
+    });
+    return out.join("");
+  };
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>Überschrift verschieben</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">„${esc((h.text||"(ohne Text)").slice(0,60))}“ wandert samt allem darunter. Die Ebene passt sich der Zielstelle an.</p>
+      <label>Dokument</label><select id="wsh_doc" style="${sel}">${wsDocs.map(d=>`<option value="${esc(d.id)}"${d.id===docId?" selected":""}>${esc(d.title||"(ohne Titel)")}</option>`).join("")}</select>
+      <label>Position</label><select id="wsh_pos" style="${sel}">${posOpts(doc)}</select>
+      <div class="modal-actions"><button class="btn-ghost" id="wsh_cancel">Abbrechen</button><button class="btn-primary" id="wsh_ok">Verschieben</button></div>
+    </div></div>`);
+  $("wsh_doc").onchange = ()=>{ const d = wsGet($("wsh_doc").value); $("wsh_pos").innerHTML = d ? posOpts(d) : ""; };
+  $("wsh_cancel").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  $("wsh_ok").onclick = ()=>{
+    const dst = wsGet($("wsh_doc").value); if(!dst) return;
+    const v = $("wsh_pos").value || "", k = v.indexOf(":"), tgt = {kind:v.slice(0,k), id:v.slice(k+1)};
+    if(!tgt.kind){ toast("Dort ist kein Ziel auswählbar"); return; }
+    if(!wsMoveHeadTo(doc, dst, bid, tgt)){ toast("Dorthin lässt sich die Überschrift nicht verschieben"); return; }
+    wsTouch(doc); if(dst!==doc) wsTouch(dst);
+    $("modalBg").remove(); toast("Verschoben nach „"+(dst.title||"(ohne Titel)")+"“"); render();
   };
 }
 function wsOpenImport(o){

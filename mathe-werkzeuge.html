@@ -4889,18 +4889,83 @@ renderStell();
       roots.forEach(r => { s += '<circle cx="' + f(X(r)) + '" cy="' + f(Y(0)) + '" r="6" fill="#ffb347" stroke="#0d1016" stroke-width="2"/>'; });
       return '<div class="dsvgw">' + s + '</svg><div class="note"><span class="zs">blau</span>: die Parabel' + (o.vertex ? ' · <span class="zg">grün</span>: der Scheitelpunkt' : "") + (roots.length ? ' · <span class="zo">orange</span>: die Schnittpunkte mit der x-Achse (die Lösungen)' : "") + "</div></div>";
     }
-    /* Ergänzungsbild: Quadrat x mal x, zwei Rechtecke x mal h, kleines Quadrat h mal h */
-    function ergPic(p) {
-      const h = Math.abs(qv(p)) / 2, W = Math.round(300 * msK()), pad = 10, big = Math.round(W * 0.5), hs = Math.max(14, Math.round(big * Math.min(0.9, Math.max(0.25, h / 4.5 * 0.6)))), tot = big + hs;
-      const k = W / (tot + 2 * pad + 80);
-      const f = v => v.toFixed(1), R = (x, y, w, hh, fill, tx, dash, tc) => '<rect x="' + f(x) + '" y="' + f(y) + '" width="' + f(w) + '" height="' + f(hh) + '" fill="' + fill + '" stroke="#0d1016" stroke-width="2"' + (dash ? ' stroke-dasharray="6 4" fill-opacity=".25" stroke="#5fd06f"' : "") + "/>" + (tx ? '<text x="' + f(x + w / 2) + '" y="' + f(y + hh / 2 + 5) + '" text-anchor="middle" font-size="14" font-weight="700" fill="' + (tc || "#0d1016") + '">' + tx + "</text>" : "");
-      const hl = qz(p) ? "0" : qs(abs(qdiv(p, Q(2))));
-      let s = '<svg width="' + (tot + 2 * pad + 60) + '" height="' + (tot + 2 * pad + 22) + '" viewBox="0 0 ' + (tot + 2 * pad + 60) + " " + (tot + 2 * pad + 22) + '" role="img" aria-label="Quadrat x mal x, zwei Rechtecke und das fehlende kleine Quadrat">';
-      s += R(pad, pad, big, big, "#6cc0f5", "x²") + R(pad + big, pad, hs, big, "#ffb347", "") + R(pad, pad + big, big, hs, "#ffb347", "") + R(pad + big, pad + big, hs, hs, "#5fd06f", "fehlt", true, "#5fd06f");
-      s += '<text x="' + f(pad + big + hs / 2) + '" y="' + f(pad + big / 2 + 5) + '" text-anchor="middle" font-size="12" font-weight="700" fill="#0d1016">x · ' + hl.replace(/<[^>]*>/g, "") + "</text>";
-      s += '<text x="' + f(pad + big / 2) + '" y="' + f(pad + big + hs / 2 + 5) + '" text-anchor="middle" font-size="12" font-weight="700" fill="#0d1016">x · ' + hl.replace(/<[^>]*>/g, "") + "</text>";
-      s += '<text x="' + f(pad + big / 2) + '" y="' + f(tot + 2 * pad + 14) + '" text-anchor="middle" font-size="13" fill="#9aa3b2">x</text><text x="' + f(pad + big + hs / 2) + '" y="' + f(tot + 2 * pad + 14) + '" text-anchor="middle" font-size="13" fill="#9aa3b2">' + hl.replace(/<[^>]*>/g, "") + "</text>";
-      return '<div class="dsvgw">' + s + '</svg><div class="note">Das große Quadrat x² und die beiden Rechtecke (zusammen p · x) bilden fast ein großes Quadrat. In der Ecke fehlt das kleine Quadrat. Das ist die <b>quadratische Ergänzung</b>.</div></div>';
+    /* Ergänzungsbild in vier Stufen. Stufe 1: x² und p·x, 2: Rechteck halbieren, 3: fehlende Ecke, 4: vollständiges Quadrat.
+       Positives p: Rechtecke werden angelegt. Negatives p: Streifen werden weggenommen, die Ecke zweimal. */
+    function ergPic(p, st) {
+      const neg = p.n < 0, h = abs(qdiv(p, Q(2))), hv = qv(h), K = msK();
+      const big = Math.round(190 * K), r = Math.min(0.4, Math.max(0.18, hv / 10)), hs = Math.round(big * r), pad = 12, top = 24, bot = 26;
+      const hl = qp(h), pl = qp(abs(p)), hhl = qp(qmul(h, h)), f = v => Math.round(v * 10) / 10;
+      const BL = "#6cc0f5", OR = "#ffb347", GR = "#5fd06f", RD = "#ff6b5e", DK = "#0d1016";
+      const cw = big + 2 * hs + 2 * pad + 8, ch = big + hs + top + bot + 2 * pad;
+      const ox = pad, oy = pad + top;
+      let g = "";
+      const R = (x, y, w, hh, fill, o) => { o = o || {}; return '<rect x="' + f(ox + x) + '" y="' + f(oy + y) + '" width="' + f(w) + '" height="' + f(hh) + '" fill="' + fill + '"' + (o.op ? ' fill-opacity="' + o.op + '"' : "") + ' stroke="' + (o.stroke || DK) + '" stroke-width="' + (o.sw || 2) + '"' + (o.dash ? ' stroke-dasharray="6 4"' : "") + "/>"; };
+      const Tx = (x, y, t, o) => { o = o || {}; return '<text x="' + f(ox + x) + '" y="' + f(oy + y + 5) + '" text-anchor="middle" font-size="' + (o.sz || 14) + '" font-weight="700" fill="' + (o.c || DK) + '"' + (o.rot ? ' transform="rotate(90 ' + f(ox + x) + " " + f(oy + y) + ')"' : "") + ">" + t + "</text>"; };
+      const dimB = (x, t, c) => Tx(x, (neg ? big : big + hs) + 20, t, { c: c || "#c3c8ce", sz: 14 });
+      const dimT = (x, t, c) => Tx(x, -12, t, { c: c || "#c3c8ce", sz: 14 });
+      let cap = "";
+      if (!neg) {
+        if (st === 1) {
+          g += R(0, 0, big, big, BL) + Tx(big / 2, big / 2, "x²", { sz: 20 }) + R(big, 0, 2 * hs, big, OR) + Tx(big + hs, big / 2, "x · " + pl, { rot: 1 });
+          g += dimB(big / 2, "x") + dimB(big + hs, pl, OR) + Tx(big + 2 * hs + 12, big / 2, "x", { c: "#c3c8ce", sz: 14 });
+          cap = "Das blaue Quadrat ist x². Das orange Rechteck ist " + pl + "x.";
+        } else if (st === 2) {
+          g += R(0, 0, big, big, BL) + Tx(big / 2, big / 2, "x²", { sz: 20 }) + R(big, 0, hs, big, OR) + Tx(big + hs / 2, big / 2, "x · " + hl, { rot: 1 }) + R(0, big, big, hs, OR) + Tx(big / 2, big + hs / 2, "x · " + hl);
+          g += dimB(big / 2, "x") + dimB(big + hs / 2, hl, OR);
+          cap = "Das orange Rechteck ist halbiert: rechts und unten liegt je ein Rechteck x · " + hl + ".";
+        } else if (st === 3) {
+          g += R(0, 0, big, big, BL) + Tx(big / 2, big / 2, "x²", { sz: 20 }) + R(big, 0, hs, big, OR) + Tx(big + hs / 2, big / 2, "x · " + hl, { rot: 1 }) + R(0, big, big, hs, OR) + Tx(big / 2, big + hs / 2, "x · " + hl);
+          g += R(big, big, hs, hs, GR, { dash: 1, op: 0.3, stroke: GR }) + Tx(big + hs / 2, big + hs / 2, hl + "²", { c: GR, sz: hs < 30 ? 11 : 14 });
+          g += dimB(big / 2, "x") + dimB(big + hs / 2, hl, GR);
+          cap = "In der Ecke fehlt das grüne Quadrat mit der Seite " + hl + ". Seine Fläche ist " + hl + "² = " + hhl + ".";
+        } else {
+          g += R(0, 0, big, big, BL) + Tx(big / 2, big / 2, "x²", { sz: 20 }) + R(big, 0, hs, big, OR) + Tx(big + hs / 2, big / 2, "x · " + hl, { rot: 1 }) + R(0, big, big, hs, OR) + Tx(big / 2, big + hs / 2, "x · " + hl);
+          g += R(big, big, hs, hs, GR) + Tx(big + hs / 2, big + hs / 2, hhl, { sz: hs < 30 ? 11 : 14 });
+          g += '<path d="M' + f(ox) + "," + f(oy - 8) + "H" + f(ox + big + hs) + '" stroke="#c3c8ce" stroke-width="2" fill="none"/>' + dimT((big + hs) / 2, "x + " + hl);
+          cap = "Jetzt ist es ein großes Quadrat mit der Seite x + " + hl + ".";
+        }
+      } else {
+        const m = hs; /* Streifenbreite */
+        if (st === 1) {
+          g += R(0, 0, big, big, BL) + Tx((big - 2 * m) / 2, big / 2, "x²", { sz: 20 }) + R(big - 2 * m, 0, 2 * m, big, RD, { op: 0.75 }) + Tx(big - m, big / 2, "x · " + pl + " weg", { rot: 1 });
+          g += dimB(big / 2, "x") + Tx(big - m, big + 20, pl, { c: RD });
+          cap = "Vom blauen Quadrat x² nehme ich den roten Streifen " + pl + "x weg.";
+        } else if (st === 2) {
+          g += R(0, 0, big - m, big - m, BL) + R(big - m, 0, m, big, RD, { op: 0.75 }) + R(0, big - m, big, m, RD, { op: 0.75 }) + R(big - m, big - m, m, m, "#a23b32");
+          g += Tx((big - m) / 2, (big - m) / 2, "übrig", { sz: 15 }) + Tx(big - m / 2, (big - m) / 2, "x · " + hl, { rot: 1 }) + Tx((big - m) / 2, big - m / 2, "x · " + hl);
+          g += dimB(big / 2, "x") + dimB(big - m / 2, hl, RD);
+          cap = "Statt eines breiten Streifens nehme ich zwei schmale weg, einen rechts und einen unten. In der Ecke überlappen sie sich.";
+        } else if (st === 3) {
+          g += R(0, 0, big - m, big - m, BL) + R(big - m, 0, m, big, RD, { op: 0.75 }) + R(0, big - m, big, m, RD, { op: 0.75 }) + R(big - m, big - m, m, m, GR, { dash: 1, op: 0.4, stroke: GR });
+          g += Tx((big - m) / 2, (big - m) / 2, "übrig", { sz: 15 }) + Tx(big - m / 2, (big - m) / 2, "x · " + hl, { rot: 1 }) + Tx((big - m) / 2, big - m / 2, "x · " + hl);
+          g += Tx(big - m / 2, big - m / 2, hl + "²", { c: GR, sz: m < 30 ? 11 : 14 });
+          g += dimB(big / 2, "x") + dimB(big - m / 2, hl, GR);
+          cap = "Die grüne Ecke " + hl + "² = " + hhl + " ist in beiden Streifen. Ich habe sie zweimal weggenommen und muss sie einmal zurückgeben.";
+        } else {
+          g += R(0, 0, big - m, big - m, BL) + R(big - m, 0, m, big, RD, { op: 0.35 }) + R(0, big - m, big, m, RD, { op: 0.35 }) + R(big - m, big - m, m, m, GR);
+          g += Tx((big - m) / 2, (big - m) / 2, bin(h).replace("<", "&lt;"), { sz: 17 }) + Tx(big - m / 2, big - m / 2, hhl, { sz: m < 30 ? 11 : 14 });
+          g += '<path d="M' + f(ox) + "," + f(oy - 8) + "H" + f(ox + big - m) + '" stroke="#c3c8ce" stroke-width="2" fill="none"/>' + dimT((big - m) / 2, "x − " + hl);
+          cap = "Das blaue Quadrat hat die Seite x − " + hl + ".";
+        }
+      }
+      const svg = '<svg width="' + cw + '" height="' + ch + '" viewBox="0 0 ' + cw + " " + ch + '" role="img" aria-label="Bild zur quadratischen Ergänzung, Stufe ' + st + '">' + g + "</svg>";
+      return '<div class="dsvgw">' + svg + '<div class="note">' + cap + " Das Bild ist nicht maßstabsgetreu.</div></div>";
+    }
+    /* Kleine Schritte mit Bild: Stufen 1 bis 3. Die vierte Stufe (Ergänzen und Abziehen) baut der Aufrufer selbst. */
+    function ergSteps(p) {
+      const neg = p.n < 0, h = abs(qdiv(p, Q(2))), hh = qmul(h, h), sg = neg ? "−" : "+", sgv = neg ? "−" : "+";
+      const inner = "x² " + sg + " " + coef(abs(p), "x"), hx = coef(h, "x"), pl = qs(abs(p)), hs_ = qs(h), res = neg ? "(x − " + qs(h) + ")²" : "(x + " + qs(h) + ")²";
+      const out = [];
+      if (!neg) {
+        out.push(step("Bild: x² und " + pl + "x als Flächen", "Ich male den Term " + T(inner, "zs") + " als Fläche. Das Glied x² ist ein <b>Quadrat</b> mit der Seitenlänge x (blau). Das Glied " + T(coef(abs(p), "x"), "zo") + " ist ein <b>Rechteck</b>, x lang und " + T(pl, "zo") + " breit (orange). Ich lege es rechts an das Quadrat an.", eqLine("", T("x²", "zs") + " + " + T(coef(abs(p), "x"), "zo")) + ergPic(p, 1)));
+        out.push(step("Bild: das Rechteck halbieren", "Ich halbiere die Zahl vor x: " + T(qsig(p), "zs") + " : 2 = " + T(hs_, "zo") + ". Das orange Rechteck schneide ich der Länge nach in <b>zwei gleiche Rechtecke</b>. Jedes ist x lang und " + T(hs_, "zo") + " breit. Eines lege ich rechts an, das andere unten. So entsteht ein Winkel um das Quadrat.", eqLine("", "x² + " + T(hx, "zo") + " + " + T(hx, "zo")) + ergPic(p, 2)));
+        out.push(step("Bild: die fehlende Ecke", "Zu einem großen Quadrat fehlt jetzt nur noch die <b>Ecke</b> unten rechts. Sie ist ein kleines Quadrat mit der Seitenlänge " + T(hs_, "zo") + ". Ihre Fläche ist " + T(par(h) + "² = " + qs(hh), "zg") + ". Diese Zahl heißt <b>quadratische Ergänzung</b>.", eqLine("", "x² + " + hx + " + " + hx + " + " + T(qs(hh), "zg") + " = " + T(res, "zg")) + ergPic(p, 3)));
+      } else {
+        out.push(step("Bild: x² und " + pl + "x als Flächen", "Ich male den Term " + T(inner, "zs") + " als Fläche. Das Glied x² ist ein <b>Quadrat</b> mit der Seitenlänge x (blau). Das Glied " + T("− " + coef(abs(p), "x"), "zr") + " bedeutet: Ich <b>nehme</b> ein Rechteck weg, x lang und " + T(pl, "zr") + " breit (roter Streifen).", eqLine("", T("x²", "zs") + " " + T("− " + coef(abs(p), "x"), "zr")) + ergPic(p, 1)));
+        out.push(step("Bild: den Streifen halbieren", "Ich halbiere die Zahl vor x: " + T(pl, "zs") + " : 2 = " + T(hs_, "zo") + ". Statt eines breiten Streifens nehme ich <b>zwei schmale Streifen</b> weg, jeder x lang und " + T(hs_, "zo") + " breit: einen rechts und einen unten. Sie überlappen sich in der Ecke.", eqLine("", "x² − " + T(hx, "zr") + " − " + T(hx, "zr")) + ergPic(p, 2)));
+        out.push(step("Bild: die Ecke zurückgeben", "Die <b>Ecke</b> unten rechts liegt in beiden Streifen. Ich habe sie zweimal weggenommen, sie darf aber nur einmal fehlen. Darum gebe ich sie einmal zurück. Sie ist ein Quadrat mit der Seitenlänge " + T(hs_, "zo") + " und der Fläche " + T(par(h) + "² = " + qs(hh), "zg") + ". Diese Zahl heißt <b>quadratische Ergänzung</b>. Das blaue Quadrat, das übrig bleibt, hat die Seite x − " + hs_ + ".", eqLine("", "x² − " + hx + " − " + hx + " + " + T(qs(hh), "zg") + " = " + T(res, "zg")) + ergPic(p, 3)));
+      }
+      return out;
     }
     /* Wurzeln */
     const isq = n => { const r = Math.round(Math.sqrt(n)); return r * r === n ? r : -1; };
@@ -4917,8 +4982,9 @@ renderStell();
         if (!one(a)) out.push(step("Die Zahl vor x² ausklammern", "Vor x² steht " + T(qsig(a), "zr") + ". Ich klammere sie bei den beiden Gliedern mit x aus. Dafür teile ich die Zahl vor x durch " + par(a) + ": " + qsig(b) + " : " + par(a) + " = " + T(qsig(p), "zs") + ". Das Glied ohne x (" + qsig(c) + ") bleibt draußen.",
           eqLine("f(x) =", lead(a) + "(x² " + (p.n < 0 ? "−" : "+") + " " + coef(abs(p), "x") + ")" + (qz(c) ? "" : " " + (c.n < 0 ? "−" : "+") + " " + qs(abs(c))))));
         const inner = "x² " + (p.n < 0 ? "−" : "+") + " " + coef(abs(p), "x");
-        out.push(step("Quadratische Ergänzung", "Ich halbiere die Zahl vor x: " + qsig(p) + " : 2 = " + T(qsig(h), "zo") + ". Dann quadriere ich: " + par(h) + "² = " + T(qs(hh), "zg") + ". Diese Zahl addiere ich in der Klammer und subtrahiere sie sofort wieder. Dadurch ändert sich der Wert nicht, denn + " + qs(hh) + " − " + qs(hh) + " ist 0.",
-          eqLine("f(x) =", lead(a) + "(" + inner + " " + T("+ " + qs(hh), "zg") + " " + T("− " + qs(hh), "zr") + ")" + (qz(c) ? "" : " " + (c.n < 0 ? "−" : "+") + " " + qs(abs(c)))) + ergPic(p)));
+        ergSteps(p).forEach(st => out.push(st));
+        out.push(step("Ergänzung addieren und wieder abziehen", "Die Ergänzung " + T(qs(hh), "zg") + " brauche ich im Term. Ich addiere sie in der Klammer und subtrahiere sie sofort wieder. Dadurch ändert sich der Wert nicht, denn + " + qs(hh) + " − " + qs(hh) + " ist 0.",
+          eqLine("f(x) =", lead(a) + "(" + inner + " " + T("+ " + qs(hh), "zg") + " " + T("− " + qs(hh), "zr") + ")" + (qz(c) ? "" : " " + (c.n < 0 ? "−" : "+") + " " + qs(abs(c)))) + ergPic(p, 4)));
         out.push(step("Binomische Formel rückwärts", "Die ersten drei Glieder in der Klammer sind eine binomische Formel: " + inner + " + " + qs(hh) + " = " + T(bin(h), "zg") + ". Die Zahl in der Klammer ist die Hälfte von " + qsig(p) + ", mit demselben Vorzeichen. Das letzte Glied " + T("− " + qs(hh), "zr") + " bleibt stehen.",
           eqLine("f(x) =", lead(a) + "(" + bin(h) + " − " + qs(hh) + ")" + (qz(c) ? "" : " " + (c.n < 0 ? "−" : "+") + " " + qs(abs(c))))));
       }
@@ -4946,7 +5012,8 @@ renderStell();
       const stdEq = fx(Q(1), p, q) + " = 0";
       out.push(step("Das Glied ohne x nach rechts bringen", "Das Glied ohne x ist " + T(qsig(q), "zo") + ". Ich bringe es auf die andere Seite" + (qz(q) ? "" : ": " + (q.n < 0 ? "Ich addiere " + qs(abs(q)) : "Ich subtrahiere " + qs(abs(q))) + " auf beiden Seiten") + ". Links bleibt x² " + (qz(p) ? "" : "und das Glied mit x ") + "stehen.", eqLine("", stdL.trim() + " = " + qsig(qmul(q, Q(-1))))));
       const rhs = qmul(q, Q(-1));
-      if (!qz(p)) out.push(step("Quadratische Ergänzung", "Ich halbiere die Zahl vor x: " + qsig(p) + " : 2 = " + T(qsig(h), "zo") + ". Dann quadriere ich: " + par(h) + "² = " + T(qs(hh), "zg") + ". Diese Zahl addiere ich auf <b>beiden</b> Seiten. Dann bilden die Glieder links ein vollständiges Quadrat.", eqLine("", stdL.trim() + " " + T("+ " + qs(hh), "zg") + " = " + qsig(rhs) + " " + T("+ " + qs(hh), "zg")) + ergPic(p)));
+      if (!qz(p)) ergSteps(p).forEach(st => out.push(st));
+      if (!qz(p)) out.push(step("Ergänzung auf beiden Seiten addieren", "Die Ergänzung " + T(qs(hh), "zg") + " brauche ich links. Damit die Gleichung stimmt, addiere ich sie auf <b>beiden</b> Seiten. Dann bilden die Glieder links ein vollständiges Quadrat.", eqLine("", stdL.trim() + " " + T("+ " + qs(hh), "zg") + " = " + qsig(rhs) + " " + T("+ " + qs(hh), "zg")) + ergPic(p, 4)));
       out.push(step("Binomische Formel und zusammenfassen", (qz(p) ? "" : "Links steht jetzt eine binomische Formel: " + T(bin(h), "zg") + ". ") + "Rechts fasse ich zusammen: " + (qz(p) ? "" : qsig(rhs) + " + " + qs(hh) + " = ") + T(qsig(t), "zo") + ".", eqLine("", bin(h) + " = " + qsig(t))));
       const ans = [];
       let r;

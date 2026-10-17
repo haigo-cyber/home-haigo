@@ -653,6 +653,11 @@
   /* Fälligkeit, Deadline und Meta-Stern stehen immer sichtbar neben dem Text, auch in der schlanken Ansicht */
   .ws-dchips{display:inline-flex;gap:4px;align-items:center;flex:none;flex-wrap:wrap}
   .ws-dchips:empty{display:none}
+
+  .ws-date.sub{border-style:dashed;color:#9aa3b2;cursor:default;opacity:.85}
+  .ws-date.sub.over{color:var(--red);border-color:var(--red)}
+  .ws-hrow{flex-wrap:wrap}
+  .ws-hrow .ws-h{flex:1 1 150px}
 </style>
 </head>
 <body>
@@ -4559,9 +4564,28 @@ function wsNodeChips(n, part){
   return h;
 }
 /* Termine und Meta-Projekt einer Überschrift als Chips (sichtbar auch in der schlanken Ansicht) */
+/* frühester Termin (Deadline, Start oder Fälligkeit) offener Einträge im Abschnitt einer Überschrift, samt Unterüberschriften */
+let wsCurDoc = null;
+function wsSecEarliest(doc, bid){
+  if(!doc) return "";
+  const i = doc.blocks.findIndex(b=>b.id===bid); if(i<0) return "";
+  const end = wsSecEnd(doc.blocks, i); let best = "";
+  const take = d=>{ if(d && (!best || d<best)) best = d; };
+  const walk = items=>items.forEach(n=>{ if(!n.done) take(wsNodeDue(n)); walk(n.children); });
+  for(let k=i+1;k<end;k++){
+    const b = doc.blocks[k];
+    if(b.type==="outline") walk(b.items);
+    else if(b.type==="heading" && !b.done){ take(b.dl || b.date); }
+  }
+  return best;
+}
 function wsHeadChips(b){
   const sp = wsSpan(b), today = todayKey();
   let h = "";
+  if(!b.date && !b.dl){
+    const e = wsSecEarliest(wsCurDoc, b.id);
+    if(e) h += `<span class="ws-date sub${e<today?" over":""}" title="Frühester Termin der offenen Einträge darunter (hier ist kein eigenes Datum gesetzt)">↳ ${esc(wsShortDate(e))}</span>`;
+  }
   if(b.meta) h += `<button class="ws-lnk ws-metachip" data-wsact="head-menu" title="Meta-Projekt (oberste Ebene im Gantt und in Heute)">★</button>`;
   if(b.date){
     const over = !b.done && (sp ? sp.end : b.date) < today;
@@ -4678,7 +4702,7 @@ function wsBlockHtml2(b, eff, hidN, ind, base){
     ${b.type==="outline"?"":`<button class="ws-plus" data-wsact="plus" data-kind="block" data-id="${b.id}" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>`}
     <button class="ws-more${bmo?" on":""}" data-wsact="more" data-mid="${b.id}" title="${bmo?"Knöpfe dieses Blocks wieder einklappen":"Alle Knöpfe dieses Blocks anzeigen"}">${bmo?"‹ zu":"⋯"}</button>
     <button class="ws-x ws-tagb${b.tag?" on":(eff?" inh":"")}" data-wsact="tag-block" title="${b.type==="heading"?"Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)":(b.tag?"Eigener Tag des Blocks":(eff?"Tag geerbt von oben, hier änderbar":"Tag für diesen Block setzen"))}">🏷${eff?" "+esc(eff):""}</button>
-    ${b.type==="heading"?`<button class="ws-x" data-wsact="head-menu" title="Fälligkeit, Deadline und Meta-Projekt für diese Überschrift">📅</button>`:""}
+    ${(b.type==="heading" && !b.date && !b.dl && !b.meta)?`<button class="ws-x" data-wsact="head-menu" title="Fälligkeit, Deadline und Meta-Projekt für diese Überschrift">📅</button>`:""}
     ${b.type==="heading"?`<button class="ws-x" data-wsact="move-head" title="Diese Überschrift samt allem darunter verschieben (auch in ein anderes Dokument)">⇄</button>`:""}
     ${b.type==="outline"?"":`<button class="ws-x ws-fobtn${wsFocusHas(wsFocusDocOf(b.id),b.id)?" on":""}" data-wsact="focus" data-fid="${b.id}" title="In Heute als Fokus anzeigen / Fokus aufheben">📌</button>`}
     <button class="ws-x" data-wsact="del-block" title="Block löschen">✕</button>
@@ -4736,6 +4760,7 @@ function wsEditorHtml(doc, mode){
   if(mode==="today" || !wsF.tag) h += wsFilterHtml([doc]);
   const bt = wsBlockTags(doc);
   const hh = wsHiddenByHeads(doc);
+  wsCurDoc = doc;
   const parts = doc.blocks.map(b=>hh.hidden.has(b.id) ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], hh.indent[b.id], hh.base[b.id], hh.metaIn.has(b.id))).filter(Boolean);
   h += `<div class="ws-blocks">${parts.length ? parts.join("") : (doc.blocks.length ? `<div class="ws-empty">In diesem Dokument ist nichts für diese Ansicht.</div>` : `<div class="ws-empty">Noch leer. Unten einen Block hinzufügen.</div>`)}</div>
     <div class="ws-add">
@@ -4834,6 +4859,7 @@ function wsFocusBody(doc, id, kind){
   }
   const i = doc.blocks.findIndex(b=>b.id===id); if(i<0) return "";
   const end = kind==="heading" ? wsSecEnd(doc.blocks, i) : i+1;
+  wsCurDoc = doc;
   const parts = doc.blocks.slice(i, end).map(b=>hh.hidden.has(b.id) && b.id!==id ? "" : wsBlockHtml(b, bt[b.id], hh.counts[b.id], 0, hh.base[b.id], hh.metaIn.has(b.id))).filter(Boolean);
   return parts.join("");
 }

@@ -758,6 +758,7 @@
   <section id="panel-umg" hidden></section>
   <section id="panel-ggt" hidden></section>
   <section id="panel-lgs" hidden></section>
+  <section id="panel-ter" hidden></section>
   <section id="panel-aeq" hidden></section>
   <section id="panel-qer" hidden></section>
   <section id="panel-emr" hidden></section>
@@ -1059,6 +1060,8 @@ const TOPICS = [
     i: '<rect x="3" y="4" width="11" height="11"/><path d="M8.5 4v11M3 9.5h11"/><circle cx="19" cy="19" r="1.4"/><path d="M16 19h-1"/>' },
   { k: "qz3", g: "Dezimalzahlen", t: "Quiz: Dezimalzahlen", s: "Spiel mit Punkten, Smileys, Serien und Bossaufgabe: aus 7 Möglichkeiten alle richtigen anklicken (Brüche und Dezimalzahlen, Kommaverschiebung, Rechnen mit Dezimalzahlen)",
     i: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="17" r=".8"/>' },
+  { k: "ter", g: "Algebra", t: "Terme aufstellen", s: "Punktemuster: Punkte zählen, Rechnung aufschreiben, den Term für jede beliebige Bildnummer x aufstellen und erklären, mit Tabelle und farbigen Gruppen",
+    i: '<circle cx="6" cy="7" r="1.8"/><circle cx="12" cy="7" r="1.8"/><circle cx="18" cy="7" r="1.8"/><circle cx="6" cy="13" r="1.8"/><circle cx="12" cy="13" r="1.8"/><circle cx="18" cy="13" r="1.8" fill="currentColor"/><circle cx="6" cy="19" r="1.8"/><circle cx="12" cy="19" r="1.8" fill="currentColor"/>' },
   { k: "aeq", g: "Algebra", t: "Äquivalenzumformung", s: "Knack die Box: Auf der Waage liegen Boxen mit der unbekannten Zahl und Gewichtsstücke. Links und rechts gleich viel tun, bis die Box allein liegt. Die Gleichung schreibst du erst auf Wunsch dazu",
     i: '<path d="M12 4v15M8 19h8M4 8h16"/><path d="M6 8l-3 6h6zM18 8l-3 6h6z"/>' },
   { k: "lgs", g: "Algebra", t: "Lineare Gleichungssysteme", s: "Zwei Gleichungen mit zwei Unbekannten lösen: Additions-, Einsetzungs- und Gleichsetzungsverfahren mit Probe und Bild der beiden Geraden",
@@ -5111,12 +5114,133 @@ renderStell();
     window.__dz = Object.assign(window.__dz || {}, { setQe: (m, a, b, c) => { mode = m; Object.assign(V, { a: a, b: b, c: c }); mark(m); sp.reset(); inputs(); sp.render(); } });
   })();
 
+  /* ================= 13b. Terme aufstellen: Punktemuster ================= */
+  (function () {
+    const pre = "tm"; let mode = "m1";
+    const V = { a: 4, b: 2, c: 2, k: 2 };
+    const DEF = { m1: { a: 4, b: 2 }, m2: { a: 4, c: 2 }, m3: { k: 2 } };
+    panel("ter", pre, [["m1", "Immer mehr"], ["m2", "Mit Abzug"], ["m3", "Zwei Sichtweisen"]], [
+      ["Zahlen:", "Bild, Bildnummer, Punkt, Gruppe, Term, Rechenvorschrift, Variable, x, jede beliebige Zahl, Tabelle, Zeile, Spalte"],
+      ["Tätigkeiten:", "Punkte zählen, Gruppen bilden, strukturieren, Rechnung aufschreiben, einen Term aufstellen, einsetzen, vergleichen, erklären"],
+      ["Satzanfänge:", "x steht für jede beliebige Bildnummer. · Bei … rechne ich mal, weil … · Bei … rechne ich plus (minus), weil … · Der Term insgesamt steht für … · Egal, welche Zahl du dir aussuchst, … · Ich sehe … Gruppen mit je … Punkten."],
+      ["Fragen zum Bild:", "Welche Punkte bleiben gleich, welche ändern sich? · Wie viele Gruppen hat Bild x? · Wie viele Punkte hat Bild 15, ohne zu zeichnen? · Wie kann ich die Punkte noch anders sehen?"]
+    ]);
+    const BL = "#6cc0f5", OR = "#ffb347", RD = "#ff6b5e";
+    const ln = (l, t) => '<div class="lge"><b>' + l + "</b> " + t + "</div>";
+    const para = t => '<div class="note" style="margin:.35rem 0">' + t + "</div>";
+    /* Bild: Spalten aus Punkten, unten ausgerichtet. Art: b blau, o orange, h fehlt (gestrichelt) */
+    function fig(x) {
+      const cols = [], frames = []; let n;
+      if (mode === "m1") {
+        let rest = V.b; while (rest > 0) { const m = Math.min(V.a, rest); cols.push(Array(m).fill("o")); rest -= m; }
+        const oc = cols.length; for (let i = 0; i < x; i++) { cols.push(Array(V.a).fill("b")); frames.push(oc + i); }
+        n = V.b + x * V.a;
+      } else if (mode === "m2") {
+        for (let i = 0; i < x; i++) { const last = i === x - 1; cols.push(Array(last ? V.a - V.c : V.a).fill("b").concat(Array(last ? V.c : 0).fill("h"))); frames.push(i); }
+        n = x * V.a - V.c;
+      } else {
+        for (let i = 0; i < x; i++) cols.push(Array(x).fill("b"));
+        for (let i = 0; i < V.k; i++) cols.push(Array(x).fill("o"));
+        n = x * (x + V.k);
+      }
+      return { cols: cols, frames: frames, n: n, label: "Bild " + x, sub: n + " Punkte" };
+    }
+    function dotsSvg(figs, cap) {
+      const K = msK(), S = 24, R = 9, gapF = 34, padT = 24, subH = 26;
+      const rows = Math.max.apply(null, figs.map(f => Math.max.apply(null, f.cols.map(c => c.length).concat([1]))));
+      let W = 10, s = "";
+      figs.forEach(f => {
+        const w = Math.max(f.cols.length * S, 56), x0 = W + (w - f.cols.length * S) / 2;
+        s += '<text x="' + (W + w / 2) + '" y="15" text-anchor="middle" font-size="14" font-weight="800" fill="#e8edf5">' + f.label + "</text>";
+        f.cols.forEach((c, ci) => {
+          if (f.frames.indexOf(ci) >= 0) s += '<rect x="' + (x0 + ci * S + 1) + '" y="' + (padT + (rows - c.length) * S - 1) + '" width="' + (S - 2) + '" height="' + (c.length * S + 2) + '" rx="6" fill="none" stroke="#9aa3b2" stroke-width="1.5" stroke-dasharray="3 3"/>';
+          c.forEach((k, di) => {
+            const cx = x0 + ci * S + S / 2, cy = padT + (rows - c.length + di) * S + S / 2;
+            s += k === "h" ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="' + RD + '" stroke-width="2" stroke-dasharray="3 2"/>' : '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="' + (k === "o" ? OR : BL) + '" stroke="#0d1016" stroke-width="1.5"/>';
+          });
+        });
+        s += '<text x="' + (W + w / 2) + '" y="' + (padT + rows * S + 18) + '" text-anchor="middle" font-size="13" fill="#9aa3b2">' + f.sub + "</text>";
+        W += w + gapF;
+      });
+      W = W - gapF + 10; const H = padT + rows * S + subH;
+      return '<div class="dsvgw"><svg viewBox="0 0 ' + W + " " + H + '" width="' + Math.round(W * Math.min(1.25, K * 1.15)) + '" role="img" aria-label="Punktemuster" style="max-width:100%;display:block;margin:.3rem auto">' + s + "</svg>" + (cap ? '<div class="note">' + cap + "</div>" : "") + "</div>";
+    }
+    const tbl = (head, rows) => '<div style="overflow-x:auto"><table style="border-collapse:collapse;margin:.5rem auto;font-size:1.05em"><tr>' + head.map(h => '<th style="border:1.5px solid var(--line,#34486a);padding:.3rem .7rem">' + h + "</th>").join("") + "</tr>" + rows.map(r => "<tr>" + r.map((c, i) => '<td style="border:1.5px solid var(--line,#34486a);padding:.3rem .7rem;text-align:' + (i === 0 ? "center" : "left") + '">' + c + "</td>").join("") + "</tr>").join("") + "</table></div>";
+    /* Rechnungen für Bild n (n kann eine Zahl oder "x" sein) */
+    function calc(n) {
+      const nn = T(n, "zg"), a = T(V.a, "zs");
+      if (mode === "m1") return (V.b > 0 ? T(V.b, "zo") + " + " : "") + nn + " · " + a;
+      if (mode === "m2") return nn + " · " + a + " − " + T(V.c, "zr");
+      return "";
+    }
+    const total = n => mode === "m1" ? V.b + n * V.a : mode === "m2" ? n * V.a - V.c : n * (n + V.k);
+    const termStr = () => mode === "m1" ? (V.b > 0 ? V.b + " + x · " + V.a : "x · " + V.a) : mode === "m2" ? "x · " + V.a + " − " + V.c : "x · (x + " + V.k + ")";
+    const rowsFor = (list, withX) => list.map(n => ["Bild " + n, calc(n) + (typeof n === "number" ? " = " + total(n) : "")]).concat(withX ? [["Bild " + T("x", "zg") + " (jede beliebige Zahl)", calc("x")]] : []);
+    function build12() {
+      const a = V.a, b = V.b, c = V.c, m1 = mode === "m1", out = [], term = termStr();
+      out.push(step("Aufgabe", m1
+        ? "Die Bildfolge wächst immer weiter. " + (b > 0 ? "In jedem Bild liegen " + T(b, "zo") + " orange Punkte. " : "") + "Dazu kommt für jede Bildnummer eine <b>Gruppe</b> aus " + T(a, "zs") + " blauen Punkten: Bild 1 hat eine Gruppe, Bild 2 hat zwei Gruppen, Bild 3 hat drei Gruppen, und so weiter. Ich suche eine Rechenvorschrift, einen <b>Term</b>, mit dem ich die Zahl der Punkte jedes Bildes ausrechnen kann, ohne zu zeichnen."
+        : "Die Bildfolge wächst immer weiter. In Bild 1 liegt eine Gruppe aus " + T(a, "zs") + " Punkten, in Bild 2 zwei Gruppen, in Bild 3 drei Gruppen und so weiter. Aber in der <b>letzten</b> Gruppe fehlen " + T(c, "zr") + " Punkte (rot gestrichelt). Gezählt werden nur die ausgefüllten Punkte. Ich suche einen <b>Term</b>, mit dem ich die Zahl der Punkte jedes Bildes ausrechnen kann, ohne zu zeichnen.",
+        dotsSvg([fig(1), fig(2), fig(3)], m1 ? "Orange: bleibt in jedem Bild gleich. Blau: Jede Gruppe ist eine Spalte." : "Blau: ausgefüllte Punkte. Rot gestrichelt: Hier fehlen Punkte.")));
+      out.push(step("Zählen und aufschreiben", "Ich schreibe für jedes Bild auf, wie ich zähle: " + (m1 ? (b > 0 ? "erst die orangen Punkte, dann die blauen Gruppen. " : "") + "Bild " + T("n", "zg") + " hat " + T("n", "zg") + " Gruppen mit je " + T(a, "zs") + " Punkten." : "Bild " + T("n", "zg") + " hat " + T("n", "zg") + " Gruppen mit je " + T(a, "zs") + " Punkten. Davon gehen die " + T(c, "zr") + " fehlenden Punkte ab."), tbl(["Bild", "Rechnung"], rowsFor([1, 2, 3, 4], false))));
+      out.push(step("Bild 15 und Bild 42 ohne Zeichnen", "Ich muss nicht zeichnen. Bild " + T(15, "zg") + " hat " + T(15, "zg") + " Gruppen mit je " + T(a, "zs") + " Punkten, also " + T(15, "zg") + " · " + T(a, "zs") + ". " + (m1 ? (b > 0 ? "Dazu kommen die " + T(b, "zo") + " orangen Punkte, die nur einmal vorkommen." : "") : "Davon gehen die " + T(c, "zr") + " fehlenden Punkte ab, die nur einmal fehlen."), tbl(["Bild", "Rechnung"], rowsFor([15, 42], false))));
+      out.push(step("Für jede beliebige Bildnummer", "Jetzt will ich nicht nur Bild 15 oder Bild 42 ausrechnen, sondern <b>jedes</b> Bild. Dafür nenne ich die Bildnummer " + T("x", "zg") + ". " + T("x", "zg") + " steht für jede beliebige Zahl, die ich mir als Bildnummer aussuche. In der letzten Zeile der Tabelle steht dann der Term für jede beliebige Bildnummer.", tbl(["Bild", "Rechnung"], rowsFor([1, 2, 15, 42], true))));
+      out.push(step("Den Term erklären", "Ich erkläre den Term " + T(term, "zs") + " mit drei Fragen.",
+        dotsSvg([fig(3)], "Bild 3 als Beispiel") + ln("1. Wofür steht x?", "x steht für die Nummer des Bildes. Das ist auch die Zahl der Gruppen.") +
+        ln("2. Warum rechne ich mal?", "In Bild x liegen x Gruppen mit je " + a + " Punkten. Darum rechne ich x · " + a + ".") +
+        ln("3. Warum rechne ich " + (m1 ? "plus" : "minus") + "?", m1 ? (b > 0 ? "Die " + b + " orangen Punkte kommen nur einmal dazu, egal wie groß x ist. Darum steht " + b + " allein, ohne x." : "Es gibt keine orangen Punkte. Darum steht kein Plus im Term.") : "Die " + c + " fehlenden Punkte fehlen nur einmal, in der letzten Gruppe, egal wie groß x ist. Darum steht " + c + " allein, ohne x, und wird abgezogen.") +
+        ln("Der Term insgesamt steht für:", "die Zahl aller ausgefüllten Punkte in Bild x.")));
+      const x4 = 4;
+      out.push(step("Warum stimmt der Term immer?", "Ich habe nur wenige Bilder ausprobiert. Der Term stimmt trotzdem für jedes Bild. Egal, welche Bildnummer ich mir aussuche: " + (m1 ? (b > 0 ? "Es gibt immer " + b + " orange Punkte, und " : "") + "es gibt immer genau so viele Gruppen wie die Bildnummer. Jede Gruppe hat " + a + " Punkte." : "es gibt immer genau so viele Gruppen wie die Bildnummer, jede Gruppe hat " + a + " Punkte, und in der letzten fehlen immer " + c + ".") + " Zur Kontrolle zähle ich Bild 4: " + fig(x4).n + " Punkte. Der Term gibt " + calc(4) + " = " + total(4) + ".", dotsSvg([fig(x4)], "Bild 4, gezählt: " + fig(x4).n + " Punkte. Der Term stimmt.")));
+      out.push(step("Ergebnis", "Der Term für die Punkte in Bild x ist " + T(term, "zg") + "." + (m1 ? " Man darf auch " + (b > 0 ? a + " · x + " + b : a + " · x") + " schreiben: Beim Mal darf man die Zahlen tauschen." : ""), '<div class="zbig">' + term + "</div>", "good", term));
+      return out;
+    }
+    function build3() {
+      const k = V.k, out = [], t1 = "x · (x + " + k + ")", t2 = "x · x + " + k + " · x";
+      const c1 = n => T(n, "zg") + " · (" + T(n, "zg") + " + " + T(k, "zo") + ")", c2 = n => T(n, "zg") + " · " + T(n, "zg") + " + " + T(k, "zo") + " · " + T(n, "zg");
+      out.push(step("Aufgabe", "Jedes Bild ist ein Rechteck aus Punkten. Bild 1 hat 1 Zeile, Bild 2 hat 2 Zeilen, Bild 3 hat 3 Zeilen. In jeder Zeile liegen so viele blaue Punkte wie die Bildnummer, dazu " + T(k, "zo") + " orange Punkte. Ich suche einen <b>Term</b> für die Punkte jedes Bildes. Dazu kann ich die Punkte auf zwei Arten sehen.", dotsSvg([fig(1), fig(2), fig(3)], "Blau: ein Quadrat. Orange: " + k + " Spalten dazu.")));
+      out.push(step("Sichtweise 1: Zeilen zählen", "Ich zähle zeilenweise. Bild " + T("n", "zg") + " hat " + T("n", "zg") + " Zeilen. In jeder Zeile liegen " + T("n", "zg") + " + " + T(k, "zo") + " Punkte. Also rechne ich " + T("n", "zg") + " · (" + T("n", "zg") + " + " + T(k, "zo") + ").", tbl(["Bild", "Rechnung"], [1, 2, 3, 4].map(n => ["Bild " + n, c1(n) + " = " + total(n)]))));
+      out.push(step("Sichtweise 2: Quadrat und Rest", "Ich sehe zwei Teile: ein blaues <b>Quadrat</b> mit " + T("n", "zg") + " · " + T("n", "zg") + " Punkten und " + T(k, "zo") + " orange <b>Spalten</b> mit je " + T("n", "zg") + " Punkten, also " + T(k, "zo") + " · " + T("n", "zg") + ". Zusammen: " + T("n", "zg") + " · " + T("n", "zg") + " + " + T(k, "zo") + " · " + T("n", "zg") + ".", tbl(["Bild", "Rechnung"], [1, 2, 3, 4].map(n => ["Bild " + n, c2(n) + " = " + total(n)]))));
+      out.push(step("Für jede beliebige Bildnummer", "Jetzt nenne ich die Bildnummer " + T("x", "zg") + ". x steht für jede beliebige Zahl. Hier kommt das x <b>mehrfach</b> im Term vor, denn die Bildnummer bestimmt die Zahl der Zeilen und die Länge jeder Zeile. Das ist in Ordnung: Überall steht dieselbe Zahl.", ln("Sichtweise 1:", c1("x")) + ln("Sichtweise 2:", c2("x"))));
+      out.push(step("Sind die beiden Terme gleich?", "Beide Terme beschreiben dieselben Punkte, ich habe sie nur anders gesehen. Darum geben sie für jede Bildnummer dieselbe Zahl. Ich vergleiche in der Tabelle.", tbl(["Bild", "x · (x + " + k + ")", "x · x + " + k + " · x"], [1, 2, 3, 4, 5, 6].map(n => [String(n), String(total(n)), String(n * n + k * n)]))));
+      out.push(step("Warum stimmt der Term immer?", "Egal, welche Bildnummer ich mir aussuche: Das Bild ist immer ein Rechteck mit so vielen Zeilen wie die Bildnummer. Jede Zeile hat immer " + k + " Punkte mehr als die Bildnummer. Zur Kontrolle zähle ich Bild 4: " + fig(4).n + " Punkte. Der Term gibt " + c1(4) + " = " + total(4) + ".", dotsSvg([fig(4)], "Bild 4, gezählt: " + fig(4).n + " Punkte.")));
+      out.push(step("Ergebnis", "Zwei Terme für die Punkte in Bild x: " + T(t1, "zg") + " und " + T(t2, "zg") + ". Sie sind gleich, weil sie dieselben Punkte auf zwei Arten zählen.", '<div class="zbig">' + t1 + " = " + t2 + "</div>", "good", t1));
+      return out;
+    }
+    const sp = stepper({ pre: pre, build: () => {
+        const err = () => "Bitte nur ganze Zahlen im erlaubten Bereich eingeben.";
+        if (mode === "m1") { if (!Number.isInteger(V.a) || !Number.isInteger(V.b) || V.a < 1 || V.a > 8 || V.b < 0 || V.b > 9) return "Punkte pro Gruppe: 1 bis 8. Orange Punkte: 0 bis 9."; return build12(); }
+        if (mode === "m2") { if (!Number.isInteger(V.a) || !Number.isInteger(V.c) || V.a < 2 || V.a > 8 || V.c < 1 || V.c >= V.a) return "Punkte pro Gruppe: 2 bis 8. Fehlende Punkte: mindestens 1 und weniger als die Punkte pro Gruppe."; return build12(); }
+        if (!Number.isInteger(V.k) || V.k < 1 || V.k > 4) return "Orange Spalten: 1 bis 4.";
+        return build3();
+      },
+      note: () => "Punktemuster: Ich zähle, schreibe die Rechnung auf und stelle den Term für jede beliebige Bildnummer x auf." });
+    function inputs() {
+      const row = $(pre + "Row");
+      const num = (k, col, lab) => '<div class="gbox"><div class="note">' + lab + '</div><div class="numbox"><input type="number" data-k="' + k + '" value="' + (Number.isNaN(V[k]) ? "" : V[k]) + '" step="1" style="color:' + col + ";border-color:" + col + '"></div></div>';
+      row.innerHTML = '<div class="lgrow">' + (mode === "m1" ? num("a", BL, "blaue Punkte pro Gruppe") + num("b", OR, "orange Punkte vorn") : mode === "m2" ? num("a", BL, "Punkte pro Gruppe") + num("c", RD, "fehlende Punkte") : num("k", OR, "orange Spalten")) + "</div>";
+      row.querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => { V[inp.dataset.k] = inp.value === "" ? NaN : Number(inp.value); sp.reset(); sp.render(); }));
+    }
+    const KEYS = ["m1", "m2", "m3"];
+    const mark = m => KEYS.forEach(k => $(pre + "_" + k).setAttribute("aria-selected", k === m ? "true" : "false"));
+    function setMode(m) { mode = m; Object.assign(V, DEF[m]); mark(m); sp.reset(); inputs(); sp.render(); }
+    KEYS.forEach(k => $(pre + "_" + k).addEventListener("click", () => setMode(k)));
+    $(pre + "Random").addEventListener("click", () => {
+      if (mode === "m1") Object.assign(V, { a: ri(2, 6), b: Math.random() < 0.15 ? 0 : ri(1, 7) });
+      else if (mode === "m2") { const a = ri(3, 7); Object.assign(V, { a: a, c: ri(1, a - 1) }); }
+      else V.k = ri(1, 4);
+      sp.reset(); inputs(); sp.render();
+    });
+    setMode("m1");
+    window.__dz = Object.assign(window.__dz || {}, { setTm: (m, o) => { mode = m; Object.assign(V, o); mark(m); sp.reset(); inputs(); sp.render(); } });
+  })();
+
   /* ================= 14. Äquivalenzumformung ================= */
   (function () {
     const pre = "aq"; let mode = "e2";
-    const DEF = { e1: [3, 5, 0, 20], e2: [5, 4, 2, 19], e3: [3, 2, 1, 14] };
+    const DEF = { e1: [3, 5, 0, 20], e2: [5, 4, 2, 19], e3: [3, 2, 1, 14], e4: [4, 7, 1, 19] };
     const V = { a: 5, b: 4, c: 2, d: 19 };
-    panel("aeq", pre, [["e1", "x nur auf einer Seite"], ["e2", "x auf beiden Seiten"], ["e3", "mit Klammer"]], [
+    panel("aeq", pre, [["e1", "x nur auf einer Seite"], ["e2", "x auf beiden Seiten"], ["e3", "mit Klammer"], ["e4", "Was würdest du tun?"]], [
       ["Zahlen:", "Box, Gewichtsstück, Waage, Gleichgewicht, unbekannte Zahl, Variable als Unbekannte, Gleichung, Gleichheitszeichen, Äquivalenzumformung, Lösung, Lösungsmenge, Kontrolle"],
       ["Tätigkeiten:", "die Box knacken, wegnehmen, dazulegen, gleichmäßig verteilen, Päckchen auspacken, einsetzen, kontrollieren"],
       ["Satzanfänge:", "In jeder Box steckt dieselbe Zahl, die ich noch nicht kenne. · Ich nehme links … weg und rechts auch. · Ich lege links … dazu und rechts auch. · Ich verteile beide Seiten gleichmäßig auf … Teile. · Die Box liegt jetzt allein auf der Waage. · Zur Kontrolle lege ich in jede Box die Zahl … · In einer Box steckt die Zahl …"],
@@ -5218,7 +5342,11 @@ renderStell();
     function build() {
       const a = Q(V.a), b = Q(V.b), c = mode === "e1" ? Q(0) : Q(V.c), d = Q(V.d), out = [];
       const origS = origStr();
-      out.push(step("Aufgabe", "In jeder Box steckt dieselbe Zahl, die ich noch nicht kenne: das ist das " + T("x", "zs") + ". Die Waage ist im Gleichgewicht: Links liegt genauso viel wie rechts. Ich will die Box <b>knacken</b>, also herausfinden, welche Zahl in einer Box steckt. Dafür muss die Box allein liegen. Ich darf auf <b>beiden</b> Seiten immer nur dasselbe tun, sonst kippt die Waage. Dann beschreibt die neue Waage dieselbe unbekannte Zahl. Das nennt man <b>Äquivalenzumformung</b>.", eqL("", origS) + origPic(a, b, c, d, LEG)));
+      out.push(step("Aufgabe", "In jeder Box steckt dieselbe Zahl, die ich noch nicht kenne: das ist das " + T("x", "zs") + ". Die Waage ist im Gleichgewicht: Links liegt genauso viel wie rechts. Ich will die Box <b>knacken</b>, also herausfinden, welche Zahl in einer Box steckt. Dafür muss die Box allein liegen. Ich darf auf <b>beiden</b> Seiten immer nur dasselbe tun, sonst kippt die Waage. Dann beschreibt die neue Waage dieselbe unbekannte Zahl. Das nennt man <b>Äquivalenzumformung</b>." + (!qz(c) && mode !== "e1" ? " Zuerst sammle ich alle Boxen auf einer Seite. Dann stören die Stücke weniger: Es liegen nur noch Boxen auf einer Seite, und die Gleichung wird einfacher." : ""), eqL("", origS) + origPic(a, b, c, d, LEG)));
+      if (SYM) {
+        const ex = !qz(c) && mode !== "e1" ? origS + " &nbsp;| " + (c.n > 0 ? "− " : "+ ") + coef(abs(c), "x") : (!qz(b) && mode !== "e3" ? origS + " &nbsp;| " + (b.n > 0 ? "− " : "+ ") + qs(abs(b)) : "3x + 4 = 10 &nbsp;| − 4");
+        out.push(step("Von der Waage zur Gleichung", "Jetzt schreibe ich auf, was ich auf der Waage tue. Hinter den <b>senkrechten Strich</b> kommt, was ich <b>links und rechts</b> tue: " + T("| − 4", "zr") + " heißt, links und rechts nehme ich 4 weg, und " + T("| : 3", "zr") + " heißt, links und rechts verteile ich gleichmäßig auf 3 Teile. Die Gleichung darunter beschreibt dieselbe unbekannte Zahl wie die Waage.", eqL("", ex)));
+      }
       let s = { lx: a, lk: b, rx: c, rk: d };
       if (mode === "e3") {
         s = { lx: a, lk: qmul(a, b), rx: c, rk: d };
@@ -5266,7 +5394,7 @@ renderStell();
       let x;
       if (!one(s.lx)) {
         const r = s.lx;
-        out.push(step("Auf eine Box runterrechnen: durch " + qsig(r) + " teilen", "Links liegen " + Bn(r) + ", rechts liegt " + desc(s.rx, s.rk) + ". Ich will wissen, was in <b>einer</b> Box steckt. " + (r.n > 0 ? "Dazu verteile ich beide Seiten gleichmäßig auf " + qs(r) + " Teile. Zu einer Box gehört ein Teil, rechts gehört dazu ein gleich großer Teil." : "Dazu teile ich beide Seiten durch " + par(r) + ".") + (SYM ? " In der Gleichung schreibe ich das hinter den Strich: " + T("| : " + par(r), "zr") + "." : ""), symEq(eqL("", stateEq(s) + " &nbsp;" + T("| : " + par(r), "zr"))) + balPic(terms(s.lx, s.lk), terms(s.rx, s.rk), null, "÷ " + (r.n < 0 ? "(" + qpl(r) + ")" : qpl(r)), "Beide Seiten werden in " + qs(abs(r)) + " gleiche Teile geteilt. Die Waage bleibt im Gleichgewicht.")));
+        out.push(step("Auf eine Box runterrechnen: durch " + qsig(r) + " teilen", "Links liegen " + Bn(r) + ", rechts liegt " + desc(s.rx, s.rk) + ". Ich will wissen, was in <b>einer</b> Box steckt. " + (r.n > 0 ? "Dazu verteile ich beide Seiten gleichmäßig auf " + qs(r) + " Teile. Zu einer Box gehört ein Teil, rechts gehört dazu ein gleich großer Teil." : "Dazu teile ich beide Seiten durch " + par(r) + ". Teile ich durch eine negative Zahl, ändert sich das Vorzeichen der rechten Seite: " + qsig(s.rk) + " : " + par(r) + " = " + qsig(qdiv(s.rk, r)) + ".") + (SYM ? " In der Gleichung schreibe ich das hinter den Strich: " + T("| : " + par(r), "zr") + "." : ""), symEq(eqL("", stateEq(s) + " &nbsp;" + T("| : " + par(r), "zr"))) + balPic(terms(s.lx, s.lk), terms(s.rx, s.rk), null, "÷ " + (r.n < 0 ? "(" + qpl(r) + ")" : qpl(r)), "Beide Seiten werden in " + qs(abs(r)) + " gleiche Teile geteilt. Die Waage bleibt im Gleichgewicht.")));
         x = qdiv(s.rk, r);
         out.push(step("Die Box ist geknackt", "Links liegt jetzt genau <b>eine</b> Box. Rechts liegt " + T(Sn(x), "zg") + (x.d !== 1 ? " (das sind " + dec(x) + ")" : "") + ". In einer Box steckt also die Zahl " + T(qsig(x), "zg") + ".", symEq(eqL("", "x = " + qsig(x))) + balPic([{ k: "box", n: 1, d: 1, neg: false }], terms(Q(0), x), null, null, "Eine Box liegt allein auf der Waage.")));
       } else { x = s.rk; }
@@ -5305,26 +5433,112 @@ renderStell();
       const A = "#6cc0f5", B = "#ffb347", C = "#5fd06f", D = "#c4a1ff";
       let h;
       if (mode === "e1") h = num("a", A) + '<span class="mdot">x +</span>' + num("b", B) + '<span class="mdot">=</span>' + num("d", D);
-      else if (mode === "e2") h = num("a", A) + '<span class="mdot">x +</span>' + num("b", B) + '<span class="mdot">=</span>' + num("c", C) + '<span class="mdot">x +</span>' + num("d", D);
+      else if (mode === "e2" || mode === "e4") h = num("a", A) + '<span class="mdot">x +</span>' + num("b", B) + '<span class="mdot">=</span>' + num("c", C) + '<span class="mdot">x +</span>' + num("d", D);
       else h = num("a", A) + '<span class="mdot">· (x +</span>' + num("b", B) + '<span class="mdot">) =</span>' + num("c", C) + '<span class="mdot">x +</span>' + num("d", D);
       row.innerHTML = '<div class="lgrow">' + h + '</div><p class="note">Negative Zahlen gibst du mit Minus ein, zum Beispiel −4. Die Zahl vor x darf auch 0 sein, wenn x auf beiden Seiten steht.</p><label class="note" style="display:flex;gap:.5rem;align-items:center;cursor:pointer"><input type="checkbox" id="aqSym"' + (SYM ? " checked" : "") + ' style="width:1.2rem;height:1.2rem"> Schreibweise dazu: Gleichungen und senkrechter Strich bei den Schritten anzeigen</label>';
-      const cb = $("aqSym"); if (cb) cb.addEventListener("change", () => { SYM = cb.checked; sp.render(); });
-      row.querySelectorAll("input[data-k]").forEach(inp => inp.addEventListener("input", () => { V[inp.dataset.k] = inp.value === "" ? NaN : Number(inp.value); sp.reset(); sp.render(); }));
+      const cb = $("aqSym"); if (cb) cb.addEventListener("change", () => { SYM = cb.checked; if (mode === "e4") wtRender(); else sp.render(); });
+      row.querySelectorAll("input[data-k]").forEach(inp => inp.addEventListener("input", () => { V[inp.dataset.k] = inp.value === "" ? NaN : Number(inp.value); sp.reset(); refresh(); }));
     }
-    const KEYS = ["e1", "e2", "e3"];
+
+    /* ---- Was würdest du tun? Die Lernenden wählen die nächste Umformung ---- */
+    let WT = null;
+    const shuf = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i), t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
+    const wtHost = () => { let e = $(pre + "WT"); if (!e) { e = document.createElement("div"); e.id = pre + "WT"; e.className = "card"; const h = $(pre + "Steps"); h.parentNode.insertBefore(e, h); } return e; };
+    const lblOp = o => o.k === "box" ? "Links und rechts " + Bn(abs(o.r)) + (o.r.n > 0 ? " wegnehmen" : " dazulegen")
+      : o.k === "stone" ? "Links und rechts " + Sn(abs(o.r)) + (o.r.n > 0 ? " wegnehmen" : " dazulegen")
+      : o.k === "mul" ? "Beide Seiten mit " + par(o.r) + " malnehmen"
+      : o.r.n > 0 ? "Beide Seiten gleichmäßig auf " + qs(o.r) + " Teile verteilen" : "Beide Seiten durch " + par(o.r) + " teilen";
+    const symOp = o => o.k === "div" ? "| : " + par(o.r) : o.k === "mul" ? "| · " + par(o.r) : "| " + (o.r.n > 0 ? "− " : "+ ") + (o.k === "box" ? coef(abs(o.r), "x") : qs(abs(o.r)));
+    function wtOps(st) {
+      const rb = !qz(st.rx), rs = !qz(st.lk), good = [], bad = [];
+      if (rb) good.push({ k: "box", r: st.rx });
+      if (rs) good.push({ k: "stone", r: st.lk });
+      const ready = !rb && !rs && !qz(st.lx);
+      if (ready && !one(st.lx)) good.push({ k: "div", r: st.lx });
+      const g0 = good[0];
+      if (g0) {
+        const what = g0.k === "box" ? Bn(abs(g0.r)) : g0.k === "stone" ? Sn(abs(g0.r)) : "";
+        bad.push({ k: "one", t: g0.k === "div" ? "Nur links gleichmäßig auf " + qs(abs(g0.r)) + " Teile verteilen" : "Nur links " + what + (g0.r.n > 0 ? " wegnehmen" : " dazulegen"), fb: "Das tust du nur auf einer Seite. Dann kippt die Waage: Links liegt dann nicht mehr dasselbe wie rechts. Was links geschieht, muss auch rechts geschehen." });
+        if (g0.k !== "div") bad.push({ k: "dir", t: "Links und rechts " + what + (g0.r.n > 0 ? " dazulegen" : " wegnehmen"), fb: "Das ist erlaubt, die Waage bleibt im Gleichgewicht. Aber es liegen dann noch mehr Teile auf der Waage als vorher. Dein Ziel, die Box allein zu legen, kommt nicht näher." });
+      }
+      if ((rb || rs) && !qz(st.lx) && !one(st.lx)) bad.push({ k: "early", t: lblOp({ k: "div", r: st.lx }), fb: "Dann müsstest du auch die Stücke verteilen. Das geht, aber es wird unhandlich. Räume erst auf, bis nur noch Boxen links und nur noch Stücke rechts liegen. Dann verteilst du." });
+      if (ready && !one(st.lx)) bad.push({ k: "mul", t: lblOp({ k: "mul", r: st.lx }), fb: "Dann liegen noch mehr Boxen auf der Waage. Du willst wissen, was in einer Box steckt. Dafür verteilst du gleichmäßig, du malnimmst nicht." });
+      const opts = good.map(o => ({ o: o, ok: true, t: lblOp(o) }));
+      shuf(bad).forEach(b => { if (opts.length < 4) opts.push({ o: b, ok: false, t: b.t, fb: b.fb }); });
+      opts.forEach(o => { o.sym = o.ok ? symOp(o.o) : ""; });
+      return shuf(opts);
+    }
+    function wtInit() {
+      const ks = ["a", "b", "c", "d"], msg = $(pre + "Msg");
+      if (ks.some(k => !Number.isInteger(V[k])) || ks.some(k => Math.abs(V[k]) > 99)) { msg.className = "note err"; msg.textContent = "Bitte in alle Felder ganze Zahlen eingeben (höchstens 99)."; wtHost().innerHTML = ""; return; }
+      msg.className = "note"; msg.textContent = "Was würdest du tun? Wähle die nächste Umformung. Die Waage sagt dir sofort, ob sie im Gleichgewicht bleibt.";
+      WT = { s: { lx: Q(V.a), lk: Q(V.b), rx: Q(V.c), rk: Q(V.d) }, hist: [], fb: "", fbOk: null, opts: null, done: null, wrong: 0 };
+      WT.opts = wtFinish() ? [] : wtOps(WT.s);
+      wtRender();
+    }
+    function wtFinish() {
+      const st = WT.s;
+      if (qz(st.lx) && qz(st.rx) && qz(st.lk)) { WT.done = { same: qz(st.rk) }; return true; }
+      if (one(st.lx) && qz(st.lk) && qz(st.rx)) { WT.done = { x: st.rk }; return true; }
+      return false;
+    }
+    function wtPick(i) {
+      const op = WT.opts[i]; if (!op || WT.done) return;
+      if (!op.ok) { WT.wrong++; WT.fb = op.fb; WT.fbOk = false; op.used = true; wtRender(); return; }
+      const st = WT.s, o = op.o, r = o.r;
+      let ns;
+      if (o.k === "box") ns = { lx: qsub(st.lx, r), lk: st.lk, rx: qsub(st.rx, r), rk: st.rk };
+      else if (o.k === "stone") ns = { lx: st.lx, lk: qsub(st.lk, r), rx: st.rx, rk: qsub(st.rk, r) };
+      else ns = { lx: qdiv(st.lx, r), lk: qdiv(st.lk, r), rx: qdiv(st.rx, r), rk: qdiv(st.rk, r) };
+      WT.hist.push({ t: op.t, sym: op.sym, before: st }); WT.s = ns;
+      WT.fb = "Richtig: " + op.t + ". Die Waage bleibt im Gleichgewicht. Jetzt liegen links " + desc(ns.lx, ns.lk) + " und rechts " + desc(ns.rx, ns.rk) + "."; WT.fbOk = true;
+      WT.opts = wtFinish() ? [] : wtOps(ns);
+      wtRender();
+    }
+    function wtRender() {
+      const h = wtHost(); if (!WT) { h.innerHTML = ""; return; }
+      const st = WT.s;
+      let html = '<div class="ktitle">Was würdest du tun?</div>' + pic(st, null, null, "So liegt es jetzt auf der Waage." );
+      if (SYM) html = html.replace('<div class="dsvgw">', '<div class="lge"><b></b> ' + stateEq(st) + '</div><div class="dsvgw">');
+      if (WT.done) {
+        const dn = WT.done;
+        if (dn.x) {
+          const x = dn.x, a = Q(V.a), b = Q(V.b), c = Q(V.c), d = Q(V.d), lv = qadd(qmul(a, x), b), rv = qadd(qmul(c, x), d);
+          html += '<div class="note good" style="font-weight:700">Die Box ist geknackt: In einer Box steckt die Zahl ' + T("x = " + qsig(x), "zg") + ".</div>" + eqL("Kontrolle:", "Links " + qsig(lv) + ", rechts " + qsig(rv) + (lv.n === rv.n && lv.d === rv.d ? ' <span class="zg">stimmt</span>' : ' <span class="zr">stimmt nicht</span>')) + '<div class="zbig">L = {' + qsig(x) + "}</div>";
+        } else html += '<div class="note good" style="font-weight:700">Die Boxen sind weg. ' + (dn.same ? "Beide Seiten sind immer gleich schwer: unendlich viele Lösungen." : "Die Seiten sind nie gleich schwer: keine Lösung.") + "</div>";
+        html += '<div class="note">Du hast ' + WT.hist.length + " Umformungen gebraucht" + (WT.wrong ? " und dich " + WT.wrong + "-mal vertan." : " ohne Fehlgriff.") + "</div>";
+      } else {
+        html += '<div class="note" style="margin-top:.5rem">Welche Umformung machst du als Nächstes?</div><div id="' + pre + 'WTo">' + WT.opts.map((o, i) => '<button type="button" data-i="' + i + '" style="display:block;width:100%;text-align:left;margin:.35rem 0"' + (o.used ? " disabled" : "") + ">" + o.t + (SYM && o.ok ? "&nbsp;&nbsp;" + o.sym : "") + "</button>").join("") + "</div>";
+      }
+      if (WT.fb) html += '<div class="note ' + (WT.fbOk ? "good" : "err") + '" style="margin-top:.4rem">' + (WT.fbOk ? "" : "Noch nicht: ") + WT.fb + "</div>";
+      if (WT.hist.length) html += '<div class="note" style="margin-top:.6rem"><b>Bisher:</b> ' + WT.hist.map((e, i) => (i + 1) + ". " + e.t + (SYM ? " (" + e.sym + ")" : "")).join(" · ") + "</div>";
+      html += '<div class="controls" style="margin-top:.6rem"><button type="button" id="' + pre + 'WTr">Neu starten</button></div>';
+      h.innerHTML = html;
+      h.querySelectorAll("#" + pre + "WTo button").forEach(bt => bt.addEventListener("click", () => wtPick(Number(bt.dataset.i))));
+      const rb = $(pre + "WTr"); if (rb) rb.addEventListener("click", wtInit);
+      given();
+    }
+    function refresh() {
+      const wt = mode === "e4", host = $(pre + "Steps");
+      ["Next", "Back", "All", "Restart"].forEach(k => { $(pre + k).style.display = wt ? "none" : ""; });
+      host.style.display = wt ? "none" : "";
+      const w = wtHost(); w.style.display = wt ? "" : "none";
+      if (wt) wtInit(); else sp.render();
+    }
+    const KEYS = ["e1", "e2", "e3", "e4"];
     const mark = m => KEYS.forEach(k => $(pre + "_" + k).setAttribute("aria-selected", k === m ? "true" : "false"));
-    function setMode(m) { mode = m; Object.assign(V, { a: DEF[m][0], b: DEF[m][1], c: DEF[m][2], d: DEF[m][3] }); mark(m); sp.reset(); inputs(); sp.render(); }
+    function setMode(m) { mode = m; Object.assign(V, { a: DEF[m][0], b: DEF[m][1], c: DEF[m][2], d: DEF[m][3] }); mark(m); sp.reset(); inputs(); refresh(); }
     KEYS.forEach(k => $(pre + "_" + k).addEventListener("click", () => setMode(k)));
     $(pre + "Random").addEventListener("click", () => {
       const nz = (lo, hi) => { let n = 0; while (!n) n = ri(lo, hi); return n; };
       const s = ri(-8, 8), integer = Math.random() < 0.8; let a = nz(-6, 7), b = nz(-12, 12), c = 0, d;
       if (mode === "e1") d = integer ? a * s + b : ri(-20, 20);
-      else if (mode === "e2") { do { c = nz(-6, 7); } while (c === a); d = integer ? (a - c) * s + b : ri(-20, 20); if (Math.random() < 0.08) { c = a; d = b + nz(-5, 5); } }
+      else if (mode === "e2" || mode === "e4") { do { c = nz(-6, 7); } while (c === a); d = integer ? (a - c) * s + b : ri(-20, 20); if (Math.random() < 0.08) { c = a; d = b + nz(-5, 5); } }
       else { do { c = ri(-4, 6); } while (c === a); b = nz(-6, 6); d = integer ? a * (s + b) - c * s : ri(-20, 20); }
-      Object.assign(V, { a: a, b: b, c: c, d: d }); sp.reset(); inputs(); sp.render();
+      Object.assign(V, { a: a, b: b, c: c, d: d }); sp.reset(); inputs(); refresh();
     });
     setMode("e2");
-    window.__dz = Object.assign(window.__dz || {}, { setAq: (m, a, b, c, d) => { mode = m; Object.assign(V, { a: a, b: b, c: c, d: d }); mark(m); sp.reset(); inputs(); sp.render(); } });
+    window.__dz = Object.assign(window.__dz || {}, { wtOk: () => WT && WT.opts.map(x => !!x.ok), setAq: (m, a, b, c, d) => { mode = m; Object.assign(V, { a: a, b: b, c: c, d: d }); mark(m); sp.reset(); inputs(); refresh(); } });
   })();
 
 })();

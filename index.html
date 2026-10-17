@@ -563,7 +563,7 @@
   .ws-lean .ws-toolbar{margin-bottom:4px}
   .ws-lean .ws-nin{background:transparent;border-color:transparent}
   .ws-lean .ws-nin:focus{background:#101216;border-color:#30343b}
-  .ws-more{display:none;flex:none;background:transparent;border:1px solid #30343b;color:#8b93a1;border-radius:6px;font:700 12px var(--mono);padding:1px 7px;cursor:pointer;line-height:18px}
+  .ws-more{display:inline-block;flex:none;background:transparent;border:1px solid #30343b;color:#8b93a1;border-radius:6px;font:700 12px var(--mono);padding:1px 7px;cursor:pointer;line-height:18px}
   .ws-more.on{border-color:var(--amber);color:var(--amber)}
   .ws-lean .ws-more{display:inline-block}
   .ws-lean .ws-node.more > .ws-nrow .ws-nright{display:flex}
@@ -658,6 +658,17 @@
   .ws-date.sub.over{color:var(--red);border-color:var(--red)}
   .ws-hrow{flex-wrap:wrap}
   .ws-hrow .ws-h{flex:1 1 150px}
+
+  /* Menü statt 📅: der Kalender-Knopf bleibt unsichtbar im Hintergrund, alles liegt hinter ⋯ */
+  .ws-nright > .ws-mini[data-wsact="link-menu"],.ws-block > .ws-x[data-wsact="head-menu"]{display:none !important}
+  .ws-imenu .ws-imitem{display:block;width:100%;text-align:left;margin-bottom:6px;padding:12px 14px;font-size:15px}
+  .ws-imenu .ws-imitem.danger{color:#ff8a8e;border-color:rgba(255,90,95,.4)}
+  /* ⋯ steht an jedem Eintrag immer sichtbar, auch in der schlanken Ansicht */
+  .ws-attmenu{font-weight:800}
+
+  .row-actions.cm-on{display:none !important}
+  .cm-btn{font-weight:800;min-width:34px;align-self:center}
+@media(max-width:480px){.ws-block[data-kind="heading"]{flex-wrap:wrap}.ws-block[data-kind="heading"] > .ws-bbody{flex:1 1 calc(100% - 40px)}.ws-block[data-kind="heading"] > .ws-handle{order:0}.ws-block[data-kind="heading"] > .ws-plus,.ws-block[data-kind="heading"] > .ws-more,.ws-block[data-kind="heading"] > .ws-x{order:2}}
 </style>
 </head>
 <body>
@@ -1645,7 +1656,7 @@ function gTaskCardHtml(t, key, bg){
   const dueLabel=dueKey?new Date(dueKey).toLocaleDateString("de-DE",{day:"numeric",month:"short"}):"";
   const goal=isGoalTask(t);
   const labelColor=overdue?"#E24B4A":"#000";
-  const labelText=(goal?"🎯 Ziel · ":"")+(overdue?`überfällig · ${dueLabel}`:`heute`);
+  const labelText=(goal?"🎯 Ziel · ":"")+(overdue?`überfällig · ${dueLabel}`:`heute · ${wsShortDate(dueKey||key)}`);
   const cleanNotes=(t.notes||"").replace(GOAL_MARKER,"").replace(/\| DL:.*$/,"").trim();
   const dlColor=deadlineColor(t.deadlineDays);
   const dlLabel=deadlineLabel(t.deadlineDays);
@@ -1680,7 +1691,7 @@ function taskCard(t,{showCheck=true, key=todayKey(), oneTime=false}={}){
     <div class="body">
       <div class="title" style="color:#000">${esc(t.title)}</div>
       ${urgency}
-      <div class="sub" style="color:#000"><span>${esc(scheduleLabel(t))}</span>${cal}${tagBadge}${overdueBadge}${inboxBadge}</div>
+      <div class="sub" style="color:#000"><span>${wsCardDate(t)}</span>${cal}${tagBadge}${overdueBadge}${inboxBadge}</div>
       ${notes}
     </div>
     <div class="row-actions">
@@ -1722,7 +1733,7 @@ function goalCard(t){
 function goalTaskCard(g){
   return `<div class="card${g.completed?' done':''}" style="border-left:4px solid var(--amber)">
     <div class="check${g.completed?' on':''}" data-${g.completed?'guncheck':'gtask'}="${g.id}">${checkSvg()}</div>
-    <div class="body"><div class="title" style="color:#000">${esc(g.title)}</div></div>
+    <div class="body"><div class="title" style="color:#000">${esc(g.title)}</div>${wsGoalDateLine(g)}</div>
     <div class="row-actions">
       ${wsTaskBtns("goal",g.id)}
       <button class="mini" data-gcal="${g.id}" title="In Google Kalender eintragen">📅</button>
@@ -4623,7 +4634,7 @@ function wsAttHtml(a, eff){
       <button class="ws-tog" data-wsact="fold" title="${open?"Einklappen":"Aufklappen"}">${open?"▾":"▸"}</button>
       <button class="ws-chk${a.done?" on":""}" data-wsact="done" title="Erledigt">${a.done?"✓":""}</button>
       <input type="text" class="ws-in ws-atitle" data-wsf="atitle" value="${esc(a.title)}" placeholder="${a.type==="text"?"Titel (optional)":a.type==="link"?"Bezeichnung des Links (optional)":a.type==="file"?(a.name||"Bezeichnung (optional)"):"Titel der Tabelle"}">
-      <span class="ws-nright">${wsNodeChips(a)}${wsAttTagBtn(a, wsTagUnion(eff, a.tag), "tag-att", "diesen Anhang")}<button class="ws-mini ws-fobtn${wsFocusHas(wsFocusDocOf(a.id),a.id)?" on":""}" data-wsact="focus" data-fid="${a.id}" title="In Heute als Fokus anzeigen / Fokus aufheben">📌</button><button class="ws-mini" data-wsact="move-att" title="Zu einem anderen Punkt, Block oder Dokument verschieben">⇄</button><button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button></span>
+      <span class="ws-nright">${wsNodeChips(a)}${wsAttTagBtn(a, wsTagUnion(eff, a.tag), "tag-att", "diesen Anhang")}<button class="ws-mini ws-fobtn${wsFocusHas(wsFocusDocOf(a.id),a.id)?" on":""}" data-wsact="focus" data-fid="${a.id}" title="In Heute als Fokus anzeigen / Fokus aufheben">📌</button><button class="ws-mini" data-wsact="move-att" title="Zu einem anderen Punkt, Block oder Dokument verschieben">⇄</button><button class="ws-mini" data-wsact="del-att" title="Anhang löschen">✕</button><button class="ws-mini ws-attmenu" data-wsact="item-menu" data-kind="att" data-id="${a.id}" title="Menü: Bearbeiten, Erledigt, Fokus, Verschieben, Tag, Löschen …">⋯</button></span>
     </div>
     <div class="ws-abody"${open?"":' data-wsact="fold"'}>${body}</div>
   </div>`;
@@ -4655,7 +4666,7 @@ function wsNodeHtml(n, depth, inh, base){
       <span class="ws-lvt" title="Ebene ${depth+base}">E${depth+base}</span><button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
       <button class="ws-plus" data-wsact="plus" data-kind="node" data-id="${n.id}" title="Hinzufügen: Punkt, Unterpunkt, Überschrift, Anhang …">+</button>
-      <button class="ws-more${mo?" on":""}" data-wsact="more" data-mid="${n.id}" title="${mo?"Knöpfe dieses Punkts wieder einklappen":"Alle Knöpfe dieses Punkts anzeigen"}">${mo?"‹ zu":"⋯"}</button>
+      <button class="ws-more${mo?" on":""}" data-wsact="${mo?"more":"item-menu"}" data-mid="${n.id}" data-kind="node" data-id="${n.id}" title="${mo?"Knöpfe dieses Punkts wieder einklappen":"Menü: Bearbeiten, Meta-Projekt, Erledigt, Fokus, Verschieben, Tag, Löschen …"}">${mo?"‹ zu":"⋯"}</button>
       <span class="ws-dchips">${wsNodeChips(n, "dates")}</span>
       <span class="ws-nright">
       ${wsNodeChips(n, "rest")}
@@ -4700,7 +4711,7 @@ function wsBlockHtml2(b, eff, hidN, ind, base){
     <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
     <div class="ws-bbody">${body}</div>
     ${b.type==="outline"?"":`<button class="ws-plus" data-wsact="plus" data-kind="block" data-id="${b.id}" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>`}
-    <button class="ws-more${bmo?" on":""}" data-wsact="more" data-mid="${b.id}" title="${bmo?"Knöpfe dieses Blocks wieder einklappen":"Alle Knöpfe dieses Blocks anzeigen"}">${bmo?"‹ zu":"⋯"}</button>
+    <button class="ws-more${bmo?" on":""}" data-wsact="${bmo?"more":"item-menu"}" data-mid="${b.id}" data-kind="block" data-id="${b.id}" title="${bmo?"Knöpfe dieses Blocks wieder einklappen":"Menü: Bearbeiten, Meta-Projekt, Erledigt, Fokus, Verschieben, Tag, Löschen …"}">${bmo?"‹ zu":"⋯"}</button>
     <button class="ws-x ws-tagb${b.tag?" on":(eff?" inh":"")}" data-wsact="tag-block" title="${b.type==="heading"?"Tag setzen (gilt für diese Überschrift und alle Blöcke bis zur nächsten Überschrift)":(b.tag?"Eigener Tag des Blocks":(eff?"Tag geerbt von oben, hier änderbar":"Tag für diesen Block setzen"))}">🏷${eff?" "+esc(eff):""}</button>
     ${(b.type==="heading" && !b.date && !b.dl && !b.meta)?`<button class="ws-x" data-wsact="head-menu" title="Fälligkeit, Deadline und Meta-Projekt für diese Überschrift">📅</button>`:""}
     ${b.type==="heading"?`<button class="ws-x" data-wsact="move-head" title="Diese Überschrift samt allem darunter verschieben (auch in ein anderes Dokument)">⇄</button>`:""}
@@ -6207,6 +6218,9 @@ main.addEventListener("click", e=>{
   if((act==="fold-all" || act==="unfold-all") && doc){
     wsSetAllFolds(doc, act==="fold-all"); wsTouch(doc); wsRerender(doc.id); return;
   }
+  if(act==="item-menu" && doc){
+    wsOpenItemMenu(doc.id, a.dataset.kind, a.dataset.id, a.closest(".ws-nrow")||a.closest(".ws-arow")||a.closest(".ws-block")); return;
+  }
   if(act==="more" && doc){
     const id = a.dataset.mid; if(wsMore.has(id)) wsMore.delete(id); else wsMore.add(id);
     wsRerender(doc.id); return;
@@ -7514,6 +7528,140 @@ function wsOpenMoveHead(docId, bid){
     wsTouch(doc); if(dst!==doc) wsTouch(dst);
     $("modalBg").remove(); toast("Verschoben nach „"+(dst.title||"(ohne Titel)")+"“"); render();
   };
+}
+/* ---- Ein Menü für jeden Eintrag: Punkt (E3 und tiefer), Überschrift (E1, E2), Notiz, Tabelle, Anhang ---- */
+function wsOpenItemMenu(docId, kind, id, scope){
+  if(document.getElementById("modalBg")) return;
+  const doc = wsGet(docId); if(!doc) return;
+  const px = sel=>()=>{ const b = scope && scope.querySelector(sel); if(b) b.click(); else toast("Das geht hier gerade nicht"); };
+  const items = []; let title = "";
+  const add = (label, fn, danger)=>items.push({label, fn, danger:!!danger});
+  const metaToggle = (o)=>()=>{ o.meta = !o.meta; wsTouch(doc); wsRerender(doc.id); toast(o.meta ? "Meta-Projekt: erscheint in Heute unter Metaprojekten und im Gantt" : "Kein Meta-Projekt mehr"); };
+  const moreRow = ()=>add("Alle Knöpfe dieser Zeile zeigen", ()=>{ wsMore.add(id); wsRerender(doc.id); });
+  if(kind==="node"){
+    const r = wsFindNode(doc, id); if(!r) return; const n = r.node;
+    title = (n.text||"(ohne Text)").slice(0,50);
+    add("✏️ Bearbeiten: Termine, Meta-Projekt, ToDo / Ziel", ()=>wsOpenLinkMenu(docId, id));
+    add(n.meta ? "★ Kein Meta-Projekt mehr" : "☆ Als Meta-Projekt markieren", metaToggle(n));
+    add(n.done ? "↩ Wieder öffnen" : "✓ Als erledigt markieren", px('[data-wsact="done"]'));
+    add("📌 Fokus in Heute an / aus", px('[data-wsact="focus"]'));
+    add("＋ Hinzufügen: Punkt, Überschrift, Anhang …", px('[data-wsact="plus"]'));
+    add("Unterpunkt anlegen", px('[data-wsact="add-child"]'));
+    if(scope && scope.querySelector('[data-wsact="att-toggle"]')) add("📎 Anhang ansehen oder anfügen", px('[data-wsact="att-toggle"]'));
+    add("⇄ Verschieben …", px('[data-wsact="move-node"]'));
+    add("Ebene ändern …", ()=>wsOpenLevelMenu(docId, "node", id));
+    add("🏷 Tag setzen …", px('[data-wsact="tag-node"]'));
+    add(n.hid ? "🙈 Wieder einblenden" : "👁 Ausblenden", px('[data-wsact="hide-node"]'));
+    moreRow();
+    add("🗑 Löschen", px('[data-wsact="del-node"]'), true);
+  }else if(kind==="att"){
+    const a = wsFindAny(doc, id); if(!a) return;
+    title = (a.title||a.name||a.url||"Anhang").slice(0,50);
+    add("✏️ Bearbeiten: Termine und Verknüpfung", px('[data-wsact="link-menu"]'));
+    add(a.done ? "↩ Wieder öffnen" : "✓ Als erledigt markieren", px('[data-wsact="done"]'));
+    add("📌 Fokus in Heute an / aus", px('[data-wsact="focus"]'));
+    add("⇄ Verschieben …", px('[data-wsact="move-att"]'));
+    add("🏷 Tag setzen …", px('[data-wsact="tag-att"]'));
+    add("🗑 Löschen", px('[data-wsact="del-att"]'), true);
+  }else{
+    const b = wsBlock(doc, id); if(!b) return;
+    if(b.type==="heading"){
+      title = (b.text||"(Überschrift ohne Text)").slice(0,50);
+      add("✏️ Bearbeiten: Fälligkeit, Laufzeit, Deadline", ()=>wsOpenHeadMenu(docId, id));
+      add(b.meta ? "★ Kein Meta-Projekt mehr" : "☆ Als Meta-Projekt markieren", metaToggle(b));
+      add(b.done ? "↩ Wieder öffnen" : "✓ Als erledigt markieren", px('[data-wsact="hdone"]'));
+      add("📌 Fokus in Heute an / aus", px('[data-wsact="focus"]'));
+      add("＋ Hinzufügen: Punkt, Text, Tabelle, Überschrift …", px('[data-wsact="plus"]'));
+      add("⇄ Verschieben …", px('[data-wsact="move-head"]'));
+      add("Ebene ändern …", ()=>wsOpenLevelMenu(docId, "head", id));
+      add("🏷 Tag setzen …", px('[data-wsact="tag-block"]'));
+      moreRow();
+      add("🗑 Löschen samt Abschnitt", px('[data-wsact="del-block"]'), true);
+    }else{
+      title = b.type==="table" ? "Tabelle" : (String(b.text||"").split("\n")[0]||"Notiz").slice(0,50);
+      add("📌 Fokus in Heute an / aus", px('[data-wsact="focus"]'));
+      add("＋ Hinzufügen: Punkt, Text, Tabelle, Überschrift …", px('[data-wsact="plus"]'));
+      add("🏷 Tag setzen …", px('[data-wsact="tag-block"]'));
+      moreRow();
+      add("🗑 Löschen", px('[data-wsact="del-block"]'), true);
+    }
+  }
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>${esc(title)}</h2>
+    <div class="ws-implist ws-imenu">${items.map((it,i)=>`<button class="ws-addbtn ws-imitem${it.danger?" danger":""}" data-im="${i}">${esc(it.label)}</button>`).join("")}</div>
+    <div class="modal-actions"><button class="btn-primary" id="wsim_close">Schließen</button></div></div></div>`);
+  const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); };
+  document.getElementById("wsim_close").onclick = close;
+  document.getElementById("modalBg").onclick = e=>{
+    if(e.target.id==="modalBg"){ close(); return; }
+    const b = e.target.closest("[data-im]"); if(!b) return;
+    const it = items[+b.dataset.im]; close();
+    if(it) setTimeout(it.fn, 0);
+  };
+}
+/* ---- ⋯-Menü auf allen Karten der App (Heute, ToDos, Ziele, Gewohnheiten, Pflicht, Ablenkungen, Notizen, Projekte, Offene Punkte) ---- */
+function wsCmLabel(b){
+  const d = b.dataset, t = (b.getAttribute("title")||"").trim(), tx = (b.textContent||"").trim();
+  if(b.tagName==="A") return {k:1, label:"🔗 Link öffnen"};
+  if(d.wsact==="task-focus") return {k:5, label:"📌 Fokus in Heute an / aus"};
+  if(d.wsact==="task-meta") return {k:4, label:"★ Meta-Projekt an / aus"};
+  const key = Object.keys(d)[0] || "";
+  if(/^(edit|gedit)/.test(key)) return {k:0, label:"✏️ Bearbeiten"};
+  if(/^(del|gdel)/.test(key)) return {k:9, label:"🗑 Löschen", danger:true};
+  if(key==="gcal") return {k:3, label:"📅 In Google Kalender eintragen"};
+  if(key==="sort") return {k:2, label:"➜ Einsortieren"};
+  if(key==="doDistraction") return {k:2, label:"✓ Jetzt erledigt"};
+  if(key==="doneProj" || key==="doneNote") return {k:2, label:(tx==="↩"?"↩ ":"✓ ")+(t||"Erledigt")};
+  if(key==="migToday") return {k:2, label:"Auf heute"};
+  if(key==="migTomorrow") return {k:2, label:"Auf morgen"};
+  if(key==="migDone") return {k:2, label:"✓ Erledigt"};
+  if(key==="migDrop") return {k:9, label:"🗑 Verwerfen", danger:true};
+  return {k:6, label:t||tx||"Aktion"};
+}
+function wsCmDecorate(){
+  document.querySelectorAll("#main .row-actions:not([data-cm])").forEach(ra=>{
+    if(!ra.querySelector("button,a")) return;
+    ra.dataset.cm = "1"; ra.classList.add("cm-on");
+    const b = document.createElement("button");
+    b.className = "mini cm-btn"; b.dataset.cmenu = "1"; b.title = "Menü: Bearbeiten, Erledigt, Fokus, Meta-Projekt, Löschen …"; b.textContent = "⋯";
+    ra.after(b);
+  });
+}
+function wsCmOpen(btn){
+  if(document.getElementById("modalBg")) return;
+  const ra = btn.previousElementSibling; if(!ra) return;
+  const card = btn.closest(".card");
+  const titleEl = card && card.querySelector(".title");
+  const items = [...ra.querySelectorAll("button,a")].map(el=>Object.assign({el}, wsCmLabel(el))).sort((x,y)=>x.k-y.k);
+  const tf = ra.querySelector('[data-wsact="task-focus"]');
+  if(tf && typeof wsEnsureTaskNode==="function") items.push({k:7, label:"🗂 Im Arbeitsbereich öffnen", fn:()=>{ const hit = wsEnsureTaskNode(tf.dataset.kind, tf.dataset.ref); if(hit) wsGoToItem(hit.doc.id, "node", hit.node.id, false); else toast("Eintrag nicht gefunden"); }});
+  items.sort((x,y)=>x.k-y.k);
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>${esc(((titleEl&&titleEl.textContent)||"Eintrag").trim().slice(0,50))}</h2>
+    <div class="ws-implist ws-imenu">${items.map((it,i)=>`<button class="ws-addbtn ws-imitem${it.danger?" danger":""}" data-im="${i}">${esc(it.label)}</button>`).join("")}</div>
+    <div class="modal-actions"><button class="btn-primary" id="wsim_close">Schließen</button></div></div></div>`);
+  const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); };
+  document.getElementById("wsim_close").onclick = close;
+  document.getElementById("modalBg").onclick = e=>{
+    if(e.target.id==="modalBg"){ close(); return; }
+    const b = e.target.closest("[data-im]"); if(!b) return;
+    const it = items[+b.dataset.im]; close();
+    if(it) setTimeout(()=>{ if(it.fn) it.fn(); else it.el.click(); }, 0);
+  };
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-cmenu]"); if(b){ e.preventDefault(); e.stopPropagation(); wsCmOpen(b); } }, true);
+new MutationObserver(()=>wsCmDecorate()).observe(document.getElementById("main"), {childList:true, subtree:true});
+wsCmDecorate();
+/* Fälligkeit auf ToDo-Karten: lesbares Datum statt Rohtext */
+function wsCardDate(t){
+  if(t && t.type==="todo" && t.scheduleType!=="weekly" && wsIsDate(t.startDate||"")){
+    return `📅 ${esc(wsShortDate(t.startDate))}${t.startTime?" · "+esc(t.startTime)+" Uhr":""}`;
+  }
+  return esc(scheduleLabel(t));
+}
+function wsGoalDateLine(g){
+  const d = (g.due||"").slice(0,10);
+  if(!wsIsDate(d)) return `<div class="sub" style="color:#555">📅 ohne Datum</div>`;
+  const over = !g.completed && d<todayKey();
+  return `<div class="sub" style="color:${over?"#E24B4A":"#000"}">📅 ${esc(wsShortDate(d))}${over?" · überfällig":(d===todayKey()?" · heute":"")}</div>`;
 }
 function wsOpenImport(o){
   if(document.getElementById("modalBg")) return;

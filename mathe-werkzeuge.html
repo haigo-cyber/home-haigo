@@ -3563,6 +3563,18 @@ renderStell();
       for (let i = 0; i <= 10; i++) ticks.push({ f: i / 10, lab: fmt(P * 10 + i, L), big: i === 0 || i === 10 || i === dL });
       return nlSvg({ aria: "Zahlenstrahl, in 10 Teile geteilt", ticks: ticks, seg: L < p ? [dL / 10, (dL + 1) / 10] : null, mark: L === p ? { f: dL / 10, lab: fmt(q.n, p) } : null });
     }
+    /* Zwischenbild: die markierte Strecke der vorigen Stufe, die 10 Teile sind schon eingezeichnet (orange), noch nicht vergroessert */
+    function preSplit(q, L) {
+      const N3 = q.n * P10(3 - q.p), W = Math.floor(N3 / 1000), fine = [];
+      if (L === 1) {
+        for (let j = 1; j <= 9; j++) fine.push({ f: j / 10, col: "#ffb347", big: false });
+        return nlSvg({ aria: "Strecke von " + W + " bis " + (W + 1) + " ist in 10 Teile geteilt", ticks: [{ f: 0, lab: fmt(W, 0), big: true }, { f: 1, lab: fmt(W + 1, 0), big: true }].concat(fine), seg: [0, 1] });
+      }
+      const P = Math.floor(N3 / P10(3 - (L - 2))), dp = Math.floor(N3 / P10(3 - (L - 1))) % 10, ticks = [];
+      for (let i = 0; i <= 10; i++) ticks.push({ f: i / 10, lab: fmt(P * 10 + i, L - 1), big: i === 0 || i === 10 || i === dp });
+      for (let j = 1; j <= 9; j++) fine.push({ f: (dp + j / 10) / 10, col: "#ffb347", big: false });
+      return nlSvg({ aria: "Markierte Strecke ist in 10 Teile geteilt", ticks: ticks.concat(fine), seg: [dp / 10, (dp + 1) / 10] });
+    }
     function build() {
       const q = parse(V.s, 2, 3);
       if (!q) return "Bitte eine Dezimalzahl mit höchstens 2 Stellen vor und 3 Stellen nach dem Komma eingeben, zum Beispiel 3,475.";
@@ -3572,7 +3584,9 @@ renderStell();
       for (let L = 1; L <= p; L++) {
         const P = Math.floor(N3 / P10(3 - (L - 1))), dL = Math.floor(N3 / P10(3 - L)) % 10, un = UN(L);
         const A = fmt(P, L - 1), B = fmt(P + 1, L - 1), A2 = fmt(P * 10 + dL, L), B2 = fmt(P * 10 + dL + 1, L);
-        out.push(step("In " + un + " verfeinern",
+        out.push(step("Die markierte Strecke teilen",
+          "Die Zahl liegt in der markierten Strecke von " + T(A, "zs") + " bis " + T(B, "zs") + ". Ich zeichne in diese Strecke 10 gleich lange Teile ein (orange Striche). Jeder Teil ist ein " + T(un, "zg") + " lang. Die Striche sind noch klein. Im nächsten Schritt vergrößere ich die Strecke.", preSplit(q, L)));
+        out.push(step("In " + un + " verfeinern (vergrößert)",
           "Ich teile die Strecke von " + A + " bis " + B + " in 10 gleiche Teile. Jeder Teil ist ein " + T(un, "zg") + " lang (" + F(1, P10(L)) + " = " + fmt(1, L) + "). Die Ziffer an der " + un + "stelle ist " + T(dL, "zo") + ". " +
           (dL === 0 ? "Ich gehe 0 Striche nach rechts und bleibe bei " + A2 + ". " : "Ich gehe " + dL + (dL === 1 ? " Strich" : " Striche") + " nach rechts bis " + A2 + ". ") +
           (L < p ? "Die Zahl liegt zwischen " + T(A2, "zs") + " und " + T(B2, "zs") + ". Dort vergrößere ich weiter." : "Ich lande genau bei " + T(xs, "zo") + "."), pic(q, L)));

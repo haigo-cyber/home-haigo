@@ -669,6 +669,8 @@
   .row-actions.cm-on{display:none !important}
   .cm-btn{font-weight:800;min-width:34px;align-self:center}
 @media(max-width:480px){.ws-block[data-kind="heading"]{flex-wrap:wrap}.ws-block[data-kind="heading"] > .ws-bbody{flex:1 1 calc(100% - 40px)}.ws-block[data-kind="heading"] > .ws-handle{order:0}.ws-block[data-kind="heading"] > .ws-plus,.ws-block[data-kind="heading"] > .ws-more,.ws-block[data-kind="heading"] > .ws-x{order:2}}
+.wsb-line{padding:3px 6px;border-radius:6px;cursor:pointer}
+.wsb-line.cur{background:rgba(255,184,0,.22);font-weight:700}
 </style>
 </head>
 <body>
@@ -2089,7 +2091,7 @@ function render(){
     const activeNotes=notes.filter(n=>!n.archived);
     const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const sorted=sortTasksForToday(tasks, key);
-    let h=hudHtml();
+    let h=wsBriefBtnHtml()+hudHtml();
     h+=wsUrgentDeadlinesHtml();
     h+=wsTodayHtml();
     h+=wsMetaTodayHtml();
@@ -7992,6 +7994,167 @@ function wsMetaTodayHtml(){
     </div>`;
   }).join("");
 }
+
+/* ---- Sprachbriefing: liest anstehende Aufgaben, Ziele, Deadlines und Fokus vor (Sprachausgabe des Browsers) ---- */
+const WS_BRIEF_SECS = [["dl","Dringende Deadlines"],["tasks","Heutige Aufgaben"],["soon","Kommende 7 Tage"],["goals","Tages-Ziele"],["focus","Fokus"],["meta","Metaprojekte"]];
+let wsBriefQ = [], wsBriefI = 0, wsBriefOn = false, wsBriefTok = 0, wsBriefLock = null;
+function wsBriefOpts(){
+  const o = {dl:1, tasks:1, soon:1, goals:1, focus:1, meta:1, rate:1};
+  try{ Object.assign(o, JSON.parse(localStorage.getItem("wsBrief")||"{}")); }catch(e){}
+  return o;
+}
+function wsBriefSave(o){ try{ localStorage.setItem("wsBrief", JSON.stringify(o)); }catch(e){} }
+function wsBriefClean(t){
+  return String(t||"").replace(/[\u{1F000}-\u{1FFFF}☀-➿️]/gu, " ").replace(/[#*_`>|\[\]{}<~^]/g, " ").replace(/\s+/g, " ").trim();
+}
+function wsBriefDate(k){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(k||"")) return "";
+  const [y,m,d] = k.split("-").map(Number);
+  return new Date(y, m-1, d).toLocaleDateString("de-DE", {weekday:"long", day:"numeric", month:"long"});
+}
+function wsBriefWhen(days, k){
+  if(days<0) return days===-1 ? "seit gestern überfällig" : "seit "+(-days)+" Tagen überfällig";
+  if(days===0) return "heute fällig";
+  if(days===1) return "morgen fällig";
+  return "fällig am "+wsBriefDate(k);
+}
+/* Liefert die Zeilen des Briefings: [{sec, text}]; rein lesend */
+function wsBriefBuild(o, today){
+  o = o || wsBriefOpts(); today = today || todayKey();
+  const out = [], say = (sec, text)=>out.push({sec, text});
+  const hr = new Date().getHours();
+  say("intro", (hr<11?"Guten Morgen":hr<18?"Guten Tag":"Guten Abend")+". Heute ist "+wsBriefDate(today)+".");
+  const cap = (arr, max, fn, sec)=>{ arr.slice(0, max).forEach(fn); if(arr.length>max) say(sec, "Und "+(arr.length-max)+" weitere."); };
+  if(o.dl){
+    const list = (typeof wsLoaded!=="undefined" && wsLoaded) ? wsDeadlineItems(wsDocs, today).filter(it=>it.days<=5 && !it.node.meta && !it.node.hid) : [];
+    say("dl", list.length ? (list.length===1 ? "Eine dringende Deadline." : list.length+" dringende Deadlines.") : "Keine dringenden Deadlines.");
+    cap(list, 10, it=>say("dl", wsBriefClean(wsTitleOf(it.node)||"Ohne Titel")+", Deadline "+(it.days<0?(it.days===-1?"seit gestern überschritten":"seit "+(-it.days)+" Tagen überschritten"):it.days===0?"heute":it.days===1?"morgen":"in "+it.days+" Tagen")+"."), "dl");
+  }
+  if(o.tasks){
+    const key = today;
+    const act = tasks.filter(t=>!t.archived && t.type!=="goal" && isDue(t, new Date()));
+    const open = sortTasksForToday(act, key).filter(t=>!(t.type==="todo" ? isEverDone(t.id) : isDone(t.id, key)));
+    say("tasks", open.length ? (open.length===1 ? "Eine offene Aufgabe." : open.length+" offene Aufgaben.") : "Keine offenen Aufgaben für heute.");
+    cap(open, 15, t=>{
+      let w = "";
+      if(t.type==="todo" && t.scheduleType!=="weekly" && wsIsDate(t.startDate||"")) w = ", "+wsBriefWhen(wsDayDiff(today, t.startDate), t.startDate)+(t.startTime?" um "+t.startTime+" Uhr":"");
+      say("tasks", wsBriefClean(t.title)+w+".");
+    }, "tasks");
+  }
+  if(o.soon){
+    const lim = 7, items = [];
+    tasks.forEach(tk=>{
+      if(tk.archived || tk.type!=="todo" || tk.scheduleType==="weekly" || !wsIsDate(tk.startDate||"") || isEverDone(tk.id)) return;
+      const d = wsDayDiff(today, tk.startDate); if(d>=1 && d<=lim) items.push({d, k:tk.startDate, t:tk.title, tm:tk.startTime||""});
+    });
+    (typeof allOpenGoals!=="undefined" ? allOpenGoals : []).forEach(g=>{
+      const k = (g.due||"").slice(0,10); if(g.completed || !wsIsDate(k)) return;
+      const d = wsDayDiff(today, k); if(d>=1 && d<=lim) items.push({d, k, t:g.title, tm:"", goal:true});
+    });
+    items.sort((a,b)=>a.d-b.d);
+    say("soon", items.length ? (items.length===1 ? "Ein Eintrag in den kommenden sieben Tagen." : items.length+" Einträge in den kommenden sieben Tagen.") : "Nichts Terminiertes in den kommenden sieben Tagen.");
+    cap(items, 12, it=>say("soon", wsBriefClean(it.t)+(it.goal?" als Tages-Ziel":"")+", "+(it.d===1?"morgen":"am "+wsBriefDate(it.k))+(it.tm?" um "+it.tm+" Uhr":"")+"."), "soon");
+  }
+  if(o.goals){
+    const open = goalTasks.filter(g=>!g.completed);
+    say("goals", open.length ? (open.length===1 ? "Ein offenes Tages-Ziel." : open.length+" offene Tages-Ziele.") : (goalTasks.length ? "Alle Tages-Ziele sind erreicht." : "Keine Tages-Ziele für heute."));
+    cap(open, 10, g=>say("goals", wsBriefClean(g.title)+"."), "goals");
+  }
+  if(o.focus && typeof wsLoaded!=="undefined" && wsLoaded){
+    const items = wsFocusItems().map(it=>{
+      let t = "";
+      if(it.kind==="node"){ const r = wsFindNode(it.doc, it.id); t = r ? wsTitleOf(r.node) : ""; }
+      else if(it.kind==="att"){ t = wsTitleOf(wsFindAny(it.doc, it.id)); }
+      else if(it.kind==="heading"){ const b = wsBlock(it.doc, it.id); t = b ? (b.text||"") : ""; }
+      else t = it.kind==="table" ? "Tabelle" : "Notiz";
+      return wsBriefClean(t);
+    }).filter(Boolean);
+    if(items.length){ say("focus", items.length===1 ? "Ein Eintrag im Fokus." : items.length+" Einträge im Fokus."); cap(items, 10, t=>say("focus", t+"."), "focus"); }
+  }
+  if(o.meta && typeof wsLoaded!=="undefined" && wsLoaded){
+    const list = wsMetaNodes().slice(0, 4);
+    if(list.length){
+      say("meta", list.length===1 ? "Ein Metaprojekt." : list.length+" Metaprojekte.");
+      list.forEach(h=>{ const n = h.node, sp = wsSpan(n), k = n.dl || (sp ? sp.end : ""); say("meta", wsBriefClean(wsTitleOf(n)||"Ohne Titel")+(wsIsDate(k)?", "+wsBriefWhen(wsDayDiff(today, k), k).replace("fällig","Termin"):"")+"."); });
+    }
+  }
+  say("outro", "Das war das Briefing.");
+  return out;
+}
+function wsBriefBtnHtml(){
+  return `<div style="margin:6px 0 10px"><button class="mini" data-brief="open" style="font-size:15px;padding:8px 14px" title="Anstehende Aufgaben, Ziele und Deadlines vorlesen lassen">🔊 Briefing anhören</button></div>`;
+}
+function wsBriefVoice(){
+  try{ const v = speechSynthesis.getVoices(); return v.find(x=>/^de[-_]DE/i.test(x.lang)) || v.find(x=>/^de/i.test(x.lang)) || null; }catch(e){ return null; }
+}
+function wsBriefUi(){
+  const m = document.getElementById("wsbrief"); if(!m) return;
+  m.querySelectorAll("[data-bl]").forEach(el=>el.classList.toggle("cur", +el.dataset.bl===wsBriefI && (wsBriefOn || wsBriefI>0)));
+  const cur = m.querySelector("[data-bl].cur"); if(cur && wsBriefOn) cur.scrollIntoView({block:"nearest"});
+  const p = document.getElementById("wsb_play"); if(p) p.textContent = wsBriefOn ? "⏸ Pause" : (wsBriefI>0 ? "▶ Weiter" : "▶ Start");
+}
+async function wsBriefWake(on){
+  try{
+    if(on){ if(navigator.wakeLock && !wsBriefLock) wsBriefLock = await navigator.wakeLock.request("screen"); }
+    else if(wsBriefLock){ await wsBriefLock.release(); wsBriefLock = null; }
+  }catch(e){ wsBriefLock = null; }
+}
+function wsBriefSpeak(i){
+  if(!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance==="undefined"){ toast("Dieses Gerät bietet keine Sprachausgabe im Browser"); return; }
+  const tok = ++wsBriefTok;
+  speechSynthesis.cancel();
+  if(i>=wsBriefQ.length){ wsBriefOn = false; wsBriefI = 0; wsBriefWake(false); wsBriefUi(); return; }
+  wsBriefI = i; wsBriefOn = true; wsBriefWake(true); wsBriefUi();
+  const u = new SpeechSynthesisUtterance(wsBriefQ[i].text);
+  u.lang = "de-DE"; u.rate = wsBriefOpts().rate || 1;
+  const v = wsBriefVoice(); if(v) u.voice = v;
+  u.onend = ()=>{ if(tok===wsBriefTok && wsBriefOn) wsBriefSpeak(i+1); };
+  u.onerror = e=>{
+    if(tok!==wsBriefTok || e.error==="canceled" || e.error==="interrupted") return;
+    wsBriefOn = false; wsBriefWake(false); wsBriefUi(); toast("Sprachausgabe nicht möglich ("+(e.error||"Fehler")+")");
+  };
+  setTimeout(()=>{ if(tok===wsBriefTok) speechSynthesis.speak(u); }, 60);
+}
+function wsBriefHalt(reset){
+  wsBriefTok++; wsBriefOn = false;
+  try{ speechSynthesis.cancel(); }catch(e){}
+  wsBriefWake(false);
+  if(reset) wsBriefI = 0;
+  wsBriefUi();
+}
+function wsBriefOpen(){
+  if(document.getElementById("modalBg")) return;
+  const o = wsBriefOpts();
+  wsBriefQ = wsBriefBuild(o); wsBriefI = 0; wsBriefOn = false;
+  const lines = ()=>wsBriefQ.map((l,i)=>`<div data-bl="${i}" class="wsb-line">${esc(l.text)}</div>`).join("");
+  const voice = ("speechSynthesis" in window) ? "" : `<p class="muted" style="font-size:13px">Dieses Gerät bietet keine Sprachausgabe im Browser. Der Text steht trotzdem unten zum Lesen.</p>`;
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal" id="wsbrief">
+    <h2>🔊 Briefing</h2>${voice}
+    <div style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:8px;font-size:14px">${WS_BRIEF_SECS.map(([k,l])=>`<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" data-bopt="${k}"${o[k]?" checked":""}>${l}</label>`).join("")}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:14px">Tempo <select id="wsb_rate" style="padding:4px">${[[0.8,"langsam"],[1,"normal"],[1.2,"schnell"],[1.5,"sehr schnell"]].map(([v,l])=>`<option value="${v}"${(o.rate||1)===v?" selected":""}>${l}</option>`).join("")}</select></div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"><button class="btn-primary" id="wsb_play">▶ Start</button><button class="btn-ghost" id="wsb_prev">⏮</button><button class="btn-ghost" id="wsb_next">⏭</button><button class="btn-ghost" id="wsb_stop">⏹ Stopp</button></div>
+    <div id="wsb_text" style="max-height:38vh;overflow:auto;font-size:14px;line-height:1.5;border:1px solid #30343b;border-radius:8px;padding:8px">${lines()}</div>
+    <div class="modal-actions"><button class="btn-ghost" id="wsb_close">Schließen</button></div>
+  </div></div>`);
+  const close = ()=>{ wsBriefHalt(true); const m = document.getElementById("modalBg"); if(m) m.remove(); };
+  const rebuild = ()=>{
+    wsBriefHalt(true);
+    const o2 = wsBriefOpts(); document.querySelectorAll("[data-bopt]").forEach(c=>{ o2[c.dataset.bopt] = c.checked ? 1 : 0; });
+    o2.rate = +document.getElementById("wsb_rate").value || 1; wsBriefSave(o2);
+    wsBriefQ = wsBriefBuild(o2); document.getElementById("wsb_text").innerHTML = lines(); wsBriefUi();
+  };
+  document.getElementById("wsb_close").onclick = close;
+  document.getElementById("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+  document.querySelectorAll("[data-bopt]").forEach(c=>c.onchange = rebuild);
+  document.getElementById("wsb_rate").onchange = ()=>{ const o2 = wsBriefOpts(); o2.rate = +document.getElementById("wsb_rate").value || 1; wsBriefSave(o2); if(wsBriefOn) wsBriefSpeak(wsBriefI); };
+  document.getElementById("wsb_play").onclick = ()=>{ if(wsBriefOn) wsBriefHalt(false); else wsBriefSpeak(wsBriefI); };
+  document.getElementById("wsb_stop").onclick = ()=>wsBriefHalt(true);
+  document.getElementById("wsb_prev").onclick = ()=>{ wsBriefSpeak(Math.max(0, wsBriefI-1)); };
+  document.getElementById("wsb_next").onclick = ()=>{ wsBriefSpeak(Math.min(wsBriefQ.length-1, wsBriefI+1)); };
+  document.getElementById("wsbrief").addEventListener("click", e=>{ const l = e.target.closest("[data-bl]"); if(l) wsBriefSpeak(+l.dataset.bl); });
+  try{ speechSynthesis.getVoices(); }catch(e){}
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-brief]"); if(b){ e.preventDefault(); wsBriefOpen(); } });
 
 /* ============ EVENTS ============ */
 $("nav").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b){ view=b.dataset.view; render(); }});

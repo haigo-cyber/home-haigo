@@ -7996,10 +7996,10 @@ function wsMetaTodayHtml(){
 }
 
 /* ---- Sprachbriefing: liest anstehende Aufgaben, Ziele, Deadlines und Fokus vor (Sprachausgabe des Browsers) ---- */
-const WS_BRIEF_SECS = [["dl","Dringende Deadlines"],["tasks","Heutige Aufgaben"],["soon","Kommende 7 Tage"],["goals","Tages-Ziele"],["focus","Fokus"],["meta","Metaprojekte"]];
+const WS_BRIEF_SECS = [["cal","Kalender heute"],["todos","ToDos heute"],["duties","Pflicht und Gewohnheiten"],["dl","Dringende Deadlines"],["soon","Kommende 7 Tage"],["goals","Tages-Ziele"],["focus","Fokus"],["meta","Metaprojekte"]];
 let wsBriefQ = [], wsBriefI = 0, wsBriefOn = false, wsBriefTok = 0, wsBriefLock = null;
 function wsBriefOpts(){
-  const o = {dl:1, tasks:1, soon:1, goals:1, focus:1, meta:1, rate:1};
+  const o = {cal:1, todos:1, duties:1, dl:1, soon:1, goals:1, focus:1, meta:1, rate:1};
   try{ Object.assign(o, JSON.parse(localStorage.getItem("wsBrief")||"{}")); }catch(e){}
   return o;
 }
@@ -8018,6 +8018,7 @@ function wsBriefWhen(days, k){
   if(days===1) return "morgen fällig";
   return "fällig am "+wsBriefDate(k);
 }
+function wsBriefClock(d){ const h = d.getHours(), m = d.getMinutes(); return h+" Uhr"+(m?" "+m:""); }
 /* Liefert die Zeilen des Briefings: [{sec, text}]; rein lesend */
 function wsBriefBuild(o, today){
   o = o || wsBriefOpts(); today = today || todayKey();
@@ -8025,21 +8026,34 @@ function wsBriefBuild(o, today){
   const hr = new Date().getHours();
   say("intro", (hr<11?"Guten Morgen":hr<18?"Guten Tag":"Guten Abend")+". Heute ist "+wsBriefDate(today)+".");
   const cap = (arr, max, fn, sec)=>{ arr.slice(0, max).forEach(fn); if(arr.length>max) say(sec, "Und "+(arr.length-max)+" weitere."); };
+  if(o.cal){
+    const now = new Date();
+    const ev = (typeof todayCalendarEvents!=="undefined" ? todayCalendarEvents : []).filter(e=>e.allDay || e.end>now);
+    say("cal", ev.length ? (ev.length===1 ? "Ein Termin im Kalender." : ev.length+" Termine im Kalender.") : "Keine weiteren Kalendertermine heute.");
+    cap(ev, 15, e=>say("cal", e.allDay ? "Ganztägig: "+wsBriefClean(e.title)+"." : wsBriefClean(e.title)+", "+(e.start<=now?"läuft bereits, ":"um "+wsBriefClock(e.start)+", ")+"bis "+wsBriefClock(e.end)+"."), "cal");
+  }
+  if(o.todos || o.duties){
+    const key = today;
+    const act = tasks.filter(t=>!t.archived && t.type!=="goal" && isDue(t, new Date()));
+    const open = sortTasksForToday(act, key).filter(t=>!(t.type==="todo" ? isEverDone(t.id) : isDone(t.id, key)));
+    const todos = open.filter(t=>t.type==="todo"), other = open.filter(t=>t.type!=="todo");
+    if(o.todos){
+      say("todos", todos.length ? (todos.length===1 ? "Ein ToDo für heute." : todos.length+" ToDos für heute.") : "Keine offenen ToDos für heute.");
+      cap(todos, 15, t=>{
+        let w = "";
+        if(t.scheduleType!=="weekly" && wsIsDate(t.startDate||"")) w = ", "+wsBriefWhen(wsDayDiff(today, t.startDate), t.startDate)+(t.startTime?" um "+t.startTime+" Uhr":"");
+        say("todos", wsBriefClean(t.title)+w+".");
+      }, "todos");
+    }
+    if(o.duties && other.length){
+      say("duties", other.length===1 ? "Eine Pflichtaufgabe oder Gewohnheit." : other.length+" Pflichtaufgaben und Gewohnheiten.");
+      cap(other, 15, t=>say("duties", wsBriefClean(t.title)+"."), "duties");
+    }
+  }
   if(o.dl){
     const list = (typeof wsLoaded!=="undefined" && wsLoaded) ? wsDeadlineItems(wsDocs, today).filter(it=>it.days<=5 && !it.node.meta && !it.node.hid) : [];
     say("dl", list.length ? (list.length===1 ? "Eine dringende Deadline." : list.length+" dringende Deadlines.") : "Keine dringenden Deadlines.");
     cap(list, 10, it=>say("dl", wsBriefClean(wsTitleOf(it.node)||"Ohne Titel")+", Deadline "+(it.days<0?(it.days===-1?"seit gestern überschritten":"seit "+(-it.days)+" Tagen überschritten"):it.days===0?"heute":it.days===1?"morgen":"in "+it.days+" Tagen")+"."), "dl");
-  }
-  if(o.tasks){
-    const key = today;
-    const act = tasks.filter(t=>!t.archived && t.type!=="goal" && isDue(t, new Date()));
-    const open = sortTasksForToday(act, key).filter(t=>!(t.type==="todo" ? isEverDone(t.id) : isDone(t.id, key)));
-    say("tasks", open.length ? (open.length===1 ? "Eine offene Aufgabe." : open.length+" offene Aufgaben.") : "Keine offenen Aufgaben für heute.");
-    cap(open, 15, t=>{
-      let w = "";
-      if(t.type==="todo" && t.scheduleType!=="weekly" && wsIsDate(t.startDate||"")) w = ", "+wsBriefWhen(wsDayDiff(today, t.startDate), t.startDate)+(t.startTime?" um "+t.startTime+" Uhr":"");
-      say("tasks", wsBriefClean(t.title)+w+".");
-    }, "tasks");
   }
   if(o.soon){
     const lim = 7, items = [];

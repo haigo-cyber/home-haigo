@@ -2825,7 +2825,9 @@ function render(){
           const days=Math.round((new Date(todayKey())-new Date(lastDate))/(1000*60*60*24));
           lastLabel=days<=0?"heute":days===1?"gestern":`vor ${days} Tagen`;
         }
-        return `<div class="card">
+        const doneToday=doneLogs.some(l=>l.date===todayKey());
+        return `<div class="card${doneToday?' done':''}">
+          <div class="check${doneToday?' on':''}" data-tog-distraction="${d.id}" title="${doneToday?'Heute erledigt – zum Zurücknehmen tippen':'Als erledigt abhaken'}">${checkSvg()}</div>
           <div class="body">
             <div class="title" style="color:#000">${esc(d.title)}</div>
             <div class="sub" style="color:#555;margin-top:4px">${count}× gemacht · zuletzt ${lastLabel}</div>
@@ -3451,6 +3453,15 @@ async function doDistraction(id){
   await saveLogs();
   setSync("on");
   toast(esc(d.title)+" ✓");
+}
+async function toggleDistractionToday(id){
+  const key=todayKey();
+  if(!logs.some(l=>l.itemId===id && l.date===key)){ await doDistraction(id); return; }
+  setSync("busy");
+  logs=logs.filter(l=>!(l.itemId===id && l.date===key));
+  render();
+  await saveLogs();
+  setSync("on");
 }
 function openDistractionForm(existing){
   const isEdit=!!existing;
@@ -9013,6 +9024,7 @@ main.addEventListener("click",e=>{
   }
   const el=e.target.closest("[data-edit-link]"); if(el){ const l=links.find(x=>x.id===el.dataset.editLink); if(l) openLinkForm(l); return; }
   const dl2=e.target.closest("[data-del-link]"); if(dl2){ deleteLink(dl2.dataset.delLink); return; }
+  const dtg=e.target.closest("[data-tog-distraction]"); if(dtg){ toggleDistractionToday(dtg.dataset.togDistraction); return; }
   const dd=e.target.closest("[data-do-distraction]"); if(dd){ doDistraction(dd.dataset.doDistraction); return; }
   const edd=e.target.closest("[data-edit-distraction]"); if(edd){ const d=distractions.find(x=>x.id===edd.dataset.editDistraction); if(d) openDistractionForm(d); return; }
   const del=e.target.closest("[data-del-distraction]"); if(del){ deleteDistraction(del.dataset.delDistraction); return; }

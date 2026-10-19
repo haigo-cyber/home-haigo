@@ -1281,6 +1281,8 @@ async function start(){
     setInterval(()=>{if(HOST&&HOST.isConnected&&document.visibilityState==='visible')refresh(true)},5*60000);
   }
 }
+window.kalInvalidate=async function(){ calsLoaded=false; if(HOST&&HOST.isConnected){ try{ await loadCalendars(); drawCalList(); }catch(e){} refresh(true); } };
+window.kalRefresh=function(){ if(HOST&&HOST.isConnected) refresh(true) };
 window.kalMount=function(main){
   if(typeof accessToken==='undefined'||!accessToken){main.innerHTML='<p class="muted" style="padding:18px">Bitte zuerst anmelden.</p>';return}
   main.innerHTML='';
@@ -1332,6 +1334,7 @@ let allGTasks = [];                                       // Alle offenen Google
 let todayCalendarEvents = [];                             // Heutige Kalender-Events
 let gtasks = [];                                          // Google-Tasks-Einträge (Standardliste, grüne Sektion)
 let gtasksStatus = "";                                    // Diagnose-Text fürs UI
+let gtasksLoadedOk = false;                               // true, wenn die Ziele (Google Tasks) zuletzt fehlerfrei geladen wurden
 let goalTasks = [];                                       // heutige Tagesziele (offen + heute erledigt) aus Google Tasks
 let defaultGTaskListId = "";                              // ID der Standard-Aufgabenliste
 const GOAL_MARKER = "[Tagesziel]";                        // Kennzeichnung von Zielen in den Notizen
@@ -1560,7 +1563,7 @@ async function loadGTasks(){
     const lists=await api(`${GTASKS}/users/@me/lists?maxResults=100`);
     const listItems=(lists && lists.items)||[];
     const defaultList=listItems[0]; // erste Liste = Standardliste "Meine Aufgaben"
-    if(!defaultList){ gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[]; return; }
+    if(!defaultList){ gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[]; gtasksLoadedOk=false; return; }
     defaultGTaskListId=defaultList.id;
     const today=todayKey();
     // 1) Offene Aufgaben
@@ -1601,8 +1604,10 @@ async function loadGTasks(){
     const doneGoalsToday=allDoneGoals.filter(t=>t.due===today);
     goalTasks=[...openGoalsToday, ...doneGoalsToday];
     console.log("  ✓ loadGTasks: grün",gtasks.length,"| Ziele heute",goalTasks.length,"(",doneGoalsToday.length,"erledigt)");
+    gtasksLoadedOk=true;
   }catch(e){
     console.error("❌ loadGTasks Fehler:",e.message);
+    gtasksLoadedOk=false;
     gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[];
   }
 }
@@ -2672,6 +2677,7 @@ function setNavH(){
 window.addEventListener("resize",setNavH);
 function render(){
   gameTick();
+  ksSyncSoon();
   wsTopBarUpdate();
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   setNavH();
@@ -3028,6 +3034,7 @@ function render(){
           <select id="defCalSel">${calendars.map(c=>`<option value="${esc(c.id)}" ${c.id===defaultCalId?"selected":""}>${esc(c.summary)}</option>`).join("")}</select>
         </div>
       </div>
+      ${ksSettingsHtml()}
       <div class="card">
         <div class="body">
           <div class="title">Kalender anzeigen</div>
@@ -3094,6 +3101,7 @@ function render(){
       <p class="muted" style="font-size:12px;margin-top:18px">Aufgaben, Projekte & Notizen liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an), der Zielkalender pro Eintrag wählbar.</p>
     `;
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
+    ksBindSettings();
     [...document.querySelectorAll("[data-calvis]")].forEach(btn=>{
       btn.onclick=async ()=>{
         const id=btn.dataset.calvis;
@@ -3133,6 +3141,183 @@ function render(){
       }
     };
   }
+}
+
+/* ============ AUTOMATISCHER EINTRAG IN EIGENE GOOGLE KALENDER (Tagesziele, fällige Metaprojekte) ============ */
+/* Prinzip: Aus dem aktuellen Stand der App wird der Soll-Zustand berechnet und mit den Terminen im Zielkalender abgeglichen.
+   Angefasst werden nur Termine mit der Markierung todoSrc (privat erweiterte Eigenschaft); alles andere im Kalender bleibt unberührt. */
+const KS_KEYS = {goal:"kalSyncGoalCal", meta:"kalSyncMetaCal"};
+const KS_LABEL = {goal:"Tagesziele", meta:"Metaprojekte"};
+const KS_SCOPE_CREATE = "https://www.googleapis.com/auth/calendar.app.created";
+let ksBusy = false, ksAgain = false, ksTimer = null, ksLast = {goal:"", meta:""};
+let ksStatus = localStorage.getItem("ksStatus") || "";
+function ksCalId(kind){ return localStorage.getItem(KS_KEYS[kind]) || ""; }
+
+function ksDesiredGoals(){
+  const m = new Map();
+  allOpenGoals.forEach(g=>{
+    if(g && g.id && wsIsDate(g.due)) m.set(g.id, {title:String(g.title||"(ohne Titel)"), date:g.due, desc:"Tagesziel aus der ToDo-App"});
+  });
+  goalTasks.forEach(g=>{
+    if(g && g.id && g.completed && wsIsDate(g.due)) m.set(g.id, {title:"✓ "+String(g.title||"(ohne Titel)"), date:g.due, desc:"Tagesziel aus der ToDo-App, erledigt"});
+  });
+  return m;
+}
+function ksDesiredMeta(){
+  const m = new Map();
+  wsMetaNodes().forEach(h=>{
+    const n = h.node, sp = wsSpan(n), k = n.dl || (sp ? sp.end : "");
+    if(!wsIsDate(k)) return;
+    m.set(n.id, {title:(n.dl?"⚑ ":"")+(wsTitleOf(n)||"(ohne Titel)"), date:k, desc:"Metaprojekt aus dem Dokument: "+(h.doc.title||"Ohne Titel")});
+  });
+  return m;
+}
+function ksBody(kind, ref, d){
+  return {summary:d.title, description:d.desc, start:{date:d.date}, end:{date:nextDayKey(d.date)},
+    transparency:"transparent", reminders:{useDefault:false},
+    extendedProperties:{private:{todoSrc:kind, todoRef:ref}}};
+}
+async function ksListExisting(calId, kind){
+  let items = [], pt = "";
+  do{
+    const url = calUrl(calId)+"?privateExtendedProperty="+encodeURIComponent("todoSrc="+kind)+"&maxResults=2500"+(pt?"&pageToken="+encodeURIComponent(pt):"");
+    const r = await api(url);
+    items = items.concat((r && r.items) || []);
+    pt = (r && r.nextPageToken) || "";
+  }while(pt);
+  return items.filter(e=>e && e.status!=="cancelled");
+}
+async function ksSyncKind(kind, force){
+  const calId = ksCalId(kind); if(!calId) return null;
+  if(kind==="goal" && !gtasksLoadedOk) return null;      // Ziele nicht sicher geladen: nichts löschen
+  if(kind==="meta" && !wsLoaded) return null;            // Arbeitsbereich nicht geladen: nichts löschen
+  const want = kind==="goal" ? ksDesiredGoals() : ksDesiredMeta();
+  const sig = JSON.stringify([calId, [...want.entries()].sort((a,b)=>a[0]<b[0]?-1:1)]);
+  if(!force && sig===ksLast[kind]) return null;
+  const existing = await ksListExisting(calId, kind);
+  const byRef = new Map(), dupes = [];
+  existing.forEach(e=>{
+    const p = e.extendedProperties && e.extendedProperties.private, ref = p && p.todoRef;
+    if(!ref) return;
+    if(byRef.has(ref)) dupes.push(e); else byRef.set(ref, e);
+  });
+  const today = todayKey();
+  const toAdd = [], toUpd = [], toDel = dupes.slice();
+  want.forEach((d, ref)=>{
+    const e = byRef.get(ref);
+    if(!e){ toAdd.push([ref, d]); return; }
+    const same = e.summary===d.title && (e.description||"")===d.desc && e.start && e.start.date===d.date && e.end && e.end.date===nextDayKey(d.date);
+    if(!same) toUpd.push([e, ref, d]);
+  });
+  byRef.forEach((e, ref)=>{
+    if(want.has(ref)) return;
+    const day = e.start && e.start.date;
+    if(kind==="goal" && day && day<today) return;        // vergangene Ziele bleiben als Verlauf stehen
+    toDel.push(e);
+  });
+  let delSkipped = false;
+  if(want.size===0 && toDel.length>3){ toDel.length = 0; delSkipped = true; }   // Sicherung gegen leere Ladefehler
+  for(const [ref,d] of toAdd) await api(calUrl(calId), {method:"POST", body:JSON.stringify(ksBody(kind, ref, d))});
+  for(const [e,ref,d] of toUpd){
+    const b = ksBody(kind, ref, d);
+    await api(calUrl(calId)+"/"+encodeURIComponent(e.id), {method:"PATCH", body:JSON.stringify({summary:b.summary, description:b.description, start:b.start, end:b.end})});
+  }
+  for(const e of toDel) await api(calUrl(calId)+"/"+encodeURIComponent(e.id), {method:"DELETE"});
+  ksLast[kind] = sig;
+  return {add:toAdd.length, upd:toUpd.length, del:toDel.length, skipped:delSkipped, total:want.size};
+}
+function ksStatusSet(txt){
+  ksStatus = txt; try{ localStorage.setItem("ksStatus", txt); }catch(e){}
+  const el = document.getElementById("ks_status"); if(el) el.textContent = txt;
+}
+async function ksSyncNow(force){
+  if(!accessToken) return;
+  if(ksBusy){ ksAgain = true; return; }
+  if(!ksCalId("goal") && !ksCalId("meta")) return;
+  ksBusy = true;
+  const parts = []; let changed = false, ran = false;
+  try{
+    for(const kind of ["goal","meta"]){
+      try{
+        const r = await ksSyncKind(kind, force);
+        if(!r) continue;
+        ran = true;
+        if(r.add||r.upd||r.del) changed = true;
+        parts.push(KS_LABEL[kind]+": "+r.total+" Termine, "+r.add+" neu, "+r.upd+" geändert, "+r.del+" entfernt"+(r.skipped?" (Löschen übersprungen)":""));
+      }catch(e){
+        ran = true; ksLast[kind] = "";
+        parts.push(KS_LABEL[kind]+": Fehler "+String(e.message||e).slice(0,140));
+      }
+    }
+    if(ran){
+      const t = new Date(); const hm = String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
+      ksStatusSet("Abgeglichen um "+hm+". "+parts.join(" | "));
+      if(changed && typeof kalRefresh==="function") kalRefresh();
+    }
+  }finally{
+    ksBusy = false;
+    if(ksAgain){ ksAgain = false; ksSyncSoon(); }
+  }
+}
+function ksSyncSoon(){
+  if(!accessToken) return;
+  if(!ksCalId("goal") && !ksCalId("meta")) return;
+  clearTimeout(ksTimer); ksTimer = setTimeout(()=>{ ksSyncNow(false); }, 3000);
+}
+function ksRequestScope(scope){
+  if(!tokenClient) return Promise.reject(new Error("Die Google-Anmeldung ist noch nicht bereit"));
+  return new Promise((res, rej)=>{
+    tokenResolve = res; tokenReject = rej;
+    try{ tokenClient.requestAccessToken({scope:SCOPES+" "+scope, prompt:""}); }catch(e){ rej(e); }
+  });
+}
+function ksCreateCal(kind){
+  const name = kind==="goal" ? "ToDo Tagesziele" : "ToDo Metaprojekte";
+  const exist = (allCalendars||[]).concat(calendars||[]).find(c=>c.summary===name);
+  if(exist){
+    localStorage.setItem(KS_KEYS[kind], exist.id); ksLast[kind] = "";
+    toast("Vorhandenen Kalender „"+name+"“ verwendet"); render(); ksSyncNow(true); return;
+  }
+  const p = ksRequestScope(KS_SCOPE_CREATE);     // muss direkt im Klick starten, sonst blockiert der Browser das Fenster
+  p.then(async ()=>{
+    setSync("busy");
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || "Europe/Berlin";
+    const cal = await api("https://www.googleapis.com/calendar/v3/calendars", {method:"POST",
+      body:JSON.stringify({summary:name, description:"Wird automatisch von der ToDo-App gepflegt", timeZone:tz})});
+    localStorage.setItem(KS_KEYS[kind], cal.id); ksLast[kind] = "";
+    await loadCalendars();
+    if(typeof kalInvalidate==="function") kalInvalidate();
+    setSync("on"); toast("Kalender angelegt: "+name); render(); ksSyncNow(true);
+  }).catch(e=>{
+    setSync("on");
+    const msg = e && (e.message || e.type || e.error) || String(e);
+    alert("Der Kalender konnte nicht angelegt werden ("+msg+").\n\nAlternative: In Google Kalender selbst einen neuen Kalender anlegen (Name frei wählbar), danach hier in der Liste auswählen.");
+  });
+}
+function ksSettingsHtml(){
+  const opt = (sel)=>`<option value="">Aus</option>`+calendars.map(c=>`<option value="${esc(c.id)}" ${c.id===sel?"selected":""}>${esc(c.summary)}</option>`).join("");
+  const row = (kind, label, hint)=>`<div style="margin-top:12px"><div style="font-size:14px">${label}</div>
+      <div class="sub" style="margin-bottom:6px">${hint}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select id="ks_sel_${kind}" style="flex:1;min-width:160px">${opt(ksCalId(kind))}</select><button class="mini" id="ks_new_${kind}">Neu anlegen</button></div></div>`;
+  return `<div class="card"><div class="body">
+      <div class="title">Automatisch in Google Kalender eintragen</div>
+      <div class="sub" style="margin-bottom:2px">Tagesziele und fällige Metaprojekte werden als Ganztagstermine in einen eigenen Kalender geschrieben und bei Änderungen nachgeführt. Angefasst werden nur Termine, die von der App markiert sind.</div>
+      ${row("goal","Tagesziele","Ein Termin pro Ziel am Zieltag, erledigte Ziele mit Haken")}
+      ${row("meta","Fällige Metaprojekte","Ein Termin am Tag der Deadline, sonst am Ende des Zeitraums")}
+      <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="mini" id="ks_now">Jetzt abgleichen</button><span class="muted" id="ks_status" style="font-size:12px">${esc(ksStatus)}</span></div>
+    </div></div>`;
+}
+function ksBindSettings(){
+  ["goal","meta"].forEach(kind=>{
+    const sel = $("ks_sel_"+kind), nb = $("ks_new_"+kind);
+    if(sel) sel.onchange = ()=>{
+      localStorage.setItem(KS_KEYS[kind], sel.value); ksLast[kind] = "";
+      toast(sel.value ? "Automatischer Eintrag aktiv" : "Automatischer Eintrag aus");
+      if(sel.value) ksSyncNow(true);
+    };
+    if(nb) nb.onclick = ()=>ksCreateCal(kind);
+  });
+  const nw = $("ks_now"); if(nw) nw.onclick = ()=>{ ksStatusSet("Gleiche ab …"); ksSyncNow(true); };
 }
 
 /* ============ FORMULARE ============ */

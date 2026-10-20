@@ -106,6 +106,18 @@
   .ustep { display:flex; gap:0.824rem; align-items:flex-start; background: linear-gradient(145deg, #1a1c1f 0%, #26292d 60%, #31353a 100%);
            border:1px solid #4a4f55; border-radius:0.588rem; padding:0.706rem 0.824rem; margin-bottom:0.588rem; opacity:.72; }
   .ustep.cur { opacity:1; border-color:#aeb4bb; box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 2px 0.588rem rgba(0,0,0,.6); }
+
+  /* Mitraten: drei Möglichkeiten vor dem nächsten Schritt */
+  .ptoggle { margin-left:auto; flex:none; font-size:0.9rem; white-space:nowrap; }
+  .ptoggle + .tb-nav { margin-left:0.6rem; }
+  .pgate { border-color:#ffb347 !important; flex-wrap:wrap; }
+  .pgate .unum { background:#ffb347 !important; color:#14161a !important; }
+  .popts { display:flex; flex-wrap:wrap; gap:0.6rem; margin:0.5rem 0; }
+  .popt { font-size:1.25rem; padding:0.6rem 1rem; border-radius:12px; text-align:left; line-height:1.3; }
+  .popt.good { background:#1f5a2c !important; border-color:#5fd06f !important; color:#fff !important; }
+  .popt.bad { background:#4a2418 !important; border-color:#e4572e !important; opacity:.75; }
+  .pfb { min-height:1.6em; font-weight:600; margin-top:0.2rem; }
+  .pfb.ok { color:#5fd06f; } .pfb.no { color:#ffb347; }
   .ustep.good { border-color:#3fa34d; }
   .ustep.bad { border-color:#e4572e; }
   .unum { flex:none; width:1.882rem; height:1.882rem; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700;
@@ -298,6 +310,7 @@
   .tb-title h1 { font-size:1.28rem; margin:1px 0 0; line-height:1.2; }
   .tb-sub { margin:2px 0 0; color:var(--muted); font-size:.9rem; line-height:1.3; }
   .tb-nav { margin-left:auto; display:flex; gap:0.471rem; flex:none; }
+  .ptoggle ~ .tb-nav { margin-left:0.6rem; }
   main { max-width:94.118rem; width:100%; margin:0 auto; padding:1.059rem 1.294rem 2.824rem; }
   .scrim { display:none; }
   button:focus-visible, input:focus-visible, .nav-item:focus-visible { outline:3px solid #f2a900; outline-offset:2px; }
@@ -539,6 +552,7 @@
         <h1 id="pageTitle"></h1>
         <p class="tb-sub" id="pageSub"></p>
       </div>
+      <label class="opt ptoggle" title="Vor jedem nächsten Schritt drei Möglichkeiten zur Auswahl"><input type="checkbox" id="predictToggle" checked> Mitraten</label>
       <div class="tb-nav">
         <button class="icon-btn" id="topicPrev" aria-label="Vorheriges Thema" title="Vorheriges Thema"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
         <button class="icon-btn" id="topicNext" aria-label="Nächstes Thema" title="Nächstes Thema"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
@@ -980,6 +994,84 @@ document.getElementById("dec").addEventListener("change", renderView);
 example();
 renderInputs();
 renderView();
+
+
+/* ===== Mitraten: vor jedem nächsten Schritt drei Möglichkeiten, nur eine ist richtig ===== */
+window.Predict = (function () {
+  let on = true;
+  try { if (localStorage.getItem("mw_predict") === "0") on = false; } catch (e) {}
+  const gates = new WeakMap(), watched = new WeakSet();
+  const strip = h => String(h).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
+  const GEN = [["Ich rate die Lösung, ohne ein Bild anzusehen.", "Raten hilft nicht. Das Bild zeigt den nächsten Gedanken."], ["Ich ändere die Aufgabe und rechne etwas anderes.", "Die Aufgabe bleibt gleich. Das führt nicht zum nächsten Schritt."], ["Ich fange noch einmal von vorn an.", "Wir sind schon weiter. Das führt nicht zum nächsten Schritt."]];
+  function clear(host) { const g = gates.get(host); if (g && g.parentNode) g.parentNode.removeChild(g); gates.delete(host); }
+  // Zahl als Text mit Komma: Ziffernfolge N mit p Nachkommastellen
+  function fmtN(N, p) {
+    if (p < 0) { N = N * Math.pow(10, -p); p = 0; }
+    let d = String(N); while (d.length <= p) d = "0" + d;
+    let ip = d.slice(0, d.length - p), fp = d.slice(d.length - p).replace(/0+$/, "");
+    return ip + (fp ? "," + fp : "");
+  }
+  function numOpts(r) {
+    const neg = /^[−-]/.test(r), body = r.replace(/^[−-]/, ""), parts = body.split(","), fp = parts[1] || "", N = Number(parts[0] + fp), p = fp.length;
+    if (!isFinite(N) || N > 1e9) return null;
+    const sg = neg ? "−" : "", good = sg + fmtN(N, p), c = [];
+    if (p > 0) c.push([sg + fmtN(N, p + 1), "Das Komma steht eine Stelle zu weit links."], [sg + fmtN(N, p - 1), "Das Komma steht eine Stelle zu weit rechts."]);
+    else { c.push([sg + fmtN(N * 10, 0), "Das ist zehnmal so groß. Rechne noch einmal nach."]); if (N >= 10 && N % 10 === 0) c.push([sg + fmtN(N / 10, 0), "Das ist zehnmal so klein. Rechne noch einmal nach."]); if (N >= 1) c.push([sg + fmtN(N - 1, 0), "Die letzte Ziffer stimmt nicht."]); }
+    c.push([sg + fmtN(N + 10, p), "Eine Ziffer stimmt nicht. Rechne noch einmal nach."], [sg + fmtN(N + 1, p), "Die letzte Ziffer stimmt nicht."]);
+    if (N > 10) c.push([sg + fmtN(N - 10, p), "Eine Ziffer stimmt nicht. Rechne noch einmal nach."]);
+    const seen = {}; seen[good] = 1; const w = [];
+    c.forEach(x => { if (!seen[x[0]]) { seen[x[0]] = 1; w.push(x); } });
+    if (w.length < 2) return null;
+    return [[good, true, ""]].concat(w.slice(0, 2).map(x => [x[0], false, x[1]]));
+  }
+  function make(steps, shown) {
+    const n = steps[shown + 1];
+    if (n.q && n.q.a && n.q.a.length === 3) return { head: n.q.head || "Was ist richtig?", opts: n.q.a.map((h, i) => ({ h: h, ok: i === 0, why: (n.q.why && n.q.why[i]) || "Das passt noch nicht. Sieh dir das Bild noch einmal an." })) };
+    if (n.r && /^[−-]?\d+(,\d+)?$/.test(String(n.r)) && (n.cls === "good" || shown + 1 === steps.length - 1)) {
+      const o = numOpts(String(n.r));
+      if (o) return { head: "Welches Ergebnis ist richtig?", opts: o.map(x => ({ h: x[0], ok: x[1], why: x[2] })) };
+    }
+    const correct = strip(n.t), seen = {}; seen[correct] = 1;
+    const cand = [];
+    steps.forEach((s, i) => { const t = strip(s.t); if (i !== shown + 1 && t && !seen[t]) { seen[t] = 1; cand.push({ i: i, t: t }); } });
+    const later = shuffle(cand.filter(c => c.i > shown + 1)), earlier = shuffle(cand.filter(c => c.i <= shown));
+    const pick = [];
+    if (later.length) pick.push(later.shift()); if (earlier.length) pick.push(earlier.shift());
+    shuffle(later.concat(earlier)).forEach(c => { if (pick.length < 2) pick.push(c); });
+    const opts = [{ h: correct, ok: true, why: "" }];
+    pick.forEach(c => opts.push({ h: c.t, ok: false, why: c.i <= shown ? "Das haben wir schon gemacht." : "Das kommt erst später." }));
+    shuffle(GEN.slice()).forEach(g => { if (opts.length < 3) opts.push({ h: g[0], ok: false, why: g[1] }); });
+    return { head: "Wie geht es weiter?", opts: opts };
+  }
+  function gate(host, steps, shown, advance) {
+    if (!on || !host || !host.parentNode || !steps || shown >= steps.length - 1) return false;
+    clear(host);
+    const m = make(steps, shown); shuffle(m.opts);
+    const box = document.createElement("div");
+    box.className = "ustep cur pgate";
+    box.innerHTML = '<div class="unum">?</div><div class="ubody"><div class="utitle">' + m.head + '</div><div class="popts">' +
+      m.opts.map((o, i) => '<button class="popt" data-i="' + i + '">' + o.h + "</button>").join("") +
+      '</div><div class="pfb" role="status" aria-live="polite"></div></div><div class="unav"><button data-skip="1">Ohne Raten weiter</button></div>';
+    host.parentNode.insertBefore(box, host); gates.set(host, box);
+    if (!watched.has(host)) { watched.add(host); new MutationObserver(() => clear(host)).observe(host, { childList: true }); }
+    const fb = box.querySelector(".pfb");
+    box.querySelectorAll(".popt").forEach(b => b.addEventListener("click", () => {
+      const o = m.opts[+b.dataset.i];
+      if (o.ok) {
+        b.classList.add("good"); box.querySelectorAll(".popt").forEach(x => { x.disabled = true; });
+        fb.className = "pfb ok"; fb.textContent = "Richtig!";
+        setTimeout(() => { if (gates.get(host) === box) { clear(host); advance(); } }, 500);
+      } else { b.classList.add("bad"); b.disabled = true; fb.className = "pfb no"; fb.textContent = o.why; }
+    }));
+    box.querySelector("[data-skip]").addEventListener("click", () => { clear(host); advance(); });
+    try { box.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) {}
+    return true;
+  }
+  function setOn(b) { on = !!b; try { localStorage.setItem("mw_predict", on ? "1" : "0"); } catch (e) {} }
+  return { gate: gate, clear: clear, setOn: setOn, isOn: () => on };
+})();
+document.addEventListener("DOMContentLoaded", () => { const t = document.getElementById("predictToggle"); if (!t) return; t.checked = window.Predict.isOn(); t.addEventListener("change", () => window.Predict.setOn(t.checked)); });
 
 /* ===== Schrittknöpfe direkt am aktuellen Schritt (für die digitale Tafel) ===== */
 /* Skalierungsfaktor: passt Material und Layout an die Bildschirmgröße an (Basis 17 px) */
@@ -1953,7 +2045,7 @@ renderStell();
 
   function restart() { shown = 0; render(); }
 
-  document.getElementById("uNext").addEventListener("click", () => { shown++; render(); });
+  document.getElementById("uNext").addEventListener("click", () => { const adv = () => { shown++; render(); }; if (window.Predict && window.Predict.gate(document.getElementById("uSteps"), steps, shown, adv)) return; adv(); });
   document.getElementById("uBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   document.getElementById("uAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   document.getElementById("uRestart").addEventListener("click", restart);
@@ -2404,7 +2496,7 @@ renderStell();
   $("zB").addEventListener("input", ev => { B = ev.target.value === "" ? NaN : Number(ev.target.value); restart(); });
   $("zSize").addEventListener("input", render);
   window.addEventListener("msk-rescale", render);
-  $("zNext").addEventListener("click", () => { shown++; render(); });
+  $("zNext").addEventListener("click", () => { const adv = () => { shown++; render(); }; if (window.Predict && window.Predict.gate($("zSteps"), steps, shown, adv)) return; adv(); });
   $("zBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   $("zAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("zRestart").addEventListener("click", restart);
@@ -2678,7 +2770,7 @@ renderStell();
   ["zahl", "bb", "dz", "db"].forEach(k => $("br_" + k).addEventListener("click", () => setOp(k)));
   $("brSize").addEventListener("input", render);
   window.addEventListener("msk-rescale", render);
-  $("brNext").addEventListener("click", () => { shown++; render(); });
+  $("brNext").addEventListener("click", () => { const adv = () => { shown++; render(); }; if (window.Predict && window.Predict.gate($("brSteps"), steps, shown, adv)) return; adv(); });
   $("brBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   $("brAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("brRestart").addEventListener("click", () => { shown = 0; render(); });
@@ -2881,7 +2973,7 @@ renderStell();
   $("baSub").addEventListener("click", () => setOp("sub"));
   $("baSize").addEventListener("input", render);
   window.addEventListener("msk-rescale", render);
-  $("baNext").addEventListener("click", () => { shown++; render(); });
+  $("baNext").addEventListener("click", () => { const adv = () => { shown++; render(); }; if (window.Predict && window.Predict.gate($("baSteps"), steps, shown, adv)) return; adv(); });
   $("baBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   $("baAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("baRestart").addEventListener("click", () => { shown = 0; render(); });
@@ -3182,7 +3274,7 @@ renderStell();
   ["mul", "ver", "auf"].forEach(k => $("gd_" + k).addEventListener("click", () => setOp(k)));
   $("gdSize").addEventListener("input", render);
   window.addEventListener("msk-rescale", render);
-  $("gdNext").addEventListener("click", () => { shown++; render(); });
+  $("gdNext").addEventListener("click", () => { const adv = () => { shown++; render(); }; if (window.Predict && window.Predict.gate($("gdSteps"), steps, shown, adv)) return; adv(); });
   $("gdBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   $("gdAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("gdRestart").addEventListener("click", () => { shown = 0; render(); });
@@ -3202,7 +3294,7 @@ renderStell();
   const F = (p, q, cls) => '<span class="ifr ' + (cls || "") + '"><span>' + p + "</span><span>" + q + "</span></span>";
   const T = (x, cls) => '<span class="' + cls + '">' + x + "</span>";
   const line = (lab, txt) => '<div class="zeq"><span class="usmall">' + lab + "</span>" + txt + "</div>";
-  const step = (t, txt, vis, cls, r) => ({ t: t, cls: cls, r: r, v: vis || "", h: '<div class="utext">' + txt + "</div>" + (vis || "") });
+  const step = (t, txt, vis, cls, r, q) => ({ t: t, cls: cls, r: r, q: q, v: vis || "", h: '<div class="utext">' + txt + "</div>" + (vis || "") });
   const sw = c => '<i class="zsw" style="background:' + c + '"></i>';
   const ri = (x, y) => x + Math.floor(Math.random() * (y - x + 1));
   const P10 = k => Math.pow(10, k);
@@ -3363,7 +3455,7 @@ renderStell();
       bb().disabled = shown <= 0;
       if (o.after) o.after();
     }
-    nb().addEventListener("click", () => { shown++; render(); });
+    nb().addEventListener("click", () => { const adv = () => { shown++; render(); }; if (window.Predict && window.Predict.gate($(o.pre + "Steps"), steps, shown, adv)) return; adv(); });
     bb().addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
     ab().addEventListener("click", () => { shown = steps.length - 1; render(); });
     $(o.pre + "Restart").addEventListener("click", () => { shown = 0; render(); });
@@ -3580,16 +3672,20 @@ renderStell();
       if (!q) return "Bitte eine Dezimalzahl mit höchstens 2 Stellen vor und 3 Stellen nach dem Komma eingeben, zum Beispiel 3,475.";
       const p = q.p, N3 = q.n * P10(3 - p), W = Math.floor(N3 / 1000), xs = fmt(q.n, p), out = [];
       out.push(step("Aufgabe", "Ich suche die Zahl " + T(xs, "zo") + " auf dem Zahlenstrahl. Eine Dezimalzahl ist ein Punkt auf dem Zahlenstrahl. Um ihn zu finden, verfeinere ich den Zahlenstrahl Schritt für Schritt: erst die Ganzen, dann die Zehntel, dann die Hundertstel, dann die Tausendstel. Jede Strecke teile ich in 10 gleiche Teile.", nlSvg({ aria: "Zahlenstrahl von " + W + " bis " + (W + 1), ticks: [{ f: 0, lab: fmt(W, 0), big: true }, { f: 1, lab: fmt(W + 1, 0), big: true }] })));
-      out.push(step("Zwischen welchen Ganzen?", p === 0 ? "Die Zahl " + T(xs, "zo") + " ist eine ganze Zahl. Sie liegt genau auf dem Strich " + W + "." : "Die Zahl " + T(xs, "zo") + " liegt zwischen " + T(W, "zs") + " und " + T(W + 1, "zs") + ". Die Ziffer vor dem Komma sagt: Ich beginne bei " + W + ". Die Strecke von " + W + " bis " + (W + 1) + " hat die Länge 1.", pic(q, 0)));
+      const qWn = (a, b) => a + " und " + b;
+      out.push(step("Zwischen welchen Ganzen?", p === 0 ? "Die Zahl " + T(xs, "zo") + " ist eine ganze Zahl. Sie liegt genau auf dem Strich " + W + "." : "Die Zahl " + T(xs, "zo") + " liegt zwischen " + T(W, "zs") + " und " + T(W + 1, "zs") + ". Die Ziffer vor dem Komma sagt: Ich beginne bei " + W + ". Die Strecke von " + W + " bis " + (W + 1) + " hat die Länge 1.", pic(q, 0), undefined, undefined,
+        p === 0 ? undefined : { head: "Zwischen welchen Ganzen liegt " + xs + "?", a: [qWn(W, W + 1), qWn(W + 1, W + 2), W > 0 ? qWn(W - 1, W) : qWn(W + 2, W + 3)], why: ["", "Die Ziffer vor dem Komma ist " + W + ". Die Zahl ist größer als " + W + " und kleiner als " + (W + 1) + ".", "Die Ziffer vor dem Komma ist " + W + ". Die Zahl liegt rechts von " + W + "."] }));
       for (let L = 1; L <= p; L++) {
         const P = Math.floor(N3 / P10(3 - (L - 1))), dL = Math.floor(N3 / P10(3 - L)) % 10, un = UN(L);
         const A = fmt(P, L - 1), B = fmt(P + 1, L - 1), A2 = fmt(P * 10 + dL, L), B2 = fmt(P * 10 + dL + 1, L);
         out.push(step("Die markierte Strecke teilen",
-          "Die Zahl liegt in der markierten Strecke von " + T(A, "zs") + " bis " + T(B, "zs") + ". Ich zeichne in diese Strecke 10 gleich lange Teile ein (orange Striche). Jeder Teil ist ein " + T(un, "zg") + " lang. Die Striche sind noch klein. Im nächsten Schritt vergrößere ich die Strecke.", preSplit(q, L)));
+          "Die Zahl liegt in der markierten Strecke von " + T(A, "zs") + " bis " + T(B, "zs") + ". Ich zeichne in diese Strecke 10 gleich lange Teile ein (orange Striche). Jeder Teil ist ein " + T(un, "zg") + " lang. Die Striche sind noch klein. Im nächsten Schritt vergrößere ich die Strecke.", preSplit(q, L), undefined, undefined,
+          { head: "In wie viele gleiche Teile teile ich die Strecke?", a: ["10", "5", "100"], why: ["", "Wir verfeinern immer in 10 Teile, nicht in 5. So passt jeder Schritt zu einer Stelle der Tafel.", "Mit 100 Teilen würden zwei Stellen auf einmal verfeinert. Eine Stelle ist ein Schritt: 10 Teile."] }));
         out.push(step("In " + un + " verfeinern (vergrößert)",
           "Ich teile die Strecke von " + A + " bis " + B + " in 10 gleiche Teile. Jeder Teil ist ein " + T(un, "zg") + " lang (" + F(1, P10(L)) + " = " + fmt(1, L) + "). Die Ziffer an der " + un + "stelle ist " + T(dL, "zo") + ". " +
           (dL === 0 ? "Ich gehe 0 Striche nach rechts und bleibe bei " + A2 + ". " : "Ich gehe " + dL + (dL === 1 ? " Strich" : " Striche") + " nach rechts bis " + A2 + ". ") +
-          (L < p ? "Die Zahl liegt zwischen " + T(A2, "zs") + " und " + T(B2, "zs") + ". Dort vergrößere ich weiter." : "Ich lande genau bei " + T(xs, "zo") + "."), pic(q, L)));
+          (L < p ? "Die Zahl liegt zwischen " + T(A2, "zs") + " und " + T(B2, "zs") + ". Dort vergrößere ich weiter." : "Ich lande genau bei " + T(xs, "zo") + "."), pic(q, L), undefined, undefined,
+          { head: "Wie viele Striche gehe ich nach rechts? (Ziffer an der " + un + "stelle)", a: [String(dL), String((dL + 1) % 10), String((dL + 9) % 10)], why: ["", "Schau in die Stellenwerttafel: Die Ziffer an der " + un + "stelle ist " + dL + ", nicht " + (dL + 1) % 10 + ".", "Schau in die Stellenwerttafel: Die Ziffer an der " + un + "stelle ist " + dL + ", nicht " + (dL + 9) % 10 + "."] }));
       }
       const rows = [line("Einer:", W + " Ganze: Ich beginne beim Strich " + W + ".")];
       for (let L = 1; L <= p; L++) rows.push(line(UN(L) + ":", Math.floor(N3 / P10(3 - L)) % 10 + " Striche weiter (Verfeinerung " + L + ")"));
@@ -3630,10 +3726,14 @@ renderStell();
       const N = q.n, p = q.p, D = P10(p - pr), Ln = Math.floor(N / D), rem = N % D, half = D / 2, equal = rem === half, up = rem >= half, Rn = Ln + (up ? 1 : 0), dig = Math.floor(rem * 10 / D);
       const xs = fmt(N, p), L = fmt(Ln, pr), U = fmt(Ln + 1, pr), M = fmt(10 * Ln + 5, pr + 1), R = fmt(Rn, pr), nm = pr === 0 ? "Ganze" : UN(pr), out = [];
       out.push(step("Aufgabe", "Ich runde " + T(xs, "zo") + " auf " + T(nm, "zg") + ". Runden heißt: Ich suche auf dem Zahlenstrahl den nächstgelegenen " + (pr === 0 ? "Strich mit einer ganzen Zahl" : nm + "-Strich") + ". Die Rundungsstelle ist in der Stellenwerttafel markiert.", tafel([{ label: "Zahl", cells: cells(N, p, "cs") }], { col: -pr })));
-      out.push(step("Zwischen welchen Strichen liegt die Zahl?", "Die Zahl " + T(xs, "zo") + " liegt zwischen " + T(L, "zs") + " und " + T(U, "zs") + ". Das sind die beiden Striche der Rundungsstelle. Einer davon ist der nächstgelegene.", nlR(Ln, pr, p, N, {})));
-      out.push(step("Wo ist die Mitte?", "Die Mitte zwischen " + L + " und " + U + " ist " + T(M, "zo") + ". Dort sind beide Striche gleich weit entfernt. Liegt die Zahl links von der Mitte, ist " + L + " näher. Liegt sie rechts von der Mitte, ist " + U + " näher. Liegt sie genau in der Mitte, gilt die Vereinbarung: Es wird aufgerundet.", nlR(Ln, pr, p, N, { mid: true })));
+      out.push(step("Zwischen welchen Strichen liegt die Zahl?", "Die Zahl " + T(xs, "zo") + " liegt zwischen " + T(L, "zs") + " und " + T(U, "zs") + ". Das sind die beiden Striche der Rundungsstelle. Einer davon ist der nächstgelegene.", nlR(Ln, pr, p, N, {}), undefined, undefined,
+        { head: "Zwischen welchen Strichen liegt " + xs + "?", a: [L + " und " + U, U + " und " + fmt(Ln + 2, pr), Ln > 0 ? fmt(Ln - 1, pr) + " und " + L : fmt(Ln + 2, pr) + " und " + fmt(Ln + 3, pr)], why: ["", "Die Zahl ist kleiner als " + U + ". Sie liegt links davon.", "Die Zahl ist größer als " + L + ". Sie liegt rechts davon."] }));
+      out.push(step("Wo ist die Mitte?", "Die Mitte zwischen " + L + " und " + U + " ist " + T(M, "zo") + ". Dort sind beide Striche gleich weit entfernt. Liegt die Zahl links von der Mitte, ist " + L + " näher. Liegt sie rechts von der Mitte, ist " + U + " näher. Liegt sie genau in der Mitte, gilt die Vereinbarung: Es wird aufgerundet.", nlR(Ln, pr, p, N, { mid: true }), undefined, undefined,
+        { head: "Wo liegt die Mitte zwischen " + L + " und " + U + "?", a: [M, fmt(10 * Ln + 4, pr + 1), fmt(10 * Ln + 6, pr + 1)], why: ["", "Die Mitte hat an der nächsten Stelle die Ziffer 5, nicht 4.", "Die Mitte hat an der nächsten Stelle die Ziffer 5, nicht 6."] }));
       out.push(step("Welcher Strich ist näher?", equal ? "Die Zahl " + T(xs, "zo") + " liegt genau in der Mitte. Beide Striche sind gleich weit entfernt. Nach der Vereinbarung runde ich auf: " + T(U, "zg") + "." : up ? "Die Zahl " + T(xs, "zo") + " liegt rechts von der Mitte " + M + ". Sie ist näher an " + T(U, "zg") + "." : "Die Zahl " + T(xs, "zo") + " liegt links von der Mitte " + M + ". Sie ist näher an " + T(L, "zg") + ".",
-        nlR(Ln, pr, p, N, { mid: true, half: up ? "hi" : "lo" }) + tafel([{ label: "Zahl", cells: cells(N, p, "cs") }], { col: -(pr + 1) }) + line("Ziffer-Regel:", "Die Ziffer rechts neben der Rundungsstelle ist " + dig + ". Ziffern 0 bis 4: abrunden. Ziffern 5 bis 9: aufrunden. Das ist dieselbe Entscheidung wie am Zahlenstrahl.")));
+        nlR(Ln, pr, p, N, { mid: true, half: up ? "hi" : "lo" }) + tafel([{ label: "Zahl", cells: cells(N, p, "cs") }], { col: -(pr + 1) }) + line("Ziffer-Regel:", "Die Ziffer rechts neben der Rundungsstelle ist " + dig + ". Ziffern 0 bis 4: abrunden. Ziffern 5 bis 9: aufrunden. Das ist dieselbe Entscheidung wie am Zahlenstrahl."), undefined, undefined,
+        equal ? { head: "Die Zahl liegt genau in der Mitte. Welcher Strich gilt?", a: [U, L, "Das kann man nicht sagen"], why: ["", "In der Mitte wird aufgerundet. Das ist die Vereinbarung.", "Dafür gibt es die Vereinbarung: In der Mitte wird aufgerundet."] }
+          : { head: "Welcher Strich ist näher an " + xs + "?", a: [up ? U : L, up ? L : U, "Beide sind gleich weit weg"], why: ["", "Schau, auf welcher Seite der Mitte " + M + " die Zahl liegt.", "Die Zahl liegt nicht in der Mitte " + M + ". Ein Strich ist näher."] }));
       out.push(step("Ergebnis", "Gerundet auf " + nm + ": " + T(xs, "zo") + " ≈ " + T(R, "zg") + ". Das Zeichen ≈ heißt ungefähr gleich. Beim Runden ändert sich der Wert ein wenig.", '<div class="zbig">' + xs + " ≈ " + T(R, "zg") + "</div>" + nlR(Ln, pr, p, N, { mid: true, res: up ? "U" : "L" }) + tafel([{ label: "gerundet", cells: cells(Rn, pr, "co") }], { col: -pr }), "good", R));
       return out;
     }

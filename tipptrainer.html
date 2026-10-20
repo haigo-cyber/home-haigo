@@ -193,6 +193,15 @@ body.shake #gameScreen{animation:shake .18s}
 .toast{background:#1a0f2e;border:1px solid var(--mg);color:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 0 20px rgba(255,43,214,.6);animation:tin .3s}
 @keyframes tin{from{transform:translateX(120%)}}
 
+#duelBar{display:none;text-align:center;padding:6px 10px}
+.dp{display:inline-block;padding:4px 14px;border:1px solid var(--line);border-radius:8px;margin:0 6px;color:var(--mute)}
+.dp.on{border-color:var(--yel);color:var(--yel);box-shadow:0 0 12px rgba(255,212,0,.5)}
+.vs{color:var(--mg);font-weight:900;text-shadow:0 0 8px var(--mg)}
+.ch.gh{border-bottom:3px solid var(--mg);box-shadow:0 3px 8px -2px var(--mg)}
+#gb{background:var(--mg);box-shadow:0 0 8px var(--mg)}
+#result table.duel td:nth-child(2),#result table.duel td:nth-child(3){text-align:center}
+#result table.duel td.win{color:var(--lime);font-weight:900}
+#duelPanel input[type=text]{width:130px}
 @media (max-width:700px){ .play{flex-direction:column} #target{flex:none;flex-direction:row;justify-content:center;align-items:center;gap:12px} .xp{width:120px} }
 @media (prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
@@ -220,6 +229,17 @@ body.shake #gameScreen{animation:shake .18s}
     <div class="note" style="margin-top:6px">Schließe ein Level mit mindestens einem Stern ab, um das nächste freizuschalten. Sterne gibt es für Treffsicherheit: 90, 95 und 98 Prozent.</div>
   </div>
   <div id="worlds"></div>
+  <div class="panel" id="duelPanel">
+    <h3 style="color:var(--mg);text-shadow:0 0 8px var(--mg);margin-bottom:6px">Duell für zwei Kinder</h3>
+    <div class="note">Beide tippen nacheinander denselben Text. Das zweite Kind sieht dabei einen Geist: eine magentafarbene Markierung im Text und ein Balken zeigen, wie weit das erste Kind zur gleichen Zeit war. Es gewinnt, wer mehr Punkte hat.</div>
+    <div class="set">
+      <label>Spieler 1 <input type="text" id="dn1" maxlength="14" value="Spieler 1"></label>
+      <label>Spieler 2 <input type="text" id="dn2" maxlength="14" value="Spieler 2"></label>
+      <label>Level <select id="dlv"></select></label>
+      <button id="dGoBtn" class="mg">Duell starten</button>
+    </div>
+    <div class="note" id="dRank" style="margin-top:8px"></div>
+  </div>
   <div class="panel"><h3 style="color:var(--yel);margin-bottom:8px">Abzeichen</h3><div class="badges" id="badgeBox"></div></div>
   <details class="panel">
     <summary>Einstellungen</summary>
@@ -254,6 +274,7 @@ body.shake #gameScreen{animation:shake .18s}
     <button id="rep" class="sec" style="display:none">Nochmal hören (F2)</button>
     <button id="again" class="sec">Neustart (Esc)</button>
   </div>
+  <div id="duelBar" class="panel"></div>
   <div id="ownWrap" style="display:none;margin-top:10px"><textarea id="own" placeholder="Eigenen Text hier einfügen, dann Esc drücken"></textarea></div>
   <div id="intro" class="panel"></div>
   <div id="drill">
@@ -266,7 +287,7 @@ body.shake #gameScreen{animation:shake .18s}
         <div class="st"><small>ANSCHLÄGE/MIN</small><b id="sA">0</b></div>
         <div class="st"><small>ZEIT</small><b id="sT">0:00</b></div>
       </div>
-      <div class="bars"><div class="bar"><div id="en"></div></div><div class="bar"><div id="prog"></div></div></div>
+      <div class="bars"><div class="bar"><div id="en"></div></div><div class="bar"><div id="prog"></div></div><div class="bar" id="gbWrap" style="display:none"><div id="gb"></div></div></div>
       <div class="play">
         <div id="target"><div id="tg">?</div><div id="tinfo"></div></div>
         <div id="box"></div>
@@ -736,6 +757,7 @@ var text='', pos=0, hadErr=[], spans=[], errTotal=0, keysTotal=0, errMap={};
 var startT=0, timer=null, running=false, finished=false, curId='L0';
 var sentStarts=[], combo=0, maxCombo=0, score=0, energy=100, demoTimer=null, demoOnce={};
 var introPage=0, held={}, testOK=false, HOMEKEYS='asdfjklö';
+var duel={on:false};
 
 function isIntro(){var L=lessonOf(curId); return !!(L && L.t==='intro');}
 function isTextMode(){return curId.charAt(0)==='T' || curId===OWN_ID;}
@@ -765,7 +787,7 @@ function renderMap(){
   var bh='';
   BADGES.forEach(function(b){ var on=!!store.badges[b.id]; bh+='<div class="badge'+(on?'':' off')+'"><b>'+(on?'★ ':'? ')+esc(b.n)+'</b>'+esc(b.d)+'</div>'; });
   $('badgeBox').innerHTML=bh;
-  renderHist(); renderHud();
+  renderHist(); renderHud(); renderDuelPanel();
 }
 function renderHist(){
   var h=$('hist');
@@ -777,6 +799,7 @@ function renderHist(){
   h.innerHTML=s+'</table>';
 }
 function showMap(){
+  duel={on:false}; $('duelBar').style.display='none';
   stopDemo(); clearInterval(timer); timer=null; running=false;
   if(speechOK()){try{window.speechSynthesis.cancel();}catch(e){}}
   $('result').classList.remove('show');
@@ -784,6 +807,7 @@ function showMap(){
   renderMap(); window.scrollTo(0,0);
 }
 function startLevel(id){
+  duel={on:false};
   curId=id; introPage=0; testOK=false; held={};
   store.set.cur=id; save();
   document.body.classList.remove('screen-map'); document.body.classList.add('screen-game');
@@ -824,8 +848,9 @@ function prepare(){
   document.body.classList.toggle('intro', isIntro());
   $('result').classList.remove('show','over');
   $('ownWrap').style.display = curId===OWN_ID ? 'block' : 'none';
-  $('rep').style.display = (isTextMode() && $('dict').checked) ? '' : 'none';
+  $('rep').style.display = (isTextMode() && $('dict').checked && !duel.on) ? '' : 'none';
   if(speechOK()){try{window.speechSynthesis.cancel();}catch(e){}}
+  if(!duel.on) $('duelBar').style.display='none';
   if(isIntro()){
     running=false; text=''; pos=0; spans=[]; $('info').style.display='none';
     showIntro(); return;
@@ -834,7 +859,8 @@ function prepare(){
   pos=0; errTotal=0; keysTotal=0; errMap={}; hadErr=[];
   var note='';
   var L=lessonOf(curId);
-  if(curId.charAt(0)==='L'){ text=genLesson(parseInt(curId.slice(1),10), parseInt($('len').value,10)); }
+  if(duel.on){ text=duel.text; duel.rec=[]; }
+  else if(curId.charAt(0)==='L'){ text=genLesson(parseInt(curId.slice(1),10), parseInt($('len').value,10)); }
   else if(curId.charAt(0)==='T'){ text=sanitize(TEXTS[parseInt(curId.slice(1),10)].s).text; }
   else {
     var r=sanitize($('own').value||'');
@@ -842,7 +868,7 @@ function prepare(){
     if(!text) text='Bitte oben einen eigenen Text einfügen. Danach Esc drücken.';
   }
   $('dictNote').textContent=note;
-  var ih=infoHtml(); $('info').innerHTML=ih; $('info').style.display = ih?'block':'none';
+  var ih=duel.on?'':infoHtml(); $('info').innerHTML=ih; $('info').style.display = ih?'block':'none';
   var db=$('demoBtn'); if(db) db.addEventListener('click',function(){playDemo(demoChars(L)); db.blur();});
   sentStarts=[0];
   for(var i=0;i<text.length-1;i++){ if('.!?'.indexOf(text.charAt(i))>=0 && text.charAt(i+1)===' ') sentStarts.push(i+2); }
@@ -853,6 +879,9 @@ function prepare(){
   }
   box.scrollTop=0;
   $('startMsg').style.display='block';
+  var gOn = duel.on && duel.turn===1 && duel.ghost;
+  $('gbWrap').style.display = gOn?'block':'none'; $('gb').style.width='0';
+  if(duel.on){ duel.gp=-1; renderDuelBar(); if(gOn && spans[0]){ spans[0].classList.add('gh'); duel.gp=0; } }
   applyHide(); updateCursor(); updateStats();
   if(document.activeElement && /^(SELECT|BUTTON)$/.test(document.activeElement.tagName)) document.activeElement.blur();
   maybeSpeak();
@@ -943,6 +972,7 @@ function updateStats(){
   $('prog').style.width=(text.length? pos/text.length*100:0)+'%';
   var en=$('en'); en.style.width=Math.max(0,energy)+'%';
   var col = energy>60?'#7cff4f':energy>30?'#ffd400':'#ff3b5c'; en.style.background=col; en.style.boxShadow='0 0 8px '+col;
+  ghostUpdate();
 }
 
 /* ---------- Sprache ---------- */
@@ -964,7 +994,7 @@ function speak(s){
   }catch(e){}
 }
 function maybeSpeak(){
-  if(!isTextMode() || !$('dict').checked || finished) return;
+  if(!isTextMode() || !$('dict').checked || finished || duel.on) return;
   if(sentStarts.indexOf(pos)>=0) speak(currentSentence());
 }
 
@@ -1034,6 +1064,7 @@ function onKey(e){
   var t=e.target;
   if(t && t.tagName==='TEXTAREA'){ if(e.key==='Escape'){t.blur(); prepare();} return; }
   if(document.body.classList.contains('screen-map')) return;
+  if(duel.on && duel.wait){ if(e.key==='Enter'){e.preventDefault(); if(duel.fn) duel.fn();} return; }
   if(e.key==='Escape'){e.preventDefault(); prepare(); return;}
   if(e.key==='F2'){e.preventDefault(); if(isTextMode()) speak(currentSentence()); return;}
   if(isIntro()){
@@ -1047,7 +1078,7 @@ function onKey(e){
   if(e.key.length!==1) return;
   e.preventDefault();
   if(demoTimer) stopDemo();
-  if(!startT){ startT=performance.now(); timer=setInterval(updateStats,250); $('startMsg').style.display='none'; touchDay(); }
+  if(!startT){ startT=performance.now(); timer=setInterval(updateStats,100); $('startMsg').style.display='none'; touchDay(); }
   keysTotal++;
   var exp=text.charAt(pos);
   if(e.key===exp){
@@ -1062,6 +1093,7 @@ function onKey(e){
     sndOk(combo);
     if(combo>0 && combo%10===0){ popText('COMBO '+combo+'!','#ffd400'); sndCombo(); var cb=$('sC'); cb.classList.remove('big'); void cb.offsetWidth; cb.classList.add('big'); }
     if(combo===25) award('combo25'); if(combo===50) award('combo50'); if(combo===100) award('combo100');
+    if(duel.on) duel.rec[pos]=elapsed();
     pos++;
     if(pos>=text.length){ updateStats(); finish(true); return; }
     updateCursor(); maybeSpeak();
@@ -1072,7 +1104,7 @@ function onKey(e){
     combo=0; energy-=10; shakeScreen(); sndBad();
     var s2=spans[pos]; s2.classList.remove('err'); void s2.offsetWidth; s2.classList.add('err');
     if(energy<=0){
-      if($('go').checked){ updateStats(); finish(false); return; }
+      if($('go').checked && !duel.on){ updateStats(); finish(false); return; }
       energy=0;
     }
   }
@@ -1080,6 +1112,7 @@ function onKey(e){
 }
 
 function finish(ok){
+  if(duel.on){ duelFinish(); return; }
   finished=true; running=false; clearInterval(timer); timer=null;
   stopDemo(true);
   if(speechOK()){try{window.speechSynthesis.cancel();}catch(e){}}
@@ -1138,6 +1171,103 @@ function finish(ok){
   });
 }
 
+/* ---------- Duell ---------- */
+function ghostUpdate(){
+  if(!(duel.on && duel.turn===1 && duel.ghost && startT && !finished)) return;
+  var t=elapsed(), g=0;
+  while(g<duel.ghost.length && duel.ghost[g]<=t) g++;
+  $('gb').style.width=(text.length? g/text.length*100:0)+'%';
+  if(duel.gp!==g){
+    if(spans[duel.gp]) spans[duel.gp].classList.remove('gh');
+    if(spans[g]) spans[g].classList.add('gh');
+    duel.gp=g;
+  }
+}
+function renderDuelBar(){
+  var b=$('duelBar'); if(!duel.on){b.style.display='none'; return;}
+  var h='';
+  for(var i=0;i<2;i++){
+    h+='<span class="dp'+(duel.turn===i?' on':'')+'">'+(duel.turn===i?'&#9654; ':'')+esc(duel.names[i])+(duel.res[i]?' · '+duel.res[i].score:'')+'</span>';
+    if(i===0) h+='<span class="vs">VS</span>';
+  }
+  if(duel.turn===1) h+='<div class="note" style="margin-top:4px">Magenta Markierung im Text: Geist von '+esc(duel.names[0])+'</div>';
+  b.innerHTML=h; b.style.display='block';
+}
+function duelOverlay(html,fn){
+  var rs=$('result'); rs.innerHTML='<div class="box">'+html+'</div>'; rs.classList.remove('over'); rs.classList.add('show');
+  duel.wait=true;
+  duel.fn=function(){ duel.wait=false; rs.classList.remove('show'); fn(); };
+  var b=$('dGo'); if(b) b.addEventListener('click',duel.fn);
+  var m=$('dMap'); if(m) m.addEventListener('click',showMap);
+}
+function beginDuel(id,n1,n2){
+  var t0 = id.charAt(0)==='L' ? genLesson(parseInt(id.slice(1),10), parseInt($('len').value,10)) : sanitize(TEXTS[parseInt(id.slice(1),10)].s).text;
+  duel={on:true,id:id,names:[n1,n2],turn:0,res:[],rec:[],ghost:null,gp:-1,text:t0,wait:false,fn:null};
+  curId=id; introPage=0; held={};
+  document.body.classList.remove('screen-map'); document.body.classList.add('screen-game');
+  $('lvlName').textContent='Duell: '+nameOf(id).replace(/^\d+\s+/,'');
+  prepare(); restDots(); window.scrollTo(0,0);
+  duelOverlay('<h2>DUELL</h2><p>'+esc(n1)+' gegen '+esc(n2)+'</p><p>'+esc(n1)+' beginnt. Beide Hände in die Grundstellung, dann die erste Taste drücken. Die Zeit läuft erst mit dem ersten Anschlag.</p><div class="btns"><button id="dGo" class="mg">Los (Enter)</button><button id="dMap" class="sec">Abbrechen</button></div>',function(){});
+}
+function startDuel(){
+  var n1=($('dn1').value||'').trim().slice(0,14)||'Spieler 1', n2=($('dn2').value||'').trim().slice(0,14)||'Spieler 2';
+  if(n1===n2) n2=n2+' (2)';
+  store.set.dn1=n1; store.set.dn2=n2; store.set.dlv=$('dlv').value; save();
+  var id=$('dlv').value; if(!id) return;
+  beginDuel(id,n1,n2);
+}
+function duelWinner(){
+  var a=duel.res[0], b=duel.res[1];
+  if(a.score!==b.score) return a.score>b.score?0:1;
+  if(a.err!==b.err) return a.err<b.err?0:1;
+  return -1;
+}
+function duelFinish(){
+  finished=true; running=false; clearInterval(timer); timer=null; stopDemo(true);
+  var c=calc();
+  duel.res[duel.turn]={score:score,acc:c.acc,err:errTotal,apm:c.apm,combo:maxCombo,t:c.t};
+  clearMarks(); restDots(); updateTarget(null); sndWin(); renderDuelBar();
+  var n=duel.names;
+  if(duel.turn===0){
+    duel.ghostSrc=duel.rec.slice();
+    duelOverlay('<h2>'+esc(n[0])+' ist fertig!</h2><p><b style="color:var(--yel);font-size:1.6rem">'+score+' Punkte</b></p><p>'+String(c.acc).replace('.',',')+' Prozent Treffer, '+errTotal+' Fehler, längste Serie '+maxCombo+'.</p>'+
+      '<p>Jetzt ist <b>'+esc(n[1])+'</b> dran. '+esc(n[1])+' sieht einen Geist: Die magentafarbene Markierung zeigt, wo '+esc(n[0])+' zur gleichen Zeit war. Beide Hände in die Grundstellung!</p><div class="btns"><button id="dGo" class="mg">Los (Enter)</button></div>',
+      function(){ duel.turn=1; duel.ghost=duel.ghostSrc; prepare(); });
+    return;
+  }
+  var w=duelWinner(), a=duel.res[0], b=duel.res[1];
+  if(!store.duelWins) store.duelWins={};
+  if(w>=0) store.duelWins[n[w]]=(store.duelWins[n[w]]||0)+1;
+  if(!store.duelHist) store.duelHist=[];
+  store.duelHist.unshift({d:new Date().toLocaleString('de-DE'), id:duel.id, a:n[0], b:n[1], sa:a.score, sb:b.score, w:w});
+  store.duelHist=store.duelHist.slice(0,20); save();
+  function row(lbl,x,y,hi){ var cx='',cy=''; if(hi===0) cx=' class="win"'; if(hi===1) cy=' class="win"'; return '<tr><td>'+lbl+'</td><td'+cx+'>'+x+'</td><td'+cy+'>'+y+'</td></tr>'; }
+  function cmp(x,y,lowerBetter){ if(x===y) return -1; return (lowerBetter? x<y : x>y)?0:1; }
+  var h='<h2>'+(w>=0?esc(n[w])+' gewinnt!':'Unentschieden!')+'</h2>';
+  h+='<table class="duel"><tr><th></th><th>'+esc(n[0])+'</th><th>'+esc(n[1])+'</th></tr>'+
+    row('Punkte','<b>'+a.score+'</b>','<b>'+b.score+'</b>',cmp(a.score,b.score))+
+    row('Treffer',String(a.acc).replace('.',',')+' %',String(b.acc).replace('.',',')+' %',cmp(a.acc,b.acc))+
+    row('Fehler',a.err,b.err,cmp(a.err,b.err,true))+
+    row('Anschläge/min',a.apm,b.apm,cmp(a.apm,b.apm))+
+    row('Längste Serie',a.combo,b.combo,cmp(a.combo,b.combo))+
+    row('Zeit',fmt(a.t),fmt(b.t),cmp(a.t,b.t,true))+'</table>';
+  h+='<p class="note">Gewertet werden die Punkte. Sie hängen von Treffern und Serien ab: Wer hektisch tippt und sich verhaut, verliert Punkte.</p>';
+  h+='<div class="btns"><button id="dGo" class="mg">Revanche (Enter)</button><button id="dMap" class="sec">Zur Karte</button></div>';
+  if(w>=0) popText(n[w]+' gewinnt!','#ffd400');
+  duelOverlay(h,function(){ beginDuel(duel.id,n[1],n[0]); });
+}
+function renderDuelPanel(){
+  var sel=$('dlv'), prev=sel.value||(store.set&&store.set.dlv)||'';
+  var h='';
+  ORDER.forEach(function(id){
+    if(id==='L0'||id===OWN_ID) return;
+    h+='<option value="'+id+'">'+esc(numOf(id)+'  '+nameOf(id).replace(/^\d+\s+/,''))+'</option>';
+  });
+  sel.innerHTML=h; if(prev && sel.querySelector('option[value="'+prev+'"]')) sel.value=prev;
+  var wins=store.duelWins||{}, ks=Object.keys(wins).sort(function(a,b){return wins[b]-wins[a];}).slice(0,5);
+  $('dRank').textContent = ks.length ? 'Siege: '+ks.map(function(k){return k+' '+wins[k];}).join(', ') : 'Noch kein Duell gespielt.';
+}
+
 /* ---------- Start ---------- */
 function setFs(){document.documentElement.style.setProperty('--fs',$('fs').value+'px');}
 function applyView(){
@@ -1172,6 +1302,8 @@ function init(){
       $(id).blur();
     });
   });
+  $('dn1').value=st.dn1||'Spieler 1'; $('dn2').value=st.dn2||'Spieler 2';
+  $('dGoBtn').addEventListener('click',startDuel);
   $('bMap').addEventListener('click',showMap);
   $('toMap').addEventListener('click',showMap);
   $('again').addEventListener('click',prepare);
@@ -1189,7 +1321,7 @@ function init(){
   renderMap();
 }
 window.__tt = {charMap:charMap, genLesson:genLesson, sanitize:sanitize, LESSONS:LESSONS, TEXTS:TEXTS, ORDER:ORDER,
-  startLevel:startLevel, showMap:showMap, isUnlocked:isUnlocked, isDone:isDone, store:function(){return store;},
+  startLevel:startLevel, showMap:showMap, beginDuel:beginDuel, duel:function(){return duel;}, isUnlocked:isUnlocked, isDone:isDone, store:function(){return store;},
   get text(){return text;}, get pos(){return pos;}, get finished(){return finished;}, get score(){return score;}, get combo(){return combo;}};
 init();
 })();

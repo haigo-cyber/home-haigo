@@ -552,7 +552,7 @@
         <h1 id="pageTitle"></h1>
         <p class="tb-sub" id="pageSub"></p>
       </div>
-      <label class="opt ptoggle" title="Vor jedem nächsten Schritt drei Möglichkeiten zur Auswahl"><input type="checkbox" id="predictToggle" checked> Mitraten</label>
+      <label class="opt ptoggle" title="Mathematische Schritte selbst auswählen"><input type="checkbox" id="predictToggle" checked> Mitrechnen</label>
       <div class="tb-nav">
         <button class="icon-btn" id="topicPrev" aria-label="Vorheriges Thema" title="Vorheriges Thema"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
         <button class="icon-btn" id="topicNext" aria-label="Nächstes Thema" title="Nächstes Thema"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
@@ -1032,27 +1032,18 @@ window.Predict = (function () {
       const o = numOpts(String(n.r));
       if (o) return { head: "Welches Ergebnis ist richtig?", opts: o.map(x => ({ h: x[0], ok: x[1], why: x[2] })) };
     }
-    const correct = strip(n.t), seen = {}; seen[correct] = 1;
-    const cand = [];
-    steps.forEach((s, i) => { const t = strip(s.t); if (i !== shown + 1 && t && !seen[t]) { seen[t] = 1; cand.push({ i: i, t: t }); } });
-    const later = shuffle(cand.filter(c => c.i > shown + 1)), earlier = shuffle(cand.filter(c => c.i <= shown));
-    const pick = [];
-    if (later.length) pick.push(later.shift()); if (earlier.length) pick.push(earlier.shift());
-    shuffle(later.concat(earlier)).forEach(c => { if (pick.length < 2) pick.push(c); });
-    const opts = [{ h: correct, ok: true, why: "" }];
-    pick.forEach(c => opts.push({ h: c.t, ok: false, why: c.i <= shown ? "Das haben wir schon gemacht." : "Das kommt erst später." }));
-    shuffle(GEN.slice()).forEach(g => { if (opts.length < 3) opts.push({ h: g[0], ok: false, why: g[1] }); });
-    return { head: "Wie geht es weiter?", opts: opts };
+    return null;
   }
   function gate(host, steps, shown, advance) {
     if (!on || !host || !host.parentNode || !steps || shown >= steps.length - 1) return false;
+    if (!make(steps, shown)) return false;
     clear(host);
-    const m = make(steps, shown); shuffle(m.opts);
+    const m = make(steps, shown); if (!m) return false; shuffle(m.opts);
     const box = document.createElement("div");
     box.className = "ustep cur pgate";
     box.innerHTML = '<div class="unum">?</div><div class="ubody"><div class="utitle">' + m.head + '</div><div class="popts">' +
       m.opts.map((o, i) => '<button class="popt" data-i="' + i + '">' + o.h + "</button>").join("") +
-      '</div><div class="pfb" role="status" aria-live="polite"></div></div><div class="unav"><button data-skip="1">Ohne Raten weiter</button></div>';
+      '</div><div class="pfb" role="status" aria-live="polite"></div></div><div class="unav"><button data-skip="1">Ohne Auswahl weiter</button></div>';
     host.parentNode.insertBefore(box, host); gates.set(host, box);
     if (!watched.has(host)) { watched.add(host); new MutationObserver(() => clear(host)).observe(host, { childList: true }); }
     const fb = box.querySelector(".pfb");
@@ -3671,7 +3662,7 @@ renderStell();
       const q = parse(V.s, 2, 3);
       if (!q) return "Bitte eine Dezimalzahl mit höchstens 2 Stellen vor und 3 Stellen nach dem Komma eingeben, zum Beispiel 3,475.";
       const p = q.p, N3 = q.n * P10(3 - p), W = Math.floor(N3 / 1000), xs = fmt(q.n, p), out = [];
-      out.push(step("Aufgabe", "Ich suche die Zahl " + T(xs, "zo") + " auf dem Zahlenstrahl. Eine Dezimalzahl ist ein Punkt auf dem Zahlenstrahl. Um ihn zu finden, verfeinere ich den Zahlenstrahl Schritt für Schritt: erst die Ganzen, dann die Zehntel, dann die Hundertstel, dann die Tausendstel. Jede Strecke teile ich in 10 gleiche Teile.", nlSvg({ aria: "Zahlenstrahl von " + W + " bis " + (W + 1), ticks: [{ f: 0, lab: fmt(W, 0), big: true }, { f: 1, lab: fmt(W + 1, 0), big: true }] })));
+      out.push(step("Aufgabe", "Ich suche die Zahl " + T(xs, "zo") + " auf dem Zahlenstrahl. Eine Dezimalzahl ist ein Punkt auf dem Zahlenstrahl. Um ihn zu finden, verfeinere ich den Zahlenstrahl Schritt für Schritt: erst die Ganzen, dann die Zehntel, dann die Hundertstel, dann die Tausendstel. Jede Strecke teile ich in 10 gleiche Teile.", nlSvg({ aria: "Zahlenstrahl", ticks: [{ f: 0, lab: p > 0 ? "" : fmt(W, 0), big: true }, { f: 1, lab: p > 0 ? "" : fmt(W + 1, 0), big: true }] })));
       const qWn = (a, b) => a + " und " + b;
       out.push(step("Zwischen welchen Ganzen?", p === 0 ? "Die Zahl " + T(xs, "zo") + " ist eine ganze Zahl. Sie liegt genau auf dem Strich " + W + "." : "Die Zahl " + T(xs, "zo") + " liegt zwischen " + T(W, "zs") + " und " + T(W + 1, "zs") + ". Die Ziffer vor dem Komma sagt: Ich beginne bei " + W + ". Die Strecke von " + W + " bis " + (W + 1) + " hat die Länge 1.", pic(q, 0), undefined, undefined,
         p === 0 ? undefined : { head: "Zwischen welchen Ganzen liegt " + xs + "?", a: [qWn(W, W + 1), qWn(W + 1, W + 2), W > 0 ? qWn(W - 1, W) : qWn(W + 2, W + 3)], why: ["", "Die Ziffer vor dem Komma ist " + W + ". Die Zahl ist größer als " + W + " und kleiner als " + (W + 1) + ".", "Die Ziffer vor dem Komma ist " + W + ". Die Zahl liegt rechts von " + W + "."] }));
@@ -3868,12 +3859,14 @@ renderStell();
       const bigU = mode === "l" ? "m" : "m", smallU = "dm";
       out.push(step(d === 1 ? "Warum Faktor 10 und mehr?" : d === 2 ? "Das Quadratbild: warum 2 Spalten?" : "Das Würfelbild: warum 3 Spalten?",
         (d === 1 ? "Eine Strecke von 1 m ist in 10 dm geteilt: Das ist 1 Spalte (Faktor 10). Zwischen Kilometer und Meter sind es 3 Spalten (1 km = 1000 m)." : d === 2 ? "Ein Quadrat von 1 m mal 1 m ist in 10 mal 10 Quadrate zu je 1 dm mal 1 dm geteilt: 10 · 10 = 100. Das sind 2 Spalten (Faktor 100). Jeder Schritt zur nächsten Quadrat-Einheit sind 2 Spalten." : "Ein Würfel von 1 m Kantenlänge besteht aus 10 Schichten. Jede Schicht hat 10 mal 10 Würfel zu je 1 dm Kante: 10 · 10 · 10 = 1000. Das sind 3 Spalten (Faktor 1000). Jeder Schritt zur nächsten Würfel-Einheit sind 3 Spalten.") +
-        " Von " + T(u1[0], "zs") + " nach " + T(u2[0], "zg") + " sind es " + T(kk, "zo") + " " + pl + ".", sqPic(d, bigU, smallU)));
+        " Von " + T(u1[0], "zs") + " nach " + T(u2[0], "zg") + " sind es " + T(kk, "zo") + " " + pl + ".", sqPic(d, bigU, smallU), undefined, undefined,
+        { head: "Wie viele Spalten liegen zwischen " + u1[0] + " und " + u2[0] + "?", a: [String(kk), String(kk + 1), String(kk > 1 ? kk - 1 : kk + 2)], why: ["", "Zähle die Spalten: " + (d === 1 ? "Eine Stufe von Einheit zu Einheit ist 1 Spalte." : d === 2 ? "Jede Stufe ist 10 · 10 = 100, also 2 Spalten." : "Jede Stufe ist 10 · 10 · 10 = 1000, also 3 Spalten.") + " Es sind " + kk + ".", "Zähle die Spalten: " + (d === 1 ? "Eine Stufe von Einheit zu Einheit ist 1 Spalte." : d === 2 ? "Jede Stufe ist 10 · 10 = 100, also 2 Spalten." : "Jede Stufe ist 10 · 10 · 10 = 1000, also 3 Spalten.") + " Es sind " + kk + "."] }));
       out.push(step("Die Tafel der neuen Einheit", "Ich lege die Stellenwerttafel für " + T(u2[0], "zg") + " an: Die Spalte E ist der " + T(einer(u2), "zg") + ". Der " + einer(u1) + " liegt " + kk + " " + pl + " " + side + " davon. Dort steht die " + T(dig, "zo") + ". Die anderen Ziffern von " + xs + " folgen in ihren Spalten.",
         tafel([{ label: xs + " " + u1[0], cells: placed }], { col: sft }) + '<div class="note">Die markierte Spalte ist der ' + einer(u1) + ". Die Spalte E ist der " + einer(u2) + ".</div>"));
       const fill = Object.keys(mc.cells).filter(k => mc.cells[k].cls === "co").length;
       out.push(step("Mit Nullen auffüllen", fill ? "Die leeren Spalten bis zum " + T(einer(u2), "zg") + " fülle ich mit Nullen auf (orange). Dann kann ich die Zahl in " + u2[0] + " ablesen." : "Es sind keine Spalten frei. Ich lese die Zahl in " + u2[0] + " direkt ab.",
-        tafel([{ label: res + " " + u2[0], cells: mc.cells }], { col: 0 }) + '<div class="note">Die markierte Spalte ist der ' + einer(u2) + ".</div>"));
+        tafel([{ label: res + " " + u2[0], cells: mc.cells }], { col: 0 }) + '<div class="note">Die markierte Spalte ist der ' + einer(u2) + ".</div>", undefined, undefined,
+        fill ? { head: "Wie viele leere Spalten fülle ich mit Nullen auf?", a: [String(fill), String(fill + 1), String(fill > 1 ? fill - 1 : fill + 2)], why: ["", "Schau, wie viele Spalten zwischen der letzten Ziffer und dem " + einer(u2) + " leer sind: " + fill + ".", "Schau, wie viele Spalten zwischen der letzten Ziffer und dem " + einer(u2) + " leer sind: " + fill + "."] } : undefined));
       out.push(step("Ergebnis", xs + " " + u1[0] + " sind " + T(res + " " + u2[0], "zo") + ". Die Ziffern sind gewandert, die Größe ist gleich geblieben.", '<div class="zbig">' + xs + " " + u1[0] + " = " + T(res + " " + u2[0], "zo") + "</div>" + line("Umkehraufgabe:", res + " " + u2[0] + " = " + xs + " " + u1[0] + " (die Ziffern wandern " + kk + " " + pl + " zurück)"), "good", res));
       return out;
     }

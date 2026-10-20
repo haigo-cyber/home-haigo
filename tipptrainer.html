@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seifferts Tipptrainer</title>
+<style>
+:root{
+  --bg:#070b14; --panel:#0e1526; --panel2:#131d34; --line:#243252; --ink:#e6f1ff; --mute:#7f93b8;
+  --cy:#00e5ff; --mg:#ff2bd6; --lime:#7cff4f; --yel:#ffd400; --red:#ff3b5c;
+  --LP:#ff6ec7; --LR:#ffa24d; --LM:#ffe14d; --LI:#5dff8f; --RI:#4dd8ff; --RM:#8e8bff; --RR:#d27bff; --RP:#d9b48a; --T:#9fb0cf;
+  --fs:28px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(1200px 700px at 50% -10%,#14213f 0%,var(--bg) 60%) fixed;color:var(--ink);
+  font-family:"DejaVu Sans Mono","Consolas","Courier New",monospace;min-height:100vh}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0,rgba(255,255,255,.025) 1px,transparent 1px,transparent 3px)}
+button{font:inherit;cursor:pointer;color:#001418;background:var(--cy);border:0;border-radius:8px;padding:8px 14px;font-weight:700;
+  box-shadow:0 0 12px rgba(0,229,255,.5),0 3px 0 #007f90;letter-spacing:.04em}
+button:active{transform:translateY(2px);box-shadow:0 0 8px rgba(0,229,255,.5),0 1px 0 #007f90}
+button.sec{background:transparent;color:var(--cy);border:1px solid var(--cy);box-shadow:none}
+button.mg{background:var(--mg);color:#1a0016;box-shadow:0 0 14px rgba(255,43,214,.6),0 3px 0 #8a0078}
+select,input[type=text],textarea{font:inherit;background:#0a1020;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+textarea{width:100%;min-height:80px;margin-bottom:10px}
+h1,h2,h3{margin:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:8px 0;box-shadow:0 0 24px rgba(0,229,255,.05) inset}
+.note{font-size:.82rem;color:var(--mute)}
+main{max-width:1020px;margin:0 auto;padding:0 12px 50px}
+
+/* HUD */
+#hud{position:sticky;top:0;z-index:20;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:4px 14px;
+  background:rgba(7,11,20,.92);border-bottom:1px solid var(--line);backdrop-filter:blur(4px)}
+.logo{font-size:1.25rem;font-weight:900;letter-spacing:.12em;color:var(--cy);text-shadow:0 0 10px var(--cy)}
+.logo span{color:var(--mg);text-shadow:0 0 10px var(--mg)}
+.lv{color:var(--yel);text-shadow:0 0 8px var(--yel)}
+.xp{position:relative;width:200px;height:16px;background:#0a1020;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.xp>div{height:100%;width:0;background:linear-gradient(90deg,var(--mg),var(--cy));box-shadow:0 0 10px var(--cy);transition:width .5s}
+.xp span{position:absolute;inset:0;text-align:center;font-size:.68rem;line-height:16px;color:#fff;text-shadow:0 0 4px #000}
+.streak{color:#ff9a3c;text-shadow:0 0 8px #ff9a3c}
+.sp{flex:1}
+
+/* Screens */
+body.screen-map #gameScreen{display:none}
+body.screen-game #mapScreen{display:none}
+body.intro #drill{display:none}
+#intro{display:none}
+
+/* Karte */
+.world h2{color:var(--mg);text-shadow:0 0 8px var(--mg);font-size:1.05rem;margin:18px 0 8px;letter-spacing:.08em}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tile{position:relative;text-align:left;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px;
+  min-height:96px;display:flex;flex-direction:column;gap:4px;box-shadow:none;font-weight:400}
+.tile .no{font-size:1.4rem;font-weight:900;color:var(--cy);text-shadow:0 0 8px var(--cy)}
+.tile .nm{font-size:.8rem;line-height:1.25}
+.tile .stars{margin-top:auto;color:var(--yel);letter-spacing:.1em;text-shadow:0 0 6px var(--yel)}
+.tile.open{border-color:var(--cy);animation:glow 1.4s infinite alternate}
+.tile.done{border-color:#2f6a46}
+.tile.done .no{color:var(--lime);text-shadow:0 0 8px var(--lime)}
+.tile.locked{opacity:.45;filter:grayscale(.6);cursor:not-allowed}
+.tile.locked .stars{color:var(--mute);text-shadow:none}
+.tile.shake{animation:shake .3s}
+@keyframes glow{from{box-shadow:0 0 4px rgba(0,229,255,.3)}to{box-shadow:0 0 18px rgba(0,229,255,.9)}}
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.badge{border:1px solid var(--line);border-radius:10px;padding:8px;font-size:.8rem;background:var(--panel2)}
+.badge b{display:block;color:var(--yel)}
+.badge.off{opacity:.4}
+.badge.off b{color:var(--mute)}
+details.panel summary{cursor:pointer;color:var(--cy);font-weight:700}
+.set{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:10px;font-size:.88rem}
+.set label{display:flex;align-items:center;gap:6px}
+table{border-collapse:collapse;width:100%;font-size:.82rem}
+td,th{padding:4px 8px;border-bottom:1px solid var(--line);text-align:left}
+
+/* Spiel */
+.topbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.topbar button{padding:5px 10px}
+#lvlName{flex:1;color:var(--yel);font-weight:700;text-shadow:0 0 8px var(--yel)}
+#info{display:none;border-color:#1e4c63;background:#0b1a2b;font-size:.88rem;line-height:1.5;padding:6px 12px}
+#info p{margin:4px 0}
+#info b{color:var(--cy)}
+#info .irow{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+#info details{flex:1}
+#info summary{cursor:pointer;color:var(--cy);font-weight:700}
+#info .irow button{padding:5px 10px;white-space:nowrap}
+#intro .body{max-height:34vh;overflow:auto;padding-right:6px}
+#intro .nav{margin-top:8px}
+.introflex{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.introflex .itext{flex:1 1 320px}
+.introflex svg.hands{flex:0 0 360px;max-width:360px;margin:0}
+#intro h2{font-size:1.05rem;margin-bottom:4px}
+#intro p{margin:5px 0;line-height:1.45}
+#handsLive .hands{max-width:340px;margin:2px auto}
+@media (max-height:820px){#handsLive{display:none!important}}
+.stats{display:flex;flex-wrap:wrap;gap:8px}
+.st{flex:1 1 100px;background:#0a1020;border:1px solid var(--line);border-radius:10px;padding:3px 8px}
+.st small{display:block;color:var(--mute);font-size:.56rem;letter-spacing:.1em}
+.st b{font-size:1.05rem;color:var(--cy);text-shadow:0 0 8px rgba(0,229,255,.7);font-variant-numeric:tabular-nums}
+.st i{font-style:normal;color:var(--mg);margin-left:6px;font-weight:700}
+#sC.big{animation:pop .25s}
+@keyframes pop{50%{transform:scale(1.5);color:var(--yel)}}
+.bars{display:grid;gap:4px;margin:6px 0}
+.bar{height:6px;background:#0a1020;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.bar>div{height:100%;width:0;transition:width .15s}
+#en{background:var(--lime);box-shadow:0 0 8px var(--lime);width:100%}
+#prog{background:var(--cy);box-shadow:0 0 8px var(--cy)}
+.play{display:flex;gap:12px;align-items:stretch}
+#target{flex:0 0 130px;border:2px solid var(--cy);border-radius:12px;background:#0a1020;text-align:center;padding:8px 6px;
+  display:flex;flex-direction:column;justify-content:center;gap:4px;animation:glow 1s infinite alternate}
+#tg{font-size:2.6rem;font-weight:900;line-height:1;color:var(--cy);text-shadow:0 0 14px currentColor;animation:blink 1s steps(2,start) infinite}
+#tinfo{font-size:.68rem;color:var(--mute);line-height:1.3}
+#box{flex:1;position:relative;height:calc(var(--fs)*2.7 + 18px);overflow:hidden;font-size:var(--fs);line-height:1.3;white-space:pre-wrap;word-break:break-word;
+  padding:8px 8px;color:#4d6086;background:#0a1020;border:1px solid var(--line);border-radius:12px}
+.ch.ok{color:var(--lime);text-shadow:0 0 6px rgba(124,255,79,.6)}
+.ch.fix{color:var(--yel);text-shadow:0 0 6px rgba(255,212,0,.6)}
+.ch.cur{background:var(--cy);color:#001418;border-radius:3px;animation:blink .8s steps(2,start) infinite}
+.ch.cur.err{background:var(--red);color:#fff;animation:shake .2s}
+body.hide .ch:not(.ok):not(.fix):not(.cur){color:transparent;border-bottom:1px solid #2a3a5c}
+#startMsg{margin-top:4px;font-size:.85rem;text-align:center;color:var(--yel);text-shadow:0 0 8px var(--yel);animation:blink 1s steps(2,start) infinite}
+@keyframes blink{50%{opacity:.25}}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+body.shake #gameScreen{animation:shake .18s}
+#flash{position:fixed;inset:0;pointer-events:none;z-index:60;background:var(--red);opacity:0}
+#flash.on{animation:fl .22s}
+@keyframes fl{0%{opacity:.28}100%{opacity:0}}
+
+/* Intro */
+#intro h2{color:var(--mg);text-shadow:0 0 8px var(--mg);margin-bottom:8px;font-size:1.2rem}
+#intro p{line-height:1.55;margin:8px 0}
+#intro b{color:var(--cy)}
+#intro .nav{margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#intro table{margin:8px 0}
+.testmsg{padding:10px 12px;border-radius:8px;background:#2a2406;border:1px solid #8a7a1a;margin-top:10px;animation:blink 1.2s steps(2,start) infinite}
+.testmsg.ok{background:#0b2a14;border-color:#2f8a4a;color:var(--lime);animation:none}
+.demoLabel{min-height:1.2em;color:var(--yel);margin-top:2px;font-size:.85rem}
+
+/* Tastatur */
+#kbd{margin-top:6px;overflow-x:auto;padding:4px 0 2px}
+.kbwrap{display:inline-block;min-width:700px;position:relative}
+.row{display:flex;gap:4px;margin-bottom:3px}
+.k{--fc:#4b5d85;width:46px;height:38px;border:1px solid var(--fc);border-radius:7px;display:flex;align-items:center;justify-content:center;
+  font-size:.95rem;background:#0f1830;color:var(--fc);position:relative;flex:0 0 auto;box-shadow:inset 0 -3px 0 rgba(255,255,255,.04)}
+.k small{position:absolute;top:2px;left:4px;font-size:.58rem;opacity:.7}
+.k.sp{border:none;background:transparent;box-shadow:none}
+.k.LP{--fc:var(--LP)}.k.LR{--fc:var(--LR)}.k.LM{--fc:var(--LM)}.k.LI{--fc:var(--LI)}
+.k.RI{--fc:var(--RI)}.k.RM{--fc:var(--RM)}.k.RR{--fc:var(--RR)}.k.RP{--fc:var(--RP)}.k.T{--fc:var(--T)}
+.k.mod{--fc:#4b5d85;font-size:.72rem}
+.k.home::after{content:"";position:absolute;bottom:5px;width:12px;height:2px;background:var(--fc);border-radius:1px}
+.k.next{background:var(--fc);color:#000;box-shadow:0 0 18px var(--fc);animation:kb .45s steps(2,start) infinite;z-index:2}
+@keyframes kb{50%{background:#0f1830;color:var(--fc)}}
+.k.hit{background:#fff;color:#000;box-shadow:0 0 24px #fff}
+.k.miss{background:var(--red);color:#fff;box-shadow:0 0 18px var(--red)}
+.fd{position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;border:3px solid var(--c,#fff);background:rgba(255,255,255,.1);
+  transform:translate(-50%,-50%);pointer-events:none;z-index:4;box-shadow:0 0 10px var(--c,#fff);
+  transition:left .22s cubic-bezier(.3,1.5,.5,1),top .22s cubic-bezier(.3,1.5,.5,1)}
+.fd.LP{--c:var(--LP)}.fd.LR{--c:var(--LR)}.fd.LM{--c:var(--LM)}.fd.LI{--c:var(--LI)}
+.fd.RI{--c:var(--RI)}.fd.RM{--c:var(--RM)}.fd.RR{--c:var(--RR)}.fd.RP{--c:var(--RP)}.fd.TL,.fd.TR{--c:var(--T);width:34px;height:22px;border-radius:12px}
+.fd.act{background:var(--c);z-index:6;box-shadow:0 0 22px var(--c);animation:pulse .4s infinite alternate}
+@keyframes pulse{to{transform:translate(-50%,-50%) scale(1.25)}}
+.legend{display:none;flex-wrap:wrap;gap:6px 10px;font-size:.72rem;margin-top:6px}
+.legend span{padding:2px 8px;border-radius:10px;border:1px solid var(--c);color:var(--c)}
+
+/* Hände */
+.hands{width:100%;max-width:740px;display:block;margin:8px auto}
+.fg{transition:transform .15s;transform-box:fill-box}
+.fg.act{transform:translateY(-14px)}
+.fg.act rect.fing{filter:drop-shadow(0 0 8px #fff);animation:blink .5s steps(2,start) infinite}
+
+/* Ergebnis */
+#result{display:none;position:fixed;inset:0;z-index:70;margin:0;border-radius:0;background:rgba(4,7,14,.88);align-items:center;justify-content:center;flex-direction:column;
+  text-align:center;padding:20px;overflow:auto}
+#result.show{display:flex}
+#result .box{background:var(--panel);border:2px solid var(--cy);border-radius:16px;padding:22px;max-width:560px;width:100%;box-shadow:0 0 40px rgba(0,229,255,.4)}
+#result h2{font-size:1.6rem;color:var(--yel);text-shadow:0 0 14px var(--yel);margin-bottom:8px}
+#result.over h2{color:var(--red);text-shadow:0 0 14px var(--red)}
+.bigstars{font-size:2.6rem;letter-spacing:.2em;color:var(--yel);text-shadow:0 0 14px var(--yel)}
+.bigstars span{display:inline-block;opacity:0;animation:starin .4s forwards}
+.bigstars span.off{color:#33415f;text-shadow:none}
+@keyframes starin{0%{opacity:0;transform:scale(3) rotate(-30deg)}100%{opacity:1;transform:none}}
+#result table{margin:10px 0;text-align:left}
+#result .btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.newb{color:var(--mg);text-shadow:0 0 8px var(--mg);margin-top:6px}
+
+/* Effekte */
+#fx{position:fixed;inset:0;pointer-events:none;z-index:65;overflow:hidden}
+.pt{position:fixed;width:7px;height:7px;border-radius:50%}
+.pop{position:fixed;left:50%;top:32%;transform:translateX(-50%);font-size:2.4rem;font-weight:900;white-space:nowrap}
+#toast{position:fixed;top:64px;right:14px;z-index:80;display:flex;flex-direction:column;gap:8px}
+.toast{background:#1a0f2e;border:1px solid var(--mg);color:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 0 20px rgba(255,43,214,.6);animation:tin .3s}
+@keyframes tin{from{transform:translateX(120%)}}
+
+@media (max-width:700px){ .play{flex-direction:column} #target{flex:none;flex-direction:row;justify-content:center;align-items:center;gap:12px} .xp{width:120px} }
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  .k.next{outline:3px solid #fff}
+}
+</style>
+</head>
+<body class="screen-map">
+
+<header id="hud">
+  <div class="logo">SEIFFERTS <span>TIPPTRAINER</span></div>
+  <div class="lv">LV <b id="hLv">1</b></div>
+  <div class="xp"><div id="hXp"></div><span id="hXpT"></span></div>
+  <div class="streak" title="Tage in Folge">&#128293; <b id="hSt">0</b></div>
+  <div class="sp"></div>
+  <button id="bMap" class="sec">Karte</button>
+</header>
+
+<main>
+<!-- KARTE -->
+<section id="mapScreen">
+  <div class="panel">
+    <h1 style="color:var(--cy);text-shadow:0 0 10px var(--cy);font-size:1.3rem">Seifferts Tipptrainer: Zehnfinger-Abenteuer</h1>
+    <div class="note" style="margin-top:6px">Schließe ein Level mit mindestens einem Stern ab, um das nächste freizuschalten. Sterne gibt es für Treffsicherheit: 90, 95 und 98 Prozent.</div>
+  </div>
+  <div id="worlds"></div>
+  <div class="panel"><h3 style="color:var(--yel);margin-bottom:8px">Abzeichen</h3><div class="badges" id="badgeBox"></div></div>
+  <details class="panel">
+    <summary>Einstellungen</summary>
+    <div class="set">
+      <label>Länge <select id="len"><option value="100">kurz</option><option value="200" selected>mittel</option><option value="400">lang</option></select></label>
+      <label>Schrift <select id="fs"><option value="22">klein</option><option value="28" selected>normal</option><option value="36">groß</option><option value="46">sehr groß</option></select></label>
+      <label><input type="checkbox" id="snd" checked> Spielsounds</label>
+      <label><input type="checkbox" id="kb" checked> Tastatur zeigen</label>
+      <label><input type="checkbox" id="hands" checked> Hände zeigen</label>
+      <label><input type="checkbox" id="go"> Game Over bei leerer Energie</label>
+      <label><input type="checkbox" id="unl"> Alle Level freischalten (Lehrkraft)</label>
+    </div>
+    <div class="set">
+      <label><input type="checkbox" id="dict"> Diktat (Text wird vorgelesen)</label>
+      <label><input type="checkbox" id="hide"> Text verbergen</label>
+      <label><input type="checkbox" id="punct" checked> Satzzeichen mitsprechen</label>
+      <span class="note" id="dictNote"></span>
+    </div>
+    <div class="set"><button id="reset" class="sec">Spielstand löschen</button></div>
+  </details>
+  <details class="panel">
+    <summary>Letzte Runden</summary>
+    <div id="hist" class="note" style="margin-top:8px">Noch keine Runde gespielt.</div>
+  </details>
+</section>
+
+<!-- SPIEL -->
+<section id="gameScreen">
+  <div class="topbar">
+    <button id="toMap" class="sec">&#9664; Karte</button>
+    <div id="lvlName"></div>
+    <button id="rep" class="sec" style="display:none">Nochmal hören (F2)</button>
+    <button id="again" class="sec">Neustart (Esc)</button>
+  </div>
+  <div id="ownWrap" style="display:none;margin-top:10px"><textarea id="own" placeholder="Eigenen Text hier einfügen, dann Esc drücken"></textarea></div>
+  <div id="intro" class="panel"></div>
+  <div id="drill">
+    <div id="info" class="panel"></div>
+    <div class="panel" id="stage">
+      <div class="stats">
+        <div class="st"><small>SCORE</small><b id="sS">0</b></div>
+        <div class="st"><small>COMBO</small><b id="sC">0</b><i id="sM">x1</i></div>
+        <div class="st"><small>TREFFER</small><b id="sG">100 %</b></div>
+        <div class="st"><small>ANSCHLÄGE/MIN</small><b id="sA">0</b></div>
+        <div class="st"><small>ZEIT</small><b id="sT">0:00</b></div>
+      </div>
+      <div class="bars"><div class="bar"><div id="en"></div></div><div class="bar"><div id="prog"></div></div></div>
+      <div class="play">
+        <div id="target"><div id="tg">?</div><div id="tinfo"></div></div>
+        <div id="box"></div>
+      </div>
+      <div id="startMsg">&#9654; Drücke die erste Taste, dann läuft die Zeit</div>
+      <div class="demoLabel" id="demoLabel"></div>
+    </div>
+  </div>
+  <div id="kbd"></div>
+  <div id="handsLive"></div>
+</section>
+</main>
+
+<div id="result"></div>
+<div id="toast"></div>
+<div id="fx"></div>
+<div id="flash"></div>
+
+<script>
+(function(){
+'use strict';
+var $ = function(id){return document.getElementById(id);};
+
+/* ---------- Tastatur ---------- */
+var ROWS = [
+ [['^','°','LP'],['1','!','LP'],['2','"','LR'],['3','§','LM'],['4','$','LI'],['5','%','LI'],['6','&','RI'],['7','/','RI'],['8','(','RM'],['9',')','RR'],['0','=','RP'],['ß','?','RP'],['´','`','RP']],
+ [['q','Q','LP'],['w','W','LR'],['e','E','LM'],['r','R','LI'],['t','T','LI'],['z','Z','RI'],['u','U','RI'],['i','I','RM'],['o','O','RR'],['p','P','RP'],['ü','Ü','RP'],['+','*','RP']],
+ [['a','A','LP'],['s','S','LR'],['d','D','LM'],['f','F','LI'],['g','G','LI'],['h','H','RI'],['j','J','RI'],['k','K','RM'],['l','L','RR'],['ö','Ö','RP'],['ä','Ä','RP'],['#',"'",'RP']],
+ [['y','Y','LP'],['x','X','LR'],['c','C','LM'],['v','V','LI'],['b','B','LI'],['n','N','RI'],['m','M','RI'],[',',';','RM'],['.',':','RR'],['-','_','RP']]
+];
+var FINGER = {LP:'linken kleinen Finger',LR:'linken Ringfinger',LM:'linken Mittelfinger',LI:'linken Zeigefinger',
+  RI:'rechten Zeigefinger',RM:'rechten Mittelfinger',RR:'rechten Ringfinger',RP:'rechten kleinen Finger',TL:'linken Daumen',TR:'rechten Daumen'};
+var HOME = {a:1,s:1,d:1,f:1,j:1,k:1,l:1,'ö':1};
+var HOMEBY = {LP:'a',LR:'s',LM:'d',LI:'f',RI:'j',RM:'k',RR:'l',RP:'ö'};
+var FINGERS = ['LP','LR','LM','LI','RI','RM','RR','RP','TL','TR'];
+var DIRX = {g:'eine Taste nach rechts',h:'eine Taste nach links',t:'eine Reihe nach oben und eine Taste nach rechts',
+  z:'eine Reihe nach oben und eine Taste nach links',b:'eine Reihe nach unten und eine Taste nach rechts',
+  n:'eine Reihe nach unten und eine Taste nach links','ä':'eine Taste nach rechts','ü':'eine Reihe nach oben und eine Taste nach rechts',
+  y:'eine Reihe nach unten und leicht nach links','-':'eine Reihe nach unten und eine Taste nach rechts'};
+var keyEls = {}, charMap = {}, rowOf = {}, shiftL, shiftR, spaceEl, dots = {};
+
+function mk(cls, txt){var d=document.createElement('div'); d.className='k '+(cls||''); if(txt!=null) d.textContent=txt; return d;}
+function buildKeyboard(){
+  var wrap=document.createElement('div'); wrap.className='kbwrap';
+  ROWS.forEach(function(row,ri){
+    var r=document.createElement('div'); r.className='row';
+    if(ri===1){var t=mk('mod','Tab'); t.style.width='70px'; r.appendChild(t);}
+    if(ri===2){var c=mk('mod','Caps'); c.style.width='82px'; r.appendChild(c);}
+    if(ri===3){shiftL=mk('mod','Shift'); shiftL.style.width='58px'; r.appendChild(shiftL);}
+    row.forEach(function(k){
+      var el=mk(k[2], k[0]);
+      if(k[0]!==k[1].toLowerCase() && !/[a-zäöüß]/.test(k[0])){
+        var s=document.createElement('small'); s.textContent=k[1]; el.appendChild(s);
+      }
+      if(HOME[k[0]]) el.classList.add('home');
+      r.appendChild(el);
+      keyEls[k[0]]=el; rowOf[k[0]]=ri;
+      if(k[0]!=='^' && k[0]!=='´'){
+        charMap[k[0]]={k:k[0],shift:false,f:k[2]};
+        charMap[k[1]]={k:k[0],shift:true,f:k[2]};
+      }
+    });
+    if(ri===0){var b=mk('mod','←'); b.style.width='70px'; r.appendChild(b);}
+    if(ri===3){shiftR=mk('mod','Shift'); shiftR.style.width='110px'; r.appendChild(shiftR);}
+    wrap.appendChild(r);
+  });
+  var last=document.createElement('div'); last.className='row';
+  var sp1=mk('sp'); sp1.style.width='190px'; last.appendChild(sp1);
+  spaceEl=mk('T','Leertaste'); spaceEl.style.width='290px'; last.appendChild(spaceEl);
+  wrap.appendChild(last);
+  FINGERS.forEach(function(f){
+    var d=document.createElement('div'); d.className='fd '+f; wrap.appendChild(d); dots[f]=d;
+  });
+  $('kbd').appendChild(wrap);
+  var lg=document.createElement('div'); lg.className='legend';
+  [['LP','links klein'],['LR','links Ring'],['LM','links Mittel'],['LI','links Zeige'],['RI','rechts Zeige'],['RM','rechts Mittel'],['RR','rechts Ring'],['RP','rechts klein']].forEach(function(x){
+    var s=document.createElement('span'); s.style.setProperty('--c','var(--'+x[0]+')'); s.textContent=x[1]; lg.appendChild(s);
+  });
+  $('kbd').appendChild(lg);
+}
+charMap[' ']={k:' ',shift:false,f:'T'};
+
+/* ---------- Fingerpunkte auf der Tastatur ---------- */
+function center(el){return {x:el.offsetLeft+el.offsetWidth/2, y:el.offsetTop+el.offsetHeight/2};}
+function place(d,p){d.style.left=p.x+'px'; d.style.top=p.y+'px';}
+function restPos(f){
+  if(f==='TL'||f==='TR'){var c=center(spaceEl); return {x:c.x+(f==='TL'?-70:70), y:c.y};}
+  return center(keyEls[HOMEBY[f]]);
+}
+function restDots(){
+  FINGERS.forEach(function(f){place(dots[f],restPos(f)); dots[f].classList.remove('act');});
+}
+function flyIn(){
+  FINGERS.forEach(function(f){var p=restPos(f); place(dots[f],{x:p.x,y:p.y+170});});
+  void document.body.offsetWidth;
+  setTimeout(function(){ if(!demoTimer) restDots(); },60);
+}
+function svgAct(f,on){
+  var n=document.querySelectorAll('.fg[data-f="'+f+'"]');
+  for(var i=0;i<n.length;i++) n[i].classList[on?'add':'remove']('act');
+}
+function clearMarks(){
+  Object.keys(keyEls).forEach(function(k){keyEls[k].classList.remove('next');});
+  shiftL.classList.remove('next'); shiftR.classList.remove('next'); spaceEl.classList.remove('next');
+  FINGERS.forEach(function(f){svgAct(f,false);});
+}
+function dirText(k){
+  var info=charMap[k]; if(!info) return '';
+  var h=HOMEBY[info.f]; if(!h || h===k) return '';
+  var t;
+  if(DIRX[k]) t=DIRX[k];
+  else { var d=2-rowOf[k]; t = d===1?'eine Reihe nach oben': d===2?'zwei Reihen nach oben': d===-1?'eine Reihe nach unten':''; }
+  return t ? 'von '+h+' aus '+t : '';
+}
+function thumbFor(prev){return (prev && charMap[prev] && charMap[prev].f.charAt(0)==='R') ? 'TL':'TR';}
+function setTarget(ch, prev){
+  restDots(); clearMarks();
+  if(!ch || !charMap[ch]) return null;
+  var info=charMap[ch], isSp=(ch===' ');
+  var el = isSp?spaceEl:keyEls[info.k];
+  el.classList.add('next');
+  var f = isSp ? thumbFor(prev) : info.f;
+  dots[f].classList.add('act'); svgAct(f,true);
+  if(!isSp) place(dots[f],center(el));
+  var sh=null;
+  if(info.shift && !isSp){
+    var left=f.charAt(0)==='L'; sh=left?'RP':'LP'; var sEl=left?shiftR:shiftL;
+    sEl.classList.add('next'); dots[sh].classList.add('act'); place(dots[sh],center(sEl)); svgAct(sh,true);
+  }
+  return {ch:ch,f:f,sh:sh,info:info,isSp:isSp};
+}
+function describe(r){
+  if(!r) return '';
+  var s='mit dem '+FINGER[r.f];
+  if(r.isSp) return s;
+  var d=dirText(r.info.k);
+  if(d) s+=', '+d+', danach zurück'; else s+=' (Grundstellung)';
+  if(r.sh){var left=r.f.charAt(0)==='L'; s+='. Dazu '+(left?'rechts':'links')+' Shift mit dem '+(left?'rechten':'linken')+' kleinen Finger';}
+  return s;
+}
+
+/* ---------- Hände (Zeichnung) ---------- */
+function handsSvg(withKeys){
+  var f=[['LP','a','klein',60],['LR','s','Ring',130],['LM','d','Mittel',200],['LI','f','Zeige',270],
+         ['RI','j','Zeige',470],['RM','k','Mittel',540],['RR','l','Ring',610],['RP','ö','klein',680]];
+  var top=withKeys?58:10, H=withKeys?270:210, off=withKeys?0:-48;
+  var s='<svg class="hands" viewBox="0 0 740 '+H+'" xmlns="http://www.w3.org/2000/svg" font-family="monospace">';
+  f.forEach(function(x){
+    var cx=x[3];
+    s+='<g class="fg" data-f="'+x[0]+'">';
+    if(withKeys){
+      s+='<rect x="'+(cx-24)+'" y="8" width="48" height="42" rx="6" fill="#0f1830" stroke="var(--'+x[0]+')" stroke-width="2"/>';
+      s+='<text x="'+cx+'" y="36" text-anchor="middle" font-size="22" fill="var(--'+x[0]+')">'+x[1]+'</text>';
+    }
+    s+='<rect class="fing" x="'+(cx-21)+'" y="'+top+'" width="42" height="'+(withKeys?120:110)+'" rx="21" fill="var(--'+x[0]+')" fill-opacity=".85" stroke="#0b1020" stroke-width="2"/>';
+    s+='<text x="'+cx+'" y="'+(top+42)+'" text-anchor="middle" font-size="12" fill="#06101c" font-weight="700">'+x[2]+'</text>';
+    s+='</g>';
+  });
+  var py=withKeys?150:102;
+  s+='<rect x="30" y="'+py+'" width="270" height="95" rx="40" fill="#2b3552" stroke="#4b5d85" stroke-width="2"/>';
+  s+='<rect x="440" y="'+py+'" width="270" height="95" rx="40" fill="#2b3552" stroke="#4b5d85" stroke-width="2"/>';
+  s+='<g class="fg" data-f="TL"><ellipse cx="330" cy="'+(py+55)+'" rx="22" ry="44" transform="rotate(-35 330 '+(py+55)+')" fill="var(--T)" stroke="#0b1020" stroke-width="2"/></g>';
+  s+='<g class="fg" data-f="TR"><ellipse cx="410" cy="'+(py+55)+'" rx="22" ry="44" transform="rotate(35 410 '+(py+55)+')" fill="var(--T)" stroke="#0b1020" stroke-width="2"/></g>';
+  s+='<text x="370" y="'+(H-6)+'" text-anchor="middle" font-size="13" fill="#7f93b8">Daumen locker über der Leertaste</text>';
+  s+='<text x="165" y="'+(H-6)+'" text-anchor="middle" font-size="13" fill="#7f93b8">linke Hand</text>';
+  s+='<text x="575" y="'+(H-6)+'" text-anchor="middle" font-size="13" fill="#7f93b8">rechte Hand</text>';
+  return s+'</svg>';
+}
+
+/* ---------- Wortliste ---------- */
+var WORDS = ('als das dass fall falls hals glas lass half saal alle ja sag sagt salz kalt ball jagd gas gast lag halle hand land sand wand stand band fand kann dann wann mann kamm damm lamm ' +
+ 'ask ass all aal dach flach glatt halt fast lass fass jahr hasse kasse klasse lasse sake salat salsa ' +
+ 'ei eis eile reis reise reife eis leise seil teil heil heiß weiß groß fuß spaß straße ' +
+ 'der die den dem des er es sie sind ist hat hatte war waren wird wurde werden kann will soll muss darf mag ' +
+ 'ruhe rufe rund runde rauf raus rasen rasur ruder rudern ' +
+ 'tag tage tisch tasche tür turm tier ziel zeit zehn zwei zwölf zahl zahlen zug zucht zurück zusammen ' +
+ 'wir wo wie was wer wann warum wald wasser wetter wind wolke wort worte woche wochen wohnen ' +
+ 'oft ohne ober offen ofen ort orte ostern ordnen ' +
+ 'quelle quer quark qualität quadrat quittung ' +
+ 'pause platz plan pflanze pult puppe papier papa post preis pferd ' +
+ 'äpfel ärger ähnlich änderung über übung üben übrig für müde brüder grün küche kühl ' +
+ 'nacht name nase nein nicht noch nun nur mann mehr mein meer mit mund musik mutter mittag mond ' +
+ 'christ chor chance computer cello code ' +
+ 'vater vier viel vogel von vor vorne volk veranstaltung ' +
+ 'bad baum bein bett bild bin bis bitte blau blatt brot buch bunt bank ' +
+ 'xylophon xenon taxi extra text boxen hexe ' +
+ 'yoga yacht system symbol typ ägypten gymnasium ' +
+ 'haus hunde hund katze kind kinder klein lesen lernen lehrer lehrerin schule schüler schreiben schnell ' +
+ 'gut gute guten gern gehen geht gab gegen geld genau gestern gerade gross grund gruppe ' +
+ 'sehr sein seine sonne sommer sonntag spielen sprechen stunde stunden suchen ' +
+ 'denken dein dich dies diese dort drei dritte durch dunkel ' +
+ 'fahren familie farbe fenster ferien fertig finden freund freunde frage fragen früh frühling ' +
+ 'heute helfen herbst herr hier hilfe himmel hoch holen hören ' +
+ 'immer ihr ihre ins insel jeder jetzt jung junge ' +
+ 'können kommen kopf kurz küche lang laufen leben leicht lesen lieb liegen luft ' +
+ 'machen mädchen mathe mathematik mensch minute montag morgen müssen ' +
+ 'rechnen regen richtig rot ruhig schauen schön sitzen sprache stark stein stehen strasse ' +
+ 'treffen trinken tun unser unten viele warm weg weit welt wenig wieder wissen wohl zimmer').split(' ').filter(function(w,i,a){return w && a.indexOf(w)===i;});
+
+/* ---------- Level ---------- */
+var LESSONS = [
+ {n:'Einführung: Sitzen und Grundstellung', t:'intro'},
+ {n:'Grundstellung: jeder Finger einzeln', t:'fixed', pat:'a s d f j k l ö ', info:'Tippe der Reihe nach a s d f j k l ö und zwischendurch die Leertaste mit dem Daumen. Nur der Finger, der gerade dran ist, bewegt sich: Er geht ein kleines Stück nach unten, drückt und kehrt sofort zurück. Alle anderen Finger bleiben liegen. Schau nur auf den Bildschirm.'},
+ {n:'Zeigefinger auf f und j', t:'fixed', pat:'ff jj fj jf fff jjj ffj jjf fjf jfj ', info:'f tippst du mit dem linken Zeigefinger, j mit dem rechten. Auf beiden Tasten fühlst du die Erhebung. Nutze sie zur Kontrolle, ob deine Hände noch richtig liegen.'},
+ {n:'Linke Hand: a s d f', t:'fixed', pat:'asdf fdsa adsf sfad dasf fads ', info:'Linke Hand: kleiner Finger a, Ringfinger s, Mittelfinger d, Zeigefinger f. Jeder Finger bleibt bei seiner Taste. Die rechte Hand liegt ruhig in der Grundstellung.'},
+ {n:'Rechte Hand: j k l ö', t:'fixed', pat:'jklö ölkj jölk kljö lökj öjkl ', info:'Rechte Hand: Zeigefinger j, Mittelfinger k, Ringfinger l, kleiner Finger ö. Die linke Hand liegt ruhig in der Grundstellung.'},
+ {n:'Beide Hände abwechselnd', t:'fixed', pat:'fj dk sl aö jf kd ls öa fk dj sö al ', info:'Jetzt arbeiten beide Hände abwechselnd. Während eine Hand tippt, bleibt die andere in der Grundstellung. Tippe gleichmäßig, nicht schnell.'},
+ {n:'Grundreihe mit Wörtern', t:'letters', nw:'asdfjklö', info:'Aus den acht Grundstellungstasten entstehen jetzt Silben und kleine Wörter. Tippe gleichmäßig. Erst kommt die Genauigkeit, dann das Tempo.'},
+ {n:'g und h', t:'letters', nw:'gh'},
+ {n:'e und i', t:'letters', nw:'ei'},
+ {n:'r und u', t:'letters', nw:'ru'},
+ {n:'t und z', t:'letters', nw:'tz'},
+ {n:'w und o', t:'letters', nw:'wo'},
+ {n:'q und p', t:'letters', nw:'qp'},
+ {n:'ä und ü', t:'letters', nw:'äü'},
+ {n:'n und m', t:'letters', nw:'nm'},
+ {n:'c und v', t:'letters', nw:'cv'},
+ {n:'b und x', t:'letters', nw:'bx'},
+ {n:'y und ß', t:'letters', nw:'yß'},
+ {n:'Alle Buchstaben gemischt', t:'letters', nw:'', info:'Alle bisher gelernten Buchstaben gemischt. Wenn eine Taste noch unsicher ist, wiederhole die Lektion, in der sie vorkam. Am Ende siehst du deine häufigsten Fehlertasten.'},
+ {n:'Großbuchstaben (Shift)', t:'upper', nw:'', info:'Für einen Großbuchstaben hält der kleine Finger der anderen Hand Shift gedrückt. Erst Shift drücken, dann den Buchstaben tippen, dann beides loslassen. Die Bildschirmtastatur zeigt, welches Shift gemeint ist.'},
+ {n:'Zahlen 1 bis 0', t:'digits', nw:'', info:'Die Zahlenreihe liegt zwei Reihen über der Grundstellung. Jeder Finger bleibt in seiner Spalte: 1 kleiner Finger links, 2 Ringfinger, 3 Mittelfinger, 4 und 5 linker Zeigefinger, 6 und 7 rechter Zeigefinger, 8 Mittelfinger, 9 Ringfinger, 0 kleiner Finger rechts. Danach geht der Finger zurück in die Grundstellung.'},
+ {n:'Satzzeichen und Sonderzeichen', t:'punct', nw:'', info:'Das Komma tippt der rechte Mittelfinger unter k, den Punkt der rechte Ringfinger unter l, den Bindestrich der rechte kleine Finger unten rechts. Fragezeichen, Anführungszeichen, Klammern und Doppelpunkt brauchen Shift.'}
+];
+var TEXTS = [
+ {n:'Text A: Der Herbst', s:'Im Herbst werden die Tage kürzer und die Abende länger. Die Blätter färben sich gelb, rot und braun, und der Wind trägt sie über die Straße. Wer abends nach Hause kommt, freut sich über eine warme Suppe und ein gutes Buch.'},
+ {n:'Text B: Schule', s:'Am Montag beginnt die Woche mit Mathematik. Die Klasse rechnet gemeinsam an der Tafel, und jeder darf eine Aufgabe erklären. Wer einen Fehler macht, lernt daraus. Am Ende der Stunde sind alle zufrieden, weil sie viel geschafft haben.'},
+ {n:'Text C: Alle Buchstaben', s:'Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich. Falsches Üben von Xylophonmusik quält jeden größeren Zwerg. Franz jagt im komplett verwahrlosten Taxi quer durch Bayern.'},
+ {n:'Text D: Zahlen', s:'Im Jahr 2026 hat ein Gymnasium 1250 Schüler, 85 Lehrer und 36 Klassen. Pro Woche gibt es 4 Stunden Mathematik, das sind 160 Stunden im Jahr: 4 mal 40 ist 160.'},
+ {n:'Text E: Brief', s:'Sehr geehrte Damen und Herren, vielen Dank für Ihre Nachricht vom 12. Oktober. Wir haben Ihr Anliegen geprüft und melden uns bis Freitag bei Ihnen. Mit freundlichen Grüßen'},
+ {n:'Text F: Fragen und Zeichen', s:'Wie spät ist es? Wo liegt der Bahnhof? Kannst du mir helfen, bitte? Natürlich! Das ist kein Problem; ich komme gleich vorbei (in zehn Minuten).'}
+];
+var OWN_ID='own';
+var ORDER=[]; // alle Level-IDs in Reihenfolge
+LESSONS.forEach(function(L,i){ORDER.push('L'+i);});
+TEXTS.forEach(function(T,i){ORDER.push('T'+i);});
+ORDER.push(OWN_ID);
+var WORLDS=[
+ {n:'Welt 1: Grundstellung', ids:ORDER.slice(0,7)},
+ {n:'Welt 2: Neue Tasten', ids:ORDER.slice(7,18)},
+ {n:'Welt 3: Profi-Training', ids:ORDER.slice(18,22)},
+ {n:'Welt 4: Textarena', ids:ORDER.slice(22)}
+];
+function lessonOf(id){return id.charAt(0)==='L' ? LESSONS[parseInt(id.slice(1),10)] : null;}
+function nameOf(id){
+  if(id===OWN_ID) return 'Eigener Text';
+  var i=parseInt(id.slice(1),10);
+  return id.charAt(0)==='L' ? (i+1)+'  '+LESSONS[i].n : TEXTS[i].n;
+}
+function numOf(id){return ORDER.indexOf(id)+1;}
+
+function rnd(n){return Math.floor(Math.random()*n);}
+function pick(a){return a[rnd(a.length)];}
+function cumulative(i){
+  var s=''; for(var k=0;k<=i;k++) if(LESSONS[k].t==='letters') s+=LESSONS[k].nw;
+  return s;
+}
+function token(allowed, nw){
+  var n=2+rnd(4), out='';
+  for(var i=0;i<n;i++){
+    out += (nw && Math.random()<0.5) ? nw.charAt(rnd(nw.length)) : allowed.charAt(rnd(allowed.length));
+  }
+  return out;
+}
+function pendel(nw){
+  var out='';
+  for(var r=0;r<2;r++) nw.split('').forEach(function(n){
+    var info=charMap[n]; if(!info) return;
+    var h=HOMEBY[info.f]; if(!h||h===n) return;
+    out+=h+n+' '+n+h+' '+h+n+h+' '+n+h+n+' ';
+  });
+  return out.trim();
+}
+function cap(w){return w.charAt(0).toUpperCase()+w.slice(1);}
+function genLesson(i, len){
+  var L=LESSONS[i], parts=[], total=0, w;
+  var allowed, nw=L.nw;
+  if(L.t==='fixed'){
+    var out='', max=Math.min(len,160);
+    while(out.length<max) out+=L.pat;
+    out=out.slice(0,max);
+    var cut2=out.lastIndexOf(' '); if(cut2>max*0.6) out=out.slice(0,cut2);
+    return out.trim();
+  }
+  if(L.t==='letters'){
+    allowed = nw ? cumulative(i) : 'abcdefghijklmnopqrstuvwxyzäöüß';
+    var okw = WORDS.filter(function(x){
+      for(var k=0;k<x.length;k++) if(allowed.indexOf(x.charAt(k))<0) return false;
+      if(!nw) return true;
+      for(var j=0;j<x.length;j++) if(nw.indexOf(x.charAt(j))>=0) return true;
+      return false;
+    });
+    var useWords = okw.length>=6;
+    var pre = nw ? pendel(nw) : '';
+    if(pre){ parts.push(pre); total+=pre.length+1; }
+    while(total<len){
+      w = (useWords && Math.random()<0.65) ? pick(okw) : token(allowed, nw);
+      parts.push(w); total+=w.length+1;
+    }
+  } else if(L.t==='upper'){
+    while(total<len){
+      w = Math.random()<0.8 ? cap(pick(WORDS)) : token('abcdefghijklmnopqrstuvwxyz','').toUpperCase();
+      parts.push(w); total+=w.length+1;
+    }
+  } else if(L.t==='digits'){
+    while(total<len){
+      var n=2+rnd(4); w='';
+      for(var q=0;q<n;q++) w+='0123456789'.charAt(rnd(10));
+      parts.push(w); total+=w.length+1;
+    }
+  } else {
+    var pu=['.',',','!','?',';',':'];
+    while(total<len){
+      var r=Math.random(), a=pick(WORDS), b=pick(WORDS);
+      if(r<0.35) w=a+pick(pu);
+      else if(r<0.5) w='('+a+')';
+      else if(r<0.62) w='"'+cap(a)+'"';
+      else if(r<0.74) w=a+'/'+b;
+      else if(r<0.84) w=(1+rnd(9))+'+'+(1+rnd(9))+'='+(2+rnd(17));
+      else if(r<0.92) w=a+'-'+b;
+      else w=cap(a)+' '+b+pick(['!','?','.']);
+      parts.push(w); total+=w.length+1;
+    }
+  }
+  var s=parts.join(' ');
+  if(s.length>len){
+    var cut=s.lastIndexOf(' ',len); if(cut>len*0.6) s=s.slice(0,cut);
+  }
+  return s.trim();
+}
+function demoChars(L){
+  if(!L) return [];
+  if(L.t==='letters') return L.nw.split('').filter(function(c){return !HOME[c];});
+  if(L.t==='fixed'){var u=[]; L.pat.split('').forEach(function(c){ if(c!==' ' && u.indexOf(c)<0) u.push(c);}); return u.slice(0,8);}
+  if(L.t==='upper') return ['A','L','F','J','S','Ö'];
+  if(L.t==='digits') return '1234567890'.split('');
+  if(L.t==='punct') return [',','.','-','?','!'];
+  return [];
+}
+
+function sanitize(s){
+  s = s.replace(/[„“”«»]/g,'"').replace(/[‘’‚′]/g,"'")
+       .replace(/[–—−]/g,'-').replace(/…/g,'...').replace(/ /g,' ')
+       .replace(/\s+/g,' ').trim();
+  var out='', bad=0;
+  for(var i=0;i<s.length;i++){
+    var c=s.charAt(i);
+    if(charMap[c]) out+=c; else bad++;
+  }
+  return {text:out.replace(/ +/g,' ').trim(), removed:bad};
+}
+
+/* ---------- Speicher, XP, Abzeichen ---------- */
+var KEY='seiffert_tipptrainer_v3';
+var store={best:{},hist:[],set:{},xp:0,introDone:false,streak:{last:'',n:0},badges:{}};
+try{var raw=localStorage.getItem(KEY); if(raw) store=Object.assign(store, JSON.parse(raw));}catch(e){}
+function save(){try{localStorage.setItem(KEY, JSON.stringify(store));}catch(e){}}
+function lvlOf(xp){return Math.floor(Math.sqrt(xp/60))+1;}
+function xpFor(l){return 60*(l-1)*(l-1);}
+function renderHud(){
+  var l=lvlOf(store.xp), a=xpFor(l), b=xpFor(l+1);
+  $('hLv').textContent=l; $('hXp').style.width=Math.round((store.xp-a)/(b-a)*100)+'%';
+  $('hXpT').textContent=store.xp+' XP';
+  $('hSt').textContent=(store.streak&&store.streak.n)||0;
+}
+var BADGES=[
+ {id:'grund',n:'Grundstellung sitzt',d:'Einführung abgeschlossen'},
+ {id:'first',n:'Erster Sieg',d:'Ein Level geschafft'},
+ {id:'combo25',n:'Kombo 25',d:'25 Treffer ohne Fehler am Stück'},
+ {id:'combo50',n:'Kombo 50',d:'50 Treffer ohne Fehler am Stück'},
+ {id:'combo100',n:'Kombo 100',d:'100 Treffer ohne Fehler am Stück'},
+ {id:'perfect',n:'Fehlerfrei',d:'Ein Level ohne einen einzigen Fehler'},
+ {id:'stars3',n:'Drei Sterne',d:'Ein Level mit mindestens 98 Prozent'},
+ {id:'speed',n:'Schnelle Finger',d:'200 Anschläge pro Minute bei mindestens 95 Prozent'},
+ {id:'streak3',n:'Dranbleiber',d:'An drei Tagen hintereinander geübt'},
+ {id:'allL',n:'Alle Lektionen',d:'Alle Lektionen bestanden'},
+ {id:'allT',n:'Textmeister',d:'Alle Texte bestanden'}
+];
+var newBadges=[];
+function toast(msg){
+  var t=document.createElement('div'); t.className='toast'; t.textContent=msg; $('toast').appendChild(t);
+  setTimeout(function(){if(t.parentNode) t.parentNode.removeChild(t);},3800);
+}
+function award(id){
+  if(store.badges[id]) return false;
+  store.badges[id]=Date.now(); save();
+  var b=BADGES.filter(function(x){return x.id===id;})[0];
+  newBadges.push(b.n); toast('Abzeichen: '+b.n); sndWin(); return true;
+}
+function isDone(id){
+  if(id==='L0') return !!store.introDone;
+  var b=store.best[id]; return !!(b && b.st>=1);
+}
+function isUnlocked(id){
+  if(store.set.unl) return true;
+  var k=ORDER.indexOf(id);
+  if(id===OWN_ID) return true;
+  if(k===0) return true;
+  if(id==='T0') return isDone('L'+(LESSONS.length-1));
+  return isDone(ORDER[k-1]);
+}
+function stars(acc){return acc>=98?3:acc>=95?2:acc>=90?1:0;}
+function starStr(n,all){var s='';for(var i=0;i<3;i++) s+= i<n?'★':(all?'☆':''); return s;}
+function today(){var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function touchDay(){
+  var t=today(), st=store.streak||{last:'',n:0};
+  if(st.last===t) return;
+  var y=new Date(); y.setDate(y.getDate()-1);
+  var ys=y.getFullYear()+'-'+('0'+(y.getMonth()+1)).slice(-2)+'-'+('0'+y.getDate()).slice(-2);
+  st.n = (st.last===ys) ? st.n+1 : 1; st.last=t; store.streak=st; save(); renderHud();
+  if(st.n>=3) award('streak3');
+}
+
+/* ---------- Töne und Effekte ---------- */
+var actx=null;
+function ac(){
+  if(!$('snd').checked) return null;
+  try{ actx = actx || new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); return actx; }catch(e){return null;}
+}
+function tone(freq,dur,type,vol,delay){
+  var a=ac(); if(!a) return;
+  try{
+    var t=a.currentTime+(delay||0), o=a.createOscillator(), g=a.createGain();
+    o.type=type||'square'; o.frequency.setValueAtTime(freq,t);
+    g.gain.setValueAtTime(vol||0.03,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(a.destination); o.start(t); o.stop(t+dur+0.02);
+  }catch(e){}
+}
+var PENTA=[0,2,4,7,9];
+function sndOk(c){var n=c%10, semis=PENTA[n%5]+12*Math.floor(n/5); tone(392*Math.pow(2,semis/12),0.07,'square',0.025);}
+function sndBad(){tone(110,0.18,'sawtooth',0.05);}
+function sndWin(){[523,659,784,1047].forEach(function(f,i){tone(f,0.16,'square',0.035,i*0.1);});}
+function sndCombo(){[659,880,1175].forEach(function(f,i){tone(f,0.1,'triangle',0.05,i*0.07);});}
+function sndOver(){[300,240,180,120].forEach(function(f,i){tone(f,0.2,'sawtooth',0.04,i*0.15);});}
+function burst(el,color){
+  if(!el || !el.animate) return;
+  var r=el.getBoundingClientRect(), fx=$('fx');
+  for(var i=0;i<7;i++){
+    var p=document.createElement('div'); p.className='pt';
+    p.style.left=(r.left+r.width/2)+'px'; p.style.top=(r.top+r.height/2)+'px'; p.style.background=color; p.style.boxShadow='0 0 8px '+color;
+    fx.appendChild(p);
+    var a=Math.random()*Math.PI*2, d=18+Math.random()*34;
+    var an=p.animate([{transform:'translate(0,0) scale(1)',opacity:1},{transform:'translate('+Math.cos(a)*d+'px,'+(Math.sin(a)*d-14)+'px) scale(.2)',opacity:0}],{duration:420+Math.random()*200,easing:'ease-out'});
+    an.onfinish=(function(q){return function(){if(q.parentNode) q.parentNode.removeChild(q);};})(p);
+  }
+}
+function popText(txt,color){
+  var p=document.createElement('div'); p.className='pop'; p.textContent=txt; p.style.color=color; p.style.textShadow='0 0 18px '+color;
+  $('fx').appendChild(p);
+  if(p.animate){ var an=p.animate([{opacity:0,transform:'translateX(-50%) scale(.4)'},{opacity:1,transform:'translateX(-50%) scale(1.1)',offset:.25},{opacity:0,transform:'translateX(-50%) translateY(-60px)'}],{duration:900});
+    an.onfinish=function(){if(p.parentNode) p.parentNode.removeChild(p);}; }
+  else setTimeout(function(){if(p.parentNode) p.parentNode.removeChild(p);},900);
+}
+function shakeScreen(){
+  document.body.classList.add('shake'); var f=$('flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
+  setTimeout(function(){document.body.classList.remove('shake');},200);
+}
+var FCOLOR={LP:'#ff6ec7',LR:'#ffa24d',LM:'#ffe14d',LI:'#5dff8f',RI:'#4dd8ff',RM:'#8e8bff',RR:'#d27bff',RP:'#d9b48a',T:'#9fb0cf'};
+function flashKey(ch,ok){
+  var info=charMap[ch]; if(!info) return;
+  var el = ch===' ' ? spaceEl : keyEls[info.k]; if(!el) return;
+  var c=ok?'hit':'miss'; el.classList.add(c); setTimeout(function(){el.classList.remove(c);},150);
+}
+
+/* ---------- Zustand ---------- */
+var text='', pos=0, hadErr=[], spans=[], errTotal=0, keysTotal=0, errMap={};
+var startT=0, timer=null, running=false, finished=false, curId='L0';
+var sentStarts=[], combo=0, maxCombo=0, score=0, energy=100, demoTimer=null, demoOnce={};
+var introPage=0, held={}, testOK=false, HOMEKEYS='asdfjklö';
+
+function isIntro(){var L=lessonOf(curId); return !!(L && L.t==='intro');}
+function isTextMode(){return curId.charAt(0)==='T' || curId===OWN_ID;}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+/* ---------- Karte ---------- */
+function renderMap(){
+  var h='';
+  WORLDS.forEach(function(W){
+    h+='<div class="world"><h2>'+esc(W.n)+'</h2><div class="tiles">';
+    W.ids.forEach(function(id){
+      var un=isUnlocked(id), dn=isDone(id), b=store.best[id];
+      var cls='tile '+(dn?'done':un?'open':'locked');
+      var st = id==='L0' ? (store.introDone?'★★★':'') : (b?starStr(b.st,true):'');
+      h+='<button class="'+cls+'" data-id="'+id+'"><span class="no">'+(un?numOf(id):'&#128274;')+'</span><span class="nm">'+esc(id===OWN_ID?'Eigener Text':nameOf(id).replace(/^\d+\s+/,''))+'</span><span class="stars">'+(un?st||'&nbsp;':'gesperrt')+'</span></button>';
+    });
+    h+='</div></div>';
+  });
+  $('worlds').innerHTML=h;
+  var tiles=document.querySelectorAll('.tile');
+  for(var i=0;i<tiles.length;i++) tiles[i].addEventListener('click',function(){
+    var id=this.getAttribute('data-id');
+    if(!isUnlocked(id)){ var t=this; t.classList.remove('shake'); void t.offsetWidth; t.classList.add('shake'); sndBad();
+      toast('Gesperrt. Schließe zuerst das Level davor mit mindestens einem Stern ab.'); return; }
+    startLevel(id);
+  });
+  var bh='';
+  BADGES.forEach(function(b){ var on=!!store.badges[b.id]; bh+='<div class="badge'+(on?'':' off')+'"><b>'+(on?'★ ':'? ')+esc(b.n)+'</b>'+esc(b.d)+'</div>'; });
+  $('badgeBox').innerHTML=bh;
+  renderHist(); renderHud();
+}
+function renderHist(){
+  var h=$('hist');
+  if(!store.hist.length){h.textContent='Noch keine Runde gespielt.'; return;}
+  var s='<table><tr><th>Datum</th><th>Level</th><th>Score</th><th>Anschläge/min</th><th>Treffer</th><th>Fehler</th></tr>';
+  store.hist.forEach(function(x){
+    s+='<tr><td>'+esc(x.d)+'</td><td>'+esc(nameOf(x.id))+'</td><td>'+x.score+'</td><td>'+x.apm+'</td><td>'+String(x.acc).replace('.',',')+' %</td><td>'+x.err+'</td></tr>';
+  });
+  h.innerHTML=s+'</table>';
+}
+function showMap(){
+  stopDemo(); clearInterval(timer); timer=null; running=false;
+  if(speechOK()){try{window.speechSynthesis.cancel();}catch(e){}}
+  $('result').classList.remove('show');
+  document.body.classList.remove('screen-game','intro'); document.body.classList.add('screen-map');
+  renderMap(); window.scrollTo(0,0);
+}
+function startLevel(id){
+  curId=id; introPage=0; testOK=false; held={};
+  store.set.cur=id; save();
+  document.body.classList.remove('screen-map'); document.body.classList.add('screen-game');
+  $('lvlName').textContent='Level '+numOf(id)+': '+nameOf(id).replace(/^\d+\s+/,'');
+  prepare(); window.scrollTo(0,0);
+  restDots();
+  if(isIntro()) {} else maybeAutoDemo();
+}
+
+/* ---------- Level vorbereiten ---------- */
+function infoHtml(){
+  var L=lessonOf(curId); if(!L) return '';
+  var detail='', title='Hinweis zum Level';
+  if(L.t==='letters' && L.nw){
+    var items=[], keys=[];
+    L.nw.split('').forEach(function(c){
+      var info=charMap[c]; if(!info || HOME[c]) return;
+      var d=dirText(c); keys.push(c);
+      items.push('<b>'+esc(c)+'</b>: mit dem '+FINGER[info.f]+(d?', '+d:'')+', danach sofort zurück');
+    });
+    if(items.length){
+      title='Neue Tasten: '+keys.join(' ');
+      detail+='<p>'+items.join('<br>')+'</p>';
+      detail+='<p>Ablauf: Zuerst pendelt der Finger zwischen seiner Grundstellungstaste und der neuen Taste hin und her. Danach folgen Silben und Wörter. Die anderen Finger bleiben liegen.</p>';
+    }
+  }
+  if(L.info) detail+='<p>'+L.info+'</p>';
+  if(!detail && !demoChars(L).length) return '';
+  var h='<div class="irow">';
+  h+= detail ? '<details><summary>'+esc(title)+' (aufklappen)</summary>'+detail+'</details>' : '<span></span>';
+  if(demoChars(L).length) h+='<button id="demoBtn" class="mg">&#9654; Zeig mir</button>';
+  return h+'</div>';
+}
+function prepare(){
+  clearInterval(timer); timer=null; startT=0; finished=false; running=true;
+  stopDemo(true);
+  combo=0; maxCombo=0; score=0; energy=100; newBadges=[];
+  document.body.classList.toggle('intro', isIntro());
+  $('result').classList.remove('show','over');
+  $('ownWrap').style.display = curId===OWN_ID ? 'block' : 'none';
+  $('rep').style.display = (isTextMode() && $('dict').checked) ? '' : 'none';
+  if(speechOK()){try{window.speechSynthesis.cancel();}catch(e){}}
+  if(isIntro()){
+    running=false; text=''; pos=0; spans=[]; $('info').style.display='none';
+    showIntro(); return;
+  }
+  $('intro').style.display='none';
+  pos=0; errTotal=0; keysTotal=0; errMap={}; hadErr=[];
+  var note='';
+  var L=lessonOf(curId);
+  if(curId.charAt(0)==='L'){ text=genLesson(parseInt(curId.slice(1),10), parseInt($('len').value,10)); }
+  else if(curId.charAt(0)==='T'){ text=sanitize(TEXTS[parseInt(curId.slice(1),10)].s).text; }
+  else {
+    var r=sanitize($('own').value||'');
+    text=r.text; if(r.removed) note=r.removed+' nicht tippbare Zeichen wurden entfernt.';
+    if(!text) text='Bitte oben einen eigenen Text einfügen. Danach Esc drücken.';
+  }
+  $('dictNote').textContent=note;
+  var ih=infoHtml(); $('info').innerHTML=ih; $('info').style.display = ih?'block':'none';
+  var db=$('demoBtn'); if(db) db.addEventListener('click',function(){playDemo(demoChars(L)); db.blur();});
+  sentStarts=[0];
+  for(var i=0;i<text.length-1;i++){ if('.!?'.indexOf(text.charAt(i))>=0 && text.charAt(i+1)===' ') sentStarts.push(i+2); }
+  var box=$('box'); box.innerHTML=''; spans=[];
+  for(var j=0;j<text.length;j++){
+    var sp=document.createElement('span'); sp.className='ch'; sp.textContent=text.charAt(j);
+    box.appendChild(sp); spans.push(sp); hadErr.push(false);
+  }
+  box.scrollTop=0;
+  $('startMsg').style.display='block';
+  applyHide(); updateCursor(); updateStats();
+  if(document.activeElement && /^(SELECT|BUTTON)$/.test(document.activeElement.tagName)) document.activeElement.blur();
+  maybeSpeak();
+}
+function applyHide(){
+  var on = isTextMode() && $('dict').checked && $('hide').checked;
+  document.body.classList.toggle('hide', on);
+}
+function updateCursor(){
+  spans.forEach(function(s){s.classList.remove('cur','err');});
+  var sp=spans[pos];
+  if(sp){
+    sp.classList.add('cur');
+    var box=$('box');
+    box.scrollTop=Math.max(0, sp.offsetTop - box.clientHeight/3);
+  }
+  highlight();
+}
+function updateTarget(r){
+  var tg=$('tg'), ti=$('tinfo');
+  if(!r){ tg.textContent='★'; ti.textContent=''; tg.style.color=''; return; }
+  tg.textContent = r.isSp ? '␣' : r.ch;
+  var col=FCOLOR[r.isSp?'T':r.f]||'#00e5ff'; tg.style.color=col;
+  $('target').style.borderColor=col;
+  ti.textContent = (r.isSp?'Leertaste ':'')+describe(r);
+}
+function highlight(){
+  if(isIntro()){
+    clearMarks(); restDots();
+    if(PAGES[introPage] && PAGES[introPage].hl==='home'){
+      HOMEKEYS.split('').forEach(function(k){keyEls[k].classList.add('next');});
+    }
+    return;
+  }
+  if(demoTimer) return;
+  if(finished || pos>=text.length){ clearMarks(); restDots(); updateTarget(null); return; }
+  var r=setTarget(text.charAt(pos), pos>0?text.charAt(pos-1):null);
+  updateTarget(r);
+}
+
+/* ---------- Vorführung ---------- */
+function stopDemo(silent){
+  if(demoTimer){clearTimeout(demoTimer); demoTimer=null;}
+  var l=$('demoLabel'); if(l) l.textContent='';
+  if(!silent && !isIntro() && running) highlight();
+}
+function playDemo(chars){
+  stopDemo(true);
+  if(!chars || !chars.length) return;
+  var i=0;
+  function step(){
+    if(i>=chars.length){ demoTimer=null; $('demoLabel').textContent=''; clearMarks(); restDots(); if(isIntro()){highlight();} else highlight(); return; }
+    var c=chars[i], r=setTarget(c,null);
+    var lab=(c===' '?'Leertaste':c)+': '+describe(r);
+    $('demoLabel').textContent=lab;
+    var il=$('introDemoLabel'); if(il) il.textContent=lab;
+    demoTimer=setTimeout(function(){
+      restDots(); clearMarks();
+      demoTimer=setTimeout(function(){i++; step();},420);
+    },1250);
+  }
+  demoTimer=setTimeout(step,10);
+}
+function maybeAutoDemo(){
+  var L=lessonOf(curId);
+  if(!L || isIntro() || demoOnce[curId] || store.best[curId]) return;
+  demoOnce[curId]=true;
+  var ch=demoChars(L);
+  if(ch.length) playDemo(ch);
+}
+
+/* ---------- Statistik ---------- */
+function elapsed(){return startT? (performance.now()-startT)/1000 : 0;}
+function fmt(t){t=Math.floor(t); return Math.floor(t/60)+':'+('0'+(t%60)).slice(-2);}
+function calc(){
+  var t=elapsed(), min=t/60, correct=pos;
+  var apm = min>0.02 ? Math.round(correct/min) : 0;
+  var wpm = min>0.02 ? Math.round(correct/5/min) : 0;
+  var acc = keysTotal>0 ? Math.round((keysTotal-errTotal)/keysTotal*1000)/10 : 100;
+  return {t:t,apm:apm,wpm:wpm,acc:acc};
+}
+function mult(){return Math.min(5,1+Math.floor(combo/10));}
+function updateStats(){
+  var c=calc();
+  $('sT').textContent=fmt(c.t); $('sA').textContent=c.apm;
+  $('sG').textContent=String(c.acc).replace('.',',')+' %';
+  $('sS').textContent=score; $('sC').textContent=combo; $('sM').textContent='x'+mult();
+  $('prog').style.width=(text.length? pos/text.length*100:0)+'%';
+  var en=$('en'); en.style.width=Math.max(0,energy)+'%';
+  var col = energy>60?'#7cff4f':energy>30?'#ffd400':'#ff3b5c'; en.style.background=col; en.style.boxShadow='0 0 8px '+col;
+}
+
+/* ---------- Sprache ---------- */
+var SPOKEN={',':' Komma ','.':' Punkt ','?':' Fragezeichen ','!':' Ausrufezeichen ',';':' Semikolon ',':':' Doppelpunkt ','(':' Klammer auf ',')':' Klammer zu ','"':' Anführungszeichen ','-':' Bindestrich '};
+function speechOK(){return 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;}
+function currentSentence(){
+  var st=0;
+  for(var i=0;i<sentStarts.length;i++) if(sentStarts[i]<=pos) st=sentStarts[i];
+  var idx=sentStarts.indexOf(st), en = idx+1<sentStarts.length ? sentStarts[idx+1] : text.length;
+  return text.slice(st,en).trim();
+}
+function speak(s){
+  if(!speechOK() || !s) return;
+  if($('punct').checked) s=s.replace(/[,.?!;:()"\-]/g,function(c){return SPOKEN[c]||c;});
+  try{
+    window.speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(s); u.lang='de-DE'; u.rate=0.85;
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+function maybeSpeak(){
+  if(!isTextMode() || !$('dict').checked || finished) return;
+  if(sentStarts.indexOf(pos)>=0) speak(currentSentence());
+}
+
+/* ---------- Einführung ---------- */
+var PAGES=[
+ {t:'1. Sitzen und Haltung', hl:'', h:
+  '<p>Setze dich aufrecht hin, beide Füße stehen flach auf dem Boden. Der Rücken ist gerade, aber nicht steif.</p>'+
+  '<p>Die Oberarme hängen locker am Körper, die Unterarme liegen etwa waagerecht. Die Handgelenke werden nicht abgeknickt und nicht auf den Tisch gestützt. Die Hände schweben leicht über den Tasten.</p>'+
+  '<p>Der Blick geht immer auf den Bildschirm, nie auf die Tastatur. Das ist am Anfang ungewohnt und der wichtigste Grund, warum man das Zehnfingersystem überhaupt lernt.</p>'},
+ {t:'2. Die Grundstellung', hl:'home', hands:true, h:
+  '<p>Die Grundstellung ist die Ausgangsposition für jeden Anschlag. Die Finger der linken Hand liegen auf <b>a s d f</b>, die der rechten Hand auf <b>j k l ö</b>. Die Tasten blinken. Die farbigen Ringe auf der Tastatur sind deine Fingerspitzen.</p>'+
+  '<p>Linke Hand: kleiner Finger auf a, Ringfinger auf s, Mittelfinger auf d, Zeigefinger auf f. Rechte Hand: Zeigefinger auf j, Mittelfinger auf k, Ringfinger auf l, kleiner Finger auf ö.</p>'+
+  '<p>Auf f und j fühlst du mit den Zeigefingern eine kleine Erhebung. So findest du die Grundstellung auch ohne hinzusehen. Beide Daumen liegen locker über der Leertaste.</p>',
+  fly:true},
+ {t:'3. Jeder Finger hat seine Tasten', hl:'', demo:['q','w','e','r','t','z','u','i','o','p'], h:
+  '<p>Jeder Finger ist für eine Spalte zuständig und greift von der Grundstellung aus nach oben oder unten. Danach kehrt er <b>sofort</b> in die Grundstellung zurück. Das ist die wichtigste Regel. Drücke auf Vorführen und sieh zu, wie sich die Finger bewegen.</p>'+
+  '<table><tr><th>Finger</th><th>Tasten</th></tr>'+
+  '<tr><td>linker kleiner Finger</td><td>1 q a y</td></tr>'+
+  '<tr><td>linker Ringfinger</td><td>2 w s x</td></tr>'+
+  '<tr><td>linker Mittelfinger</td><td>3 e d c</td></tr>'+
+  '<tr><td>linker Zeigefinger</td><td>4 5 r t f g v b</td></tr>'+
+  '<tr><td>rechter Zeigefinger</td><td>6 7 z u h j n m</td></tr>'+
+  '<tr><td>rechter Mittelfinger</td><td>8 i k Komma</td></tr>'+
+  '<tr><td>rechter Ringfinger</td><td>9 o l Punkt</td></tr>'+
+  '<tr><td>rechter kleiner Finger</td><td>0 ß p ü ö ä Bindestrich</td></tr></table>'+
+  '<p>Die Leertaste bedient ein Daumen. Für Großbuchstaben hält der kleine Finger der Gegenseite Shift gedrückt: Ein Buchstabe der linken Hand braucht rechts Shift, einer der rechten Hand links Shift.</p>'},
+ {t:'4. So lernst du neue Tasten', hl:'', demo:['e','i','n'], h:
+  '<p>Alle Buchstaben werden von der Grundstellung aus erreicht. Beispiel e: Der linke Mittelfinger liegt auf d. Er streckt sich eine Reihe nach oben zum e, drückt und geht sofort zurück auf d. Der Rest der Hand bewegt sich dabei möglichst nicht.</p>'+
+  '<p>Jedes Level beginnt mit einem Infokasten und einer Vorführung: Du siehst, welche neuen Tasten geübt werden, welcher Finger zuständig ist und wohin er sich streckt. Beim Tippen zeigt die blinkende Taste, die große Anzeige und der Fingerring immer die nächste Taste.</p>'+
+  '<p>Ein Level läuft immer gleich ab: Zuerst pendelt der Finger zwischen Grundstellungstaste und neuer Taste (zum Beispiel d e d e), dann folgen Silben und kleine Wörter.</p>'+
+  '<p>Die Reihenfolge: Zuerst die Grundstellung einüben, dann Wörter mit der Grundreihe. Danach kommen Tasten in dieser Reihenfolge dazu: g h, e i, r u, t z, w o, q p, ä ü, n m, c v, b x, y ß. Danach alles gemischt, Großbuchstaben mit Shift, Zahlen, Satzzeichen und zum Schluss ganze Texte, auch als Diktat.</p>'+
+  '<p>Wichtig: Erst auf Treffsicherheit achten (ab 95 Prozent gibt es zwei Sterne). Das Tempo kommt von allein. Für jeden Treffer gibt es Punkte, bei einer Serie ohne Fehler wächst der Multiplikator bis x5.</p>'},
+ {t:'5. Probiere die Grundstellung aus', hl:'home', test:true, h:
+  '<p>Lege jetzt beide Hände auf die Tastatur, so wie eben beschrieben. Drücke dann alle acht Tasten <b>a s d f j k l ö</b> gleichzeitig herunter. Spüre dabei die Erhebungen auf f und j.</p>'}
+];
+function showIntro(){
+  stopDemo(true);
+  var P=PAGES[introPage], el=$('intro');
+  var s='<h2>'+P.t+'</h2><div class="body"><div class="introflex"><div class="itext">'+P.h+'</div>'+(P.hands?handsSvg(true):'')+'</div>';
+  if(P.demo) s+='<p><button id="iDemo" class="mg">&#9654; Vorführen</button></p><div class="demoLabel" id="introDemoLabel"></div>';
+  if(P.test) s+='<div id="testMsg" class="testmsg'+(testOK?' ok':'')+'">'+(testOK?'Geschafft: Das ist die Grundstellung. Merke dir, wie sie sich anfühlt. Du kehrst bei den Übungen nach jedem Anschlag dorthin zurück.':'Halte alle acht Tasten gleichzeitig gedrückt. Manche Tastaturen können so viele Tasten nicht gleichzeitig melden, dann kannst du den Test auch einfach überspringen.')+'</div>';
+  s+='</div><div class="nav">';
+  if(introPage>0) s+='<button class="sec" id="iPrev">Zurück</button>';
+  if(introPage<PAGES.length-1) s+='<button id="iNext">Weiter</button>';
+  else s+='<button id="iGo" class="mg">'+(testOK?'Weiter zur ersten Übung':'Test überspringen, weiter zur ersten Übung')+'</button>';
+  s+='<span class="note">Seite '+(introPage+1)+' von '+PAGES.length+'</span></div>';
+  el.innerHTML=s; el.style.display='block';
+  var b;
+  if((b=$('iPrev'))) b.addEventListener('click',function(){introPage--; showIntro();});
+  if((b=$('iNext'))) b.addEventListener('click',function(){introPage++; showIntro();});
+  if((b=$('iDemo'))) b.addEventListener('click',function(){playDemo(P.demo); this.blur();});
+  if((b=$('iGo'))) b.addEventListener('click',function(){
+    store.introDone=true; save(); award('grund'); startLevel('L1');
+  });
+  highlight();
+  if(P.fly) flyIn();
+  if(P.demo && P.demo.length<=3) setTimeout(function(){ if(isIntro() && PAGES[introPage]===P) playDemo(P.demo); },500);
+}
+function checkTest(){
+  if(!PAGES[introPage].test || testOK) return;
+  for(var i=0;i<HOMEKEYS.length;i++) if(!held[HOMEKEYS.charAt(i)]) return;
+  testOK=true; sndWin(); showIntro();
+}
+
+/* ---------- Tippen ---------- */
+function onKey(e){
+  var t=e.target;
+  if(t && t.tagName==='TEXTAREA'){ if(e.key==='Escape'){t.blur(); prepare();} return; }
+  if(document.body.classList.contains('screen-map')) return;
+  if(e.key==='Escape'){e.preventDefault(); prepare(); return;}
+  if(e.key==='F2'){e.preventDefault(); if(isTextMode()) speak(currentSentence()); return;}
+  if(isIntro()){
+    if(e.key.length===1){
+      e.preventDefault(); held[e.key.toLowerCase()]=true; flashKey(e.key.toLowerCase(),true); checkTest();
+    }
+    return;
+  }
+  if(finished){ if(e.key==='Enter'){e.preventDefault(); prepare();} return; }
+  if(!running || e.ctrlKey || e.metaKey) return;
+  if(e.key.length!==1) return;
+  e.preventDefault();
+  if(demoTimer) stopDemo();
+  if(!startT){ startT=performance.now(); timer=setInterval(updateStats,250); $('startMsg').style.display='none'; touchDay(); }
+  keysTotal++;
+  var exp=text.charAt(pos);
+  if(e.key===exp){
+    flashKey(e.key,true);
+    var sp=spans[pos];
+    sp.classList.remove('cur','err');
+    sp.classList.add(hadErr[pos]?'fix':'ok');
+    var r0=charMap[exp]; burst(sp, FCOLOR[exp===' '?'T':(r0?r0.f:'T')]||'#00e5ff');
+    combo++; if(combo>maxCombo) maxCombo=combo;
+    score+=10*mult()*(hadErr[pos]?0.5:1); score=Math.round(score);
+    energy=Math.min(100,energy+0.6);
+    sndOk(combo);
+    if(combo>0 && combo%10===0){ popText('COMBO '+combo+'!','#ffd400'); sndCombo(); var cb=$('sC'); cb.classList.remove('big'); void cb.offsetWidth; cb.classList.add('big'); }
+    if(combo===25) award('combo25'); if(combo===50) award('combo50'); if(combo===100) award('combo100');
+    pos++;
+    if(pos>=text.length){ updateStats(); finish(true); return; }
+    updateCursor(); maybeSpeak();
+  } else {
+    flashKey(e.key,false);
+    errTotal++; hadErr[pos]=true; errMap[exp]=(errMap[exp]||0)+1;
+    if(combo>=10) popText('Serie weg','#ff3b5c');
+    combo=0; energy-=10; shakeScreen(); sndBad();
+    var s2=spans[pos]; s2.classList.remove('err'); void s2.offsetWidth; s2.classList.add('err');
+    if(energy<=0){
+      if($('go').checked){ updateStats(); finish(false); return; }
+      energy=0;
+    }
+  }
+  updateStats();
+}
+
+function finish(ok){
+  finished=true; running=false; clearInterval(timer); timer=null;
+  stopDemo(true);
+  if(speechOK()){try{window.speechSynthesis.cancel();}catch(e){}}
+  var c=calc(), st= ok?stars(c.acc):0, gain=0, first=false;
+  clearMarks(); restDots(); updateTarget(null);
+  var worst=Object.keys(errMap).sort(function(a,b){return errMap[b]-errMap[a];}).slice(0,5)
+    .map(function(k){return (k===' '?'Leertaste':k)+' ('+errMap[k]+'x)';});
+  var lvBefore=lvlOf(store.xp);
+  if(ok){
+    first=!isDone(curId);
+    gain=Math.round(score/100)+st*30+(first&&st>0?60:0);
+    store.xp+=gain;
+    var b=store.best[curId];
+    if(!b || st>b.st || (st===b.st && score>b.score)) store.best[curId]={st:st,apm:c.apm,acc:c.acc,score:score};
+    award('first');
+    if(errTotal===0) award('perfect');
+    if(st>=3) award('stars3');
+    if(c.apm>=200 && c.acc>=95) award('speed');
+    if(LESSONS.every(function(L,i){return L.t==='intro'||isDone('L'+i);}) && store.introDone) award('allL');
+    if(TEXTS.every(function(T,i){return isDone('T'+i);})) award('allT');
+    store.hist.unshift({d:new Date().toLocaleString('de-DE'), id:curId, apm:c.apm, wpm:c.wpm, acc:c.acc, err:errTotal, score:score});
+    store.hist=store.hist.slice(0,30);
+    save();
+    if(st>=1) sndWin(); else sndBad();
+  } else sndOver();
+  var lvAfter=lvlOf(store.xp);
+  renderHud();
+  var h='<div class="box">';
+  h+='<h2>'+(ok ? (st>=1?'LEVEL GESCHAFFT!':'FAST GESCHAFFT') : 'GAME OVER')+'</h2>';
+  if(ok){
+    h+='<div class="bigstars">';
+    for(var i=0;i<3;i++) h+='<span class="'+(i<st?'':'off')+'" style="animation-delay:'+(0.3+i*0.35)+'s">'+(i<st?'★':'☆')+'</span>';
+    h+='</div>';
+    if(st===0) h+='<p class="note">Für einen Stern brauchst du mindestens 90 Prozent Treffer. Versuche es langsamer und genauer.</p>';
+  } else h+='<p>Die Energie war leer. Tippe langsamer und achte auf jede Taste.</p>';
+  h+='<table>'+
+    '<tr><td>Score</td><td><b>'+score+'</b></td></tr>'+
+    '<tr><td>Längste Serie</td><td>'+maxCombo+'</td></tr>'+
+    '<tr><td>Treffer</td><td>'+String(c.acc).replace('.',',')+' Prozent, '+errTotal+' Fehler</td></tr>'+
+    '<tr><td>Tempo</td><td>'+c.apm+' Anschläge pro Minute, '+c.wpm+' Wörter pro Minute</td></tr>'+
+    '<tr><td>Zeit</td><td>'+fmt(c.t)+'</td></tr>'+
+    (ok?'<tr><td>XP</td><td><b>+'+gain+'</b></td></tr>':'')+
+    (worst.length?'<tr><td>Problemtasten</td><td>'+esc(worst.join(', '))+'</td></tr>':'')+'</table>';
+  if(lvAfter>lvBefore) h+='<div class="newb">LEVEL UP! Du bist jetzt Level '+lvAfter+'</div>';
+  newBadges.forEach(function(n){h+='<div class="newb">Neues Abzeichen: '+esc(n)+'</div>';});
+  h+='<div class="btns"><button id="rAgain">Nochmal (Enter)</button>';
+  if(ok && st>=1) h+='<button id="rNext" class="mg">Nächstes Level</button>';
+  h+='<button id="rMap" class="sec">Zur Karte</button></div></div>';
+  var rs=$('result'); rs.innerHTML=h; rs.classList.toggle('over',!ok); rs.classList.add('show');
+  $('rAgain').addEventListener('click',prepare);
+  $('rMap').addEventListener('click',showMap);
+  var rn=$('rNext'); if(rn) rn.addEventListener('click',function(){
+    var k=ORDER.indexOf(curId), nxt=null;
+    for(var j=k+1;j<ORDER.length;j++){ if(isUnlocked(ORDER[j]) && ORDER[j]!==OWN_ID){nxt=ORDER[j]; break;} }
+    if(nxt) startLevel(nxt); else showMap();
+  });
+}
+
+/* ---------- Start ---------- */
+function setFs(){document.documentElement.style.setProperty('--fs',$('fs').value+'px');}
+function applyView(){
+  $('kbd').style.display=$('kb').checked?'block':'none';
+  var hl=$('handsLive');
+  if($('hands').checked){ if(!hl.firstChild) hl.innerHTML=handsSvg(false); hl.style.display='block'; } else hl.style.display='none';
+}
+function persist(){
+  var s=store.set||{};
+  s.fs=$('fs').value; s.len=$('len').value; s.snd=$('snd').checked; s.kb=$('kb').checked; s.hands=$('hands').checked;
+  s.go=$('go').checked; s.unl=$('unl').checked; s.dict=$('dict').checked; s.hide=$('hide').checked; s.punct=$('punct').checked;
+  store.set=s; save();
+}
+function init(){
+  buildKeyboard();
+  var st=store.set||{};
+  if(st.fs) $('fs').value=st.fs; if(st.len) $('len').value=st.len;
+  $('snd').checked=st.snd!==false; $('kb').checked=st.kb!==false; $('hands').checked=st.hands!==false;
+  $('go').checked=!!st.go; $('unl').checked=!!st.unl;
+  $('dict').checked=!!st.dict; $('hide').checked=!!st.hide; $('punct').checked=st.punct!==false;
+  if(!speechOK()){
+    ['dict','hide','punct'].forEach(function(i){$(i).disabled=true;});
+    $('dictNote').textContent='Dieser Browser kann nicht vorlesen.';
+  }
+  setFs(); applyView(); restDots();
+  ['len','fs','snd','kb','hands','go','unl','dict','hide','punct'].forEach(function(id){
+    $(id).addEventListener('change',function(){
+      persist(); setFs(); applyView(); applyHide(); restDots();
+      if(id==='unl') renderMap();
+      if(id==='dict'&&!document.body.classList.contains('screen-map')){ $('rep').style.display=(isTextMode()&&$('dict').checked)?'':'none'; maybeSpeak(); }
+      if(id==='len'&&!document.body.classList.contains('screen-map')) prepare();
+      $(id).blur();
+    });
+  });
+  $('bMap').addEventListener('click',showMap);
+  $('toMap').addEventListener('click',showMap);
+  $('again').addEventListener('click',prepare);
+  $('rep').addEventListener('click',function(){ if(isTextMode()) speak(currentSentence()); $('rep').blur(); });
+  $('reset').addEventListener('click',function(){
+    if(confirm('Spielstand wirklich löschen? Level, XP und Abzeichen gehen verloren.')){
+      store={best:{},hist:[],set:store.set,xp:0,introDone:false,streak:{last:'',n:0},badges:{}}; save(); renderMap();
+    }
+  });
+  document.addEventListener('keydown',onKey);
+  document.addEventListener('keyup',function(e){ if(e.key) delete held[e.key.toLowerCase()]; });
+  window.addEventListener('blur',function(){held={};});
+  window.addEventListener('resize',function(){ if(!demoTimer) { if(document.body.classList.contains('screen-game')) highlight(); else restDots(); } });
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){restDots();});
+  renderMap();
+}
+window.__tt = {charMap:charMap, genLesson:genLesson, sanitize:sanitize, LESSONS:LESSONS, TEXTS:TEXTS, ORDER:ORDER,
+  startLevel:startLevel, showMap:showMap, isUnlocked:isUnlocked, isDone:isDone, store:function(){return store;},
+  get text(){return text;}, get pos(){return pos;}, get finished(){return finished;}, get score(){return score;}, get combo(){return combo;}};
+init();
+})();
+</script>
+</body>
+</html>

@@ -3151,7 +3151,7 @@ function render(){
 const KS_KEYS = {goal:"kalSyncGoalCal", meta:"kalSyncMetaCal"};
 const KS_LABEL = {goal:"Tagesziele", meta:"Metaprojekte"};
 const KS_SCOPE_CREATE = "https://www.googleapis.com/auth/calendar.app.created";
-let ksBusy = false, ksAgain = false, ksTimer = null, ksLast = {goal:"", meta:""};
+let ksRetries = 0, ksBusy = false, ksAgain = false, ksTimer = null, ksLast = {goal:"", meta:""};
 let ksStatus = localStorage.getItem("ksStatus") || "";
 function ksCalId(kind){ return localStorage.getItem(KS_KEYS[kind]) || ""; }
 
@@ -3219,14 +3219,28 @@ async function ksSyncKind(kind, force){
   });
   let delSkipped = false;
   if(want.size===0 && toDel.length>3){ toDel.length = 0; delSkipped = true; }   // Sicherung gegen leere Ladefehler
-  for(const [ref,d] of toAdd) await api(calUrl(calId), {method:"POST", body:JSON.stringify(ksBody(kind, ref, d))});
+  // Schreibzugriffe einzeln mit Wiederholung bei Tempolimit (Google sperrt viele schnelle Schreibzugriffe kurz); ein Fehler stoppt nicht die übrigen Termine
+  let failed = 0, lastErr = "";
+  const wr = async (url, opts)=>{
+    for(let k=0; k<5; k++){
+      try{ const r = await api(url, opts); await new Promise(ok=>setTimeout(ok, 250)); return r; }
+      catch(err){
+        const m = String(err.message||err);
+        if(k<4 && /API (403|429|500|502|503)/.test(m) && !/insufficient|forbidden for non|notFound/i.test(m)){ await new Promise(ok=>setTimeout(ok, 1200*(k+1))); continue; }
+        throw err;
+      }
+    }
+  };
+  let nAdd = 0, nUpd = 0, nDel = 0;
+  for(const [ref,d] of toAdd){ try{ await wr(calUrl(calId), {method:"POST", body:JSON.stringify(ksBody(kind, ref, d))}); nAdd++; }catch(err){ failed++; lastErr = String(err.message||err); } }
   for(const [e,ref,d] of toUpd){
     const b = ksBody(kind, ref, d);
-    await api(calUrl(calId)+"/"+encodeURIComponent(e.id), {method:"PATCH", body:JSON.stringify({summary:b.summary, description:b.description, start:b.start, end:b.end})});
+    try{ await wr(calUrl(calId)+"/"+encodeURIComponent(e.id), {method:"PATCH", body:JSON.stringify({summary:b.summary, description:b.description, start:b.start, end:b.end})}); nUpd++; }catch(err){ failed++; lastErr = String(err.message||err); }
   }
-  for(const e of toDel) await api(calUrl(calId)+"/"+encodeURIComponent(e.id), {method:"DELETE"});
-  ksLast[kind] = sig;
-  return {add:toAdd.length, upd:toUpd.length, del:toDel.length, skipped:delSkipped, total:want.size};
+  for(const e of toDel){ try{ await wr(calUrl(calId)+"/"+encodeURIComponent(e.id), {method:"DELETE"}); nDel++; }catch(err){ failed++; lastErr = String(err.message||err); } }
+  if(failed){ ksLast[kind] = ""; }      // nächster Lauf versucht es erneut
+  else ksLast[kind] = sig;
+  return {add:nAdd, upd:nUpd, del:nDel, skipped:delSkipped, total:want.size, failed, lastErr};
 }
 function ksStatusSet(txt){
   ksStatus = txt; try{ localStorage.setItem("ksStatus", txt); }catch(e){}
@@ -3237,7 +3251,7 @@ async function ksSyncNow(force){
   if(ksBusy){ ksAgain = true; return; }
   if(!ksCalId("goal") && !ksCalId("meta")) return;
   ksBusy = true;
-  const parts = []; let changed = false, ran = false;
+  const parts = []; let changed = false, ran = false, retry = false;
   try{
     for(const kind of ["goal","meta"]){
       try{
@@ -3245,7 +3259,8 @@ async function ksSyncNow(force){
         if(!r) continue;
         ran = true;
         if(r.add||r.upd||r.del) changed = true;
-        parts.push(KS_LABEL[kind]+": "+r.total+" Termine, "+r.add+" neu, "+r.upd+" geändert, "+r.del+" entfernt"+(r.skipped?" (Löschen übersprungen)":""));
+        parts.push(KS_LABEL[kind]+": "+r.total+" Termine, "+r.add+" neu, "+r.upd+" geändert, "+r.del+" entfernt"+(r.skipped?" (Löschen übersprungen)":"")+(r.failed?" – "+r.failed+" Fehler, neuer Versuch folgt ("+r.lastErr.slice(0,100)+")":""));
+        if(r.failed) retry = true;
       }catch(e){
         ran = true; ksLast[kind] = "";
         parts.push(KS_LABEL[kind]+": Fehler "+String(e.message||e).slice(0,140));
@@ -3255,6 +3270,8 @@ async function ksSyncNow(force){
       const t = new Date(); const hm = String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
       ksStatusSet("Abgeglichen um "+hm+". "+parts.join(" | "));
       if(changed && typeof kalRefresh==="function") kalRefresh();
+      if(retry && ksRetries<4){ ksRetries++; clearTimeout(ksTimer); ksTimer = setTimeout(()=>{ ksSyncNow(false); }, 15000); }
+      else if(!retry) ksRetries = 0;
     }
   }finally{
     ksBusy = false;

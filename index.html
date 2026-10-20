@@ -2809,7 +2809,7 @@ function render(){
       return minA-minB;
     });
     const list=[...withDate,...noDate,...done];
-    main.innerHTML=list.length?list.map(t=>taskCard(t,{showCheck:true, key:key, oneTime:true})).join(""):empty("Noch keine ToDos. Mit + anlegen.");
+    main.innerHTML=`<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="mini" data-md-import="1">⬆ Markdown importieren</button></div>`+(list.length?list.map(t=>taskCard(t,{showCheck:true, key:key, oneTime:true})).join(""):empty("Noch keine ToDos. Mit + anlegen."));
   }
   else if(view==="distractions"){
     let h=`<div class="section-title">🧹 Erlaubte Ablenkungen</div>`;
@@ -3067,6 +3067,13 @@ function render(){
       </div>
       
       <div class="section-title">Verwaltung</div>
+      <div class="card">
+        <div class="body">
+          <div class="title">ToDos aus Markdown importieren</div>
+          <div class="sub">Massenimport: eine Zeile pro ToDo, optional mit Datum, Uhrzeit und Tag</div>
+        </div>
+        <button class="icon-btn" data-md-import="1">Importieren</button>
+      </div>
       <div class="section-title">Sicherung</div>
       <div class="card">
         <div class="body">
@@ -3351,6 +3358,116 @@ function ksBindSettings(){
     if(nb) nb.onclick = ()=>ksCreateCal(kind);
   });
   const nw = $("ks_now"); if(nw) nw.onclick = ()=>{ ksStatusSet("Gleiche ab …"); ksSyncNow(true); };
+}
+
+/* ============ MARKDOWN-IMPORT (Massenimport von ToDos) ============ */
+/* Schreibweise je Zeile: "- [ ] Titel @2026-11-30 @14:30 #job"; "- [x] ..." legt das ToDo als erledigt an.
+   Datum: @JJJJ-MM-TT, @TT.MM.JJJJ, @TT.MM., @heute, @morgen, @übermorgen. Uhrzeit: @HH:MM. Tags: #privat #job #projekt.
+   Überschriften, Trennlinien, Zitate, Tabellen und Codeblöcke werden übersprungen; Listenzeichen sind optional. */
+function mdDate(v){
+  v = String(v||"").toLowerCase();
+  const t = new Date(); t.setHours(0,0,0,0);
+  if(v==="heute") return dateKey(t);
+  if(v==="morgen"){ t.setDate(t.getDate()+1); return dateKey(t); }
+  if(v==="übermorgen"){ t.setDate(t.getDate()+2); return dateKey(t); }
+  let y, m, d, mt;
+  if((mt = v.match(/^(\d{4})-(\d{2})-(\d{2})$/))){ y=+mt[1]; m=+mt[2]; d=+mt[3]; }
+  else if((mt = v.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})?$/))){
+    d=+mt[1]; m=+mt[2];
+    if(mt[3]) y = mt[3].length===2 ? 2000+(+mt[3]) : +mt[3];
+    else{ y = t.getFullYear(); const c = new Date(y, m-1, d); if(c.getTime() < t.getTime()-180*86400000) y++; }
+  } else return "";
+  const c = new Date(y, m-1, d);
+  if(c.getFullYear()!==y || c.getMonth()!==m-1 || c.getDate()!==d) return "";
+  return dateKey(c);
+}
+function mdParseTodos(text, defDate){
+  const out = [];
+  let fence = false;
+  String(text||"").replace(/\r/g,"").split("\n").forEach(raw=>{
+    if(/^\s*(```|~~~)/.test(raw)){ fence = !fence; return; }
+    if(fence) return;
+    let s = raw.trim();
+    if(!s) return;
+    if(/^#{1,6}\s/.test(s) || /^(-{3,}|\*{3,}|_{3,})$/.test(s) || /^>/.test(s) || /^\|/.test(s)) return;
+    let done = false;
+    s = s.replace(/^([-*+]|\d+[.)])\s+/, "");
+    const cb = s.match(/^\[([ xX])\]\s*/);
+    if(cb){ done = cb[1]!==" "; s = s.slice(cb[0].length); }
+    s = s.replace(/!?\[([^\]]*)\]\(([^)]*)\)/g, "$1").replace(/(\*\*|__)(.*?)\1/g, "$2").replace(/`([^`]*)`/g, "$1");
+    let date = "", time = "";
+    const tags = [];
+    s = s.replace(/(^|\s)@(\d{4}-\d{2}-\d{2}|\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?|heute|morgen|übermorgen)(?=\s|$|[,;])/i, (m, pre, v)=>{ const k = mdDate(v); if(!k) return m; date = k; return pre; });
+    s = s.replace(/(^|\s)@(\d{1,2}):(\d{2})(?=\s|$|[,;.])/, (m, pre, h, mi)=>{ if(+h>23 || +mi>59) return m; time = String(h).padStart(2,"0")+":"+mi; return pre; });
+    s = s.replace(/(^|\s)#(privat|job|projekt)(?=\s|$|[,;.])/gi, (m, pre, tg)=>{ tags.push(tg.toLowerCase()); return pre; });
+    const title = s.replace(/\s+/g, " ").trim();
+    if(!title) return;
+    if(time && !date) date = defDate || todayKey();
+    out.push({title, done, date: date || defDate || "", time, tag:[...new Set(tags)].join(",")});
+  });
+  return out;
+}
+function openMdImport(){
+  if(document.getElementById("modalBg")) return;
+  const fld = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:8px";
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal">
+    <h2>ToDos aus Markdown importieren</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:8px">Pro Zeile ein ToDo, zum Beispiel <b>- [ ] Elternbrief schreiben @25.11. @14:30 #job</b>. Mit <b>[x]</b> wird das ToDo als erledigt angelegt. Datum: @JJJJ-MM-TT, @TT.MM., @heute, @morgen. Tags: #privat #job #projekt. Überschriften und Trennlinien werden übersprungen.</p>
+    <input type="file" id="mdi_file" accept=".md,.markdown,.txt,text/markdown,text/plain" style="${fld}">
+    <textarea id="mdi_text" rows="9" placeholder="Markdown hier einfügen oder Datei wählen" style="${fld};resize:vertical"></textarea>
+    <label>Fälligkeit für ToDos ohne Datum</label>
+    <select id="mdi_def" style="${fld}"><option value="">Ohne Datum</option><option value="today">Heute</option><option value="tomorrow">Morgen</option></select>
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="mdi_dup" checked> Bereits vorhandene ToDos mit gleichem Titel überspringen</label>
+    <div id="mdi_prev" class="muted" style="font-size:13px;max-height:180px;overflow:auto;margin-bottom:6px"></div>
+    <div class="modal-actions"><button class="btn-ghost" id="mdi_cancel">Abbrechen</button><button class="btn-primary" id="mdi_ok">Importieren</button></div>
+  </div></div>`);
+  const defDate = ()=>{ const v = $("mdi_def").value; return v==="today" ? todayKey() : v==="tomorrow" ? nextDayKey(todayKey()) : ""; };
+  const current = ()=>{
+    let items = mdParseTodos($("mdi_text").value, defDate());
+    let skipped = 0;
+    if($("mdi_dup").checked){
+      const have = new Set(tasks.filter(t=>t.type==="todo" && !t.archived).map(t=>String(t.title||"").trim().toLowerCase()));
+      const before = items.length;
+      items = items.filter(x=>!have.has(x.title.toLowerCase()));
+      skipped = before - items.length;
+    }
+    return {items, skipped};
+  };
+  const prev = ()=>{
+    const {items, skipped} = current();
+    const lbl = {privat:"Privat", job:"Job", projekt:"Projekt"};
+    $("mdi_prev").innerHTML = (items.length ? "<b>"+items.length+" ToDo"+(items.length===1?"":"s")+" werden angelegt</b>" : "Noch nichts zu importieren")
+      + (skipped ? " ("+skipped+" schon vorhanden, übersprungen)" : "")
+      + items.slice(0,60).map(x=>`<div>${x.done?"✓":"☐"} ${esc(x.title)}${x.date?" · "+esc(x.date.split("-").reverse().join(".")):""}${x.time?" "+esc(x.time):""}${x.tag?" · "+esc(x.tag.split(",").map(q=>lbl[q]).join(", ")):""}</div>`).join("")
+      + (items.length>60 ? `<div>… und ${items.length-60} weitere</div>` : "");
+    $("mdi_ok").textContent = items.length ? "Importieren ("+items.length+")" : "Importieren";
+  };
+  $("mdi_text").oninput = prev; $("mdi_def").onchange = prev; $("mdi_dup").onchange = prev;
+  $("mdi_file").onchange = async ()=>{
+    const f = $("mdi_file").files && $("mdi_file").files[0]; if(!f) return;
+    try{ $("mdi_text").value = await f.text(); }catch(e){ toast("Datei nicht lesbar"); }
+    prev();
+  };
+  $("mdi_cancel").onclick = ()=>$("modalBg").remove();
+  $("mdi_ok").onclick = async ()=>{
+    const {items} = current();
+    if(!items.length){ toast("Nichts zu importieren"); return; }
+    $("modalBg").remove();
+    setSync("busy");
+    const nowIso = new Date().toISOString();
+    items.forEach(x=>{
+      const wd = x.date ? parseDate(x.date) : null;
+      const t = {id:uid(), type:"todo", title:x.title, scheduleType:"once", startDate:x.date||"", weekday:wd?String(wd.getDay()):"",
+        syncCalendar:false, calendarEventId:"", notes:"", createdAt:nowIso, archived:false, calendarId:"", startTime:x.time||"", projectId:"", tag:x.tag||""};
+      tasks.push(t);
+      if(x.done) logs.push({itemId:t.id, date:todayKey(), doneAt:nowIso});
+    });
+    const anyDone = items.some(x=>x.done);
+    try{ await saveTasks(); if(anyDone) await saveLogs(); }catch(e){ toast("Speichern fehlgeschlagen"); }
+    setSync("on"); render();
+    toast(items.length+(items.length===1?" ToDo":" ToDos")+" importiert");
+  };
+  prev();
 }
 
 /* ============ FORMULARE ============ */
@@ -9056,6 +9173,7 @@ main.addEventListener("click",e=>{
   const el=e.target.closest("[data-edit-link]"); if(el){ const l=links.find(x=>x.id===el.dataset.editLink); if(l) openLinkForm(l); return; }
   const dl2=e.target.closest("[data-del-link]"); if(dl2){ deleteLink(dl2.dataset.delLink); return; }
   const dtg=e.target.closest("[data-tog-distraction]"); if(dtg){ toggleDistractionToday(dtg.dataset.togDistraction); return; }
+  const mdi=e.target.closest("[data-md-import]"); if(mdi){ openMdImport(); return; }
   const dd=e.target.closest("[data-do-distraction]"); if(dd){ doDistraction(dd.dataset.doDistraction); return; }
   const edd=e.target.closest("[data-edit-distraction]"); if(edd){ const d=distractions.find(x=>x.id===edd.dataset.editDistraction); if(d) openDistractionForm(d); return; }
   const del=e.target.closest("[data-del-distraction]"); if(del){ deleteDistraction(del.dataset.delDistraction); return; }

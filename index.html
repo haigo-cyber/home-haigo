@@ -1939,6 +1939,7 @@ async function loadCalendars(){
     console.warn("Vollständige Kalenderliste nicht ladbar:",e);
     allCalendars=calendars.slice();
   }
+  if(typeof ksAutoAdopt==="function") ksAutoAdopt();
 }
 function colLetter(n){ let s=""; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
 
@@ -3153,7 +3154,20 @@ const KS_LABEL = {goal:"Tagesziele", meta:"Metaprojekte"};
 const KS_SCOPE_CREATE = "https://www.googleapis.com/auth/calendar.app.created";
 let ksRetries = 0, ksBusy = false, ksAgain = false, ksTimer = null, ksLast = {goal:"", meta:""};
 let ksStatus = localStorage.getItem("ksStatus") || "";
-function ksCalId(kind){ return localStorage.getItem(KS_KEYS[kind]) || ""; }
+function ksCalId(kind){ const v = localStorage.getItem(KS_KEYS[kind]) || ""; return v==="off" ? "" : v; }
+/* Geht die Einstellung verloren (anderes Gerät, geleerter Browserspeicher), werden die von der App angelegten Kalender anhand ihres Namens wieder übernommen.
+   Bewusst abgeschaltet ("off") bleibt abgeschaltet. */
+function ksAutoAdopt(){
+  const all = (allCalendars||[]).concat(calendars||[]);
+  let adopted = false;
+  ["goal","meta"].forEach(kind=>{
+    if(localStorage.getItem(KS_KEYS[kind]) !== null) return;
+    const name = kind==="goal" ? "ToDo Tagesziele" : "ToDo Metaprojekte";
+    const hit = all.find(c=>c.summary===name);
+    if(hit){ localStorage.setItem(KS_KEYS[kind], hit.id); ksLast[kind] = ""; adopted = true; }
+  });
+  if(adopted) ksSyncSoon();
+}
 
 function ksDesiredGoals(){
   const m = new Map();
@@ -3330,7 +3344,7 @@ function ksBindSettings(){
   ["goal","meta"].forEach(kind=>{
     const sel = $("ks_sel_"+kind), nb = $("ks_new_"+kind);
     if(sel) sel.onchange = ()=>{
-      localStorage.setItem(KS_KEYS[kind], sel.value); ksLast[kind] = "";
+      localStorage.setItem(KS_KEYS[kind], sel.value || "off"); ksLast[kind] = "";
       toast(sel.value ? "Automatischer Eintrag aktiv" : "Automatischer Eintrag aus");
       if(sel.value) ksSyncNow(true);
     };

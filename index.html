@@ -727,6 +727,14 @@
 .tm-days span{position:absolute;top:2px;font-size:10.5px;color:var(--muted);text-align:center;box-sizing:border-box;overflow:hidden}
 .tm-days span.we{opacity:.6}.tm-days span.td{color:#fff;font-weight:700}
 .tm-we{position:absolute;top:0;bottom:0;background:rgba(255,255,255,.035);pointer-events:none}
+.tm-k{position:absolute;height:14px;z-index:1;cursor:pointer}
+.tm-kb{display:block;height:14px;border-radius:4px;border:1px solid;box-sizing:border-box}
+.tm-k.done .tm-kb{background:rgba(120,130,145,.18)!important;border-color:#667082!important}
+.tm-k.bad .tm-kb{outline:2px solid var(--red);outline-offset:1px}
+.tm-kt{position:absolute;left:calc(100% + 4px);top:0;font-size:10.5px;line-height:14px;color:#d8dde6;white-space:nowrap;pointer-events:none}
+.tm-kt.in{left:4px;right:2px;overflow:hidden;text-overflow:ellipsis}
+.tm-k.done .tm-kt{color:#8b93a1;text-decoration:line-through}
+.tm-km{position:absolute;height:14px;font-size:10.5px;line-height:14px;color:#8b93a1;white-space:nowrap}
 .tm-dl{position:absolute;font-style:normal;color:var(--red);font-size:15px;line-height:40px;height:40px;z-index:2;pointer-events:none;transform:translateX(-4px);text-shadow:0 1px 2px #000}
 </style>
 </head>
@@ -3538,7 +3546,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v214";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v215";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -3928,7 +3936,8 @@ const TM_FILE = "Metaprojektplanung.json";
 const tm = {data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false, drag:null,
   scrollL:null, q:"", filter:"all", showSet:false, deleted:new Set(), range:{from:0,to:1}, ppd:24, suppressClick:0,
   hideDone:(function(){ try{ return localStorage.getItem("tmHideDone")==="1"; }catch(e){ return false; } })(),
-  hideFlags:(function(){ try{ return localStorage.getItem("tmHideFlags")==="1"; }catch(e){ return false; } })()};
+  hideFlags:(function(){ try{ return localStorage.getItem("tmHideFlags")==="1"; }catch(e){ return false; } })(),
+  showKids:(function(){ try{ return localStorage.getItem("tmShowKids")!=="0"; }catch(e){ return true; } })()};
 tp.mode = (function(){ try{ return localStorage.getItem("tpMode")==="meta" ? "meta" : "day"; }catch(e){ return "day"; } })();
 const tmDN = k=>{ const p = String(k).split("-"); return Math.round(Date.UTC(+p[0], +p[1]-1, +p[2])/864e5); };
 const tmKey = n=>{ const d = new Date(n*864e5); return d.getUTCFullYear()+"-"+tpPad(d.getUTCMonth()+1)+"-"+tpPad(d.getUTCDate()); };
@@ -4021,18 +4030,50 @@ function tmLanes(blocks){
   sorted.forEach(b=>{ const s = tmDN(b.start); let i = ends.findIndex(e=>e<s); if(i<0){ i = ends.length; ends.push(0); } ends[i] = tmDN(b.end); lane.set(b.id, i); });
   return {lane, n:Math.max(ends.length, 3)};
 }
-function tmBlockHtml(b, lane, metaMap){
+/* Unterpunkte (Kindprozesse) eines Meta-Projekts für die Zeitleiste: Zeitraum je Kind und Zusammenfassung */
+const TM_KID_ROWS = 10, TM_KID_H = 16;
+function tmKidInfo(h, b){
+  if(!h) return null;
+  const all = wsChildItems(h.doc, h.node), items = all.filter(k=>!(tm.hideDone && k.node.done));
+  const dated = [], und = [];
+  items.forEach(k=>{
+    const n = k.node, sp = wsSpan(n), ld = (n.ld && wsIsDate(n.ld)) ? n.ld : "";
+    if(!sp && !ld){ und.push(k); return; }
+    const st = sp ? (ld && ld<sp.start ? ld : sp.start) : ld, en = sp ? (ld && ld>sp.end ? ld : sp.end) : ld;
+    dated.push({k, st, en});
+  });
+  dated.sort((x,y)=>x.st<y.st?-1:x.st>y.st?1:(x.en<y.en?-1:1));
+  const shown = dated.slice(0, TM_KID_ROWS), more = dated.length-shown.length;
+  return {doc:h.doc, total:all.length, done:all.filter(k=>k.node.done).length, shown, more, und, rows:shown.length+((more>0||und.length)?1:0)};
+}
+function tmKidsHtml(b, ki, top, plo, phi){
+  if(!ki || !ki.rows) return "";
+  const ppd = tm.ppd; let out = "", row = 0;
+  ki.shown.forEach(d=>{
+    const n = d.k.node, l = (tmDN(d.st)-tm.range.from)*ppd, w = Math.max(ppd, (tmDN(d.en)-tmDN(d.st)+1)*ppd), inside = w>=90;
+    const bad = !n.done && plo && (d.st<plo || d.en>phi), t = (wsTitleOf(n)||"(leer)");
+    out += `<div class="tm-k${n.done?" done":""}${bad?" bad":""}" data-kid="${esc(n.id)}" data-kk="${d.k.kind}" data-doc="${esc(ki.doc.id)}" title="${esc(t)} · ${esc(tmShort(d.st))}${d.en!==d.st?"–"+esc(tmShort(d.en)):""}${n.done?" · erledigt":""}${bad?" · außerhalb des Zeitraums":""}" style="left:${l}px;top:${top+row*TM_KID_H}px;width:${w}px"><i class="tm-kb" style="${n.done?"":"background:"+esc(b.color)+"55;"}border-color:${esc(b.color)}"></i><span class="tm-kt${inside?" in":""}">${n.done?"✓ ":""}${d.k.kind==="head"?"§ ":""}${esc(t.slice(0,60))}</span></div>`;
+    row++;
+  });
+  if(ki.more>0 || ki.und.length){
+    const parts = []; if(ki.more>0) parts.push("+ "+ki.more+" weitere mit Datum"); if(ki.und.length) parts.push(ki.und.length+" ohne Datum");
+    out += `<div class="tm-km" style="left:${Math.max(0,(tmDN(b.start)-tm.range.from)*ppd)}px;top:${top+row*TM_KID_H}px">${esc(parts.join(" · "))} (im Menü)</div>`;
+  }
+  return out;
+}
+function tmBlockHtml(b, top, metaMap, ki){
   const s = tmDN(b.start), e = tmDN(b.end), days = e-s+1;
   const left = (s-tm.range.from)*tm.ppd, w = days*tm.ppd;
   const h = b.src ? metaMap.get(b.src.ref) : null;
   let flag = "";
   if(!tm.hideFlags && h && h.node.dl && tmOk(h.node.dl)){
     const dn = tmDN(h.node.dl);
-    flag = `<i class="tm-dl" title="Deadline ${esc(tmShort(h.node.dl))} (aus dem Arbeitsbereich)" style="left:${(dn-tm.range.from)*tm.ppd}px;top:${4+lane*44}px">⚑</i>`;
+    flag = `<i class="tm-dl" title="Deadline ${esc(tmShort(h.node.dl))} (aus dem Arbeitsbereich)" style="left:${(dn-tm.range.from)*tm.ppd}px;top:${top}px">⚑</i>`;
   }
-  return `<div class="tp-b tm-b${b.done?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})" style="left:${left}px;width:${w}px;top:${4+lane*44}px;background:${esc(b.color)}">
+  const kidTxt = ki && ki.total ? ` · ${ki.done}/${ki.total} ✓` : "";
+  return `<div class="tp-b tm-b${b.done?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})${ki&&ki.total?" · Unterpunkte: "+ki.done+" von "+ki.total+" erledigt":""}" style="left:${left}px;width:${w}px;top:${top}px;background:${esc(b.color)}">
     <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${b.done?"✓":""}</span>
-    <div class="tp-t">${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${esc(tmShort(b.start))}–${esc(tmShort(b.end))} · ${days} T</div><i class="tp-h r" data-h="r"></i></div>${flag}`;
+    <div class="tp-t">${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${esc(tmShort(b.start))}–${esc(tmShort(b.end))} · ${days} T${kidTxt}</div><i class="tp-h r" data-h="r"></i></div>${flag}`;
 }
 function tmPoolItems(){
   if(!(typeof wsLoaded!=="undefined" && wsLoaded)) return null;
@@ -4070,7 +4111,12 @@ function tmMount(m){
   tm.ppd = tm.data.settings.ppd; tm.range = tmRange();
   const prev = document.getElementById("tm_scroll"); if(prev) tm.scrollL = prev.scrollLeft;
   const R = tm.range, days = R.to-R.from+1, W = days*tm.ppd, ppd = tm.ppd, metaMap = tmMetaMap();
-  const vis = tm.hideDone ? tm.data.blocks.filter(b=>!b.done) : tm.data.blocks, L = tmLanes(vis), H = L.n*44+8, today = tmDN(todayKey());
+  const vis = tm.hideDone ? tm.data.blocks.filter(b=>!b.done) : tm.data.blocks, L = tmLanes(vis), today = tmDN(todayKey());
+  const kidInfo = new Map(); vis.forEach(b=>{ const h = b.src ? metaMap.get(b.src.ref) : null; kidInfo.set(b.id, tmKidInfo(h, b)); });
+  const laneRows = new Array(L.n).fill(0);
+  if(tm.showKids) vis.forEach(b=>{ const ki = kidInfo.get(b.id), ln = L.lane.get(b.id); if(ki && ki.rows>laneRows[ln]) laneRows[ln] = ki.rows; });
+  const laneTop = [4]; for(let i = 0; i<L.n; i++) laneTop.push(laneTop[i]+44+laneRows[i]*TM_KID_H+(laneRows[i]?4:0));
+  const H = laneTop[L.n]+4;
   let mon = "", dayRow = "", shade = "", i0 = R.from;
   while(i0<=R.to){
     const d = new Date(i0*864e5), y = d.getUTCFullYear(), mo = d.getUTCMonth();
@@ -4090,13 +4136,14 @@ function tmMount(m){
     <div class="tp-bar">
       <button class="tp-btn" data-tm="left">‹ Zurück</button><button class="tp-btn" data-tm="today">Heute</button><button class="tp-btn" data-tm="right">Weiter ›</button>
       <span class="tp-title">Metaprojekte</span><span style="flex:1"></span>
-      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn" data-tm="chk" title="Prüfen, ob alle Unterpunkte im Zeitraum ihres Meta-Projekts liegen">Zeitrange prüfen</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.hideFlags?" on":""}" data-tm="hf" title="Rote Deadline-Flaggen ein- oder ausblenden">${tm.hideFlags?"Deadlines einblenden":"Deadlines ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
+      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn" data-tm="chk" title="Prüfen, ob alle Unterpunkte im Zeitraum ihres Meta-Projekts liegen">Zeitrange prüfen</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.showKids?" on":""}" data-tm="kids" title="Unterpunkte der Meta-Projekte unter den Balken ein- oder ausblenden">${tm.showKids?"Unterpunkte ausblenden":"Unterpunkte einblenden"}</button><button class="tp-btn${tm.hideFlags?" on":""}" data-tm="hf" title="Rote Deadline-Flaggen ein- oder ausblenden">${tm.hideFlags?"Deadlines einblenden":"Deadlines ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
     </div>
     ${tm.showSet?`<div class="tp-set">Breite <select id="tm_ppd">${opt([8,12,16,24,36,56,75,112], ppd, v=>v+" px je Tag")}</select></div>`:""}
     <div class="tp-scroll" id="tm_scroll"><div class="tp-inner" style="width:${W}px">
       <div class="tm-mon">${mon}</div><div class="tm-days">${dayRow}</div>
       <div class="tp-track" id="tm_track" style="height:${H}px">${shade}
-        ${vis.map(b=>tmBlockHtml(b, L.lane.get(b.id), metaMap)).join("")}
+        ${vis.map(b=>{ const ln = L.lane.get(b.id), ki = kidInfo.get(b.id), h = b.src ? metaMap.get(b.src.ref) : null, sp = h ? wsSpan(h.node) : null;
+          return tmBlockHtml(b, laneTop[ln], metaMap, ki) + (tm.showKids ? tmKidsHtml(b, ki, laneTop[ln]+42, sp?sp.start:"", sp?(h.node.dl||sp.end):"") : ""); }).join("")}
         ${today>=R.from&&today<=R.to?`<div class="tp-now" style="left:${(today-R.from)*ppd+ppd/2}px"></div>`:""}
       </div></div></div>
     <div class="tp-sum">${tm.data.blocks.length ? `${tm.data.blocks.length} ${tm.data.blocks.length===1?"Block":"Blöcke"}, zusammen ${sumDays} Tage geplant${tm.hideDone&&vis.length<tm.data.blocks.length?" ("+(tm.data.blocks.length-vis.length)+" erledigte ausgeblendet)":""}` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein Meta-Projekt übernehmen."}</div>
@@ -4365,6 +4412,7 @@ function tmAct(a, el){
   else if(a==="padd"){ tmAddFromPool(el.dataset.r); }
   else if(a==="term"){ tmTermView(""); }
   else if(a==="chk"){ wsCheckAllChildren(); }
+  else if(a==="kids"){ tm.showKids = !tm.showKids; try{ localStorage.setItem("tmShowKids", tm.showKids?"1":"0"); }catch(_){} render(); }
   else if(a==="hf"){ tm.hideFlags = !tm.hideFlags; try{ localStorage.setItem("tmHideFlags", tm.hideFlags?"1":"0"); }catch(_){} render(); }
   else if(a==="hd"){ tm.hideDone = !tm.hideDone; try{ localStorage.setItem("tmHideDone", tm.hideDone?"1":"0"); }catch(_){} render(); }
 }
@@ -4414,6 +4462,8 @@ function tmUp(e){
 function tmClick(e){
   if(view!=="plan" || tp.mode!=="meta") return;
   const ck = e.target.closest && e.target.closest("[data-ck]");
+  const kidEl = e.target.closest && e.target.closest(".tm-k[data-kid]");
+  if(kidEl && !(typeof tm!=="undefined" && Date.now()-tm.suppressClick<350)){ wsOpenItemMenu(kidEl.dataset.doc, kidEl.dataset.kk==="head"?"block":"node", kidEl.dataset.kid, null); return; }
   if(ck){ const b = ck.closest(".tm-b"); const blk = b && tmBlock(b.dataset.id); if(blk){ blk.done = !blk.done; tmDirty(); render(); } return; }
   const a = e.target.closest && e.target.closest("[data-tm]");
   if(a){ tmAct(a.dataset.tm, a); return; }

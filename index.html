@@ -3522,7 +3522,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v204";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v205";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -4073,7 +4073,7 @@ function tmMount(m){
     <div class="tp-bar">
       <button class="tp-btn" data-tm="left">‹ Zurück</button><button class="tp-btn" data-tm="today">Heute</button><button class="tp-btn" data-tm="right">Weiter ›</button>
       <span class="tp-title">Metaprojekte</span><span style="flex:1"></span>
-      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
+      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn" data-tm="chk" title="Prüfen, ob alle Unterpunkte im Zeitraum ihres Meta-Projekts liegen">Zeitrange prüfen</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
     </div>
     ${tm.showSet?`<div class="tp-set">Breite <select id="tm_ppd">${opt([8,12,16,24,36,56,75,112], ppd, v=>v+" px je Tag")}</select></div>`:""}
     <div class="tp-scroll" id="tm_scroll"><div class="tp-inner" style="width:${W}px">
@@ -4152,11 +4152,11 @@ function wsChildItems(doc, p){
   return out;
 }
 function wsShiftDay(k, d){ return tmKey(tmDN(k)+d); }
-function wsAskChildren(doc, parent, nd, nur, nl){
+function wsAskChildren(doc, parent, nd, nur, nl, force){
   return new Promise(resolve=>{
     const sp = wsSpan({date:nd||"", dur:nur||0, dl:nl||""});
     const changed = (parent.date||"")!==(nd||"") || (parent.dl||"")!==(nl||"") || (parent.dur>0?parent.dur:0)!==(nur||0);
-    if(!sp || !changed){ resolve({updates:[]}); return; }
+    if(!sp || (!changed && !force)){ resolve({updates:[], found:0}); return; }
     const lo = sp.start, hi = nl || sp.end;
     const rows = [];
     wsChildItems(doc, parent).forEach(c=>{
@@ -4170,11 +4170,12 @@ function wsAskChildren(doc, parent, nd, nur, nl){
       const base = n.date || n.dl;
       rows.push({c, cs, base, prop:wsShiftDay(base, delta)});
     });
-    if(!rows.length){ resolve({updates:[]}); return; }
+    if(!rows.length){ resolve({updates:[], found:0}); return; }
     const inp = "background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:7px;font-size:15px;font-family:inherit";
     document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="chBg" style="z-index:30"><div class="modal">
       <h2>Unterpunkte außerhalb des Zeitraums</h2>
-      <p class="muted" style="font-size:13px;margin-bottom:10px">Neuer Zeitraum des Meta-Projekts: ${esc(wsShortDate(lo))} bis ${esc(wsShortDate(hi))}. ${rows.length===1?"Dieser Unterpunkt liegt":"Diese "+rows.length+" Unterpunkte liegen"} ganz oder teilweise außerhalb. Wähle, welche Daten neu zugeordnet werden. Hat ein Unterpunkt Fälligkeit und Deadline, wandern beide um dieselbe Zahl Tage mit.</p>
+      <p style="font-weight:600;margin-bottom:4px">★ ${esc(wsTitleOf(parent)||"(ohne Titel)")}</p>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">${force?"Zeitraum":"Neuer Zeitraum"} des Meta-Projekts: ${esc(wsShortDate(lo))} bis ${esc(wsShortDate(hi))}. ${rows.length===1?"Dieser Unterpunkt liegt":"Diese "+rows.length+" Unterpunkte liegen"} ganz oder teilweise außerhalb. Wähle, welche Daten neu zugeordnet werden. Hat ein Unterpunkt Fälligkeit und Deadline, wandern beide um dieselbe Zahl Tage mit.</p>
       <div style="display:flex;gap:6px;margin-bottom:8px"><button type="button" class="tp-btn" id="ch_all">Alle anpassen</button><button type="button" class="tp-btn" id="ch_none">Keine anpassen</button></div>
       <div style="max-height:46vh;overflow:auto">${rows.map((r,i)=>`<div style="border-top:1px solid #30343b;padding:8px 0 8px ${r.c.depth*14}px" data-i="${i}">
         <label style="display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600"><input type="checkbox" class="ch_on" checked> ${r.c.kind==="head"?"§ ":""}${esc(wsTitleOf(r.c.node)||"(ohne Titel)")}</label>
@@ -4185,7 +4186,7 @@ function wsAskChildren(doc, parent, nd, nur, nl){
     $("ch_all").onclick = ()=>bg.querySelectorAll(".ch_on").forEach(x=>x.checked = true);
     $("ch_none").onclick = ()=>bg.querySelectorAll(".ch_on").forEach(x=>x.checked = false);
     $("ch_x").onclick = ()=>done({cancel:true});
-    $("ch_skip").onclick = ()=>done({updates:[]});
+    $("ch_skip").onclick = ()=>done({updates:[], found:rows.length});
     $("ch_ok").onclick = ()=>{
       const ups = [];
       bg.querySelectorAll("[data-i]").forEach(el=>{
@@ -4195,7 +4196,7 @@ function wsAskChildren(doc, parent, nd, nur, nl){
         const diff = tmDN(v)-tmDN(r.base), n = r.c.node;
         ups.push({c:r.c, date:n.date?wsShiftDay(n.date, diff):"", dl:n.dl?wsShiftDay(n.dl, diff):""});
       });
-      done({updates:ups});
+      done({updates:ups, found:rows.length});
     };
   });
 }
@@ -4220,6 +4221,21 @@ function tmTermRows(onlyRef){
     if(b.start<r.s) r.s = b.start; if(b.end>r.e) r.e = b.end; r.nb++;
   });
   return [...rows.values()].sort((a,b)=>a.s<b.s?-1:a.s>b.s?1:0);
+}
+/* Allgemeine Prüfung: liegen alle Unterpunkte offener Meta-Projekte innerhalb des Zeitraums ihres Eltern-Projekts? */
+async function wsCheckAllChildren(){
+  if(!(typeof wsLoaded!=="undefined" && wsLoaded)){ toast("Arbeitsbereich noch nicht geladen"); return; }
+  if(document.getElementById("modalBg") || document.getElementById("chBg")) return;
+  const parents = wsMetaNodes().filter(h=>wsSpan(h.node));
+  let found = 0, fixed = 0;
+  for(const h of parents){
+    const r = await wsAskChildren(h.doc, h.node, h.node.date||"", h.node.dur>0?h.node.dur:0, h.node.dl||"", true);
+    if(r.cancel){ toast("Prüfung abgebrochen"); return; }
+    found += r.found||0;
+    if(r.updates.length){ fixed += r.updates.length; await wsApplyChildUpdates(h.doc, r.updates); }
+  }
+  if(!found) toast("Alles in Ordnung: "+parents.length+" Meta-Projekt"+(parents.length===1?"":"e")+" geprüft, alle Unterpunkte liegen im Zeitraum");
+  else toast(found+" Unterpunkt"+(found===1?"":"e")+" außerhalb gefunden, "+fixed+" angepasst");
 }
 function tmTermView(onlyRef){
   if(document.getElementById("modalBg")) return;
@@ -4309,6 +4325,7 @@ function tmAct(a, el){
   else if(a==="pf"){ tm.filter = el.dataset.v; tm.q = ""; tmPoolRender(); }
   else if(a==="padd"){ tmAddFromPool(el.dataset.r); }
   else if(a==="term"){ tmTermView(""); }
+  else if(a==="chk"){ wsCheckAllChildren(); }
   else if(a==="hd"){ tm.hideDone = !tm.hideDone; try{ localStorage.setItem("tmHideDone", tm.hideDone?"1":"0"); }catch(_){} render(); }
 }
 function tmDragApply(clientX){

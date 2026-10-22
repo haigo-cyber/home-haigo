@@ -49,7 +49,12 @@
   .g-grip{flex:0 0 auto;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;font-size:20px;line-height:1;padding:8px 4px;margin:-8px 0 -8px -6px;color:var(--muted)}
   .g-grip:active{cursor:grabbing}
   .g-list .card.g-drag{box-shadow:0 8px 22px rgba(0,0,0,.55);transform:scale(1.015);position:relative;z-index:5;opacity:.95}
-  .g-list.g-sorting{user-select:none;-webkit-user-select:none}
+  body.g-sorting{user-select:none;-webkit-user-select:none}
+  .gd-bar{position:fixed;left:0;right:0;bottom:0;z-index:60;background:rgba(15,17,21,.96);border-top:1px solid #3a4150;padding:8px 10px calc(8px + env(safe-area-inset-bottom));backdrop-filter:blur(6px)}
+  .gd-bart{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;text-align:center}
+  .gd-chips{display:flex;gap:6px}
+  .gd-chip{flex:1;min-width:0;text-align:center;border:1px dashed #4a5262;border-radius:10px;padding:8px 2px;font-size:11px;color:var(--text);display:flex;flex-direction:column;gap:2px;line-height:1.15}
+  .gd-chip b{font-size:13px}.gd-chip.hot{background:#2b5fd9;border-color:#6d95ff;border-style:solid}
   .card .title{font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;color:#000}
   .card .sub{font-size:12px;color:#000;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .card.done .title{text-decoration:line-through;color:var(--muted)}
@@ -2754,7 +2759,7 @@ function render(){
     if(goalTasks.length){
       const gd=goalTasks.filter(g=>g.completed).length;
       h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goalTasks.length);
-      h+=`<div class="g-list">`+goalTasks.filter(g=>!g.completed).map(g=>goalTaskCard(g,true)).join("")+`</div>`+goalTasks.filter(g=>g.completed).map(g=>goalTaskCard(g)).join("");
+      h+=`<div class="g-list" data-gdate="${todayKey()}">`+goalTasks.filter(g=>!g.completed).map(g=>goalTaskCard(g,true)).join("")+`</div>`+goalTasks.filter(g=>g.completed).map(g=>goalTaskCard(g)).join("");
     }
     h+=`<div class="section-title">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div>`;
     if(topProjects.length){
@@ -2902,7 +2907,7 @@ function render(){
     const doneCount=goalTasks.filter(g=>g.completed).length;
     const openToday=goalTasks.filter(g=>!g.completed);
     const undatedGoals=allGTasks.filter(t=>isGoalTask(t) && !t.due).map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false, due:""}));
-    let h=openToday.length?`<div class="g-list">`+openToday.map(g=>goalTaskCard(g,true)).join("")+`</div>`:(goalTasks.length?"":empty("Noch keine Tages-Ziele. Bis zu "+GOAL_MAX+" mit + anlegen."));
+    let h=openToday.length?`<div class="g-list" data-gdate="${todayKey()}">`+openToday.map(g=>goalTaskCard(g,true)).join("")+`</div>`:(goalTasks.length?"":empty("Noch keine Tages-Ziele. Bis zu "+GOAL_MAX+" mit + anlegen."));
     if(goalTasks.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,goalTasks.length);
     
     const today=todayKey();
@@ -2912,11 +2917,11 @@ function render(){
       h+=`<div class="section-title">Überfällig</div>`;
       const od={}; overdueGoals.forEach(g=>{ (od[g.due]=od[g.due]||[]).push(g); });
       Object.entries(od).forEach(([k,goals])=>{
-        h+=`<div class="sub" style="margin:10px 4px 4px;font-weight:bold">${fmt(k)}</div><div class="g-list">`+goals.map(g=>goalTaskCard(g,true)).join("")+`</div>`;
+        h+=`<div class="sub" style="margin:10px 4px 4px;font-weight:bold">${fmt(k)}</div><div class="g-list" data-gdate="${k}">`+goals.map(g=>goalTaskCard(g,true)).join("")+`</div>`;
       });
     }
     if(undatedGoals.length){
-      h+=`<div class="section-title">Ohne Datum</div><div class="g-list">`+undatedGoals.map(g=>goalTaskCard(g,true)).join("")+`</div>`;
+      h+=`<div class="section-title">Ohne Datum</div><div class="g-list" data-gdate="">`+undatedGoals.map(g=>goalTaskCard(g,true)).join("")+`</div>`;
     }
     // Kommende Tage: alle künftigen offenen Ziele, nach Datum
     const upcomingGoals={};
@@ -2927,7 +2932,7 @@ function render(){
       Object.entries(upcomingGoals).forEach(([k,goals])=>{
         if(goals.length>0){
           h+=`<div class="sub" style="margin:10px 4px 4px;font-weight:bold">${fmt(k)}</div>`;
-          h+=`<div class="g-list">`+goals.map(g=>goalTaskCard(g,true)).join("")+`</div>`;
+          h+=`<div class="g-list" data-gdate="${k}">`+goals.map(g=>goalTaskCard(g,true)).join("")+`</div>`;
         }
       });
     }
@@ -3533,7 +3538,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v212";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v213";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -9841,7 +9846,7 @@ function wsCmOpen(btn){
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-cmenu]"); if(b){ e.preventDefault(); e.stopPropagation(); wsCmOpen(b); } }, true);
 new MutationObserver(()=>wsCmDecorate()).observe(document.getElementById("main"), {childList:true, subtree:true});
 wsCmDecorate();
-/* ---- Tages-Ziele per Ziehen sortieren (Griff links an der Karte); die Reihenfolge wird in Google Tasks gespeichert ---- */
+/* ---- Tages-Ziele per Ziehen sortieren und auf einen anderen Tag legen (Griff links an der Karte); alles wird in Google Tasks gespeichert ---- */
 let gDrag = null, gDragAt = 0, gMoveQ = Promise.resolve();
 function gScrollParent(el){
   for(let p = el.parentElement; p && p!==document.body; p = p.parentElement){
@@ -9849,65 +9854,121 @@ function gScrollParent(el){
   }
   return null;
 }
+function gBarShow(){
+  gBarHide();
+  let day = todayKey(), chips = "";
+  for(let i = 0; i<7; i++){
+    const dt = new Date(day+"T12:00:00"), wd = ["So","Mo","Di","Mi","Do","Fr","Sa"][dt.getDay()];
+    chips += `<div class="gd-chip" data-gday="${day}"><b>${i===0?"Heute":wd}</b><span>${i===0?wd+" "+dt.getDate()+".":dt.getDate()+"."+(dt.getMonth()+1)+"."}</span></div>`;
+    day = nextDayKey(day);
+  }
+  document.body.insertAdjacentHTML("beforeend", `<div id="gBar" class="gd-bar"><div class="gd-bart">Auf einen Tag ablegen</div><div class="gd-chips">${chips}</div></div>`);
+}
+function gBarHide(){ const b = document.getElementById("gBar"); if(b) b.remove(); }
+function gChipAt(x, y){
+  const bar = document.getElementById("gBar"); if(!bar) return null;
+  const r = bar.getBoundingClientRect(); if(y<r.top) return null;
+  return [...bar.querySelectorAll(".gd-chip")].find(c=>{ const q = c.getBoundingClientRect(); return x>=q.left && x<=q.right; }) || null;
+}
 function gGripDown(e){
   const grip = e.target.closest && e.target.closest("[data-ggrip]"); if(!grip) return;
   if(e.button!==undefined && e.button!==0) return;
   const card = grip.closest(".card"), list = card && card.parentElement; if(!list) return;
   e.preventDefault();
-  gDrag = {grip, card, list, id:grip.dataset.ggrip, pid:e.pointerId, y:e.clientY, before:[...list.querySelectorAll("[data-gid]")].map(c=>c.dataset.gid), sp:gScrollParent(list), raf:0};
+  gDrag = {grip, card, list, orig:list, id:grip.dataset.ggrip, pid:e.pointerId, x:e.clientX, y:e.clientY, before:[...list.querySelectorAll("[data-gid]")].map(c=>c.dataset.gid), sp:gScrollParent(list), raf:0, chip:null};
   try{ grip.setPointerCapture(e.pointerId); }catch(_){}
-  card.classList.add("g-drag"); list.classList.add("g-sorting");
+  card.classList.add("g-drag"); document.body.classList.add("g-sorting");
+  gBarShow();
 }
 function gGripMove(e){
   if(!gDrag || e.pointerId!==gDrag.pid) return;
-  gDrag.y = e.clientY;
+  gDrag.x = e.clientX; gDrag.y = e.clientY;
   gDragStep();
   if(!gDrag.raf) gDrag.raf = requestAnimationFrame(gAuto);
 }
 function gDragStep(){
   const d = gDrag; if(!d) return;
+  const chip = gChipAt(d.x, d.y);
+  document.querySelectorAll(".gd-chip.hot").forEach(c=>{ if(c!==chip) c.classList.remove("hot"); });
+  if(chip){ chip.classList.add("hot"); d.chip = chip; return; }
+  d.chip = null;
+  const lists = [...document.querySelectorAll(".g-list")];
+  const tgt = lists.find(l=>{ const r = l.getBoundingClientRect(); return d.y>=r.top-10 && d.y<=r.bottom+10; });
+  if(tgt) d.list = tgt;
   const sibs = [...d.list.querySelectorAll("[data-gid]")].filter(c=>c!==d.card);
   const next = sibs.find(c=>{ const r = c.getBoundingClientRect(); return d.y < r.top + r.height/2; });
-  if(next){ if(d.card.nextElementSibling!==next) d.list.insertBefore(d.card, next); }
-  else{ const last = sibs[sibs.length-1]; if(last && d.card.previousElementSibling!==last) last.after(d.card); }
+  if(next){ if(d.card.nextElementSibling!==next || d.card.parentElement!==d.list) d.list.insertBefore(d.card, next); }
+  else{ const last = sibs[sibs.length-1]; if(last){ if(d.card.previousElementSibling!==last || d.card.parentElement!==d.list) last.after(d.card); } else if(d.card.parentElement!==d.list) d.list.appendChild(d.card); }
 }
 function gAuto(){
   const d = gDrag; if(!d) return; d.raf = 0;
   const top = d.sp ? d.sp.getBoundingClientRect().top : 0, bot = d.sp ? d.sp.getBoundingClientRect().bottom : window.innerHeight;
+  const bar = document.getElementById("gBar"), barTop = bar ? bar.getBoundingClientRect().top : bot;
   const zone = 60; let dy = 0;
-  if(d.y < top+zone) dy = -Math.ceil((top+zone-d.y)/4); else if(d.y > bot-zone) dy = Math.ceil((d.y-(bot-zone))/4);
+  if(d.y < top+zone) dy = -Math.ceil((top+zone-d.y)/4); else if(d.y > barTop-zone && d.y < barTop) dy = Math.ceil((d.y-(barTop-zone))/4);
   if(dy){ if(d.sp) d.sp.scrollTop += dy; else window.scrollBy(0, dy); gDragStep(); d.raf = requestAnimationFrame(gAuto); }
 }
 function gGripUp(e){
   const d = gDrag; if(!d || (e && e.pointerId!==d.pid)) return;
   gDrag = null; if(d.raf) cancelAnimationFrame(d.raf);
   try{ d.grip.releasePointerCapture(d.pid); }catch(_){}
-  d.card.classList.remove("g-drag"); d.list.classList.remove("g-sorting");
+  d.card.classList.remove("g-drag"); document.body.classList.remove("g-sorting");
   gDragAt = Date.now();
+  const chipDay = d.chip ? d.chip.dataset.gday : "";
+  gBarHide();
+  if(chipDay){ gCrossMove(d.id, chipDay, ""); return; }            // auf einen Tag in der Leiste: ans Ende dieses Tages
+  const fin = d.card.parentElement;
+  if(fin && fin!==d.orig){
+    const nd = fin.dataset.gdate;
+    if(nd===undefined || nd===""){ toast("Ein Ziel ohne Datum geht hier nicht, bitte einen Tag wählen"); render(); return; }
+    const sibs = [...fin.querySelectorAll("[data-gid]")], k = sibs.indexOf(d.card);
+    gCrossMove(d.id, nd, k>0 ? sibs[k-1].dataset.gid : "", k===0);
+    return;
+  }
   const after = [...d.list.querySelectorAll("[data-gid]")].map(c=>c.dataset.gid);
   if(after.join("|")===d.before.join("|")) return;
   gSaveOrder(d.id, after);
 }
+function gReorder(arr, order){
+  const slots = []; arr.forEach((g,i)=>{ if(order.includes(g.id)) slots.push(i); });
+  const objs = order.map(x=>arr.find(g=>g.id===x)).filter(Boolean);
+  if(objs.length===slots.length) slots.forEach((si,k)=>{ arr[si] = objs[k]; });
+}
+function gRefreshToday(){ const today = todayKey(); goalTasks = [...allOpenGoals.filter(g=>g.due===today), ...goalTasks.filter(g=>g.completed)]; }
+function gMoveCall(id, prev){
+  return api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId || "@default")}/tasks/${encodeURIComponent(id)}/move`+(prev?`?previous=${encodeURIComponent(prev)}`:""), {method:"POST"});
+}
+function gFail(msg, err){
+  console.error("❌ "+msg+":", err && err.message);
+  toast("Konnte nicht gespeichert werden, Stand wird neu geladen");
+  return loadGTasks().catch(()=>{}).then(()=>render());
+}
 function gSaveOrder(id, order){
-  /* lokal sofort umsortieren: heutige offene Ziele in ihren Plätzen nach der neuen Reihenfolge */
-  const today = todayKey();
-  const reorder = arr=>{
-    const slots = []; arr.forEach((g,i)=>{ if(order.includes(g.id)) slots.push(i); });
-    const objs = order.map(x=>arr.find(g=>g.id===x)).filter(Boolean);
-    if(objs.length===slots.length) slots.forEach((si,k)=>{ arr[si] = objs[k]; });
-  };
-  reorder(allOpenGoals); reorder(allGTasks);
-  goalTasks = [...allOpenGoals.filter(g=>g.due===today), ...goalTasks.filter(g=>g.completed)];
+  gReorder(allOpenGoals, order); gReorder(allGTasks, order); gRefreshToday();
   const k = order.indexOf(id), prev = k>0 ? order[k-1] : "";
+  gMoveQ = gMoveQ.then(()=>gMoveCall(id, prev).catch(err=>gFail("Ziel verschieben", err)));
+}
+/* Ziel auf einen anderen Tag legen; prev: Ziel davor am Zieltag ("" = ans Ende des Tages bzw. an den Anfang, wenn first) */
+function gCrossMove(id, newDate, prev, first){
+  const g = allOpenGoals.find(x=>x.id===id); if(!g){ render(); return; }
+  if(g.due===newDate){ render(); return; }
+  if(wsGoalCount(newDate)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag am "+wsShortDate(newDate)); render(); return; }
+  const day = allOpenGoals.filter(x=>x.id!==id && x.due===newDate);
+  if(!prev && !first && day.length) prev = day[day.length-1].id;     // ans Ende des Tages
+  const title = g.title;
+  /* lokal: Datum ändern und im Array hinter das Vorgänger-Ziel setzen */
+  allOpenGoals.splice(allOpenGoals.indexOf(g), 1); g.due = newDate;
+  let at = prev ? allOpenGoals.findIndex(x=>x.id===prev)+1 : allOpenGoals.findIndex(x=>x.due===newDate);
+  if(at<=0 && !prev) at = allOpenGoals.length; allOpenGoals.splice(at, 0, g);
+  const raw = allGTasks.find(x=>x.id===id); if(raw) raw.due = newDate+"T12:00:00.000Z";
+  gRefreshToday(); render();
+  toast("„"+title.slice(0,40)+"“ auf "+wsShortDate(newDate));
   gMoveQ = gMoveQ.then(async ()=>{
     try{
-      await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId || "@default")}/tasks/${encodeURIComponent(id)}/move`+(prev?`?previous=${encodeURIComponent(prev)}`:""), {method:"POST"});
-    }catch(err){
-      console.error("❌ Ziel verschieben:", err && err.message);
-      toast("Reihenfolge konnte nicht gespeichert werden");
-      try{ await loadGTasks(); }catch(_){}
-      render();
-    }
+      await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId || "@default")}/tasks/${encodeURIComponent(id)}`, {method:"PATCH", body:JSON.stringify({due:newDate+"T12:00:00.000Z"})});
+      wsOnGoalChanged(id, title, newDate);
+      if(prev || first) await gMoveCall(id, prev);
+    }catch(err){ await gFail("Ziel auf anderen Tag", err); }
   });
 }
 document.addEventListener("pointerdown", gGripDown);

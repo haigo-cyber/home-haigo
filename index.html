@@ -675,6 +675,44 @@
 .wsb-line{padding:3px 6px;border-radius:6px;cursor:pointer}
 .wsb-line.cur{background:rgba(255,184,0,.22);font-weight:700}
 </style>
+<style id="tpCss">
+.tp{display:flex;flex-direction:column;gap:10px}
+.tp-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tp-bar .tp-title{font-weight:600;font-size:16px;margin:0 6px;min-width:140px}
+.tp-btn{background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:7px 11px;font-size:13px;cursor:pointer}
+.tp-btn.pri{background:var(--accent2);border-color:var(--accent2);color:#fff}
+.tp-btn.on{border-color:var(--accent);color:#fff}
+.tp-bar input[type=date]{background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:6px 8px;font-size:13px}
+.tp-set{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.tp-set select{background:#101216;border:1px solid #30343b;color:var(--text);border-radius:7px;padding:5px 6px;font-size:13px}
+.tp-scroll{overflow-x:auto;overflow-y:hidden;border:1px solid var(--line);border-radius:12px;background:var(--surface);position:relative;-webkit-overflow-scrolling:touch}
+.tp-inner{position:relative}
+.tp-hours{position:relative;height:26px;border-bottom:1px solid var(--line)}
+.tp-hours span{position:absolute;top:6px;font-size:11px;color:var(--muted);transform:translateX(3px);white-space:nowrap}
+.tp-track{position:relative;cursor:cell}
+.tp-b{position:absolute;height:40px;border-radius:9px;color:#fff;font-size:12px;padding:3px 24px 3px 9px;overflow:hidden;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border:1px solid rgba(255,255,255,.28);box-shadow:0 2px 6px rgba(0,0,0,.45)}
+.tp-b.drag{cursor:grabbing;z-index:4;box-shadow:0 6px 16px rgba(0,0,0,.6)}
+.tp-b.done{opacity:.55}.tp-b.done .tp-t{text-decoration:line-through}
+.tp-b.narrow .tp-ck{display:none}.tp-b.narrow{padding-right:6px}
+.tp-t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.tp-m{font-size:10.5px;opacity:.88;white-space:nowrap;overflow:hidden}
+.tp-h{position:absolute;top:0;bottom:0;width:9px;cursor:ew-resize}.tp-h.l{left:0}.tp-h.r{right:0}
+.tp-ck{position:absolute;top:3px;right:10px;width:16px;height:16px;border-radius:5px;border:1.5px solid rgba(255,255,255,.85);font-size:11px;line-height:13px;text-align:center;cursor:pointer}
+.tp-b.done .tp-ck{background:rgba(255,255,255,.92);color:#222}
+.tp-now{position:absolute;top:0;bottom:0;width:2px;background:var(--red);pointer-events:none;z-index:3}
+.tp-sum{font-size:13px;color:var(--muted)}
+.tp-pool{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px}
+.tp-pool h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.tp-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.tp-pool input[type=search]{width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:9px 10px;font-size:16px;margin-bottom:8px}
+.tp-it{display:flex;align-items:center;gap:8px;padding:7px 4px;border-top:1px solid var(--line);font-size:14px}
+.tp-it .tx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tp-it .dt{font-size:12px;color:var(--muted);white-space:nowrap}
+.tp-note{font-size:12px;color:var(--muted)}
+.tp-col{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.tp-col button{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+.tp-col button.on{border-color:#fff}
+</style>
 </head>
 <body>
 <div class="app">
@@ -691,6 +729,7 @@
   <nav id="nav" style="display:none">
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
     <button data-view="kalender"><span class="nico">🗓</span>Kalender</button>
+    <button data-view="plan"><span class="nico">🧭</span>Struktur</button>
     <button data-view="deadlines"><span class="nico">⏱</span>Deadlines</button>
     <button data-view="notes"><span class="nico">🗂</span>Arbeit</button>
     <button data-view="distractions"><span class="nico">🧹</span>Ablenkungen</button>
@@ -2682,9 +2721,9 @@ function render(){
   wsTopBarUpdate();
   $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   setNavH();
-  const titles={today:"Heute",distractions:"Ablenkungen",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",notes:"Arbeitsbereich",kalender:"Kalender",settings:"Konto"};
+  const titles={today:"Heute",distractions:"Ablenkungen",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",notes:"Arbeitsbereich",kalender:"Kalender",plan:"Tagesstruktur",settings:"Konto"};
   $("hTitle").textContent=titles[view]||"ToDo";
-  $("fab").style.display=(view==="today"||view==="kalender"||view==="settings"||view==="stats"||view==="migrate"||view==="deadlines"||(view==="notes"&&wsTab!=="notes"))?"none":"block";
+  $("fab").style.display=(view==="today"||view==="kalender"||view==="plan"||view==="settings"||view==="stats"||view==="migrate"||view==="deadlines"||(view==="notes"&&wsTab!=="notes"))?"none":"block";
   $("fabQuick").style.display=(view==="settings")?"none":"block";
   const active=tasks.filter(t=>!t.archived);
 
@@ -3008,6 +3047,9 @@ function render(){
   }
   else if(view==="kalender"){
     kalMount(main);
+  }
+  else if(view==="plan"){
+    tpMount(main);
   }
   else if(view==="deadlines"){
     let h=`<div class="section-title">⏱ Deadlines</div>`;
@@ -3469,6 +3511,388 @@ function openMdImport(){
   };
   prev();
 }
+
+/* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
+/* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
+   ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
+const TP_FILE = "Tagesstruktur.json";
+const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
+const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
+  drag:null, scrollL:null, filter:"due", q:"", showSet:false, deleted:new Set(), range:{from:360,to:1320}, ppm:2};
+const tpPad = n=>String(n).padStart(2,"0");
+const tpHM = m=>tpPad(Math.floor(m/60)%24)+":"+tpPad(m%60);
+const tpCl = (v,a,b)=>Math.max(a,Math.min(b,v));
+const tpInt = (v,a,b,d)=>{ v = Math.floor(Number(v)); return Number.isFinite(v) ? tpCl(v,a,b) : d; };
+function tpDefault(){ return {v:1, settings:{from:6,to:22,snap:15,pph:120}, days:{}}; }
+function tpNorm(d){
+  const o = tpDefault();
+  if(!d || typeof d!=="object") return o;
+  const s = d.settings || {};
+  o.settings = {from:tpInt(s.from,0,23,6), to:tpInt(s.to,1,24,22), snap:[5,10,15,30].includes(+s.snap)?+s.snap:15, pph:tpInt(s.pph,40,400,120)};
+  if(o.settings.to<=o.settings.from) o.settings.to = Math.min(24, o.settings.from+1);
+  Object.keys(d.days||{}).forEach(k=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+    const bl = ((d.days[k]||{}).blocks||[]).map(b=>{
+      const st = tpInt(b&&b.start,0,1439,-1), en = tpInt(b&&b.end,1,1440,-1);
+      if(!b || st<0 || en<=st) return null;
+      return {id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:st, end:en, color:String(b.color||TP_COLORS[0]).slice(0,20), done:!!b.done, note:String(b.note||"").slice(0,500),
+        src:(b.src && b.src.kind && b.src.ref) ? {kind:String(b.src.kind), ref:String(b.src.ref)} : null};
+    }).filter(Boolean);
+    if(bl.length) o.days[k] = {blocks:bl};
+  });
+  return o;
+}
+function tpSettings(){ return (tp.data && tp.data.settings) || tpDefault().settings; }
+function tpDayBlocks(day){ const d = tp.data && tp.data.days[day]; return d ? d.blocks : []; }
+function tpBlock(id){ return tpDayBlocks(tp.day).find(b=>b.id===id); }
+function tpEnsureDay(day){ if(!tp.data.days[day]) tp.data.days[day] = {blocks:[]}; return tp.data.days[day].blocks; }
+function tpRangeFor(day){
+  const s = tpSettings(); let from = s.from*60, to = s.to*60;
+  tpDayBlocks(day).forEach(b=>{ from = Math.min(from, Math.floor(b.start/60)*60); to = Math.max(to, Math.ceil(b.end/60)*60); });
+  return {from, to};
+}
+
+/* ---- Laden und Speichern (nur die eigene Datei) ---- */
+async function tpLoad(){
+  if(tp.loading) return;
+  tp.loading = true; tp.err = "";
+  try{
+    let id = ""; try{ id = localStorage.getItem("tpFileId")||""; }catch(e){}
+    let ok = false;
+    if(id){
+      try{ const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?fields=id,trashed,modifiedTime"); if(f && f.id && !f.trashed){ ok = true; tp.mt = f.modifiedTime||""; } }catch(e){}
+    }
+    if(!ok){
+      const q = encodeURIComponent(`name='${TP_FILE}' and trashed=false`);
+      const r = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&orderBy=${encodeURIComponent("modifiedTime desc")}&fields=files(id,modifiedTime)`);
+      if(r && r.files && r.files.length){ id = r.files[0].id; tp.mt = r.files[0].modifiedTime||""; ok = true; }
+    }
+    if(ok){
+      const blob = await wsDriveFetch(id);
+      let parsed = null; try{ parsed = JSON.parse(await blob.text()); }catch(e){ throw new Error("Datei Tagesstruktur.json ist nicht lesbar"); }
+      tp.data = tpNorm(parsed); tp.fileId = id; try{ localStorage.setItem("tpFileId", id); }catch(e){}
+    }else{
+      tp.data = tpDefault(); tp.fileId = "";     // Datei wird beim ersten Speichern angelegt
+    }
+  }catch(e){
+    tp.err = String(e.message||e).slice(0,200); tp.data = null;
+  }finally{ tp.loading = false; }
+}
+function tpDirty(){
+  tp.pending = true; clearTimeout(tp.saveT);
+  tp.saveT = setTimeout(tpSave, 1200);
+}
+function tpMerge(remote){
+  // Fremde Änderungen (anderes Gerät) übernehmen: unbekannte Blöcke bleiben erhalten, lokale Stände und lokal gelöschte Blöcke gewinnen
+  Object.keys(remote.days).forEach(day=>{
+    const loc = tp.data.days[day] ? tp.data.days[day].blocks : null;
+    remote.days[day].blocks.forEach(b=>{
+      if(tp.deleted.has(b.id)) return;
+      if(!loc){ tpEnsureDay(day).push(b); return; }
+      if(!loc.some(x=>x.id===b.id)) loc.push(b);
+    });
+  });
+}
+async function tpSave(){
+  if(!tp.data || !tp.pending) return;
+  if(tp.saving){ tp.again = true; return; }
+  tp.saving = true; tp.pending = false; setSync("busy");
+  try{
+    if(tp.fileId){
+      const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(tp.fileId)+"?fields=modifiedTime");
+      if(f && f.modifiedTime && tp.mt && f.modifiedTime!==tp.mt){
+        const blob = await wsDriveFetch(tp.fileId);
+        try{ tpMerge(tpNorm(JSON.parse(await blob.text()))); if(view==="plan" && !tp.drag) render(); }catch(e){}
+      }
+    }
+    Object.keys(tp.data.days).forEach(k=>{ if(!tp.data.days[k].blocks.length) delete tp.data.days[k]; });
+    const json = JSON.stringify(tp.data);
+    if(!tp.fileId){
+      const f = await wsDriveUpload(new File([json], TP_FILE, {type:"application/json"}));
+      tp.fileId = f.id; try{ localStorage.setItem("tpFileId", f.id); }catch(e){}
+      const m = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(f.id)+"?fields=modifiedTime");
+      tp.mt = (m && m.modifiedTime) || "";
+    }else{
+      const r = await api("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(tp.fileId)+"?uploadType=media&fields=modifiedTime", {method:"PATCH", body:json});
+      tp.mt = (r && r.modifiedTime) || tp.mt;
+    }
+    tp.deleted.clear();
+  }catch(e){
+    tp.pending = true; console.error("Tagesstruktur speichern:", e.message);
+    toast("Tagesstruktur: Speichern fehlgeschlagen, neuer Versuch folgt");
+    clearTimeout(tp.saveT); tp.saveT = setTimeout(tpSave, 15000);
+  }finally{
+    tp.saving = false; setSync("on");
+    if(tp.again){ tp.again = false; tpSave(); }
+  }
+}
+
+/* ---- Hilfen ---- */
+function tpFree(day, dur, prefer){
+  const r = tp.range, snap = tpSettings().snap;
+  const bl = tpDayBlocks(day).slice().sort((a,b)=>a.start-b.start);
+  let t = r.from;
+  if(day===todayKey()){ const n = new Date(); t = Math.max(t, Math.ceil((n.getHours()*60+n.getMinutes())/snap)*snap); }
+  if(prefer!=null) t = prefer;
+  for(const b of bl){ if(t+dur<=b.start) break; if(b.end>t && b.start<t+dur) t = b.end; }
+  return tpCl(t, 0, 1440-dur);
+}
+function tpLanes(blocks){
+  const sorted = blocks.slice().sort((a,b)=>a.start-b.start||a.end-b.end), ends = [], lane = new Map();
+  sorted.forEach(b=>{ let i = ends.findIndex(e=>e<=b.start); if(i<0){ i = ends.length; ends.push(0); } ends[i] = b.end; lane.set(b.id, i); });
+  return {lane, n:Math.max(ends.length, 3)};
+}
+function tpDur(m){ const h = Math.floor(m/60), mi = m%60; return (h?h+" h ":"")+(mi?mi+" min":(h?"":"0 min")); }
+function tpDayTitle(day){ const d = parseDate(day); return d ? d.toLocaleDateString("de-DE",{weekday:"long", day:"numeric", month:"long", year:"numeric"}) : day; }
+
+/* ---- Ansicht ---- */
+function tpBlockHtml(b, lane){
+  const w = (b.end-b.start)*tp.ppm, left = (b.start-tp.range.from)*tp.ppm;
+  return `<div class="tp-b${b.done?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${tpHM(b.start)}–${tpHM(b.end)}" style="left:${left}px;width:${w}px;top:${4+lane*44}px;background:${esc(b.color)}">
+    <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${b.done?"✓":""}</span>
+    <div class="tp-t">${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${tpHM(b.start)}–${b.end>=1440?"24:00":tpHM(b.end)}</div><i class="tp-h r" data-h="r"></i></div>`;
+}
+function tpPoolItems(day){
+  const used = new Set(tpDayBlocks(day).filter(b=>b.src).map(b=>b.src.kind+":"+b.src.ref));
+  const q = tp.q.trim().toLowerCase(), out = [];
+  tasks.forEach(t=>{
+    if(t.type!=="todo" || t.archived || isEverDone(t.id) || used.has("todo:"+t.id)) return;
+    const d = t.startDate||"";
+    out.push({kind:"todo", ref:t.id, title:t.title||"(ohne Titel)", date:d, time:t.startTime||"", cat:!d?"none":(d===day?"due":(d<day?"over":"later"))});
+  });
+  (allOpenGoals||[]).forEach(g=>{
+    if(!g.due || used.has("goal:"+g.id)) return;
+    out.push({kind:"goal", ref:g.id, title:g.title||"(ohne Titel)", date:g.due, time:"", cat:g.due===day?"due":(g.due<day?"over":"later")});
+  });
+  const list = out.filter(x=>q ? x.title.toLowerCase().includes(q) : (tp.filter==="all" || x.cat===tp.filter));
+  list.sort((a,b)=>(a.date||"9999")<(b.date||"9999")?-1:(a.date||"9999")>(b.date||"9999")?1:a.title.localeCompare(b.title,"de"));
+  return list;
+}
+function tpPoolHtml(){
+  const list = tpPoolItems(tp.day), F = [["due","Fällig"],["over","Überfällig"],["none","Ohne Datum"],["later","Später"],["all","Alle"]];
+  return `<h3>ToDos und Ziele übernehmen (nur Kopie, die ToDo-App bleibt unverändert)</h3>
+    <div class="tp-chips">${F.map(f=>`<button class="tp-btn${tp.filter===f[0]&&!tp.q?" on":""}" data-tp="pf" data-v="${f[0]}">${f[1]}</button>`).join("")}</div>
+    <input type="search" id="tp_q" placeholder="Suchen (alle ToDos und Ziele)" value="${esc(tp.q)}">
+    ${list.slice(0,80).map(x=>`<div class="tp-it"><span>${x.kind==="goal"?"🎯":"☑"}</span><span class="tx">${esc(x.title)}</span><span class="dt">${x.date?esc(wsShortDate(x.date)):"ohne Datum"}${x.time?" · "+esc(x.time):""}</span><button class="tp-btn" data-tp="padd" data-k="${x.kind}" data-r="${esc(x.ref)}">+ Plan</button></div>`).join("")
+      || `<div class="tp-note" style="padding:8px 2px">Nichts in dieser Auswahl.</div>`}
+    ${list.length>80?`<div class="tp-note">… und ${list.length-80} weitere, bitte suchen</div>`:""}`;
+}
+function tpPoolRender(){ const el = document.getElementById("tp_pool"); if(el) el.innerHTML = tpPoolHtml(); const q = document.getElementById("tp_q"); if(q && document.activeElement!==q && tp.q){ /* Fokus nicht erzwingen */ } }
+function tpSumText(){
+  const bl = tpDayBlocks(tp.day); let all = 0, done = 0;
+  bl.forEach(b=>{ all += b.end-b.start; if(b.done) done += b.end-b.start; });
+  return bl.length ? `${bl.length} Block${bl.length===1?"":"e"}, geplant ${tpDur(all)}, davon erledigt ${tpDur(done)}` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein ToDo übernehmen.";
+}
+function tpMount(m){
+  if(!accessToken){ m.innerHTML = '<p class="muted" style="padding:18px">Bitte zuerst anmelden.</p>'; return; }
+  if(tp.drag) return;
+  if(!tp.day) tp.day = todayKey();
+  if(!tp.data){
+    if(tp.err){ m.innerHTML = `<div class="center" style="padding:30px"><p class="muted">Tagesstruktur konnte nicht geladen werden: ${esc(tp.err)}</p><button class="tp-btn pri" data-tp="retry">Erneut versuchen</button></div>`; return; }
+    m.innerHTML = '<p class="muted center" style="padding:30px">Lade Tagesstruktur …</p>';
+    if(!tp.loading) tpLoad().then(()=>{ if(view==="plan") render(); });
+    return;
+  }
+  const s = tpSettings();
+  tp.range = tpRangeFor(tp.day); tp.ppm = s.pph/60;
+  const prevScroll = document.getElementById("tp_scroll"); if(prevScroll) tp.scrollL = prevScroll.scrollLeft;
+  const bl = tpDayBlocks(tp.day), L = tpLanes(bl), W = (tp.range.to-tp.range.from)*tp.ppm, H = L.n*44+8;
+  let hours = ""; for(let h = tp.range.from/60; h<tp.range.to/60; h++) hours += `<span style="left:${(h*60-tp.range.from)*tp.ppm}px">${tpPad(h)}:00</span>`;
+  const now = new Date(), nowM = now.getHours()*60+now.getMinutes();
+  const showNow = tp.day===todayKey() && nowM>=tp.range.from && nowM<=tp.range.to;
+  const opt = (arr, cur, f)=>arr.map(v=>`<option value="${v}"${v==cur?" selected":""}>${f?f(v):v}</option>`).join("");
+  const rng = (a,b)=>Array.from({length:b-a+1},(_,i)=>a+i);
+  m.innerHTML = `<div class="tp">
+    <div class="tp-bar">
+      <button class="tp-btn" data-tp="prev">‹</button><button class="tp-btn" data-tp="today">Heute</button><button class="tp-btn" data-tp="next">›</button>
+      <input type="date" id="tp_date" value="${esc(tp.day)}"><span class="tp-title">${esc(tpDayTitle(tp.day))}</span>
+      <span style="flex:1"></span>
+      <button class="tp-btn pri" data-tp="add">+ Block</button><button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙</button>
+    </div>
+    ${tp.showSet?`<div class="tp-set">Beginn <select id="tp_from">${opt(rng(0,23), s.from, v=>tpPad(v)+":00")}</select> Ende <select id="tp_to">${opt(rng(1,24), s.to, v=>tpPad(v)+":00")}</select>
+      Raster <select id="tp_snap">${opt([5,10,15,30], s.snap, v=>v+" min")}</select> Breite <select id="tp_pph">${opt([60,90,120,180,240], s.pph, v=>v+" px je Stunde")}</select></div>`:""}
+    <div class="tp-scroll" id="tp_scroll"><div class="tp-inner" style="width:${W}px">
+      <div class="tp-hours">${hours}</div>
+      <div class="tp-track" id="tp_track" style="height:${H}px;background-image:linear-gradient(to right,rgba(255,255,255,.13) 1px,transparent 1px),linear-gradient(to right,rgba(255,255,255,.05) 1px,transparent 1px);background-size:${s.pph}px 100%,${s.pph/2}px 100%">
+        ${bl.map(b=>tpBlockHtml(b, L.lane.get(b.id))).join("")}${showNow?`<div class="tp-now" id="tp_now" style="left:${(nowM-tp.range.from)*tp.ppm}px"></div>`:""}
+      </div></div></div>
+    <div class="tp-sum" id="tp_sum">${esc(tpSumText())}</div>
+    <div class="tp-pool" id="tp_pool">${tpPoolHtml()}</div>
+    <div class="tp-note">Die Tagesstruktur liegt in der eigenen Drive-Datei „${TP_FILE}“. Änderungen hier verändern keine ToDos, Ziele oder Kalendertermine.</div>
+  </div>`;
+  const sc = document.getElementById("tp_scroll");
+  if(sc){
+    if(tp.scrollL==null){
+      let focusM = showNow ? nowM-60 : (bl.length ? Math.min.apply(null, bl.map(b=>b.start))-30 : tp.range.from);
+      sc.scrollLeft = Math.max(0, (focusM-tp.range.from)*tp.ppm);
+    }else sc.scrollLeft = tp.scrollL;
+  }
+}
+
+/* ---- Aktionen ---- */
+function tpShift(n){ const d = parseDate(tp.day); d.setDate(d.getDate()+n); tp.day = dateKey(d); }
+function tpAdd(blk){ tpEnsureDay(tp.day).push(blk); tpDirty(); }
+function tpAddFromPool(kind, ref){
+  const it = tpPoolItems(tp.day).concat([]).find(x=>x.kind===kind && x.ref===ref) || tpPoolItems(tp.day).find(x=>x.ref===ref);
+  let item = it;
+  if(!item){ tp.q = ""; item = tpPoolItems(tp.day).find(x=>x.kind===kind && x.ref===ref); }
+  if(!item){
+    const all = []; tasks.forEach(t=>{ if(t.id===ref) all.push({kind:"todo", ref, title:t.title, time:t.startTime||""}); });
+    (allOpenGoals||[]).forEach(g=>{ if(g.id===ref) all.push({kind:"goal", ref, title:g.title, time:""}); });
+    item = all[0]; if(!item) return;
+  }
+  const dur = 30, mm = /^(\d{1,2}):(\d{2})$/.exec(item.time||"");
+  const pref = mm ? +mm[1]*60+ +mm[2] : null;
+  const st = tpFree(tp.day, dur, pref);
+  tpAdd({id:uid(), title:item.title, start:st, end:st+dur, color:kind==="goal"?TP_COLORS[1]:TP_COLORS[0], done:false, note:"", src:{kind, ref}});
+  render(); toast("Zur Tagesstruktur hinzugefügt");
+}
+function tpToggleDone(id){ const b = tpBlock(id); if(!b) return; b.done = !b.done; tpDirty(); render(); }
+function tpDelete(id){ const arr = tpEnsureDay(tp.day), i = arr.findIndex(b=>b.id===id); if(i>=0){ tp.deleted.add(id); arr.splice(i,1); tpDirty(); } }
+function tpEdit(id, nb){
+  if(document.getElementById("modalBg")) return;
+  const b = nb || tpBlock(id); if(!b) return;
+  const isNew = !!nb;
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal">
+    <h2>${isNew?"Neuer Block":"Block bearbeiten"}</h2>
+    <label>Titel</label><input type="text" id="tpe_t" maxlength="200" value="${esc(b.title)}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px">
+    <div style="display:flex;gap:10px;margin-bottom:8px"><div style="flex:1"><label>Von</label><input type="time" id="tpe_s" value="${tpHM(b.start)}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px"></div>
+      <div style="flex:1"><label>Bis</label><input type="time" id="tpe_e" value="${b.end>=1440?"00:00":tpHM(b.end)}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px"></div></div>
+    <label>Farbe</label><div class="tp-col" id="tpe_c">${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.color?"on":""}"></button>`).join("")}</div>
+    <label>Notiz</label><input type="text" id="tpe_n" maxlength="500" value="${esc(b.note||"")}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px">
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="tpe_d"${b.done?" checked":""}> Erledigt (gilt nur in der Tagesstruktur)</label>
+    <div class="modal-actions">${isNew?"":`<button class="btn-ghost" id="tpe_del" style="color:#ff8a8e">Löschen</button>`}<button class="btn-ghost" id="tpe_x">Abbrechen</button><button class="btn-primary" id="tpe_ok">Speichern</button></div></div></div>`);
+  let color = b.color;
+  $("tpe_c").onclick = e=>{ const c = e.target.closest("[data-c]"); if(!c) return; color = c.dataset.c; [...$("tpe_c").children].forEach(x=>x.classList.toggle("on", x===c)); };
+  $("tpe_x").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  if($("tpe_del")) $("tpe_del").onclick = ()=>{ $("modalBg").remove(); tpDelete(b.id); render(); };
+  $("tpe_ok").onclick = ()=>{
+    const pm = v=>{ const m = /^(\d{1,2}):(\d{2})$/.exec(v||""); return m ? +m[1]*60+ +m[2] : -1; };
+    const s = pm($("tpe_s").value); let e = pm($("tpe_e").value);
+    if(e===0 && s>0) e = 1440;
+    if(s<0 || e<0 || e<=s){ toast("Die Endzeit muss nach der Startzeit liegen"); return; }
+    b.title = $("tpe_t").value.trim().slice(0,200); b.start = s; b.end = e; b.color = color; b.note = $("tpe_n").value.trim().slice(0,500); b.done = $("tpe_d").checked;
+    if(isNew) tpAdd(b); else tpDirty();
+    $("modalBg").remove(); render();
+  };
+  setTimeout(()=>{ const t = $("tpe_t"); if(t) t.focus(); }, 50);
+}
+function tpAct(a, el){
+  if(a==="prev"){ tpShift(-1); render(); }
+  else if(a==="next"){ tpShift(1); render(); }
+  else if(a==="today"){ tp.day = todayKey(); tp.scrollL = null; render(); }
+  else if(a==="add"){ const dur = 30, st = tpFree(tp.day, dur); tpEdit("", {id:uid(), title:"", start:st, end:st+dur, color:TP_COLORS[0], done:false, note:"", src:null}); }
+  else if(a==="set"){ tp.showSet = !tp.showSet; render(); }
+  else if(a==="retry"){ tp.err = ""; render(); }
+  else if(a==="pf"){ tp.filter = el.dataset.v; tp.q = ""; tpPoolRender(); document.querySelectorAll("#tp_pool [data-tp=pf]").forEach(x=>x.classList.toggle("on", x.dataset.v===tp.filter)); }
+  else if(a==="padd"){ tpAddFromPool(el.dataset.k, el.dataset.r); }
+  else if(a==="carry"){
+    const open = tpDayBlocks(tp.day).filter(b=>!b.done);
+    if(!open.length){ toast("Nichts Offenes an diesem Tag"); return; }
+    if(!confirm(open.length+" unerledigte Block"+(open.length===1?"":"e")+" auf den nächsten Tag verschieben?")) return;
+    const cur = tp.day; tpShift(1); const nxt = tp.day; tp.day = cur;
+    const src = tpEnsureDay(cur), dst = tpEnsureDay(nxt);
+    open.forEach(b=>{ const i = src.indexOf(b); if(i>=0) src.splice(i,1); dst.push(b); });
+    tpDirty(); render(); toast(open.length+" Block"+(open.length===1?"":"e")+" verschoben");
+  }
+}
+
+/* ---- Ziehen und Verschieben ---- */
+function tpDragApply(clientX){
+  const d = tp.drag; if(!d) return;
+  const sc = document.getElementById("tp_scroll"); if(!sc) return;
+  const snap = tpSettings().snap, minD = Math.max(5, snap);
+  const dx = (clientX + sc.scrollLeft) - (d.x0 + d.sl0);
+  if(Math.abs(dx)>4) d.moved = true;
+  if(!d.moved) return;
+  const dm = Math.round(dx/tp.ppm/snap)*snap, R = tp.range;
+  let ns = d.s0, ne = d.e0;
+  if(d.mode==="m"){ const len = d.e0-d.s0; ns = tpCl(d.s0+dm, R.from, R.to-len); ne = ns+len; }
+  else if(d.mode==="l"){ ns = tpCl(d.s0+dm, R.from, d.e0-minD); }
+  else { ne = tpCl(d.e0+dm, d.s0+minD, R.to); }
+  d.ns = ns; d.ne = ne;
+  d.el.style.left = (ns-R.from)*tp.ppm+"px"; d.el.style.width = (ne-ns)*tp.ppm+"px";
+  const mt = d.el.querySelector(".tp-m"); if(mt) mt.textContent = tpHM(ns)+"–"+(ne>=1440?"24:00":tpHM(ne));
+}
+function tpDown(e){
+  if(view!=="plan") return;
+  const b = e.target.closest && e.target.closest(".tp-b"); if(!b || !b.closest("#tp_track")) return;
+  if(e.target.closest("[data-ck]")) return;
+  if(e.pointerType==="mouse" && e.button!==0) return;
+  const blk = tpBlock(b.dataset.id); if(!blk) return;
+  const h = e.target.closest("[data-h]"), sc = document.getElementById("tp_scroll");
+  tp.drag = {id:blk.id, mode:h?h.dataset.h:"m", x0:e.clientX, sl0:sc?sc.scrollLeft:0, s0:blk.start, e0:blk.end, ns:blk.start, ne:blk.end, moved:false, el:b, pid:e.pointerId, lastX:e.clientX, timer:null};
+  try{ b.setPointerCapture(e.pointerId); }catch(_){}
+  b.classList.add("drag");
+  tp.drag.timer = setInterval(()=>{            // am Rand der Zeitleiste mitscrollen
+    const d = tp.drag, s2 = document.getElementById("tp_scroll"); if(!d || !s2 || !d.moved) return;
+    const r = s2.getBoundingClientRect();
+    if(d.lastX < r.left+40) s2.scrollLeft -= 14; else if(d.lastX > r.right-40) s2.scrollLeft += 14; else return;
+    tpDragApply(d.lastX);
+  }, 30);
+  e.preventDefault();
+}
+function tpMoveEv(e){ const d = tp.drag; if(!d || e.pointerId!==d.pid) return; d.lastX = e.clientX; tpDragApply(e.clientX); }
+function tpUp(e){
+  const d = tp.drag; if(!d || e.pointerId!==d.pid) return;
+  clearInterval(d.timer); tp.drag = null;
+  d.el.classList.remove("drag");
+  tp.suppressClick = Date.now();
+  const blk = tpBlock(d.id);
+  if(d.moved && e.type==="pointerup" && blk){ blk.start = d.ns; blk.end = d.ne; tpDirty(); render(); }
+  else if(!d.moved && e.type==="pointerup" && blk){ tpEdit(blk.id); }
+  else render();
+}
+function tpClick(e){
+  if(view!=="plan") return;
+  const ck = e.target.closest && e.target.closest("[data-ck]");
+  if(ck){ const b = ck.closest(".tp-b"); if(b) tpToggleDone(b.dataset.id); return; }
+  const a = e.target.closest && e.target.closest("[data-tp]");
+  if(a){ tpAct(a.dataset.tp, a); return; }
+  if(e.target.closest && e.target.closest(".tp-b")) return;
+  const track = e.target.closest && e.target.closest("#tp_track");
+  if(track){
+    if(tp.suppressClick && Date.now()-tp.suppressClick<350) return;
+    const x = e.clientX - track.getBoundingClientRect().left, snap = tpSettings().snap, dur = 30;
+    const st = tpCl(Math.floor((tp.range.from + x/tp.ppm)/snap)*snap, 0, 1440-dur);
+    tpEdit("", {id:uid(), title:"", start:st, end:st+dur, color:TP_COLORS[0], done:false, note:"", src:null});
+  }
+}
+function tpInput(e){
+  if(view!=="plan") return;
+  if(e.target.id==="tp_q"){ tp.q = e.target.value; const el = document.getElementById("tp_pool"); if(el){ el.innerHTML = tpPoolHtml(); const q = document.getElementById("tp_q"); if(q){ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(_){} } } }
+}
+function tpChange(e){
+  if(view!=="plan") return;
+  const id = e.target.id;
+  if(id==="tp_date"){ if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)){ tp.day = e.target.value; render(); } return; }
+  if(["tp_from","tp_to","tp_snap","tp_pph"].includes(id)){
+    const s = tpSettings(), v = +e.target.value;
+    if(id==="tp_from") s.from = Math.min(v, s.to-1);
+    if(id==="tp_to") s.to = Math.max(v, s.from+1);
+    if(id==="tp_snap") s.snap = v;
+    if(id==="tp_pph") s.pph = v;
+    tpDirty(); render();
+  }
+}
+(function tpInit(){
+  main.addEventListener("pointerdown", tpDown);
+  main.addEventListener("pointermove", tpMoveEv);
+  main.addEventListener("pointerup", tpUp);
+  main.addEventListener("pointercancel", tpUp);
+  main.addEventListener("click", tpClick);
+  main.addEventListener("input", tpInput);
+  main.addEventListener("change", tpChange);
+  document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden" && tp.pending) tpSave(); });
+  setInterval(()=>{
+    if(view!=="plan" || tp.drag) return;
+    const el = document.getElementById("tp_now"); if(!el) return;
+    const n = new Date(), m = n.getHours()*60+n.getMinutes();
+    el.style.left = (m-tp.range.from)*tp.ppm+"px";
+  }, 60000);
+})();
+function tpReset(){ clearTimeout(tp.saveT); tp.data = null; tp.fileId = ""; tp.mt = ""; tp.err = ""; tp.pending = false; tp.deleted.clear(); }
 
 /* ============ FORMULARE ============ */
 async function saveNotes(){
@@ -8880,7 +9304,7 @@ function wsOpenDeadlineDoc(did){
 function wsWideUpdate(){
   const app = document.querySelector(".app");
   if(app) app.classList.toggle("ws-wide", view==="notes" && wsTab==="week" && !!wsWk.wide);
-  if(app) app.classList.toggle("kal-wide", view==="kalender");
+  if(app) app.classList.toggle("kal-wide", view==="kalender" || view==="plan");
   main.classList.toggle("kal-main", view==="kalender");
 }
 function wsTopBarUpdate(){
@@ -8891,7 +9315,7 @@ function wsTopBarUpdate(){
     el = document.createElement("div"); el.id = "wsTopBar"; main.parentNode.insertBefore(el, main);
     el.addEventListener("click", e=>{ const b = e.target.closest("[data-did]"); if(b) wsOpenDeadlineDoc(b.dataset.did); });
   }
-  const show = wsLoaded && accessToken && view!=="today" && view!=="deadlines" && view!=="settings" && view!=="notes" && view!=="kalender";
+  const show = wsLoaded && accessToken && view!=="today" && view!=="deadlines" && view!=="settings" && view!=="notes" && view!=="kalender" && view!=="plan";
   const list = show ? wsDeadlineItems(wsDocs, todayKey()).filter(it=>!it.node.hid && it.days<=14).slice(0, 3) : [];
   if(!list.length){ el.style.display = "none"; el.innerHTML = ""; return; }
   const hd = document.querySelector("header");
@@ -9320,7 +9744,7 @@ async function signIn(){
 }
 function signOut(){
   if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
-  accessToken=null; wsDocs=[]; wsLoaded=false; wsTabOk=false; wsDirty.clear(); wsDeleted.clear(); tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[]; todayCalendarEvents=[];
+  tpReset(); accessToken=null; wsDocs=[]; wsLoaded=false; wsTabOk=false; wsDirty.clear(); wsDeleted.clear(); tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[]; todayCalendarEvents=[];
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";
   $("acctBtn").textContent="Anmelden"; setSync("");

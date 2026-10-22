@@ -3522,7 +3522,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v202";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v204";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -3921,7 +3921,7 @@ function tmDefault(){ return {v:1, settings:{ppd:24}, blocks:[]}; }
 function tmNorm(d){
   const o = tmDefault();
   if(!d || typeof d!=="object") return o;
-  o.settings.ppd = tpInt((d.settings||{}).ppd, 6, 80, 24);
+  o.settings.ppd = tpInt((d.settings||{}).ppd, 6, 200, 24);
   (Array.isArray(d.blocks)?d.blocks:[]).forEach(b=>{
     if(!b || !tmOk(b.start) || !tmOk(b.end) || b.end<b.start) return;
     o.blocks.push({id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:b.start, end:b.end, color:String(b.color||TP_COLORS[0]).slice(0,20), done:!!b.done, note:String(b.note||"").slice(0,500),
@@ -4075,7 +4075,7 @@ function tmMount(m){
       <span class="tp-title">Metaprojekte</span><span style="flex:1"></span>
       <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
     </div>
-    ${tm.showSet?`<div class="tp-set">Breite <select id="tm_ppd">${opt([8,12,16,24,36,56], ppd, v=>v+" px je Tag")}</select></div>`:""}
+    ${tm.showSet?`<div class="tp-set">Breite <select id="tm_ppd">${opt([8,12,16,24,36,56,75,112], ppd, v=>v+" px je Tag")}</select></div>`:""}
     <div class="tp-scroll" id="tm_scroll"><div class="tp-inner" style="width:${W}px">
       <div class="tm-mon">${mon}</div><div class="tm-days">${dayRow}</div>
       <div class="tp-track" id="tm_track" style="height:${H}px">${shade}
@@ -4135,6 +4135,80 @@ function tmEdit(id, nb){
   };
   setTimeout(()=>{ const t = $("tme_t"); if(t) t.focus(); }, 50);
 }
+/* ---- Unterpunkte außerhalb des neuen Zeitraums eines Meta-Projekts: Abfrage, welche Daten neu zugeordnet werden ---- */
+/* Prüft nur Unterpunkte mit eigenem Zeitraum (Fälligkeit, Laufzeit oder Deadline), die nicht erledigt sind. */
+function wsChildItems(doc, p){
+  const out = [];
+  const walk = (items, depth)=>items.forEach(n=>{ out.push({node:n, kind:"node", depth}); walk(n.children||[], depth+1); });
+  if(p.type==="heading"){
+    const i0 = doc.blocks.indexOf(p); if(i0<0) return out;
+    const e0 = wsSecEnd(doc.blocks, i0);
+    for(let k = i0+1; k<e0; k++){
+      const b = doc.blocks[k];
+      if(b.type==="heading") out.push({node:b, kind:"head", depth:0});
+      else if(b.type==="outline") walk(b.items||[], 1);
+    }
+  }else walk(p.children||[], 0);
+  return out;
+}
+function wsShiftDay(k, d){ return tmKey(tmDN(k)+d); }
+function wsAskChildren(doc, parent, nd, nur, nl){
+  return new Promise(resolve=>{
+    const sp = wsSpan({date:nd||"", dur:nur||0, dl:nl||""});
+    const changed = (parent.date||"")!==(nd||"") || (parent.dl||"")!==(nl||"") || (parent.dur>0?parent.dur:0)!==(nur||0);
+    if(!sp || !changed){ resolve({updates:[]}); return; }
+    const lo = sp.start, hi = nl || sp.end;
+    const rows = [];
+    wsChildItems(doc, parent).forEach(c=>{
+      const n = c.node; if(n.done) return;
+      const cs = wsSpan(n); if(!cs) return;
+      if(cs.start>=lo && cs.end<=hi) return;
+      let delta = 0;
+      if(cs.start<lo) delta = tmDN(lo)-tmDN(cs.start);
+      else if(cs.end>hi) delta = tmDN(hi)-tmDN(cs.end);
+      if(tmDN(cs.start)+delta<tmDN(lo)) delta += tmDN(lo)-(tmDN(cs.start)+delta);
+      const base = n.date || n.dl;
+      rows.push({c, cs, base, prop:wsShiftDay(base, delta)});
+    });
+    if(!rows.length){ resolve({updates:[]}); return; }
+    const inp = "background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:7px;font-size:15px;font-family:inherit";
+    document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="chBg" style="z-index:30"><div class="modal">
+      <h2>Unterpunkte außerhalb des Zeitraums</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">Neuer Zeitraum des Meta-Projekts: ${esc(wsShortDate(lo))} bis ${esc(wsShortDate(hi))}. ${rows.length===1?"Dieser Unterpunkt liegt":"Diese "+rows.length+" Unterpunkte liegen"} ganz oder teilweise außerhalb. Wähle, welche Daten neu zugeordnet werden. Hat ein Unterpunkt Fälligkeit und Deadline, wandern beide um dieselbe Zahl Tage mit.</p>
+      <div style="display:flex;gap:6px;margin-bottom:8px"><button type="button" class="tp-btn" id="ch_all">Alle anpassen</button><button type="button" class="tp-btn" id="ch_none">Keine anpassen</button></div>
+      <div style="max-height:46vh;overflow:auto">${rows.map((r,i)=>`<div style="border-top:1px solid #30343b;padding:8px 0 8px ${r.c.depth*14}px" data-i="${i}">
+        <label style="display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600"><input type="checkbox" class="ch_on" checked> ${r.c.kind==="head"?"§ ":""}${esc(wsTitleOf(r.c.node)||"(ohne Titel)")}</label>
+        <div class="tp-note" style="margin:2px 0 6px 26px">jetzt: ${esc(wsShortDate(r.cs.start))}${r.cs.end!==r.cs.start?" bis "+esc(wsShortDate(r.cs.end)):""}</div>
+        <div style="margin-left:26px"><label style="font-size:12px">${r.c.node.date?"Neue Fälligkeit":"Neue Deadline"}</label> <input type="date" class="ch_d" value="${esc(r.prop)}" style="${inp}"></div></div>`).join("")}</div>
+      <div class="modal-actions"><button class="btn-ghost" id="ch_x">Abbrechen</button><button class="btn-ghost" id="ch_skip">Nicht anpassen</button><button class="btn-primary" id="ch_ok">Anpassen</button></div></div></div>`);
+    const bg = $("chBg"), done = v=>{ bg.remove(); resolve(v); };
+    $("ch_all").onclick = ()=>bg.querySelectorAll(".ch_on").forEach(x=>x.checked = true);
+    $("ch_none").onclick = ()=>bg.querySelectorAll(".ch_on").forEach(x=>x.checked = false);
+    $("ch_x").onclick = ()=>done({cancel:true});
+    $("ch_skip").onclick = ()=>done({updates:[]});
+    $("ch_ok").onclick = ()=>{
+      const ups = [];
+      bg.querySelectorAll("[data-i]").forEach(el=>{
+        if(!el.querySelector(".ch_on").checked) return;
+        const r = rows[+el.dataset.i], v = el.querySelector(".ch_d").value;
+        if(!tmOk(v) || v===r.base) return;
+        const diff = tmDN(v)-tmDN(r.base), n = r.c.node;
+        ups.push({c:r.c, date:n.date?wsShiftDay(n.date, diff):"", dl:n.dl?wsShiftDay(n.dl, diff):""});
+      });
+      done({updates:ups});
+    };
+  });
+}
+async function wsApplyChildUpdates(doc, ups){
+  if(!ups || !ups.length) return;
+  for(const u of ups){
+    const n = u.c.node;
+    if(u.c.kind==="head"){ n.date = u.date; n.dl = u.dl; wsTouch(doc); }
+    else await wsApplyMenuCore(doc.id, n.id, {date:u.date, dur:n.dur>0?n.dur:0, dl:u.dl, meta:!!n.meta, cal:!!(n.link && n.link.cal)});
+  }
+  toast(ups.length+(ups.length===1?" Unterpunkt":" Unterpunkte")+" neu zugeordnet");
+}
+
 /* ---- Start und Deadline der Meta-Projekte bearbeiten (schreibt bewusst in den Arbeitsbereich, nur auf ausdrücklichen Klick auf "Übernehmen") ---- */
 function tmTermRows(onlyRef){
   const map = tmMetaMap(), rows = new Map();
@@ -4206,12 +4280,18 @@ function tmTermView(onlyRef){
       const ns = wsIsDate(s)?s:"", nl = wsIsDate(l)?l:"", nd = (d>0 && d<=3660)?d:0;
       if(ns!==(n.date||"") || nl!==(n.dl||"") || nd!==(n.dur>0?n.dur:0)) jobs.push({r, ns, nl, nd});
     });
+    if(!jobs.length){ root.remove(); toast("Keine Änderungen"); return; }
+    for(const j of jobs){                       // erst alle Rückfragen zu Unterpunkten, danach wird geschrieben
+      const r2 = await wsAskChildren(j.r.h.doc, j.r.h.node, j.ns, j.nd, j.nl);
+      if(r2.cancel){ toast("Abgebrochen, nichts gespeichert"); return; }
+      j.ups = r2.updates;
+    }
     root.remove();
-    if(!jobs.length){ toast("Keine Änderungen"); return; }
     for(const j of jobs){
       const n = j.r.h.node, doc = j.r.h.doc;
       if(n.type==="heading"){ n.date = j.ns; n.dl = j.nl; n.dur = j.nd; wsTouch(doc); }
       else await wsApplyMenuCore(doc.id, n.id, {date:j.ns, dur:j.nd, dl:j.nl, meta:true, cal:!!(n.link && n.link.cal)});
+      await wsApplyChildUpdates(doc, j.ups);
     }
     toast(jobs.length+" Meta-Projekt"+(jobs.length===1?"":"e")+" in der ToDo-App aktualisiert");
     render();
@@ -8979,7 +9059,7 @@ function wsOpenLinkMenu(docId, nid){
   $("wsl_cancel").onclick = ()=>$("modalBg").remove();
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
   if($("wsl_unlink")) $("wsl_unlink").onclick = ()=>{ $("modalBg").remove(); wsUnlink(docId, nid); };
-  $("wsl_ok").onclick = ()=>{
+  $("wsl_ok").onclick = async ()=>{
     let k = kind;
     if(k && !touched){                                               // Standardwahl ToDo gilt nur mit Termin und ohne Meta-Projekt
       const hasDay = !!$("wsl_date").value || ($("wsl_dl") && !!$("wsl_dl").value);
@@ -8990,7 +9070,14 @@ function wsOpenLinkMenu(docId, nid){
       dur:$("wsl_dur")?$("wsl_dur").value:0, dl:$("wsl_dl")?$("wsl_dl").value:"", meta:$("wsl_meta")?$("wsl_meta").classList.contains("on"):false,
       convert:(L && conv && conv!==L.kind) ? conv : "",
       text:$("wsl_text").value, tag:$("wsl_tag").value, done:$("wsl_done").classList.contains("on"), hid:$("wsl_hid")?$("wsl_hid").classList.contains("on"):undefined};
-    $("modalBg").remove(); wsApplyMenu(docId, nid, o);
+    let upd = [];
+    if(!att && o.meta){
+      const nu = parseInt(o.dur, 10);
+      const r2 = await wsAskChildren(doc, n, wsIsDate(o.date)?o.date:"", (nu>0 && nu<=3660)?nu:0, wsIsDate(o.dl)?o.dl:"");
+      if(r2.cancel) return; upd = r2.updates;
+    }
+    $("modalBg").remove(); await wsApplyMenu(docId, nid, o);
+    await wsApplyChildUpdates(doc, upd);
   };
 }
 
@@ -9272,11 +9359,15 @@ function wsOpenHeadMenu(docId, bid){
   $("wsh_cancel").onclick = ()=>$("modalBg").remove();
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
   $("wsh_clear").onclick = ()=>{ $("wsh_date").value = ""; $("wsh_dur").value = ""; $("wsh_dl").value = ""; upEnd(); };
-  $("wsh_ok").onclick = ()=>{
+  $("wsh_ok").onclick = async ()=>{
     const dur = parseInt($("wsh_dur").value, 10), d = $("wsh_date").value, dl = $("wsh_dl").value;
-    h.date = wsIsDate(d) ? d : ""; h.dl = wsIsDate(dl) ? dl : ""; h.dur = (dur>0 && dur<=3660) ? dur : 0;
-    h.meta = $("wsh_meta").classList.contains("on");
+    const nd = wsIsDate(d) ? d : "", nl = wsIsDate(dl) ? dl : "", nu = (dur>0 && dur<=3660) ? dur : 0, isMeta = $("wsh_meta").classList.contains("on");
+    let upd = [];
+    if(isMeta){ const r2 = await wsAskChildren(doc, h, nd, nu, nl); if(r2.cancel) return; upd = r2.updates; }
+    h.date = nd; h.dl = nl; h.dur = nu;
+    h.meta = isMeta;
     wsTouch(doc); $("modalBg").remove();
+    await wsApplyChildUpdates(doc, upd);
     if(h.meta) toast("Meta-Projekt: erscheint in Heute unter Metaprojekten und im Gantt");
     if(view==="notes" && wsTab==="docs") wsRerender(doc.id); else render();
   };

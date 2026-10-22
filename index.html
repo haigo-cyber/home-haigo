@@ -3157,7 +3157,7 @@ function render(){
         <button class="icon-btn" id="signoutBtn">Abmelden</button>
       </div>
       
-      <p class="muted" style="font-size:12px;margin-top:18px">Aufgaben, Projekte & Notizen liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an), der Zielkalender pro Eintrag wählbar.</p>
+      <p class="muted" style="font-size:12px;margin-top:18px">Programmstand ${APP_VER}. Aufgaben, Projekte & Notizen liegen ausschließlich in deinem Google-Konto. Kalender-Sync ist pro Aufgabe schaltbar (Standard: an), der Zielkalender pro Eintrag wählbar.</p>
     `;
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
     ksBindSettings();
@@ -3522,6 +3522,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
+const APP_VER = "v201";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -3726,7 +3727,7 @@ function tpMount(m){
       </div></div></div>
     <div class="tp-sum" id="tp_sum">${esc(tpSumText())}</div>
     <div class="tp-pool" id="tp_pool">${tpPoolHtml()}</div>
-    <div class="tp-note">Die Tagesstruktur liegt in der eigenen Drive-Datei „${TP_FILE}“. Änderungen hier verändern keine ToDos, Ziele oder Kalendertermine.</div>
+    <div class="tp-note">Die Tagesstruktur liegt in der eigenen Drive-Datei „${TP_FILE}“. Änderungen hier verändern keine ToDos, Ziele oder Kalendertermine. Programmstand ${APP_VER}.</div>
   </div>`;
   const sc = document.getElementById("tp_scroll");
   if(sc){
@@ -4069,7 +4070,7 @@ function tmMount(m){
     <div class="tp-bar">
       <button class="tp-btn" data-tm="left">‹ Zurück</button><button class="tp-btn" data-tm="today">Heute</button><button class="tp-btn" data-tm="right">Weiter ›</button>
       <span class="tp-title">Metaprojekte</span><span style="flex:1"></span>
-      <button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
+      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
     </div>
     ${tm.showSet?`<div class="tp-set">Breite <select id="tm_ppd">${opt([8,12,16,24,36,56], ppd, v=>v+" px je Tag")}</select></div>`:""}
     <div class="tp-scroll" id="tm_scroll"><div class="tp-inner" style="width:${W}px">
@@ -4080,7 +4081,7 @@ function tmMount(m){
       </div></div></div>
     <div class="tp-sum">${tm.data.blocks.length ? `${tm.data.blocks.length} Block${tm.data.blocks.length===1?"":"e"}, zusammen ${sumDays} Tage geplant` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein Meta-Projekt übernehmen."}</div>
     <div class="tp-pool" id="tm_pool">${tmPoolHtml()}</div>
-    <div class="tp-note">Die Metaprojektplanung liegt in der eigenen Drive-Datei „${TM_FILE}“. Änderungen hier verändern keine Meta-Projekte, ToDos oder Termine im Arbeitsbereich. Die Fahne ⚑ zeigt die Deadline des Meta-Projekts (nur Anzeige).</div>
+    <div class="tp-note">Die Metaprojektplanung liegt in der eigenen Drive-Datei „${TM_FILE}“. Änderungen hier verändern keine Meta-Projekte, ToDos oder Termine im Arbeitsbereich. Die Fahne ⚑ zeigt die Deadline des Meta-Projekts (nur Anzeige). Programmstand ${APP_VER}.</div>
   </div>`;
   const sc = document.getElementById("tm_scroll");
   if(sc){
@@ -4114,8 +4115,10 @@ function tmEdit(id, nb){
     <label>Farbe</label><div class="tp-col" id="tme_c">${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.color?"on":""}"></button>`).join("")}</div>
     <label>Notiz</label><input type="text" id="tme_n" maxlength="500" value="${esc(b.note||"")}" style="${fld};margin-bottom:8px">
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="tme_d"${b.done?" checked":""}> Erledigt (gilt nur in der Metaprojektplanung)</label>
+    ${(!isNew && b.src)?`<button class="btn-ghost" id="tme_term" style="width:100%;margin-bottom:10px">Start und Deadline bearbeiten (ToDo-App)</button>`:""}
     <div class="modal-actions">${isNew?"":`<button class="btn-ghost" id="tme_del" style="color:#ff8a8e">Löschen</button>`}<button class="btn-ghost" id="tme_x">Abbrechen</button><button class="btn-primary" id="tme_ok">Speichern</button></div></div></div>`);
   let color = b.color;
+  if($("tme_term")) $("tme_term").onclick = ()=>{ $("modalBg").remove(); tmTermView(b.src.ref); };
   $("tme_c").onclick = e=>{ const c = e.target.closest("[data-c]"); if(!c) return; color = c.dataset.c; [...$("tme_c").children].forEach(x=>x.classList.toggle("on", x===c)); };
   $("tme_x").onclick = ()=>$("modalBg").remove();
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
@@ -4129,6 +4132,89 @@ function tmEdit(id, nb){
   };
   setTimeout(()=>{ const t = $("tme_t"); if(t) t.focus(); }, 50);
 }
+/* ---- Start und Deadline der Meta-Projekte bearbeiten (schreibt bewusst in den Arbeitsbereich, nur auf ausdrücklichen Klick auf "Übernehmen") ---- */
+function tmTermRows(onlyRef){
+  const map = tmMetaMap(), rows = new Map();
+  tm.data.blocks.forEach(b=>{
+    if(!b.src || (onlyRef && b.src.ref!==onlyRef)) return;
+    const h = map.get(b.src.ref); if(!h) return;
+    let r = rows.get(b.src.ref);
+    if(!r){ r = {ref:b.src.ref, h, s:b.start, e:b.end, nb:0}; rows.set(b.src.ref, r); }
+    if(b.start<r.s) r.s = b.start; if(b.end>r.e) r.e = b.end; r.nb++;
+  });
+  return [...rows.values()].sort((a,b)=>a.s<b.s?-1:a.s>b.s?1:0);
+}
+function tmTermView(onlyRef){
+  if(document.getElementById("modalBg")) return;
+  if(!(typeof wsLoaded!=="undefined" && wsLoaded)){ toast("Arbeitsbereich noch nicht geladen"); return; }
+  const rows = tmTermRows(onlyRef);
+  if(!rows.length){ toast(onlyRef ? "Dieses Meta-Projekt ist im Arbeitsbereich nicht mehr offen" : "Noch keine Blöcke aus Meta-Projekten in der Planung"); return; }
+  const inp = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:8px;font-size:15px;font-family:inherit";
+  const dayCnt = (a,b)=>tmDN(b)-tmDN(a)+1;
+  const card = (r,i)=>{
+    const n = r.h.node;
+    return `<div style="border:1px solid #30343b;border-radius:12px;padding:10px;margin-bottom:10px" data-i="${i}">
+      <div style="font-weight:600;margin-bottom:2px">★ ${esc(wsTitleOf(n)||"(ohne Titel)")}</div>
+      <div class="tp-note" style="margin-bottom:6px">${esc(r.h.doc.title||"Ohne Titel")}${n.link?" · mit "+(n.link.kind==="goal"?"Tages-Ziel":"ToDo")+" verknüpft, dessen Datum wird mitgeführt":""}</div>
+      <div style="font-size:13px;margin-bottom:8px"><b>Struktur (Planung):</b> ${esc(tmShort(r.s))} bis ${esc(tmShort(r.e))}, ${dayCnt(r.s,r.e)} Tag${dayCnt(r.s,r.e)===1?"":"e"}${r.nb>1?" ("+r.nb+" Blöcke)":""}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:130px"><label style="font-size:12px">Start (ToDo-App)</label><input type="date" class="t_s" value="${esc(n.date||"")}" style="${inp}"></div>
+        <div style="flex:0 0 90px"><label style="font-size:12px">Tage</label><input type="number" class="t_d" min="0" max="3660" step="1" value="${n.dur||""}" placeholder="–" style="${inp}"></div>
+        <div style="flex:1;min-width:130px"><label style="font-size:12px">Deadline (ToDo-App)</label><input type="date" class="t_l" value="${esc(n.dl||"")}" style="${inp}"></div>
+      </div>
+      <div class="muted t_info" style="font-size:12px;margin:6px 0 4px"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="tp-btn t_from" title="Start und Deadline mit dem Zeitraum aus der Struktur füllen (noch nicht gespeichert)">Aus Struktur füllen</button>
+        <button type="button" class="tp-btn t_to" title="Die Blöcke in der Struktur an Start und Deadline der ToDo-App anpassen">Struktur angleichen</button></div>
+    </div>`;
+  };
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal">
+    <h2>Start und Deadline bearbeiten</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:10px">Oben siehst du den Zeitraum in der Struktur, darunter Start, Laufzeit und Deadline des Meta-Projekts in der ToDo-App. Erst „Übernehmen“ schreibt die Änderungen in den Arbeitsbereich. Die Blöcke in der Struktur werden dabei nicht verändert.</p>
+    ${rows.map(card).join("")}
+    <div class="modal-actions"><button class="btn-ghost" id="tmt_x">Abbrechen</button><button class="btn-primary" id="tmt_ok">Übernehmen</button></div></div></div>`);
+  const root = $("modalBg");
+  const info = c=>{
+    const s = c.querySelector(".t_s").value, d = parseInt(c.querySelector(".t_d").value,10)||0, l = c.querySelector(".t_l").value;
+    const sp = wsSpan({date:s, dur:d, dl:l});
+    c.querySelector(".t_info").textContent = sp ? "Zeitraum in der ToDo-App: "+wsShortDate(sp.start)+" bis "+wsShortDate(sp.end)+((l && sp.end>l)?" (reicht über die Deadline hinaus)":"") : "Kein Zeitraum in der ToDo-App gesetzt";
+  };
+  root.querySelectorAll("[data-i]").forEach(c=>{
+    const r = rows[+c.dataset.i];
+    ["t_s","t_d","t_l"].forEach(k=>{ c.querySelector("."+k).oninput = ()=>info(c); c.querySelector("."+k).onchange = ()=>info(c); });
+    c.querySelector(".t_from").onclick = ()=>{ c.querySelector(".t_s").value = r.s; c.querySelector(".t_l").value = r.e; c.querySelector(".t_d").value = ""; info(c); };
+    c.querySelector(".t_to").onclick = ()=>{
+      const sp = wsSpan({date:c.querySelector(".t_s").value, dur:parseInt(c.querySelector(".t_d").value,10)||0, dl:c.querySelector(".t_l").value});
+      if(!sp){ toast("In der ToDo-App ist noch kein Zeitraum gesetzt"); return; }
+      const mine = tm.data.blocks.filter(b=>b.src && b.src.ref===r.ref);
+      if(mine.length>1 && !confirm("Dieses Meta-Projekt hat "+mine.length+" Blöcke. Sie werden zu einem Block zusammengefasst. Fortfahren?")) return;
+      const keep = mine[0]; keep.start = sp.start; keep.end = sp.end;
+      mine.slice(1).forEach(b=>{ const i = tm.data.blocks.indexOf(b); if(i>=0){ tm.deleted.add(b.id); tm.data.blocks.splice(i,1); } });
+      tmDirty(); root.remove(); render(); toast("Struktur angepasst");
+    };
+    info(c);
+  });
+  $("tmt_x").onclick = ()=>root.remove();
+  root.onclick = e=>{ if(e.target===root) root.remove(); };
+  $("tmt_ok").onclick = async ()=>{
+    const jobs = [];
+    root.querySelectorAll("[data-i]").forEach(c=>{
+      const r = rows[+c.dataset.i], n = r.h.node;
+      const s = c.querySelector(".t_s").value, d = parseInt(c.querySelector(".t_d").value,10), l = c.querySelector(".t_l").value;
+      const ns = wsIsDate(s)?s:"", nl = wsIsDate(l)?l:"", nd = (d>0 && d<=3660)?d:0;
+      if(ns!==(n.date||"") || nl!==(n.dl||"") || nd!==(n.dur>0?n.dur:0)) jobs.push({r, ns, nl, nd});
+    });
+    root.remove();
+    if(!jobs.length){ toast("Keine Änderungen"); return; }
+    for(const j of jobs){
+      const n = j.r.h.node, doc = j.r.h.doc;
+      if(n.type==="heading"){ n.date = j.ns; n.dl = j.nl; n.dur = j.nd; wsTouch(doc); }
+      else await wsApplyMenuCore(doc.id, n.id, {date:j.ns, dur:j.nd, dl:j.nl, meta:true, cal:!!(n.link && n.link.cal)});
+    }
+    toast(jobs.length+" Meta-Projekt"+(jobs.length===1?"":"e")+" in der ToDo-App aktualisiert");
+    render();
+  };
+}
+
 function tmAct(a, el){
   const sc = document.getElementById("tm_scroll");
   if(a==="left" && sc){ tm.scrollL = Math.max(0, sc.scrollLeft-sc.clientWidth*0.7); sc.scrollLeft = tm.scrollL; }
@@ -4139,6 +4225,7 @@ function tmAct(a, el){
   else if(a==="retry"){ tm.err = ""; render(); }
   else if(a==="pf"){ tm.filter = el.dataset.v; tm.q = ""; tmPoolRender(); }
   else if(a==="padd"){ tmAddFromPool(el.dataset.r); }
+  else if(a==="term"){ tmTermView(""); }
 }
 function tmDragApply(clientX){
   const d = tm.drag; if(!d) return;

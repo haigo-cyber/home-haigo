@@ -3523,7 +3523,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v209";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v210";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -4163,14 +4163,24 @@ function wsAskChildren(doc, parent, nd, nur, nl, force){
     const rows = [];
     wsChildItems(doc, parent).forEach(c=>{
       const n = c.node; if(n.done) return;
-      const cs = wsSpan(n); if(!cs) return;
+      /* Tage eines Unterpunkts: Start bis Ende (Fälligkeit, Laufzeit, Deadline) und der ToDo-Tag (ld), der bei verknüpften Punkten mit Deadline eigenständig ist */
+      const sp0 = wsSpan(n), ld = (n.ld && wsIsDate(n.ld)) ? n.ld : "";
+      if(!sp0 && !ld) return;
+      const cs = {start:sp0 ? (ld && ld<sp0.start ? ld : sp0.start) : ld, end:sp0 ? (ld && ld>sp0.end ? ld : sp0.end) : ld};
       if(cs.start>=lo && cs.end<=hi) return;
       let delta = 0;
-      if(cs.start<lo) delta = tmDN(lo)-tmDN(cs.start);
-      else if(cs.end>hi) delta = tmDN(hi)-tmDN(cs.end);
-      if(tmDN(cs.start)+delta<tmDN(lo)) delta += tmDN(lo)-(tmDN(cs.start)+delta);
-      const base = n.date || n.dl;
-      rows.push({c, cs, base, prop:wsShiftDay(base, delta)});
+      if(sp0){
+        if(sp0.start<lo) delta = tmDN(lo)-tmDN(sp0.start);
+        else if(sp0.end>hi) delta = tmDN(hi)-tmDN(sp0.end);
+        if(tmDN(sp0.start)+delta<tmDN(lo)) delta += tmDN(lo)-(tmDN(sp0.start)+delta);
+      }
+      if(ld){                                    // ToDo-Tag: mitverschieben, danach in den Zeitraum holen
+        let nld = wsShiftDay(ld, delta); if(nld<lo) nld = lo; if(nld>hi) nld = hi;
+        rows.push({c, cs, ld:true, base:ld, prop:nld, delta, sp0, oldLd:ld});
+      }else{
+        const base = n.date || n.dl;
+        rows.push({c, cs, ld:false, base, prop:wsShiftDay(base, delta), delta, sp0});
+      }
     });
     if(!rows.length){ resolve({updates:[], found:0}); return; }
     const inp = "background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:7px;font-size:15px;font-family:inherit";
@@ -4181,8 +4191,8 @@ function wsAskChildren(doc, parent, nd, nur, nl, force){
       <div style="display:flex;gap:6px;margin-bottom:8px"><button type="button" class="tp-btn" id="ch_all">Alle anpassen</button><button type="button" class="tp-btn" id="ch_none">Keine anpassen</button></div>
       <div style="max-height:46vh;overflow:auto">${rows.map((r,i)=>`<div style="border-top:1px solid #30343b;padding:8px 0 8px ${r.c.depth*14}px" data-i="${i}">
         <label style="display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600"><input type="checkbox" class="ch_on" checked> ${r.c.kind==="head"?"§ ":""}${esc(wsTitleOf(r.c.node)||"(ohne Titel)")}</label>
-        <div class="tp-note" style="margin:2px 0 6px 26px">jetzt: ${esc(wsShortDate(r.cs.start))}${r.cs.end!==r.cs.start?" bis "+esc(wsShortDate(r.cs.end)):""}</div>
-        <div style="margin-left:26px"><label style="font-size:12px">${r.c.node.date?"Neue Fälligkeit":"Neue Deadline"}</label> <input type="date" class="ch_d" value="${esc(r.prop)}" style="${inp}"></div></div>`).join("")}</div>
+        <div class="tp-note" style="margin:2px 0 6px 26px">jetzt: ${esc(wsShortDate(r.cs.start))}${r.cs.end!==r.cs.start?" bis "+esc(wsShortDate(r.cs.end)):""}${r.ld?" · ToDo-Tag "+esc(wsShortDate(r.oldLd)):""}${r.ld&&r.delta?" · Zeitraum wird um "+Math.abs(r.delta)+(Math.abs(r.delta)===1?" Tag":" Tage")+(r.delta>0?" nach hinten":" nach vorn")+" verschoben":""}</div>
+        <div style="margin-left:26px"><label style="font-size:12px">${r.ld?"Neuer ToDo-Tag":(r.c.node.date?"Neue Fälligkeit":"Neue Deadline")}</label> <input type="date" class="ch_d" value="${esc(r.prop)}" style="${inp}"></div></div>`).join("")}</div>
       <div class="modal-actions"><button class="btn-ghost" id="ch_x">Abbrechen</button><button class="btn-ghost" id="ch_skip">Nicht anpassen</button><button class="btn-primary" id="ch_ok">Anpassen</button></div></div></div>`);
     const bg = $("chBg"), done = v=>{ bg.remove(); resolve(v); };
     $("ch_all").onclick = ()=>bg.querySelectorAll(".ch_on").forEach(x=>x.checked = true);
@@ -4193,9 +4203,15 @@ function wsAskChildren(doc, parent, nd, nur, nl, force){
       const ups = [];
       bg.querySelectorAll("[data-i]").forEach(el=>{
         if(!el.querySelector(".ch_on").checked) return;
-        const r = rows[+el.dataset.i], v = el.querySelector(".ch_d").value;
-        if(!tmOk(v) || v===r.base) return;
-        const diff = tmDN(v)-tmDN(r.base), n = r.c.node;
+        const r = rows[+el.dataset.i], v = el.querySelector(".ch_d").value, n = r.c.node;
+        if(!tmOk(v)) return;
+        if(r.ld){                                   // ToDo-Tag gewählt; Start und Deadline wandern um die vorgeschlagene Verschiebung
+          if(v===r.base && !r.delta) return;
+          ups.push({c:r.c, date:n.date?wsShiftDay(n.date, r.delta):"", dl:n.dl?wsShiftDay(n.dl, r.delta):"", ld:v});
+          return;
+        }
+        if(v===r.base) return;
+        const diff = tmDN(v)-tmDN(r.base);
         ups.push({c:r.c, date:n.date?wsShiftDay(n.date, diff):"", dl:n.dl?wsShiftDay(n.dl, diff):""});
       });
       done({updates:ups, found:rows.length});
@@ -4207,7 +4223,13 @@ async function wsApplyChildUpdates(doc, ups){
   for(const u of ups){
     const n = u.c.node;
     if(u.c.kind==="head"){ n.date = u.date; n.dl = u.dl; wsTouch(doc); }
-    else await wsApplyMenuCore(doc.id, n.id, {date:u.date, dur:n.dur>0?n.dur:0, dl:u.dl, meta:!!n.meta, cal:!!(n.link && n.link.cal)});
+    else{
+      await wsApplyMenuCore(doc.id, n.id, {date:u.date, dur:n.dur>0?n.dur:0, dl:u.dl, meta:!!n.meta, cal:!!(n.link && n.link.cal)});
+      if(u.ld && n.ld!==u.ld && !(n.link && n.link.kind==="goal" && u.ld<todayKey())){      // ToDo-Tag eigens setzen und mit ToDo/Ziel abgleichen
+        n.ld = u.ld;
+        if(n.link) await wsLinkRun(()=>wsSyncItem(doc, n, !!n.link.cal)); else wsTouch(doc);
+      }
+    }
   }
   toast(ups.length+(ups.length===1?" Unterpunkt":" Unterpunkte")+" neu zugeordnet");
 }

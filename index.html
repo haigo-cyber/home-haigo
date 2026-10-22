@@ -2906,12 +2906,17 @@ function render(){
     if(goalTasks.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,goalTasks.length);
     
     const today=todayKey();
+    const fmt=(k)=>new Date(k).toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"numeric"});
     const overdueGoals=allOpenGoals.filter(g=>g.due<today).sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
     if(overdueGoals.length){
-      h+=`<div class="section-title">Überfällig</div>`+overdueGoals.map(goalTaskCard).join("");
+      h+=`<div class="section-title">Überfällig</div>`;
+      const od={}; overdueGoals.forEach(g=>{ (od[g.due]=od[g.due]||[]).push(g); });
+      Object.entries(od).forEach(([k,goals])=>{
+        h+=`<div class="sub" style="margin:10px 4px 4px;font-weight:bold">${fmt(k)}</div><div class="g-list">`+goals.map(g=>goalTaskCard(g,true)).join("")+`</div>`;
+      });
     }
     if(undatedGoals.length){
-      h+=`<div class="section-title">Ohne Datum</div>`+undatedGoals.map(goalTaskCard).join("");
+      h+=`<div class="section-title">Ohne Datum</div><div class="g-list">`+undatedGoals.map(g=>goalTaskCard(g,true)).join("")+`</div>`;
     }
     // Kommende Tage: alle künftigen offenen Ziele, nach Datum
     const upcomingGoals={};
@@ -2919,11 +2924,10 @@ function render(){
     const hasUpcoming=Object.values(upcomingGoals).some(arr=>arr.length>0);
     if(hasUpcoming){
       h+=`<div class="section-title">Kommende Tage</div>`;
-      const fmt=(k)=>new Date(k).toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"numeric"});
       Object.entries(upcomingGoals).forEach(([k,goals])=>{
         if(goals.length>0){
           h+=`<div class="sub" style="margin:10px 4px 4px;font-weight:bold">${fmt(k)}</div>`;
-          h+=goals.map(goalTaskCard).join("");
+          h+=`<div class="g-list">`+goals.map(g=>goalTaskCard(g,true)).join("")+`</div>`;
         }
       });
     }
@@ -3529,7 +3533,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v211";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v212";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -9886,10 +9890,13 @@ function gGripUp(e){
 }
 function gSaveOrder(id, order){
   /* lokal sofort umsortieren: heutige offene Ziele in ihren Plätzen nach der neuen Reihenfolge */
-  const today = todayKey(), slots = [];
-  allOpenGoals.forEach((g,i)=>{ if(order.includes(g.id)) slots.push(i); });
-  const objs = order.map(x=>allOpenGoals.find(g=>g.id===x)).filter(Boolean);
-  if(objs.length===slots.length) slots.forEach((si,k)=>{ allOpenGoals[si] = objs[k]; });
+  const today = todayKey();
+  const reorder = arr=>{
+    const slots = []; arr.forEach((g,i)=>{ if(order.includes(g.id)) slots.push(i); });
+    const objs = order.map(x=>arr.find(g=>g.id===x)).filter(Boolean);
+    if(objs.length===slots.length) slots.forEach((si,k)=>{ arr[si] = objs[k]; });
+  };
+  reorder(allOpenGoals); reorder(allGTasks);
   goalTasks = [...allOpenGoals.filter(g=>g.due===today), ...goalTasks.filter(g=>g.completed)];
   const k = order.indexOf(id), prev = k>0 ? order[k-1] : "";
   gMoveQ = gMoveQ.then(async ()=>{

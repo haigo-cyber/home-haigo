@@ -737,7 +737,8 @@
 .tm-days span{position:absolute;top:2px;font-size:10.5px;color:var(--muted);text-align:center;box-sizing:border-box;overflow:hidden}
 .tm-days span.we{opacity:.6}.tm-days span.td{color:#fff;font-weight:700}
 .tm-we{position:absolute;top:0;bottom:0;background:rgba(255,255,255,.035);pointer-events:none}
-.tm-k{position:absolute;height:14px;z-index:1;cursor:pointer}
+.tm-k{position:absolute;height:14px;z-index:1;cursor:grab;touch-action:none}
+.tm-k.drag{opacity:.7;cursor:grabbing;z-index:5}
 .tm-kb{display:block;height:14px;border-radius:4px;border:1px solid;box-sizing:border-box}
 .tm-k.done .tm-kb{background:rgba(120,130,145,.18)!important;border-color:#667082!important}
 .tm-k.bad .tm-kb{outline:2px solid var(--red);outline-offset:1px}
@@ -3577,7 +3578,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v218";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v219";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -4062,7 +4063,7 @@ function tmLanes(blocks){
   return {lane, n:Math.max(ends.length, 3)};
 }
 /* Unterpunkte (Kindprozesse) eines Meta-Projekts für die Zeitleiste: Zeitraum je Kind und Zusammenfassung */
-const TM_KID_ROWS = 10, TM_KID_H = 16;
+const TM_KID_ROWS = 60, TM_KID_H = 16;
 function tmKidInfo(h, b){
   if(!h) return null;
   const all = wsChildItems(h.doc, h.node), items = all.filter(k=>!(tm.hideDone && k.node.done));
@@ -4083,12 +4084,12 @@ function tmKidsHtml(b, ki, top, plo, phi){
   ki.shown.forEach(d=>{
     const n = d.k.node, l = (tmDN(d.st)-tm.range.from)*ppd, w = Math.max(ppd, (tmDN(d.en)-tmDN(d.st)+1)*ppd), inside = w>=90;
     const bad = !n.done && plo && (d.st<plo || d.en>phi), t = (wsTitleOf(n)||"(leer)");
-    out += `<div class="tm-k${n.done?" done":""}${bad?" bad":""}" data-kid="${esc(n.id)}" data-kk="${d.k.kind}" data-doc="${esc(ki.doc.id)}" title="${esc(t)} · ${esc(tmShort(d.st))}${d.en!==d.st?"–"+esc(tmShort(d.en)):""}${n.done?" · erledigt":""}${bad?" · außerhalb des Zeitraums":""}" style="left:${l}px;top:${top+row*TM_KID_H}px;width:${w}px"><i class="tm-kb" style="${n.done?"":"background:"+esc(b.color)+"55;"}border-color:${esc(b.color)}"></i><span class="tm-kt${inside?" in":""}">${n.done?"✓ ":""}${d.k.kind==="head"?"§ ":""}${esc(t.slice(0,60))}</span></div>`;
+    out += `<div class="tm-k${n.done?" done":""}${bad?" bad":""}" data-kid="${esc(n.id)}" data-kk="${d.k.kind}" data-doc="${esc(ki.doc.id)}" data-st="${esc(d.st)}" data-en="${esc(d.en)}" title="${esc(t)} · ${esc(tmShort(d.st))}${d.en!==d.st?"–"+esc(tmShort(d.en)):""}${n.done?" · erledigt":""}${bad?" · außerhalb des Zeitraums":""}" style="left:${l}px;top:${top+row*TM_KID_H}px;width:${w}px"><i class="tm-kb" style="${n.done?"":"background:"+esc(b.color)+"55;"}border-color:${esc(b.color)}"></i><span class="tm-kt${inside?" in":""}">${n.done?"✓ ":""}${d.k.kind==="head"?"§ ":""}${esc(t.slice(0,60))}</span></div>`;
     row++;
   });
   if(ki.more>0 || ki.und.length){
     const parts = []; if(ki.more>0) parts.push("+ "+ki.more+" weitere mit Datum"); if(ki.und.length) parts.push(ki.und.length+" ohne Datum");
-    out += `<div class="tm-km" style="left:${Math.max(0,(tmDN(b.start)-tm.range.from)*ppd)}px;top:${top+row*TM_KID_H}px">${esc(parts.join(" · "))} (im Menü)</div>`;
+    out += `<div class="tm-km" data-kmore="${esc((b.src&&b.src.ref)||"")}" title="Alle Unterpunkte anzeigen und bearbeiten" style="cursor:pointer;text-decoration:underline;left:${Math.max(0,(tmDN(b.start)-tm.range.from)*ppd)}px;top:${top+row*TM_KID_H}px">${esc(parts.join(" · "))} (anklicken)</div>`;
   }
   return out;
 }
@@ -4447,6 +4448,76 @@ function tmAct(a, el){
   else if(a==="hf"){ tm.hideFlags = !tm.hideFlags; try{ localStorage.setItem("tmHideFlags", tm.hideFlags?"1":"0"); }catch(_){} render(); }
   else if(a==="hd"){ tm.hideDone = !tm.hideDone; try{ localStorage.setItem("tmHideDone", tm.hideDone?"1":"0"); }catch(_){} render(); }
 }
+/* ---- Ziehen in der Struktur wirkt auf den Arbeitsbereich: Meta-Projekt und Unterpunkte ---- */
+function tmAsk3(msg, labels){
+  return new Promise(resolve=>{
+    document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="tmaBg"><div class="modal"><h2>Verschieben</h2><p style="font-size:14px;margin-bottom:12px">${msg}</p>
+      <div class="modal-actions" style="flex-direction:column;gap:8px">${labels.map((l,i)=>`<button class="${i===0?"btn-primary":"btn-ghost"}" data-a="${i}" style="width:100%">${esc(l)}</button>`).join("")}</div></div></div>`);
+    const bg = document.getElementById("tmaBg");
+    bg.onclick = e=>{ const b = e.target.closest("[data-a]"); if(b){ bg.remove(); resolve(+b.dataset.a); } else if(e.target===bg){ bg.remove(); resolve(labels.length-1); } };
+  });
+}
+function tmShiftUp(c, delta){
+  const n = c.node, sh = k=>k ? wsShiftDay(k, delta) : "";
+  return {c, date:sh(n.date), dl:sh(n.dl), ld:sh(n.ld)};
+}
+function tmHasDates(n){ return !!((n.date && wsIsDate(n.date)) || (n.dl && wsIsDate(n.dl)) || (n.ld && wsIsDate(n.ld))); }
+async function tmApplyParent(h, date, dur, dl){
+  const n = h.node;
+  if(n.type==="heading"){ n.date = date; n.dl = dl; if(n.dur!==undefined) n.dur = dur; wsTouch(h.doc); }
+  else await wsApplyMenuCore(h.doc.id, n.id, {date, dur, dl, meta:!!n.meta, cal:!!(n.link && n.link.cal)});
+}
+async function tmCommitDrag(blk, d){
+  const ns = tmKey(d.ns), ne = tmKey(d.ne);
+  const h = (blk.src && typeof wsLoaded!=="undefined" && wsLoaded) ? tmMetaMap().get(blk.src.ref) : null;
+  const plain = ()=>{ blk.start = ns; blk.end = ne; tmDirty(); render(); };
+  if(!h){ plain(); return; }
+  const n = h.node, delta = d.ns - d.s0, days = d.ne-d.ns+1;
+  try{
+    if(d.mode==="m"){
+      const kids = wsChildItems(h.doc, n).filter(c=>!c.node.done && tmHasDates(c.node));
+      let a = 1;
+      if(kids.length) a = await tmAsk3("„"+esc((wsTitleOf(n)||"Meta-Projekt").slice(0,50))+"“ um "+Math.abs(delta)+(Math.abs(delta)===1?" Tag":" Tage")+(delta>0?" nach hinten":" nach vorn")+" verschieben. "+kids.length+(kids.length===1?" Unterpunkt hat":" Unterpunkte haben")+" ein eigenes Datum.", ["Mit allen Unterpunkten verschieben","Nur das Meta-Projekt verschieben","Abbrechen"]);
+      if(a===2){ render(); return; }
+      blk.start = ns; blk.end = ne; tmDirty();
+      if(wsSpan(n)) await tmApplyParent(h, n.date?wsShiftDay(n.date,delta):"", n.dur>0?n.dur:0, n.dl?wsShiftDay(n.dl,delta):"");
+      else await tmApplyParent(h, ns, days, "");
+      if(a===0 && kids.length) await wsApplyChildUpdates(h.doc, kids.map(c=>tmShiftUp(c, delta)));
+      else toast("Meta-Projekt verschoben");
+    }else{
+      const nd = ns, nur = days, nl = n.dl ? (d.mode==="r" ? ne : n.dl) : "";
+      const r = await wsAskChildren(h.doc, n, nd, nur, nl, false);
+      if(r.cancel){ render(); return; }
+      blk.start = ns; blk.end = ne; tmDirty();
+      await tmApplyParent(h, nd, nur, nl);
+      if(r.updates && r.updates.length) await wsApplyChildUpdates(h.doc, r.updates); else toast("Zeitraum übernommen");
+    }
+  }catch(err){ console.error(err); toast("Übernehmen fehlgeschlagen: "+(err.message||err)); }
+  render();
+}
+async function tmCommitKid(d){
+  const doc = wsGet(d.kid.doc), delta = d.ns - d.s0;
+  const root = doc && (d.kid.kk==="head" ? wsBlock(doc, d.kid.id) : wsFindNode(doc, d.kid.id) && wsFindNode(doc, d.kid.id).node);
+  if(!root){ render(); return; }
+  try{
+    const items = [{node:root, kind:d.kid.kk==="head"?"head":"node"}].concat(wsChildItems(doc, root)).filter(c=>c===undefined?false:(c.node===root || (!c.node.done && tmHasDates(c.node))));
+    const ups = items.filter(c=>tmHasDates(c.node)).map(c=>tmShiftUp(c, delta));
+    await wsApplyChildUpdates(doc, ups);
+  }catch(err){ console.error(err); toast("Übernehmen fehlgeschlagen: "+(err.message||err)); }
+  render();
+}
+/* Liste aller Unterpunkte eines Meta-Projekts: anklicken öffnet das Bearbeiten-Menü */
+function tmKidsList(ref){
+  if(document.getElementById("modalBg")) return;
+  const h = tmMetaMap().get(ref); if(!h) return;
+  const items = wsChildItems(h.doc, h.node);
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>Unterpunkte</h2><p class="muted" style="font-size:13px;margin-bottom:8px">Antippen zum Bearbeiten.</p>
+    <div class="ws-implist" id="tk_list">${items.map((c,i)=>{ const n = c.node, sp = wsSpan(n); return `<div class="ws-improw" data-i="${i}" style="cursor:pointer;padding-left:${Math.min(c.depth,4)*14}px"><span class="ws-imptx">${n.done?"✓ ":""}${c.kind==="head"?"§ ":""}${esc((wsTitleOf(n)||"(leer)").slice(0,70))}<br><span class="muted" style="font-size:12px">${sp?esc(tmShort(sp.start))+(sp.end!==sp.start?"–"+esc(tmShort(sp.end)):""):"ohne Datum"}</span></span></div>`; }).join("") || `<div class="muted center" style="padding:14px">Keine Unterpunkte.</div>`}</div>
+    <div class="modal-actions"><button class="btn-primary" id="tk_close">Schließen</button></div></div></div>`);
+  $("tk_list").onclick = e=>{ const r = e.target.closest("[data-i]"); if(!r) return; const c = items[+r.dataset.i]; $("modalBg").remove(); wsOpenItemMenu(h.doc.id, c.kind==="head"?"block":"node", c.node.id, null); };
+  $("tk_close").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+}
 function tmDragApply(clientX){
   const d = tm.drag; if(!d) return;
   const sc = document.getElementById("tm_scroll"); if(!sc) return;
@@ -4464,6 +4535,20 @@ function tmDragApply(clientX){
 }
 function tmDown(e){
   if(view!=="plan" || tp.mode!=="meta") return;
+  const kb = e.target.closest && e.target.closest(".tm-k[data-kid]");
+  if(kb && kb.closest("#tm_track") && kb.dataset.st && kb.dataset.en && !(e.pointerType==="mouse" && e.button!==0)){
+    const sc0 = document.getElementById("tm_scroll");
+    tm.drag = {kid:{id:kb.dataset.kid, kk:kb.dataset.kk, doc:kb.dataset.doc}, id:"", mode:"m", x0:e.clientX, sl0:sc0?sc0.scrollLeft:0, s0:tmDN(kb.dataset.st), e0:tmDN(kb.dataset.en), ns:tmDN(kb.dataset.st), ne:tmDN(kb.dataset.en), moved:false, el:kb, pid:e.pointerId, lastX:e.clientX, timer:null};
+    try{ kb.setPointerCapture(e.pointerId); }catch(_){}
+    kb.classList.add("drag");
+    tm.drag.timer = setInterval(()=>{
+      const d = tm.drag, s2 = document.getElementById("tm_scroll"); if(!d || !s2 || !d.moved) return;
+      const r = s2.getBoundingClientRect();
+      if(d.lastX < r.left+40) s2.scrollLeft -= 14; else if(d.lastX > r.right-40) s2.scrollLeft += 14; else return;
+      tmDragApply(d.lastX);
+    }, 30);
+    e.preventDefault(); return;
+  }
   const b = e.target.closest && e.target.closest(".tm-b"); if(!b || !b.closest("#tm_track")) return;
   if(e.target.closest("[data-ck]")) return;
   if(e.pointerType==="mouse" && e.button!==0) return;
@@ -4485,14 +4570,22 @@ function tmUp(e){
   const d = tm.drag; if(!d || e.pointerId!==d.pid) return;
   clearInterval(d.timer); tm.drag = null; d.el.classList.remove("drag");
   tm.suppressClick = Date.now();
+  if(d.kid){
+    if(d.moved && e.type==="pointerup" && d.ns!==d.s0){ tmCommitKid(d); }
+    else if(!d.moved && e.type==="pointerup"){ wsOpenItemMenu(d.kid.doc, d.kid.kk==="head"?"block":"node", d.kid.id, null); }
+    else render();
+    return;
+  }
   const blk = tmBlock(d.id);
-  if(d.moved && e.type==="pointerup" && blk){ blk.start = tmKey(d.ns); blk.end = tmKey(d.ne); tmDirty(); render(); }
+  if(d.moved && e.type==="pointerup" && blk){ tmCommitDrag(blk, d); }
   else if(!d.moved && e.type==="pointerup" && blk){ tmEdit(blk.id); }
   else render();
 }
 function tmClick(e){
   if(view!=="plan" || tp.mode!=="meta") return;
   const ck = e.target.closest && e.target.closest("[data-ck]");
+  const km = e.target.closest && e.target.closest(".tm-km[data-kmore]");
+  if(km){ tmKidsList(km.dataset.kmore); return; }
   const kidEl = e.target.closest && e.target.closest(".tm-k[data-kid]");
   if(kidEl && !(typeof tm!=="undefined" && Date.now()-tm.suppressClick<350)){ wsOpenItemMenu(kidEl.dataset.doc, kidEl.dataset.kk==="head"?"block":"node", kidEl.dataset.kid, null); return; }
   if(ck){ const b = ck.closest(".tm-b"); const blk = b && tmBlock(b.dataset.id); if(blk){ blk.done = !blk.done; tmDirty(); render(); } return; }

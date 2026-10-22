@@ -46,6 +46,10 @@
   .card{background:#ffe0cc;border:1px solid var(--line);border-radius:var(--radius);
     padding:13px 14px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
   .card .body{flex:1;min-width:0}
+  .g-grip{flex:0 0 auto;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;font-size:20px;line-height:1;padding:8px 4px;margin:-8px 0 -8px -6px;color:var(--muted)}
+  .g-grip:active{cursor:grabbing}
+  .g-list .card.g-drag{box-shadow:0 8px 22px rgba(0,0,0,.55);transform:scale(1.015);position:relative;z-index:5;opacity:.95}
+  .g-list.g-sorting{user-select:none;-webkit-user-select:none}
   .card .title{font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;color:#000}
   .card .sub{font-size:12px;color:#000;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .card.done .title{text-decoration:line-through;color:var(--muted)}
@@ -1642,7 +1646,8 @@ async function loadGTasks(){
     });
     // Ziele: ALLE mit Marker (offene + heute erledigte jeweils), aber filtern nur heute für Anzeige
     allOpenGoals=openItems.filter(t=>isGoalTask(t) && t.due)
-      .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false, due:t.due.slice(0,10)}));
+      .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false, due:t.due.slice(0,10), position:t.position||""}))
+      .sort((a,b)=>a.position<b.position?-1:a.position>b.position?1:0);      // Reihenfolge wie in Google Tasks (per Ziehen änderbar)
     const allDoneGoals=doneItems.filter(t=>isGoalTask(t) && t.due)
       .map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:true, due:t.due.slice(0,10)}));
     // Für Heute-Ansicht und Ziele-Tab: nur heutige Ziele
@@ -2381,9 +2386,10 @@ function goalCard(t){
     </div>
   </div>`;
 }
-function goalTaskCard(g){
-  return `<div class="card${g.completed?' done':''}" style="border-left:4px solid var(--amber)">
-    <div class="check${g.completed?' on':''}" data-${g.completed?'guncheck':'gtask'}="${g.id}">${checkSvg()}</div>
+function goalTaskCard(g, sortable){
+  const grip = (sortable && !g.completed) ? `<div class="g-grip" data-ggrip="${g.id}" title="Ziehen zum Sortieren">⠿</div>` : "";
+  return `<div class="card${g.completed?' done':''}" style="border-left:4px solid var(--amber)"${grip?` data-gid="${g.id}"`:""}>
+    ${grip}<div class="check${g.completed?' on':''}" data-${g.completed?'guncheck':'gtask'}="${g.id}">${checkSvg()}</div>
     <div class="body"><div class="title" style="color:#000">${esc(g.title)}</div>${wsGoalDateLine(g)}</div>
     <div class="row-actions">
       ${wsTaskBtns("goal",g.id)}
@@ -2748,7 +2754,7 @@ function render(){
     if(goalTasks.length){
       const gd=goalTasks.filter(g=>g.completed).length;
       h+=`<div class="section-title">Tages-Ziele</div>`+pieBlock(gd,goalTasks.length);
-      h+=goalTasks.map(goalTaskCard).join("");
+      h+=`<div class="g-list">`+goalTasks.filter(g=>!g.completed).map(g=>goalTaskCard(g,true)).join("")+`</div>`+goalTasks.filter(g=>g.completed).map(g=>goalTaskCard(g)).join("");
     }
     h+=`<div class="section-title">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}</div>`;
     if(topProjects.length){
@@ -2896,7 +2902,7 @@ function render(){
     const doneCount=goalTasks.filter(g=>g.completed).length;
     const openToday=goalTasks.filter(g=>!g.completed);
     const undatedGoals=allGTasks.filter(t=>isGoalTask(t) && !t.due).map(t=>({id:t.id, title:t.title||"(ohne Titel)", completed:false, due:""}));
-    let h=openToday.length?openToday.map(goalTaskCard).join(""):(goalTasks.length?"":empty("Noch keine Tages-Ziele. Bis zu "+GOAL_MAX+" mit + anlegen."));
+    let h=openToday.length?`<div class="g-list">`+openToday.map(g=>goalTaskCard(g,true)).join("")+`</div>`:(goalTasks.length?"":empty("Noch keine Tages-Ziele. Bis zu "+GOAL_MAX+" mit + anlegen."));
     if(goalTasks.length) h+=`<div class="section-title">Heute erreicht</div>`+pieBlock(doneCount,goalTasks.length);
     
     const today=todayKey();
@@ -3523,7 +3529,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v210";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v211";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -9831,6 +9837,78 @@ function wsCmOpen(btn){
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-cmenu]"); if(b){ e.preventDefault(); e.stopPropagation(); wsCmOpen(b); } }, true);
 new MutationObserver(()=>wsCmDecorate()).observe(document.getElementById("main"), {childList:true, subtree:true});
 wsCmDecorate();
+/* ---- Tages-Ziele per Ziehen sortieren (Griff links an der Karte); die Reihenfolge wird in Google Tasks gespeichert ---- */
+let gDrag = null, gDragAt = 0, gMoveQ = Promise.resolve();
+function gScrollParent(el){
+  for(let p = el.parentElement; p && p!==document.body; p = p.parentElement){
+    const o = getComputedStyle(p).overflowY; if((o==="auto" || o==="scroll") && p.scrollHeight>p.clientHeight) return p;
+  }
+  return null;
+}
+function gGripDown(e){
+  const grip = e.target.closest && e.target.closest("[data-ggrip]"); if(!grip) return;
+  if(e.button!==undefined && e.button!==0) return;
+  const card = grip.closest(".card"), list = card && card.parentElement; if(!list) return;
+  e.preventDefault();
+  gDrag = {grip, card, list, id:grip.dataset.ggrip, pid:e.pointerId, y:e.clientY, before:[...list.querySelectorAll("[data-gid]")].map(c=>c.dataset.gid), sp:gScrollParent(list), raf:0};
+  try{ grip.setPointerCapture(e.pointerId); }catch(_){}
+  card.classList.add("g-drag"); list.classList.add("g-sorting");
+}
+function gGripMove(e){
+  if(!gDrag || e.pointerId!==gDrag.pid) return;
+  gDrag.y = e.clientY;
+  gDragStep();
+  if(!gDrag.raf) gDrag.raf = requestAnimationFrame(gAuto);
+}
+function gDragStep(){
+  const d = gDrag; if(!d) return;
+  const sibs = [...d.list.querySelectorAll("[data-gid]")].filter(c=>c!==d.card);
+  const next = sibs.find(c=>{ const r = c.getBoundingClientRect(); return d.y < r.top + r.height/2; });
+  if(next){ if(d.card.nextElementSibling!==next) d.list.insertBefore(d.card, next); }
+  else{ const last = sibs[sibs.length-1]; if(last && d.card.previousElementSibling!==last) last.after(d.card); }
+}
+function gAuto(){
+  const d = gDrag; if(!d) return; d.raf = 0;
+  const top = d.sp ? d.sp.getBoundingClientRect().top : 0, bot = d.sp ? d.sp.getBoundingClientRect().bottom : window.innerHeight;
+  const zone = 60; let dy = 0;
+  if(d.y < top+zone) dy = -Math.ceil((top+zone-d.y)/4); else if(d.y > bot-zone) dy = Math.ceil((d.y-(bot-zone))/4);
+  if(dy){ if(d.sp) d.sp.scrollTop += dy; else window.scrollBy(0, dy); gDragStep(); d.raf = requestAnimationFrame(gAuto); }
+}
+function gGripUp(e){
+  const d = gDrag; if(!d || (e && e.pointerId!==d.pid)) return;
+  gDrag = null; if(d.raf) cancelAnimationFrame(d.raf);
+  try{ d.grip.releasePointerCapture(d.pid); }catch(_){}
+  d.card.classList.remove("g-drag"); d.list.classList.remove("g-sorting");
+  gDragAt = Date.now();
+  const after = [...d.list.querySelectorAll("[data-gid]")].map(c=>c.dataset.gid);
+  if(after.join("|")===d.before.join("|")) return;
+  gSaveOrder(d.id, after);
+}
+function gSaveOrder(id, order){
+  /* lokal sofort umsortieren: heutige offene Ziele in ihren Plätzen nach der neuen Reihenfolge */
+  const today = todayKey(), slots = [];
+  allOpenGoals.forEach((g,i)=>{ if(order.includes(g.id)) slots.push(i); });
+  const objs = order.map(x=>allOpenGoals.find(g=>g.id===x)).filter(Boolean);
+  if(objs.length===slots.length) slots.forEach((si,k)=>{ allOpenGoals[si] = objs[k]; });
+  goalTasks = [...allOpenGoals.filter(g=>g.due===today), ...goalTasks.filter(g=>g.completed)];
+  const k = order.indexOf(id), prev = k>0 ? order[k-1] : "";
+  gMoveQ = gMoveQ.then(async ()=>{
+    try{
+      await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId || "@default")}/tasks/${encodeURIComponent(id)}/move`+(prev?`?previous=${encodeURIComponent(prev)}`:""), {method:"POST"});
+    }catch(err){
+      console.error("❌ Ziel verschieben:", err && err.message);
+      toast("Reihenfolge konnte nicht gespeichert werden");
+      try{ await loadGTasks(); }catch(_){}
+      render();
+    }
+  });
+}
+document.addEventListener("pointerdown", gGripDown);
+document.addEventListener("pointermove", gGripMove);
+document.addEventListener("pointerup", gGripUp);
+document.addEventListener("pointercancel", gGripUp);
+document.addEventListener("click", e=>{ if(Date.now()-gDragAt<350 && e.target.closest && e.target.closest(".g-list")){ e.preventDefault(); e.stopPropagation(); } }, true);
+
 /* Fälligkeit auf ToDo-Karten: lesbares Datum statt Rohtext */
 function wsCardDate(t){
   if(t && t.type==="todo" && t.scheduleType!=="weekly" && wsIsDate(t.startDate||"")){

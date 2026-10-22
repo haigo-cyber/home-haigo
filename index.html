@@ -1782,6 +1782,13 @@ function completeCalEvent(eventId){
 
 /* ---- Google Task abhaken ---- */
 async function completeGTask(taskId){
+  if(typeof wsLoaded!=="undefined" && wsLoaded){
+    const h = wsFindByLink(wsDocs, "goal", taskId);
+    if(h && !h.node.done){
+      const go = await new Promise(res=>wsGuardDone(h.doc, h.node, ()=>res(true), ()=>res(false)));
+      if(!go){ render(); return; }
+    }
+  }
   setSync("busy");
   try{
     const gt=gtasks.find(t=>t.id===taskId);
@@ -2323,6 +2330,13 @@ async function purgeStaleGoals(){
   return true;
 }
 async function toggleDone(id, key){
+  if(key==="once" && !isEverDone(id) && typeof wsLoaded!=="undefined" && wsLoaded){
+    const h = wsFindByLink(wsDocs, "todo", id);
+    if(h && !h.node.done){
+      const go = await new Promise(res=>wsGuardDone(h.doc, h.node, ()=>res(true), ()=>res(false)));
+      if(!go){ render(); return; }
+    }
+  }
   setSync("busy");
   if(key==="once"){
     // Einmaliges ToDo: Erledigung dauerhaft (nicht datumsgebunden)
@@ -3578,7 +3592,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v219";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v220";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -4588,7 +4602,11 @@ function tmClick(e){
   if(km){ tmKidsList(km.dataset.kmore); return; }
   const kidEl = e.target.closest && e.target.closest(".tm-k[data-kid]");
   if(kidEl && !(typeof tm!=="undefined" && Date.now()-tm.suppressClick<350)){ wsOpenItemMenu(kidEl.dataset.doc, kidEl.dataset.kk==="head"?"block":"node", kidEl.dataset.kid, null); return; }
-  if(ck){ const b = ck.closest(".tm-b"); const blk = b && tmBlock(b.dataset.id); if(blk){ blk.done = !blk.done; tmDirty(); render(); } return; }
+  if(ck){ const b = ck.closest(".tm-b"); const blk = b && tmBlock(b.dataset.id); if(blk){
+    const go = ()=>{ blk.done = !blk.done; tmDirty(); render(); };
+    const h = (!blk.done && blk.src && typeof wsLoaded!=="undefined" && wsLoaded) ? tmMetaMap().get(blk.src.ref) : null;
+    if(h && h.node.type!=="heading") wsGuardDone(h.doc, h.node, go, ()=>{}); else go();
+  } return; }
   const a = e.target.closest && e.target.closest("[data-tm]");
   if(a){ tmAct(a.dataset.tm, a); return; }
   if(e.target.closest && e.target.closest(".tm-b")) return;
@@ -7559,8 +7577,10 @@ main.addEventListener("click", e=>{
   }
   const doc = wsGet(card.dataset.did), r = doc && wsFindNode(doc, card.dataset.nid); if(!r) return;
   if(act==="wk-done"){
-    r.node.done = !r.node.done; wsTouch(doc); render();
-    if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+    wsGuardDone(doc, r.node, ()=>{
+      r.node.done = !r.node.done; wsTouch(doc); render();
+      if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+    });
     return;
   }
   if(act==="wk-edit"){ wsOpenLinkMenu(doc.id, r.node.id); return; }
@@ -8488,8 +8508,10 @@ main.addEventListener("click", e=>{
   }
   if(act==="meta-done"){
     const hit = wsMetaNodes().find(h=>h.node.id===a.dataset.nid); if(!hit) return;
-    hit.node.done = true; wsFocusDrop(hit.doc, hit.node.id); wsTouch(hit.doc); render();
-    if(hit.node.link) wsLinkRun(()=>wsPushDone(hit.doc, hit.node));
+    wsGuardDone(hit.doc, hit.node, ()=>{
+      hit.node.done = true; wsFocusDrop(hit.doc, hit.node.id); wsTouch(hit.doc); render();
+      if(hit.node.link) wsLinkRun(()=>wsPushDone(hit.doc, hit.node));
+    });
     return;
   }
   if(act==="dl-open"){
@@ -8502,8 +8524,10 @@ main.addEventListener("click", e=>{
     const hb = (d && !r0) ? d.blocks.find(x=>x.id===a.dataset.nid && x.type==="heading") : null;
     if(hb){ hb.done = true; wsFocusDrop(d, hb.id); wsTouch(d); render(); return; }
     const r = r0; if(!r) return;
-    r.node.done = true; wsTouch(d); render();
-    if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(d, node)); }
+    wsGuardDone(d, r.node, ()=>{
+      r.node.done = true; wsTouch(d); render();
+      if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(d, node)); }
+    });
     return;
   }
   if(act==="gs-go"){
@@ -8624,8 +8648,10 @@ main.addEventListener("click", e=>{
       return;
     }
     if(act==="done"){
-      r.node.done = !r.node.done; if(r.node.done) wsFocusDrop(doc, r.node.id); wsTouch(doc); wsRerender(doc.id);
-      if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+      wsGuardDone(doc, r.node, ()=>{
+        r.node.done = !r.node.done; if(r.node.done) wsFocusDrop(doc, r.node.id); wsTouch(doc); wsRerender(doc.id);
+        if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+      });
       return;
     }
     if(act==="link-menu"){ wsOpenLinkMenu(doc.id, nid); return; }
@@ -9510,6 +9536,11 @@ function wsOpenLinkMenu(docId, nid){
       const nu = parseInt(o.dur, 10);
       const r2 = await wsAskChildren(doc, n, wsIsDate(o.date)?o.date:"", (nu>0 && nu<=3660)?nu:0, wsIsDate(o.dl)?o.dl:"");
       if(r2.cancel) return; upd = r2.updates;
+    }
+    if(!att && o.done && !n.done && wsOpenKids(n).length){
+      const g = await wsConfirmKids(n);
+      if(g===null) return;
+      if(g==="all") wsDoneKids(doc, n);
     }
     $("modalBg").remove(); await wsApplyMenu(docId, nid, o);
     await wsApplyChildUpdates(doc, upd);
@@ -10525,6 +10556,30 @@ async function wsDeleteDocFlow(doc){
 }
 
 /* ---- Eintrag -> Punkt: Änderungen aus den übrigen Ansichten der App ---- */
+/* ---- Elternpunkt abhaken: offene Unterpunkte nie stillschweigend übergehen ---- */
+function wsOpenKids(n){ const out = []; const w = a=>(a||[]).forEach(c=>{ if(!c.done) out.push(c); w(c.children); }); w(n.children); return out; }
+function wsDoneKids(doc, n){
+  wsOpenKids(n).forEach(c=>{ c.done = true; wsFocusDrop(doc, c.id); if(c.link){ const x = c; wsLinkRun(()=>wsPushDone(doc, x)); } });
+  wsTouch(doc);
+}
+function wsConfirmKids(n){
+  return new Promise(resolve=>{
+    const k = wsOpenKids(n).length;
+    document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="wskBg"><div class="modal"><h2>Unterpunkte sind noch offen</h2>
+      <p style="font-size:14px;margin-bottom:12px">Unter „${esc((wsTitleOf(n)||"Punkt").slice(0,60))}“ ${k===1?"ist":"sind"} noch ${k} Unterpunkt${k===1?"":"e"} nicht erledigt. Was soll geschehen?</p>
+      <div class="modal-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+        <button class="btn-primary" data-a="all">Alle Unterpunkte ebenfalls erledigen</button>
+        <button class="btn-ghost" data-a="only">Nur diesen Punkt erledigen</button>
+        <button class="btn-ghost" data-a="x">Abbrechen</button></div></div></div>`);
+    const bg = document.getElementById("wskBg"), done = v=>{ bg.remove(); resolve(v); };
+    bg.onclick = e=>{ const b = e.target.closest("[data-a]"); if(b) done(b.dataset.a==="x" ? null : b.dataset.a); else if(e.target===bg) done(null); };
+  });
+}
+/* go() läuft, wenn abgehakt werden darf (bei Bedarf nach Rückfrage), cancel() bei Abbruch */
+function wsGuardDone(doc, n, go, cancel){
+  if(!n || n.done || !wsOpenKids(n).length){ go(); return; }
+  wsConfirmKids(n).then(g=>{ if(g===null){ if(cancel) cancel(); return; } if(g==="all") wsDoneKids(doc, n); go(); });
+}
 function wsOnItemDone(kind, ref, done){
   if(!wsLoaded) return;
   const h = wsFindByLink(wsDocs, kind, ref); if(!h || h.node.done===done) return;

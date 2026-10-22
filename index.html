@@ -622,6 +622,16 @@
   .ws-plus:hover{background:#1c2a14}
   .ws-lean > .ws-add > .ws-addbtn:not(.ws-plusend){display:none}
 
+
+  /* Dokumente: schlanke Zeile = Griff, Pfeil, Haken, Text, Datum, ⋯ */
+  .ws-lean .ws-node:not(.more) > .ws-nrow .ws-handle{display:inline-block}
+  .ws-lean .ws-node:not(.more) > .ws-nrow .ws-plus,.ws-lean .ws-node:not(.more) > .ws-nrow .ws-lvt{display:none}
+  .ws-lean .ws-node:not(.more) > .ws-nrow .ws-metachip{display:inline-block}
+  .ws-qd{flex:none;background:transparent;border:1px dashed #30343b;color:#6d737e;border-radius:6px;font-size:12px;padding:1px 6px;cursor:pointer;line-height:18px;opacity:.7}
+  .ws-qd:hover{opacity:1;border-color:var(--amber)}
+  .ws-ghost{position:fixed;z-index:9999;pointer-events:none;background:#1c2027;border:1px solid var(--amber);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13.5px;max-width:70vw;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+  .ws-ghost small{display:block;color:var(--amber);font-size:11.5px;margin-top:2px}
+  body.ws-pdrag{user-select:none;-webkit-user-select:none;cursor:grabbing}
   /* alte Einzelknöpfe sind durch das Plus ersetzt */
   .ws-bbody > .ws-addbtn[data-wsact="add-root-node"],.ws-bbody > .ws-addbtn[data-wsact="import-root"],.ws-doc > .ws-add > .ws-addbtn:not(.ws-plusend){display:none !important}
 
@@ -3546,7 +3556,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v215";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v216";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -6385,7 +6395,7 @@ let wsTab = localStorage.getItem("wsTab") || "docs";                 // docs | g
 if(!["docs","week","gantt","3d","notes"].includes(wsTab)) wsTab = "docs";
 let wsOpenDocId = localStorage.getItem("wsOpenDoc") || null;
 const wsMore = new Set();     // Listenmodus: Einträge (Punkte und Blöcke), deren Knöpfe gerade aufgeklappt sind (nur diese Sitzung)
-let wsLean = false; try{ wsLean = localStorage.getItem("wsLean")==="1"; }catch(e){}
+let wsLean = true;                                                            // Dokumente-Ansicht ist immer schlank: Details liegen hinter dem ⋯
 let wsTodayExpanded = localStorage.getItem("wsTodayExp")==="1";
 let wsRev = 0;
 const wsDirty = new Map(), wsDeleted = new Map();                     // id -> Version der letzten lokalen Änderung
@@ -6557,9 +6567,9 @@ function wsNodeChips(n, part){
   if(wantD && !att && n.meta) h += `<button class="ws-lnk ws-metachip" data-wsact="link-menu" title="Meta-Projekt (oberste Ebene im Gantt)">★</button>`;
   if(wantD && n.date){
     const over = !n.done && (sp ? sp.end : n.date) < today;
-    h += `<button class="ws-date${over?" over":""}" data-wsact="link-menu" title="Termine und Verknüpfung einstellen">${esc(wsShortDate(n.date))}${(!att && n.dur)?" +"+n.dur+"T":""}</button>`;
+    h += `<button class="ws-date${over?" over":""}" data-wsact="${att?"link-menu":"qdate"}" title="${att?"Termine und Verknüpfung einstellen":"Datum ändern"}">${esc(wsShortDate(n.date))}${(!att && n.dur)?" +"+n.dur+"T":""}</button>`;
   }else if(wantD && sp){
-    h += `<button class="ws-date" data-wsact="link-menu" title="Zeitraum rückwärts von der Deadline berechnet">${esc(wsShortDate(sp.start))} ➜</button>`;
+    h += `<button class="ws-date" data-wsact="${att?"link-menu":"qdate"}" title="Zeitraum rückwärts von der Deadline berechnet">${esc(wsShortDate(sp.start))} ➜</button>`;
   }
   if(wantD && !att && n.dl) h += `<button class="ws-date dl${sp && sp.end>n.dl?" over":""}" data-wsact="link-menu" title="Deadline${sp && sp.end>n.dl?": Laufzeit reicht darüber hinaus":""}">⚑ ${esc(wsShortDate(n.dl))}</button>`;
   if(wantR && n.link) h += `<button class="ws-lnk" data-wsact="link-menu" title="${n.link.kind==="goal"?"Verknüpft mit Tages-Ziel":"Verknüpft mit ToDo"}${wsLinkDay(n)?" am "+wsShortDate(wsLinkDay(n)):""}${n.link.cal?" und Kalender":""}">${n.link.kind==="goal"?"🎯":"☑"}${n.link.cal?"📆":""}${(n.ld && n.ld!==n.date)?" "+esc(wsShortDate(n.ld)):""}</button>`;
@@ -6652,14 +6662,14 @@ function wsNodeHtml(n, depth, inh, base){
   const mo = wsMore.has(n.id);
   return `<li class="ws-node${n.done?" done":""}${n.hid?" hid":""}${mo?" more":""}" data-nid="${n.id}" data-lvl="${depth+base}" data-base="${base}">
     <div class="ws-nrow">
-      <span class="ws-handle sm" draggable="true" data-wsdrag="node" title="Ziehen: Punkt samt Unterpunkten verschieben">⠿</span>
+      <span class="ws-handle sm" data-wsdrag="node" title="Ziehen: Punkt samt Unterpunkten verschieben">⠿</span>
       <button class="ws-tog" data-wsact="toggle" title="${(hasKids||hasAtt)?(ticon==="▸"?"Aufklappen":"Zuklappen")+" (Umschalt-Klick: samt allen Ebenen darunter)":""}">${ticon}</button>
       <span class="ws-lvs n">${[1,2,3].map(k=>`<button class="ws-lvb${depth+base===k?" on":""}" data-wsact="node-set" data-k="${k}" title="Zu Ebene ${k} machen">E${k}</button>`).join("")}${depth+base>3?`<span class="ws-lvx" title="aktuelle Ebene">E${depth+base}</span>`:""}</span>
       <span class="ws-lvt" title="Ebene ${depth+base}">E${depth+base}</span><button class="ws-chk${n.done?" on":""}" data-wsact="done" title="Erledigt">${n.done?"✓":""}</button>
       <textarea class="ws-in ws-nin ws-nta" rows="1" data-wsf="node" data-v="${esc(n.text)}" placeholder="Punkt">${esc(n.text)}</textarea>
       <button class="ws-plus" data-wsact="plus" data-kind="node" data-id="${n.id}" title="Hinzufügen: Punkt, Unterpunkt, Überschrift, Anhang …">+</button>
+      <span class="ws-dchips">${wsNodeChips(n, "dates") || `<button class="ws-qd" data-wsact="qdate" title="Datum setzen">📅</button>`}</span>
       <button class="ws-more${mo?" on":""}" data-wsact="${mo?"more":"item-menu"}" data-mid="${n.id}" data-kind="node" data-id="${n.id}" title="${mo?"Knöpfe dieses Punkts wieder einklappen":"Menü: Bearbeiten, Meta-Projekt, Erledigt, Fokus, Verschieben, Tag, Löschen …"}">${mo?"‹ zu":"⋯"}</button>
-      <span class="ws-dchips">${wsNodeChips(n, "dates")}</span>
       <span class="ws-nright">
       ${wsNodeChips(n, "rest")}
       ${cnt?`<span class="ws-cnt" title="erledigte Unterpunkte">${cnt.done}/${cnt.total}</span>`:""}${(hasKids && coll)?`<span class="ws-hcnt" title="ausgeblendete Unterpunkte">▸ ${wsDescCount(n)}</span>`:""}
@@ -6700,7 +6710,7 @@ function wsBlockHtml2(b, eff, hidN, ind, base){
   }
   const bmo = wsMore.has(b.id);
   return `<div class="ws-block${bmo?" more":""}${(b.type==="heading" && b.done)?" hdone":""}" data-bid="${b.id}" data-kind="${b.type}"${b.type==="heading"?` data-lvl="${wsHeadLvl(b)}"`:""}${ind?` style="margin-left:${ind*18}px"`:""}>
-    <span class="ws-handle" draggable="true" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
+    <span class="ws-handle" data-wsdrag="block" title="Ziehen: Block verschieben">⋮⋮</span>
     <div class="ws-bbody">${body}</div>
     ${b.type==="outline"?"":`<button class="ws-plus" data-wsact="plus" data-kind="block" data-id="${b.id}" title="Hinzufügen: Punkt, Text, Tabelle, Überschrift">+</button>`}
     <button class="ws-more${bmo?" on":""}" data-wsact="${bmo?"more":"item-menu"}" data-mid="${b.id}" data-kind="block" data-id="${b.id}" title="${bmo?"Knöpfe dieses Blocks wieder einklappen":"Menü: Bearbeiten, Meta-Projekt, Erledigt, Fokus, Verschieben, Tag, Löschen …"}">${bmo?"‹ zu":"⋯"}</button>
@@ -6752,7 +6762,6 @@ function wsEditorHtml(doc, mode){
       <button class="ws-tb ws-tbmore" data-wsact="more" data-mid="${doc.id}" title="Alle Knöpfe dieses Dokuments ein- oder ausblenden">⋯</button>
       <button class="ws-tb ws-donebtn${wsF.hideDone?"":" on"}" data-wsact="f-done" data-v="0" title="Erledigte Punkte und Überschriften anzeigen">✓ Erledigte einblenden</button>
       <button class="ws-tb ws-donebtn${wsF.hideDone?" on":""}" data-wsact="f-done" data-v="1" title="Erledigte Punkte und Überschriften verbergen">Erledigte ausblenden</button>
-      <button class="ws-tb${wsLean?" on":""}" data-wsact="lean-toggle" title="Schlanke Ansicht: alle Knöpfe eingeklappt, nur Pfeil, Haken und Text">☰</button>
       <button class="ws-tb" data-wsact="unhide-all" title="Alle ausgeblendeten Punkte dieses Dokuments wieder einblenden">👁 Alle ausgeblendeten einblenden${wsHidCount(doc)?" ("+wsHidCount(doc)+")":""}</button>
       <button class="ws-tb${doc.tag?" on":""}" data-wsact="tag-doc" title="Tag für das ganze Dokument">🏷${doc.tag?" "+esc(doc.tag):""}</button>
       <button class="ws-tb${doc.pinned?" on":""}" data-wsact="pin" title="${doc.pinned?"Fokus in Heute aufheben":"Als Fokus-Notiz in Heute anzeigen"}">📌</button>
@@ -8428,6 +8437,7 @@ main.addEventListener("click", e=>{
       return;
     }
     if(act==="link-menu"){ wsOpenLinkMenu(doc.id, nid); return; }
+    if(act==="qdate"){ wsQuickDate(doc.id, nid); return; }
     if(act==="add-file"){ wsAddFiles(doc, r.node); return; }
     if(act==="att-toggle"){
       const hidden = r.node.children.length>0 && r.node.collapsed;                    // eingeklappter Punkt: Anhänge sind nicht zu sehen
@@ -8604,7 +8614,7 @@ function wsDropTarget(e){
       const li = row.parentElement; if(!li || li.dataset.nid===wsDrag.nid) return null;
       if(wsDrag.el.contains(li)) return null;                                  // nie in den eigenen Teilbaum
       const r = row.getBoundingClientRect(), y = (e.clientY - r.top) / (r.height||1);
-      return {el:row, kind:"node", pos: y<0.3 ? "before" : (y>0.7 ? "after" : "into"), nid:li.dataset.nid};
+      return {el:row, kind:"node", pos: y<0.25 ? "before" : (y>0.75 ? "after" : "into"), nid:li.dataset.nid};
     }
     const el = e.target.closest(".ws-block"); if(!el) return null;
     const r = el.getBoundingClientRect(), y = (e.clientY - r.top) / (r.height||1);
@@ -8641,10 +8651,8 @@ main.addEventListener("dragover", e=>{
   e.preventDefault(); e.dataTransfer.dropEffect = "move";
   wsClearDropMarks(); t.el.classList.add("ws-drop-"+t.pos); wsDrop = t;
 });
-main.addEventListener("drop", e=>{
-  if(!wsDrag) return;
-  e.preventDefault();
-  const t = wsDropTarget(e) || wsDrop, d = wsDrag;
+function wsFinishDrop(t){
+  const d = wsDrag; if(!d) return false;
   const doc = wsGet(d.docId); let ok = false;
   if(doc && t){
     if(d.kind==="block"){
@@ -8660,6 +8668,82 @@ main.addEventListener("drop", e=>{
   }
   wsDragEnd();
   if(ok){ wsTouch(doc); wsRerender(doc.id); }
+  return ok;
+}
+main.addEventListener("drop", e=>{
+  if(!wsDrag) return;
+  e.preventDefault();
+  wsFinishDrop(wsDropTarget(e) || wsDrop);
+});
+/* Ziehen per Zeiger (Maus, Finger, Stift) am Griff von Punkten und Blöcken */
+let wsPD = null;
+function wsPdLabel(t){
+  if(!t) return "Hier nicht ablegbar";
+  const nm = ()=>{ const li = t.kind==="node" ? document.querySelector('.ws-node[data-nid="'+t.nid+'"] .ws-nta') : null; return li ? (li.value||"").trim().slice(0,40) : ""; };
+  if(t.kind==="node"){ const x = nm(); return t.pos==="into" ? "Als Unterpunkt von „"+(x||"Punkt")+"“" : (t.pos==="before" ? "Davor einfügen" : "Dahinter einfügen"); }
+  return t.pos==="into" ? "In diesen Abschnitt" : (t.pos==="before" ? "Davor einfügen" : "Dahinter einfügen");
+}
+function wsPdStep(){
+  const d = wsPD; if(!d || !d.on) return;
+  if(d.ghost){ d.ghost.style.left = Math.min(d.x+14, window.innerWidth-40)+"px"; d.ghost.style.top = (d.y+12)+"px"; }
+  const el = document.elementFromPoint(d.x, d.y);
+  const t = el ? wsDropTarget({target:el, clientY:d.y}) : null;
+  wsClearDropMarks();
+  if(t){ t.el.classList.add("ws-drop-"+t.pos); wsDrop = t; } else wsDrop = null;
+  if(d.lab) d.lab.textContent = wsPdLabel(t);
+}
+function wsPdAuto(){
+  const d = wsPD; if(!d || !d.on) return; d.raf = 0;
+  const zone = 70; let dy = 0;
+  if(d.y < zone) dy = -Math.ceil((zone-d.y)/4); else if(d.y > window.innerHeight-zone) dy = Math.ceil((d.y-(window.innerHeight-zone))/4);
+  if(dy){ window.scrollBy(0, dy); wsPdStep(); d.raf = requestAnimationFrame(wsPdAuto); }
+}
+function wsPdEnd(commit){
+  const d = wsPD; if(!d) return; wsPD = null;
+  if(d.raf) cancelAnimationFrame(d.raf);
+  try{ d.h.releasePointerCapture(d.pid); }catch(_){}
+  if(d.ghost) d.ghost.remove();
+  document.body.classList.remove("ws-pdrag");
+  window.removeEventListener("pointermove", wsPdMove, true);
+  window.removeEventListener("pointerup", wsPdUp, true);
+  window.removeEventListener("pointercancel", wsPdCancel, true);
+  if(d.on && wsDrag){ if(commit && wsDrop) wsFinishDrop(wsDrop); else wsDragEnd(); }
+  else wsDrag = null;
+}
+function wsPdMove(e){
+  const d = wsPD; if(!d || e.pointerId!==d.pid) return;
+  d.x = e.clientX; d.y = e.clientY;
+  if(!d.on){
+    if(Math.abs(d.x-d.x0)+Math.abs(d.y-d.y0) < 6) return;
+    d.on = true;
+    d.ghost = document.createElement("div"); d.ghost.className = "ws-ghost";
+    const ta = d.src.querySelector("textarea.ws-nin, .ws-hin, textarea, input");
+    const tx = ((ta && ta.value) || d.src.textContent || "").trim().replace(/\s+/g," ").slice(0,60) || "Eintrag";
+    d.ghost.textContent = tx; d.lab = document.createElement("small"); d.ghost.appendChild(d.lab);
+    document.body.appendChild(d.ghost); document.body.classList.add("ws-pdrag");
+    d.src.classList.add("ws-dragging");
+  }
+  e.preventDefault();
+  wsPdStep();
+  if(!d.raf) d.raf = requestAnimationFrame(wsPdAuto);
+}
+function wsPdUp(e){ if(wsPD && e.pointerId===wsPD.pid) wsPdEnd(true); }
+function wsPdCancel(e){ if(wsPD && e.pointerId===wsPD.pid) wsPdEnd(false); }
+main.addEventListener("pointerdown", e=>{
+  const h = e.target.closest && e.target.closest('.ws-handle[data-wsdrag="node"],.ws-handle[data-wsdrag="block"]'); if(!h) return;
+  if(e.button!==undefined && e.button>0) return;
+  const docEl = h.closest(".ws-doc"); if(!docEl || wsPD) return;
+  const kind = h.dataset.wsdrag;
+  const src = kind==="block" ? h.closest(".ws-block") : h.closest(".ws-node");
+  if(!src) return;
+  wsDrag = {kind, docId:docEl.dataset.doc, el:src,
+    bid: (h.closest(".ws-block")||{dataset:{}}).dataset.bid, head: kind==="block" && src.dataset.kind==="heading", nid: kind==="node" ? src.dataset.nid : null, ri:null};
+  wsPD = {h, src, pid:e.pointerId, x0:e.clientX, y0:e.clientY, x:e.clientX, y:e.clientY, on:false, raf:0, ghost:null, lab:null};
+  try{ h.setPointerCapture(e.pointerId); }catch(_){}
+  window.addEventListener("pointermove", wsPdMove, true);
+  window.addEventListener("pointerup", wsPdUp, true);
+  window.addEventListener("pointercancel", wsPdCancel, true);
+  e.preventDefault();
 });
 main.addEventListener("dragend", wsDragEnd);
 /* Überschrift (samt Abschnitt) auf einen Block ziehen: davor oder dahinter, auf eine andere Überschrift gezogen auch mit deren Ebene bzw. als Unterebene */
@@ -9097,6 +9181,32 @@ function wsGoToDoc(docId){
   if(!wsGet(docId)) return;
   wsOpenDocId = docId; localStorage.setItem("wsOpenDoc", docId);
   wsTab = "docs"; localStorage.setItem("wsTab", "docs"); view = "notes"; render();
+}
+/* Einfache Datierung: ein Datum wählen, alles Weitere im Bearbeiten-Fenster */
+function wsQuickDate(docId, nid){
+  const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;
+  if(wsIsAtt(n) || n.meta || n.children.length){ wsOpenLinkMenu(docId, nid); return; }   // Meta-Projekte und Punkte mit Unterpunkten: volles Fenster (Unterpunkte-Prüfung)
+  if(document.getElementById("modalBg")) return;
+  const iso = d=>{ const x = new Date(d.getTime()-d.getTimezoneOffset()*60000); return x.toISOString().slice(0,10); };
+  const add = k=>{ const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+k); return iso(d); };
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="modal-bg" id="modalBg"><div class="modal">
+      <h2>${esc((wsTitleOf(n)||"Punkt").slice(0,60))}</h2>
+      <label>Datum</label><input type="date" id="wsq_date" value="${esc(n.date||"")}">
+      <div class="seg" id="wsq_fast" style="margin-top:8px"><button data-d="${add(0)}">Heute</button><button data-d="${add(1)}">Morgen</button><button data-d="${add(7)}">+1 Woche</button><button data-d="">Kein Datum</button></div>
+      ${n.link?`<div class="muted" style="font-size:12px;margin-top:8px">Das verknüpfte ${n.link.kind==="goal"?"Tages-Ziel":"ToDo"} wird mitgeändert.</div>`:""}
+      <div class="modal-actions" style="flex-wrap:wrap"><button class="btn-ghost" id="wsq_cancel">Abbrechen</button><button class="btn-ghost" id="wsq_more">Mehr …</button><button class="btn-primary" id="wsq_ok">Speichern</button></div>
+    </div></div>`);
+  const bg = document.getElementById("modalBg"), close = ()=>bg.remove();
+  const inp = document.getElementById("wsq_date");
+  document.getElementById("wsq_fast").addEventListener("click", e=>{ const b = e.target.closest("button"); if(b) inp.value = b.dataset.d; });
+  document.getElementById("wsq_cancel").onclick = close;
+  bg.addEventListener("click", e=>{ if(e.target===bg) close(); });
+  document.getElementById("wsq_more").onclick = ()=>{ close(); wsOpenLinkMenu(docId, nid); };
+  document.getElementById("wsq_ok").onclick = ()=>{
+    const v = inp.value; close();
+    wsApplyMenuCore(docId, nid, {date:v, dur:n.dur||"", dl:n.dl||"", meta:false, kind:"", cal:!!(n.link && n.link.cal)});
+  };
 }
 function wsOpenLinkMenu(docId, nid){
   const doc = wsGet(docId), n = doc && wsFindAny(doc, nid); if(!n) return;

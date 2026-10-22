@@ -712,6 +712,13 @@
 .tp-col{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .tp-col button{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer}
 .tp-col button.on{border-color:#fff}
+.tm-mon{position:relative;height:22px;border-bottom:1px solid var(--line)}
+.tm-mon span{position:absolute;top:3px;font-size:12px;font-weight:600;color:var(--text);padding-left:6px;border-left:1px solid var(--line);height:18px;white-space:nowrap;overflow:hidden;box-sizing:border-box}
+.tm-days{position:relative;height:20px;border-bottom:1px solid var(--line)}
+.tm-days span{position:absolute;top:2px;font-size:10.5px;color:var(--muted);text-align:center;box-sizing:border-box;overflow:hidden}
+.tm-days span.we{opacity:.6}.tm-days span.td{color:#fff;font-weight:700}
+.tm-we{position:absolute;top:0;bottom:0;background:rgba(255,255,255,.035);pointer-events:none}
+.tm-dl{position:absolute;font-style:normal;color:var(--red);font-size:15px;line-height:40px;height:40px;z-index:2;pointer-events:none;transform:translateX(-4px);text-shadow:0 1px 2px #000}
 </style>
 </head>
 <body>
@@ -3686,6 +3693,7 @@ function tpSumText(){
 function tpMount(m){
   if(!accessToken){ m.innerHTML = '<p class="muted" style="padding:18px">Bitte zuerst anmelden.</p>'; return; }
   if(tp.drag) return;
+  if(tp.mode==="meta"){ tmMount(m); return; }
   if(!tp.day) tp.day = todayKey();
   if(!tp.data){
     if(tp.err){ m.innerHTML = `<div class="center" style="padding:30px"><p class="muted">Tagesstruktur konnte nicht geladen werden: ${esc(tp.err)}</p><button class="tp-btn pri" data-tp="retry">Erneut versuchen</button></div>`; return; }
@@ -3702,7 +3710,7 @@ function tpMount(m){
   const showNow = tp.day===todayKey() && nowM>=tp.range.from && nowM<=tp.range.to;
   const opt = (arr, cur, f)=>arr.map(v=>`<option value="${v}"${v==cur?" selected":""}>${f?f(v):v}</option>`).join("");
   const rng = (a,b)=>Array.from({length:b-a+1},(_,i)=>a+i);
-  m.innerHTML = `<div class="tp">
+  m.innerHTML = `<div class="tp">${tpModeBar()}
     <div class="tp-bar">
       <button class="tp-btn" data-tp="prev">‹</button><button class="tp-btn" data-tp="today">Heute</button><button class="tp-btn" data-tp="next">›</button>
       <input type="date" id="tp_date" value="${esc(tp.day)}"><span class="tp-title">${esc(tpDayTitle(tp.day))}</span>
@@ -3816,7 +3824,7 @@ function tpDragApply(clientX){
   const mt = d.el.querySelector(".tp-m"); if(mt) mt.textContent = tpHM(ns)+"–"+(ne>=1440?"24:00":tpHM(ne));
 }
 function tpDown(e){
-  if(view!=="plan") return;
+  if(view!=="plan" || tp.mode!=="day") return;
   const b = e.target.closest && e.target.closest(".tp-b"); if(!b || !b.closest("#tp_track")) return;
   if(e.target.closest("[data-ck]")) return;
   if(e.pointerType==="mouse" && e.button!==0) return;
@@ -3845,7 +3853,7 @@ function tpUp(e){
   else render();
 }
 function tpClick(e){
-  if(view!=="plan") return;
+  if(view!=="plan" || tp.mode!=="day") return;
   const ck = e.target.closest && e.target.closest("[data-ck]");
   if(ck){ const b = ck.closest(".tp-b"); if(b) tpToggleDone(b.dataset.id); return; }
   const a = e.target.closest && e.target.closest("[data-tp]");
@@ -3860,11 +3868,11 @@ function tpClick(e){
   }
 }
 function tpInput(e){
-  if(view!=="plan") return;
+  if(view!=="plan" || tp.mode!=="day") return;
   if(e.target.id==="tp_q"){ tp.q = e.target.value; const el = document.getElementById("tp_pool"); if(el){ el.innerHTML = tpPoolHtml(); const q = document.getElementById("tp_q"); if(q){ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(_){} } } }
 }
 function tpChange(e){
-  if(view!=="plan") return;
+  if(view!=="plan" || tp.mode!=="day") return;
   const id = e.target.id;
   if(id==="tp_date"){ if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)){ tp.day = e.target.value; render(); } return; }
   if(["tp_from","tp_to","tp_snap","tp_pph"].includes(id)){
@@ -3892,7 +3900,327 @@ function tpChange(e){
     el.style.left = (m-tp.range.from)*tp.ppm+"px";
   }, 60000);
 })();
-function tpReset(){ clearTimeout(tp.saveT); tp.data = null; tp.fileId = ""; tp.mt = ""; tp.err = ""; tp.pending = false; tp.deleted.clear(); }
+function tpReset(){ if(typeof tmReset==="function") tmReset(); clearTimeout(tp.saveT); tp.data = null; tp.fileId = ""; tp.mt = ""; tp.err = ""; tp.pending = false; tp.deleted.clear(); }
+
+/* ============ METAPROJEKTE-PLANER (Modus im Reiter Struktur, eigene Drive-Datei) ============ */
+/* Wie die Tagesstruktur: Die Planung liegt ausschließlich in der Drive-Datei "Metaprojektplanung.json".
+   Meta-Projekte aus dem Arbeitsbereich werden nur GELESEN (Auswahlliste, Deadline-Markierung); es wird nichts in Arbeitsbereich, ToDos, Ziele oder Kalender zurückgeschrieben. */
+const TM_FILE = "Metaprojektplanung.json";
+const tm = {data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false, drag:null,
+  scrollL:null, q:"", filter:"all", showSet:false, deleted:new Set(), range:{from:0,to:1}, ppd:24, suppressClick:0};
+tp.mode = (function(){ try{ return localStorage.getItem("tpMode")==="meta" ? "meta" : "day"; }catch(e){ return "day"; } })();
+const tmDN = k=>{ const p = String(k).split("-"); return Math.round(Date.UTC(+p[0], +p[1]-1, +p[2])/864e5); };
+const tmKey = n=>{ const d = new Date(n*864e5); return d.getUTCFullYear()+"-"+tpPad(d.getUTCMonth()+1)+"-"+tpPad(d.getUTCDate()); };
+const tmShort = k=>{ const p = String(k).split("-"); return p[2]+"."+p[1]+"."; };
+const tmOk = k=>typeof k==="string" && /^\d{4}-\d{2}-\d{2}$/.test(k) && tmKey(tmDN(k))===k;
+function tmDefault(){ return {v:1, settings:{ppd:24}, blocks:[]}; }
+function tmNorm(d){
+  const o = tmDefault();
+  if(!d || typeof d!=="object") return o;
+  o.settings.ppd = tpInt((d.settings||{}).ppd, 6, 80, 24);
+  (Array.isArray(d.blocks)?d.blocks:[]).forEach(b=>{
+    if(!b || !tmOk(b.start) || !tmOk(b.end) || b.end<b.start) return;
+    o.blocks.push({id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:b.start, end:b.end, color:String(b.color||TP_COLORS[0]).slice(0,20), done:!!b.done, note:String(b.note||"").slice(0,500),
+      src:(b.src && b.src.ref) ? {kind:"meta", ref:String(b.src.ref)} : null});
+  });
+  return o;
+}
+function tmBlock(id){ return tm.data ? tm.data.blocks.find(b=>b.id===id) : null; }
+async function tmLoad(){
+  if(tm.loading) return;
+  tm.loading = true; tm.err = "";
+  try{
+    let id = ""; try{ id = localStorage.getItem("tmFileId")||""; }catch(e){}
+    let ok = false;
+    if(id){ try{ const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?fields=id,trashed,modifiedTime"); if(f && f.id && !f.trashed){ ok = true; tm.mt = f.modifiedTime||""; } }catch(e){} }
+    if(!ok){
+      const q = encodeURIComponent(`name='${TM_FILE}' and trashed=false`);
+      const r = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&orderBy=${encodeURIComponent("modifiedTime desc")}&fields=files(id,modifiedTime)`);
+      if(r && r.files && r.files.length){ id = r.files[0].id; tm.mt = r.files[0].modifiedTime||""; ok = true; }
+    }
+    if(ok){
+      const blob = await wsDriveFetch(id);
+      let parsed = null; try{ parsed = JSON.parse(await blob.text()); }catch(e){ throw new Error("Datei Metaprojektplanung.json ist nicht lesbar"); }
+      tm.data = tmNorm(parsed); tm.fileId = id; try{ localStorage.setItem("tmFileId", id); }catch(e){}
+    }else{ tm.data = tmDefault(); tm.fileId = ""; }
+  }catch(e){ tm.err = String(e.message||e).slice(0,200); tm.data = null; }
+  finally{ tm.loading = false; }
+}
+function tmDirty(){ tm.pending = true; clearTimeout(tm.saveT); tm.saveT = setTimeout(tmSave, 1200); }
+function tmMerge(remote){
+  remote.blocks.forEach(b=>{ if(tm.deleted.has(b.id)) return; if(!tm.data.blocks.some(x=>x.id===b.id)) tm.data.blocks.push(b); });
+}
+async function tmSave(){
+  if(!tm.data || !tm.pending) return;
+  if(tm.saving){ tm.again = true; return; }
+  tm.saving = true; tm.pending = false; setSync("busy");
+  try{
+    if(tm.fileId){
+      const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(tm.fileId)+"?fields=modifiedTime");
+      if(f && f.modifiedTime && tm.mt && f.modifiedTime!==tm.mt){
+        const blob = await wsDriveFetch(tm.fileId);
+        try{ tmMerge(tmNorm(JSON.parse(await blob.text()))); if(view==="plan" && tp.mode==="meta" && !tm.drag) render(); }catch(e){}
+      }
+    }
+    const json = JSON.stringify(tm.data);
+    if(!tm.fileId){
+      const f = await wsDriveUpload(new File([json], TM_FILE, {type:"application/json"}));
+      tm.fileId = f.id; try{ localStorage.setItem("tmFileId", f.id); }catch(e){}
+      const m = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(f.id)+"?fields=modifiedTime");
+      tm.mt = (m && m.modifiedTime) || "";
+    }else{
+      const r = await api("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(tm.fileId)+"?uploadType=media&fields=modifiedTime", {method:"PATCH", body:json});
+      tm.mt = (r && r.modifiedTime) || tm.mt;
+    }
+    tm.deleted.clear();
+  }catch(e){
+    tm.pending = true; console.error("Metaprojektplanung speichern:", e.message);
+    toast("Metaprojektplanung: Speichern fehlgeschlagen, neuer Versuch folgt");
+    clearTimeout(tm.saveT); tm.saveT = setTimeout(tmSave, 15000);
+  }finally{
+    tm.saving = false; setSync("on");
+    if(tm.again){ tm.again = false; tmSave(); }
+  }
+}
+function tmRange(){
+  const t = tmDN(todayKey());
+  let from = t-14, to = t+120;
+  tm.data.blocks.forEach(b=>{ from = Math.min(from, tmDN(b.start)-7); to = Math.max(to, tmDN(b.end)+30); });
+  // an Montag ausrichten
+  const wd = (new Date(from*864e5).getUTCDay()+6)%7; from -= wd;
+  return {from, to};
+}
+function tmMetaMap(){
+  const m = new Map();
+  if(typeof wsLoaded!=="undefined" && wsLoaded && Array.isArray(wsDocs)) wsMetaNodes().forEach(h=>m.set(h.node.id, h));
+  return m;
+}
+function tmLanes(blocks){
+  const sorted = blocks.slice().sort((a,b)=>a.start<b.start?-1:a.start>b.start?1:(a.end<b.end?-1:1)), ends = [], lane = new Map();
+  sorted.forEach(b=>{ const s = tmDN(b.start); let i = ends.findIndex(e=>e<s); if(i<0){ i = ends.length; ends.push(0); } ends[i] = tmDN(b.end); lane.set(b.id, i); });
+  return {lane, n:Math.max(ends.length, 3)};
+}
+function tmBlockHtml(b, lane, metaMap){
+  const s = tmDN(b.start), e = tmDN(b.end), days = e-s+1;
+  const left = (s-tm.range.from)*tm.ppd, w = days*tm.ppd;
+  const h = b.src ? metaMap.get(b.src.ref) : null;
+  let flag = "";
+  if(h && h.node.dl && tmOk(h.node.dl)){
+    const dn = tmDN(h.node.dl);
+    flag = `<i class="tm-dl" title="Deadline ${esc(tmShort(h.node.dl))} (aus dem Arbeitsbereich)" style="left:${(dn-tm.range.from)*tm.ppd}px;top:${4+lane*44}px">⚑</i>`;
+  }
+  return `<div class="tp-b tm-b${b.done?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})" style="left:${left}px;width:${w}px;top:${4+lane*44}px;background:${esc(b.color)}">
+    <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${b.done?"✓":""}</span>
+    <div class="tp-t">${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${esc(tmShort(b.start))}–${esc(tmShort(b.end))} · ${days} T</div><i class="tp-h r" data-h="r"></i></div>${flag}`;
+}
+function tmPoolItems(){
+  if(!(typeof wsLoaded!=="undefined" && wsLoaded)) return null;
+  const used = new Set(tm.data.blocks.filter(b=>b.src).map(b=>b.src.ref)), q = tm.q.trim().toLowerCase(), out = [];
+  wsMetaNodes().forEach(h=>{
+    const n = h.node; if(used.has(n.id)) return;
+    const sp = wsSpan(n), title = (wsTitleOf(n)||"(ohne Titel)");
+    out.push({ref:n.id, title, doc:h.doc.title||"Ohne Titel", span:sp, dl:n.dl||""});
+  });
+  const list = out.filter(x=>q ? (x.title.toLowerCase().includes(q) || x.doc.toLowerCase().includes(q)) : (tm.filter==="all" || (tm.filter==="dl" && x.dl) || (tm.filter==="nodate" && !x.span)));
+  list.sort((a,b)=>((a.span?a.span.start:"9999")<(b.span?b.span.start:"9999")?-1:(a.span?a.span.start:"9999")>(b.span?b.span.start:"9999")?1:a.title.localeCompare(b.title,"de")));
+  return list;
+}
+function tmPoolHtml(){
+  const list = tmPoolItems(), F = [["all","Alle"],["dl","Mit Deadline"],["nodate","Ohne Termin"]];
+  if(list===null) return `<h3>Meta-Projekte übernehmen</h3><div class="tp-note">Der Arbeitsbereich wird noch geladen …</div>`;
+  return `<h3>Meta-Projekte übernehmen (nur Kopie, der Arbeitsbereich bleibt unverändert)</h3>
+    <div class="tp-chips">${F.map(f=>`<button class="tp-btn${tm.filter===f[0]&&!tm.q?" on":""}" data-tm="pf" data-v="${f[0]}">${f[1]}</button>`).join("")}</div>
+    <input type="search" id="tm_q" placeholder="Suchen" value="${esc(tm.q)}">
+    ${list.slice(0,80).map(x=>`<div class="tp-it"><span>★</span><span class="tx">${esc(x.title)}<span class="tp-note"> · ${esc(x.doc)}</span></span><span class="dt">${x.span?esc(tmShort(x.span.start))+"–"+esc(tmShort(x.span.end)):"ohne Termin"}${x.dl?" · ⚑ "+esc(tmShort(x.dl)):""}</span><button class="tp-btn" data-tm="padd" data-r="${esc(x.ref)}">+ Plan</button></div>`).join("")
+      || `<div class="tp-note" style="padding:8px 2px">Nichts in dieser Auswahl.</div>`}
+    ${list.length>80?`<div class="tp-note">… und ${list.length-80} weitere, bitte suchen</div>`:""}`;
+}
+function tpModeBar(){
+  return `<div class="tp-bar"><button class="tp-btn${tp.mode==="day"?" on":""}" data-tpmode="day">Tag</button><button class="tp-btn${tp.mode==="meta"?" on":""}" data-tpmode="meta">Metaprojekte</button></div>`;
+}
+function tmMount(m){
+  if(tm.drag) return;
+  if(!tm.data){
+    if(tm.err){ m.innerHTML = `<div class="tp">${tpModeBar()}<div class="center" style="padding:30px"><p class="muted">Metaprojektplanung konnte nicht geladen werden: ${esc(tm.err)}</p><button class="tp-btn pri" data-tm="retry">Erneut versuchen</button></div></div>`; return; }
+    m.innerHTML = `<div class="tp">${tpModeBar()}<p class="muted center" style="padding:30px">Lade Metaprojektplanung …</p></div>`;
+    if(!tm.loading) tmLoad().then(()=>{ if(view==="plan" && tp.mode==="meta") render(); });
+    return;
+  }
+  tm.ppd = tm.data.settings.ppd; tm.range = tmRange();
+  const prev = document.getElementById("tm_scroll"); if(prev) tm.scrollL = prev.scrollLeft;
+  const R = tm.range, days = R.to-R.from+1, W = days*tm.ppd, ppd = tm.ppd, metaMap = tmMetaMap();
+  const L = tmLanes(tm.data.blocks), H = L.n*44+8, today = tmDN(todayKey());
+  let mon = "", dayRow = "", shade = "", i0 = R.from;
+  while(i0<=R.to){
+    const d = new Date(i0*864e5), y = d.getUTCFullYear(), mo = d.getUTCMonth();
+    const last = new Date(Date.UTC(y, mo+1, 0)).getTime()/864e5, i1 = Math.min(last, R.to);
+    mon += `<span style="left:${(i0-R.from)*ppd}px;width:${(i1-i0+1)*ppd}px">${d.toLocaleDateString("de-DE",{month:"long", year:"numeric", timeZone:"UTC"})}</span>`;
+    i0 = i1+1;
+  }
+  for(let n = R.from; n<=R.to; n++){
+    const wd = new Date(n*864e5).getUTCDay(), we = wd===0||wd===6, mondayish = wd===1;
+    const showNum = ppd>=18 || mondayish;
+    dayRow += `<span class="${we?"we":""}${n===today?" td":""}" style="left:${(n-R.from)*ppd}px;width:${ppd}px">${showNum?new Date(n*864e5).getUTCDate():""}</span>`;
+    if(we) shade += `<i class="tm-we" style="left:${(n-R.from)*ppd}px;width:${ppd}px"></i>`;
+  }
+  const opt = (arr, cur, f)=>arr.map(v=>`<option value="${v}"${v==cur?" selected":""}>${f?f(v):v}</option>`).join("");
+  let sumDays = 0; tm.data.blocks.forEach(b=>{ sumDays += tmDN(b.end)-tmDN(b.start)+1; });
+  m.innerHTML = `<div class="tp">${tpModeBar()}
+    <div class="tp-bar">
+      <button class="tp-btn" data-tm="left">‹ Zurück</button><button class="tp-btn" data-tm="today">Heute</button><button class="tp-btn" data-tm="right">Weiter ›</button>
+      <span class="tp-title">Metaprojekte</span><span style="flex:1"></span>
+      <button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
+    </div>
+    ${tm.showSet?`<div class="tp-set">Breite <select id="tm_ppd">${opt([8,12,16,24,36,56], ppd, v=>v+" px je Tag")}</select></div>`:""}
+    <div class="tp-scroll" id="tm_scroll"><div class="tp-inner" style="width:${W}px">
+      <div class="tm-mon">${mon}</div><div class="tm-days">${dayRow}</div>
+      <div class="tp-track" id="tm_track" style="height:${H}px">${shade}
+        ${tm.data.blocks.map(b=>tmBlockHtml(b, L.lane.get(b.id), metaMap)).join("")}
+        ${today>=R.from&&today<=R.to?`<div class="tp-now" style="left:${(today-R.from)*ppd+ppd/2}px"></div>`:""}
+      </div></div></div>
+    <div class="tp-sum">${tm.data.blocks.length ? `${tm.data.blocks.length} Block${tm.data.blocks.length===1?"":"e"}, zusammen ${sumDays} Tage geplant` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein Meta-Projekt übernehmen."}</div>
+    <div class="tp-pool" id="tm_pool">${tmPoolHtml()}</div>
+    <div class="tp-note">Die Metaprojektplanung liegt in der eigenen Drive-Datei „${TM_FILE}“. Änderungen hier verändern keine Meta-Projekte, ToDos oder Termine im Arbeitsbereich. Die Fahne ⚑ zeigt die Deadline des Meta-Projekts (nur Anzeige).</div>
+  </div>`;
+  const sc = document.getElementById("tm_scroll");
+  if(sc){
+    if(tm.scrollL==null){
+      const first = tm.data.blocks.length ? Math.min.apply(null, tm.data.blocks.map(b=>tmDN(b.start))) : today;
+      sc.scrollLeft = Math.max(0, (Math.min(first, today)-3-R.from)*ppd);
+    }else sc.scrollLeft = tm.scrollL;
+  }
+}
+function tmPoolRender(){ const el = document.getElementById("tm_pool"); if(el) el.innerHTML = tmPoolHtml(); }
+function tmAddBlock(blk){ tm.data.blocks.push(blk); tmDirty(); }
+function tmAddFromPool(ref){
+  const h = tmMetaMap().get(ref); if(!h) return;
+  const n = h.node, sp = wsSpan(n), t = todayKey();
+  let s, e;
+  if(sp){ s = sp.start; e = sp.end; }
+  else{ s = t; e = tmKey(tmDN(t)+13); }
+  if(e<s) e = s;
+  tmAddBlock({id:uid(), title:(wsTitleOf(n)||"(ohne Titel)"), start:s, end:e, color:TP_COLORS[2], done:false, note:"", src:{kind:"meta", ref}});
+  tm.scrollL = null; render(); toast("Zur Metaprojektplanung hinzugefügt");
+}
+function tmEdit(id, nb){
+  if(document.getElementById("modalBg")) return;
+  const b = nb || tmBlock(id); if(!b) return;
+  const isNew = !!nb, fld = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px";
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal">
+    <h2>${isNew?"Neuer Block":"Block bearbeiten"}</h2>
+    <label>Titel</label><input type="text" id="tme_t" maxlength="200" value="${esc(b.title)}" style="${fld};margin-bottom:8px">
+    <div style="display:flex;gap:10px;margin-bottom:8px"><div style="flex:1"><label>Von</label><input type="date" id="tme_s" value="${esc(b.start)}" style="${fld}"></div>
+      <div style="flex:1"><label>Bis</label><input type="date" id="tme_e" value="${esc(b.end)}" style="${fld}"></div></div>
+    <label>Farbe</label><div class="tp-col" id="tme_c">${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.color?"on":""}"></button>`).join("")}</div>
+    <label>Notiz</label><input type="text" id="tme_n" maxlength="500" value="${esc(b.note||"")}" style="${fld};margin-bottom:8px">
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="tme_d"${b.done?" checked":""}> Erledigt (gilt nur in der Metaprojektplanung)</label>
+    <div class="modal-actions">${isNew?"":`<button class="btn-ghost" id="tme_del" style="color:#ff8a8e">Löschen</button>`}<button class="btn-ghost" id="tme_x">Abbrechen</button><button class="btn-primary" id="tme_ok">Speichern</button></div></div></div>`);
+  let color = b.color;
+  $("tme_c").onclick = e=>{ const c = e.target.closest("[data-c]"); if(!c) return; color = c.dataset.c; [...$("tme_c").children].forEach(x=>x.classList.toggle("on", x===c)); };
+  $("tme_x").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  if($("tme_del")) $("tme_del").onclick = ()=>{ $("modalBg").remove(); const i = tm.data.blocks.findIndex(x=>x.id===b.id); if(i>=0){ tm.deleted.add(b.id); tm.data.blocks.splice(i,1); tmDirty(); } render(); };
+  $("tme_ok").onclick = ()=>{
+    const s = $("tme_s").value, e = $("tme_e").value;
+    if(!tmOk(s) || !tmOk(e) || e<s){ toast("Das Enddatum darf nicht vor dem Startdatum liegen"); return; }
+    b.title = $("tme_t").value.trim().slice(0,200); b.start = s; b.end = e; b.color = color; b.note = $("tme_n").value.trim().slice(0,500); b.done = $("tme_d").checked;
+    if(isNew) tmAddBlock(b); else tmDirty();
+    $("modalBg").remove(); render();
+  };
+  setTimeout(()=>{ const t = $("tme_t"); if(t) t.focus(); }, 50);
+}
+function tmAct(a, el){
+  const sc = document.getElementById("tm_scroll");
+  if(a==="left" && sc){ tm.scrollL = Math.max(0, sc.scrollLeft-sc.clientWidth*0.7); sc.scrollLeft = tm.scrollL; }
+  else if(a==="right" && sc){ tm.scrollL = sc.scrollLeft+sc.clientWidth*0.7; sc.scrollLeft = tm.scrollL; }
+  else if(a==="today" && sc){ tm.scrollL = Math.max(0, (tmDN(todayKey())-3-tm.range.from)*tm.ppd); sc.scrollLeft = tm.scrollL; }
+  else if(a==="add"){ const t = todayKey(); tmEdit("", {id:uid(), title:"", start:t, end:tmKey(tmDN(t)+6), color:TP_COLORS[2], done:false, note:"", src:null}); }
+  else if(a==="set"){ tm.showSet = !tm.showSet; render(); }
+  else if(a==="retry"){ tm.err = ""; render(); }
+  else if(a==="pf"){ tm.filter = el.dataset.v; tm.q = ""; tmPoolRender(); }
+  else if(a==="padd"){ tmAddFromPool(el.dataset.r); }
+}
+function tmDragApply(clientX){
+  const d = tm.drag; if(!d) return;
+  const sc = document.getElementById("tm_scroll"); if(!sc) return;
+  const dx = (clientX + sc.scrollLeft) - (d.x0 + d.sl0);
+  if(Math.abs(dx)>4) d.moved = true;
+  if(!d.moved) return;
+  const dm = Math.round(dx/tm.ppd), R = tm.range;
+  let ns = d.s0, ne = d.e0;
+  if(d.mode==="m"){ const len = d.e0-d.s0; ns = tpCl(d.s0+dm, R.from, R.to-len); ne = ns+len; }
+  else if(d.mode==="l"){ ns = tpCl(d.s0+dm, R.from, d.e0); }
+  else { ne = tpCl(d.e0+dm, d.s0, R.to); }
+  d.ns = ns; d.ne = ne;
+  d.el.style.left = (ns-R.from)*tm.ppd+"px"; d.el.style.width = (ne-ns+1)*tm.ppd+"px";
+  const mt = d.el.querySelector(".tp-m"); if(mt) mt.textContent = tmShort(tmKey(ns))+"–"+tmShort(tmKey(ne))+" · "+(ne-ns+1)+" T";
+}
+function tmDown(e){
+  if(view!=="plan" || tp.mode!=="meta") return;
+  const b = e.target.closest && e.target.closest(".tm-b"); if(!b || !b.closest("#tm_track")) return;
+  if(e.target.closest("[data-ck]")) return;
+  if(e.pointerType==="mouse" && e.button!==0) return;
+  const blk = tmBlock(b.dataset.id); if(!blk) return;
+  const h = e.target.closest("[data-h]"), sc = document.getElementById("tm_scroll");
+  tm.drag = {id:blk.id, mode:h?h.dataset.h:"m", x0:e.clientX, sl0:sc?sc.scrollLeft:0, s0:tmDN(blk.start), e0:tmDN(blk.end), ns:tmDN(blk.start), ne:tmDN(blk.end), moved:false, el:b, pid:e.pointerId, lastX:e.clientX, timer:null};
+  try{ b.setPointerCapture(e.pointerId); }catch(_){}
+  b.classList.add("drag");
+  tm.drag.timer = setInterval(()=>{
+    const d = tm.drag, s2 = document.getElementById("tm_scroll"); if(!d || !s2 || !d.moved) return;
+    const r = s2.getBoundingClientRect();
+    if(d.lastX < r.left+40) s2.scrollLeft -= 14; else if(d.lastX > r.right-40) s2.scrollLeft += 14; else return;
+    tmDragApply(d.lastX);
+  }, 30);
+  e.preventDefault();
+}
+function tmMoveEv(e){ const d = tm.drag; if(!d || e.pointerId!==d.pid) return; d.lastX = e.clientX; tmDragApply(e.clientX); }
+function tmUp(e){
+  const d = tm.drag; if(!d || e.pointerId!==d.pid) return;
+  clearInterval(d.timer); tm.drag = null; d.el.classList.remove("drag");
+  tm.suppressClick = Date.now();
+  const blk = tmBlock(d.id);
+  if(d.moved && e.type==="pointerup" && blk){ blk.start = tmKey(d.ns); blk.end = tmKey(d.ne); tmDirty(); render(); }
+  else if(!d.moved && e.type==="pointerup" && blk){ tmEdit(blk.id); }
+  else render();
+}
+function tmClick(e){
+  if(view!=="plan" || tp.mode!=="meta") return;
+  const ck = e.target.closest && e.target.closest("[data-ck]");
+  if(ck){ const b = ck.closest(".tm-b"); const blk = b && tmBlock(b.dataset.id); if(blk){ blk.done = !blk.done; tmDirty(); render(); } return; }
+  const a = e.target.closest && e.target.closest("[data-tm]");
+  if(a){ tmAct(a.dataset.tm, a); return; }
+  if(e.target.closest && e.target.closest(".tm-b")) return;
+  const track = e.target.closest && e.target.closest("#tm_track");
+  if(track){
+    if(Date.now()-tm.suppressClick<350) return;
+    const x = e.clientX - track.getBoundingClientRect().left, dn = tm.range.from + Math.floor(x/tm.ppd);
+    tmEdit("", {id:uid(), title:"", start:tmKey(dn), end:tmKey(dn+6), color:TP_COLORS[2], done:false, note:"", src:null});
+  }
+}
+function tmInput(e){
+  if(view!=="plan" || tp.mode!=="meta") return;
+  if(e.target.id==="tm_q"){ tm.q = e.target.value; tmPoolRender(); const q = document.getElementById("tm_q"); if(q){ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(_){} } }
+}
+function tmChange(e){
+  if(view!=="plan" || tp.mode!=="meta") return;
+  if(e.target.id==="tm_ppd"){ tm.data.settings.ppd = +e.target.value; tm.scrollL = null; tmDirty(); render(); }
+}
+(function tmInit(){
+  main.addEventListener("click", e=>{
+    if(view!=="plan") return;
+    const mb = e.target.closest && e.target.closest("[data-tpmode]");
+    if(mb){ tp.mode = mb.dataset.tpmode==="meta" ? "meta" : "day"; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){} tm.scrollL = null; render(); e.stopPropagation(); }
+  }, true);
+  main.addEventListener("pointerdown", tmDown);
+  main.addEventListener("pointermove", tmMoveEv);
+  main.addEventListener("pointerup", tmUp);
+  main.addEventListener("pointercancel", tmUp);
+  main.addEventListener("click", tmClick);
+  main.addEventListener("input", tmInput);
+  main.addEventListener("change", tmChange);
+  document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden" && tm.pending) tmSave(); });
+})();
+function tmReset(){ clearTimeout(tm.saveT); tm.data = null; tm.fileId = ""; tm.mt = ""; tm.err = ""; tm.pending = false; tm.deleted.clear(); }
 
 /* ============ FORMULARE ============ */
 async function saveNotes(){

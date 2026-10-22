@@ -3522,7 +3522,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v205";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v206";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -3911,7 +3911,8 @@ function tpReset(){ if(typeof tmReset==="function") tmReset(); clearTimeout(tp.s
 const TM_FILE = "Metaprojektplanung.json";
 const tm = {data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false, drag:null,
   scrollL:null, q:"", filter:"all", showSet:false, deleted:new Set(), range:{from:0,to:1}, ppd:24, suppressClick:0,
-  hideDone:(function(){ try{ return localStorage.getItem("tmHideDone")==="1"; }catch(e){ return false; } })()};
+  hideDone:(function(){ try{ return localStorage.getItem("tmHideDone")==="1"; }catch(e){ return false; } })(),
+  hideFlags:(function(){ try{ return localStorage.getItem("tmHideFlags")==="1"; }catch(e){ return false; } })()};
 tp.mode = (function(){ try{ return localStorage.getItem("tpMode")==="meta" ? "meta" : "day"; }catch(e){ return "day"; } })();
 const tmDN = k=>{ const p = String(k).split("-"); return Math.round(Date.UTC(+p[0], +p[1]-1, +p[2])/864e5); };
 const tmKey = n=>{ const d = new Date(n*864e5); return d.getUTCFullYear()+"-"+tpPad(d.getUTCMonth()+1)+"-"+tpPad(d.getUTCDate()); };
@@ -4009,7 +4010,7 @@ function tmBlockHtml(b, lane, metaMap){
   const left = (s-tm.range.from)*tm.ppd, w = days*tm.ppd;
   const h = b.src ? metaMap.get(b.src.ref) : null;
   let flag = "";
-  if(h && h.node.dl && tmOk(h.node.dl)){
+  if(!tm.hideFlags && h && h.node.dl && tmOk(h.node.dl)){
     const dn = tmDN(h.node.dl);
     flag = `<i class="tm-dl" title="Deadline ${esc(tmShort(h.node.dl))} (aus dem Arbeitsbereich)" style="left:${(dn-tm.range.from)*tm.ppd}px;top:${4+lane*44}px">⚑</i>`;
   }
@@ -4073,7 +4074,7 @@ function tmMount(m){
     <div class="tp-bar">
       <button class="tp-btn" data-tm="left">‹ Zurück</button><button class="tp-btn" data-tm="today">Heute</button><button class="tp-btn" data-tm="right">Weiter ›</button>
       <span class="tp-title">Metaprojekte</span><span style="flex:1"></span>
-      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn" data-tm="chk" title="Prüfen, ob alle Unterpunkte im Zeitraum ihres Meta-Projekts liegen">Zeitrange prüfen</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
+      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn" data-tm="chk" title="Prüfen, ob alle Unterpunkte im Zeitraum ihres Meta-Projekts liegen">Zeitrange prüfen</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.hideFlags?" on":""}" data-tm="hf" title="Rote Deadline-Flaggen ein- oder ausblenden">${tm.hideFlags?"Deadlines einblenden":"Deadlines ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
     </div>
     ${tm.showSet?`<div class="tp-set">Breite <select id="tm_ppd">${opt([8,12,16,24,36,56,75,112], ppd, v=>v+" px je Tag")}</select></div>`:""}
     <div class="tp-scroll" id="tm_scroll"><div class="tp-inner" style="width:${W}px">
@@ -4326,6 +4327,7 @@ function tmAct(a, el){
   else if(a==="padd"){ tmAddFromPool(el.dataset.r); }
   else if(a==="term"){ tmTermView(""); }
   else if(a==="chk"){ wsCheckAllChildren(); }
+  else if(a==="hf"){ tm.hideFlags = !tm.hideFlags; try{ localStorage.setItem("tmHideFlags", tm.hideFlags?"1":"0"); }catch(_){} render(); }
   else if(a==="hd"){ tm.hideDone = !tm.hideDone; try{ localStorage.setItem("tmHideDone", tm.hideDone?"1":"0"); }catch(_){} render(); }
 }
 function tmDragApply(clientX){

@@ -2132,6 +2132,7 @@ async function addTask(data){
   await syncCalendar(t);
   await saveTasks();
   setSync("on"); render(); toast("Gespeichert");
+  return t;
 }
 async function updateTask(id, data){
   setSync("busy");
@@ -3522,7 +3523,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v206";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v207";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -5090,7 +5091,7 @@ function openForm(type, existing){
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${isEdit?"Bearbeiten":"Neu: "+titleTxt}</h2>
       ${categorySelect}
-      ${typeFields}${tagSelect}${syncToggle}${calSelect}
+      ${typeFields}${tagSelect}${type==="todo"?`<label>Elternprojekt (Arbeitsbereich)</label><div class="muted" style="font-size:12px;margin-bottom:6px" id="f_parnow"></div><div id="f_par" style="margin-bottom:12px"></div>`:""}${syncToggle}${calSelect}
       <label>Notizen (optional)</label><textarea id="f_notes" placeholder="Zusätzliche Infos..." style="width:100%;min-height:60px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;resize:vertical">${esc(existing?.notes||"")}</textarea>
       <div class="modal-actions">
         <button class="btn-ghost" id="f_cancel">Abbrechen</button>
@@ -5123,6 +5124,19 @@ function openForm(type, existing){
     });
   }
 
+  let parentSel = null;
+  if($("f_par")){
+    if(!(typeof wsLoaded!=="undefined" && wsLoaded)){ $("f_parnow").textContent = "Der Arbeitsbereich ist noch nicht geladen."; }
+    else{
+      const hit = isEdit ? wsFindByLink(wsDocs, "todo", existing.id) : null;
+      $("f_parnow").textContent = hit ? "Jetzt: "+wsParentLabel(hit.doc, hit.node.id) : (isEdit ? "Noch nicht im Arbeitsbereich. Mit der Auswahl wird dort ein verknüpfter Punkt angelegt." : "Optional: legt beim Speichern einen verknüpften Punkt im Arbeitsbereich an.");
+      const pm = wsPickerMount($("f_par"), wsParentCands(hit ? hit.node.id : ""), (c, inp)=>{
+        parentSel = c; inp.value = "✓ "+c.title; $("f_par").querySelector(".wsp_list").innerHTML = `<div class="wsp_p" style="padding:6px 2px">${esc(c.path||"")}</div>`;
+      });
+      pm.input.addEventListener("input", ()=>{ parentSel = null; });
+      $("f_par").querySelector(".wsp_list").style.maxHeight = "160px";
+    }
+  }
   // Interaktionen
   const segSel={v: (existing&&existing.scheduleType)|| (type==="duty"?"daily":"once")};
   const segEl=$("f_sched");
@@ -5179,14 +5193,17 @@ function openForm(type, existing){
     const cs=$("f_cal"); if(cs) data.calendarId=cs.value;
     const fn=$("f_notes"); if(fn && fn.value.trim()) data.notes=fn.value.trim();
     $("modalBg").remove();
+    let savedT = null;
     if(convertingFromGoal){
       if(existing && existing.id) await deleteGTask(existing.id);
-      await addTask(data);
+      savedT = await addTask(data);
     } else if(isEdit){
       await updateTask(existing.id, data);
+      savedT = tasks.find(x=>x.id===existing.id);
     } else {
-      await addTask(data);
+      savedT = await addTask(data);
     }
+    if(parentSel && type==="todo" && savedT) await wsAssignTodoParent(savedT, parentSel);
   };
   $("f_save").onclick=doSave;
   // Enter speichert – außer im mehrzeiligen Notizfeld
@@ -9218,8 +9235,128 @@ function wsInsertLinked(doc, items, blockId, parentNid){
   wsTouch(doc);
   return items.length;
 }
-/* o: {docId?, parent?, blockId?, pick?:{kind,id}} - ohne docId wählt man Dokument und Stelle im Dialog */
+/* ---- Elternprojekt einfach wählen: Suchfeld über alle Dokumente, ein Klick genügt ---- */
+function wsParentCands(exclId){
+  const out = [];
+  wsDocs.forEach(doc=>{
+    const dt = doc.title || "Ohne Titel"; let head = "";
+    doc.blocks.forEach(b=>{
+      if(b.type==="heading"){
+        head = (b.text||"").trim();
+        if(!b.done) out.push({kind:"head", doc, head:b, docId:doc.id, refId:b.id, title:head||"(Überschrift ohne Text)", path:dt, meta:!!b.meta});
+      }else if(b.type==="outline"){
+        const walk = (items, anc)=>(items||[]).forEach(n=>{
+          if(n.id===exclId) return;                       // der Punkt selbst samt Teilbaum
+          const t = wsTitleOf(n) || "(leer)";
+          if(!n.done) out.push({kind:"node", doc, node:n, docId:doc.id, refId:n.id, title:t, path:[dt, head].filter(Boolean).concat(anc).join(" › "), meta:!!n.meta});
+          walk(n.children, anc.concat([t.slice(0,30)]));
+        });
+        walk(b.items, []);
+      }
+    });
+  });
+  out.sort((a,b)=>(b.meta-a.meta) || ((a.kind==="head")!==(b.kind==="head") ? (a.kind==="head"?-1:1) : 0));
+  return out;
+}
+/* Auswahl erst beim Anwenden auflösen: zwischendurch kann ein Abgleich mit dem Server die Objekte ersetzt haben */
+function wsResolveCand(c){
+  if(!c || c.kind==="extra") return c;
+  const doc = wsGet(c.docId); if(!doc) return null;
+  if(c.kind==="node"){ const r = wsFindNode(doc, c.refId); return r ? {kind:"node", doc, node:r.node, title:c.title, path:c.path} : null; }
+  const b = wsBlock(doc, c.refId); return b && b.type==="heading" ? {kind:"head", doc, head:b, title:c.title, path:c.path} : null;
+}
+function wsParentLabel(doc, nid){
+  const r = wsFindNode(doc, nid); if(!r) return "";
+  const dt = doc.title || "Ohne Titel";
+  if(r.parent) return "Unterpunkt von „"+(wsTitleOf(r.parent)||"(leer)").slice(0,50)+"“ · "+dt;
+  let head = ""; for(let i = doc.blocks.indexOf(r.block); i>=0; i--){ if(doc.blocks[i].type==="heading"){ head = (doc.blocks[i].text||"").trim(); break; } }
+  return head ? "unter Überschrift „"+head.slice(0,50)+"“ · "+dt : "oberste Ebene · "+dt;
+}
+/* box: Container; extra: [{label, val}] zusätzliche Zeilen ganz oben; onPick(cand|{kind:"extra", val}) */
+function wsPickerMount(box, cands, onPick, extra){
+  if(!document.getElementById("wspCss")) document.head.insertAdjacentHTML("beforeend", `<style id="wspCss">.wsp_row{padding:7px 9px;border-radius:8px;cursor:pointer}.wsp_row:hover,.wsp_row.act{background:#1f242b}.wsp_t{font-size:14px}.wsp_p{font-size:12px;color:var(--muted,#8b93a1);margin-top:1px}</style>`);
+  box.innerHTML = `<input type="text" class="wsp_in" placeholder="Elternprojekt suchen: Titel oder Dokument …" autocomplete="off" style="width:100%;padding:10px;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;font-size:15px;font-family:inherit"><div class="wsp_list" style="max-height:230px;overflow:auto;margin-top:6px"></div>`;
+  const inp = box.querySelector(".wsp_in"), list = box.querySelector(".wsp_list");
+  let shown = [];
+  const draw = ()=>{
+    const q = inp.value.trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean);
+    const hits = cands.filter(c=>{ const s = (c.title+" "+c.path).toLowerCase(); return words.every(w=>s.includes(w)); }).slice(0, 40);
+    shown = (q ? [] : (extra||[])).map(e=>({kind:"extra", val:e.val, title:e.label, path:""})).concat(hits);
+    list.innerHTML = shown.length ? shown.map((c,i)=>`<div class="wsp_row" data-i="${i}"><div class="wsp_t">${c.kind==="extra"?"":(c.meta?"★ ":"")+(c.kind==="head"?"§ ":"")}${esc(c.title)}</div>${c.path?`<div class="wsp_p">${esc(c.path)}</div>`:""}</div>`).join("") : `<div class="wsp_p" style="padding:8px">Nichts gefunden</div>`;
+  };
+  inp.addEventListener("input", draw);
+  list.addEventListener("click", e=>{ const r = e.target.closest(".wsp_row"); if(!r) return; const c = shown[+r.dataset.i]; if(c) onPick(c, inp); });
+  draw();
+  return {input:inp, redraw:draw};
+}
+/* Punkt unter das gewählte Elternprojekt (Punkt oder Überschrift) verschieben */
+function wsMoveToParent(srcDoc, id, cand){
+  if(cand.kind==="node") return wsMoveTo(srcDoc, cand.doc, id, {block:"", mode:"child", parent:cand.node.id});
+  const sec = wsSections(cand.doc).find(s=>s.headId===cand.head.id);
+  return wsMoveTo(srcDoc, cand.doc, id, {block:sec?sec.id:"", headId:cand.head.id, mode:"end"});
+}
+function wsOpenParentPick(docId, id){
+  if(document.getElementById("modalBg")) return;
+  const doc0 = wsGet(docId), r0 = doc0 && wsFindNode(doc0, id); if(!r0) return;
+  const doc = doc0, r = r0;
+  const label = (r.node.text||"Punkt").slice(0,60);
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal">
+    <h2>Elternprojekt wählen</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:2px">„${esc(label)}“ wandert samt Unterpunkten und Anhängen.</p>
+    <p class="muted" style="font-size:12px;margin-bottom:10px">Jetzt: ${esc(wsParentLabel(doc, id))}</p>
+    <div id="wsp_box"></div>
+    <div class="modal-actions"><button class="btn-ghost" id="wsp_full">Genau positionieren …</button><button class="btn-primary" id="wsp_x">Abbrechen</button></div></div></div>`);
+  const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); };
+  $("wsp_x").onclick = close;
+  $("wsp_full").onclick = ()=>{ close(); wsOpenMoveFull(docId, id); };
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+  const extra = r.parent ? [{label:"Kein Elternprojekt: oberste Ebene dieses Blocks", val:"top"}] : [];
+  wsPickerMount($("wsp_box"), wsParentCands(id), c0=>{
+    const c = wsResolveCand(c0), doc = wsGet(docId), r = doc && wsFindNode(doc, id);
+    if(!c || !r){ toast("Das Ziel gibt es nicht mehr"); return; }
+    let ok, name;
+    if(c.kind==="extra"){ ok = wsMoveTo(doc, doc, id, {block:r.block.id, mode:"end"}); name = "oberste Ebene"; }
+    else{ ok = wsMoveToParent(doc, id, c); name = c.title; }
+    if(!ok){ toast("Dorthin lässt sich der Punkt nicht verschieben"); return; }
+    const dst = c.kind==="extra" ? doc : c.doc;
+    wsTouch(doc); if(dst!==doc) wsTouch(dst);
+    close(); toast("Verschoben: „"+name.slice(0,40)+"“"); render();
+  }, extra);
+  setTimeout(()=>{ const i = document.querySelector(".wsp_in"); if(i) i.focus(); }, 50);
+}
+/* ToDo einem Elternprojekt zuordnen: der verknüpfte Punkt wird verschoben, sonst wird ein verknüpfter Punkt angelegt */
+async function wsAssignTodoParent(t, cand0){
+  if(!t || !cand0 || !(typeof wsLoaded!=="undefined" && wsLoaded)) return false;
+  const cand = wsResolveCand(cand0); if(!cand){ toast("Das Elternprojekt gibt es nicht mehr"); return false; }
+  const hit = wsFindByLink(wsDocs, "todo", t.id);
+  if(hit){
+    if(!wsMoveToParent(hit.doc, hit.node.id, cand)){ toast("Dorthin lässt sich das ToDo nicht verschieben"); return false; }
+    wsTouch(hit.doc); if(cand.doc!==hit.doc) wsTouch(cand.doc);
+    toast("ToDo liegt jetzt unter „"+cand.title.slice(0,40)+"“"); render(); return true;
+  }
+  const n = wsNewNode(t.title||"");
+  n.date = wsIsDate(t.startDate) ? t.startDate : "";
+  n.done = !!isEverDone(t.id);
+  n.link = {kind:"todo", ref:t.id, cal:!!(t.syncCalendar && t.calendarEventId), evId:"", calId:""};
+  if(cand.kind==="node"){ cand.node.children.push(n); cand.node.collapsed = false; }
+  else{
+    const sec = wsSections(cand.doc).find(s=>s.headId===cand.head.id);
+    let blk = sec && sec.id ? cand.doc.blocks.find(b=>b.id===sec.id) : null;
+    if(!blk){ blk = wsNewBlock("outline"); cand.doc.blocks.splice(cand.doc.blocks.indexOf(cand.head)+1, 0, blk); }
+    blk.items.push(n);
+  }
+  wsTouch(cand.doc);
+  toast("Im Arbeitsbereich unter „"+cand.title.slice(0,40)+"“ angelegt"); render(); return true;
+}
+
+/* Punkte: Ein-Schritt-Auswahl des Elternprojekts; Anhänge und genaue Position: das ausführliche Fenster */
 function wsOpenMove(docId, id){
+  if(document.getElementById("modalBg")) return;
+  const doc = wsGet(docId), item = doc && wsFindAny(doc, id); if(!item) return;
+  if(wsIsAtt(item)) wsOpenMoveFull(docId, id); else wsOpenParentPick(docId, id);
+}
+/* o: {docId?, parent?, blockId?, pick?:{kind,id}} - ohne docId wählt man Dokument und Stelle im Dialog */
+function wsOpenMoveFull(docId, id){
   if(document.getElementById("modalBg")) return;
   const doc = wsGet(docId), item = doc && wsFindAny(doc, id); if(!item) return;
   const isAtt = wsIsAtt(item);

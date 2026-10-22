@@ -1842,10 +1842,17 @@ async function uncompleteGTask(taskId){
 }
 
 /* ---- Google Task löschen ---- */
-async function deleteGTask(taskId){
+async function deleteGTask(taskId, quiet){
   setSync("busy");
   try{
     const listId=defaultGTaskListId||"@default";
+    if(!quiet){                                                  // vor dem endgültigen Löschen eine Kopie in den Papierkorb legen
+      let g = null;
+      try{ g = await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`); }catch(e){ console.warn("Papierkorb: Ziel nicht lesbar", e); }
+      if(g && g.title!==undefined){
+        wsTrashPut({id:wsId(), kind:"gtask", deletedAt:new Date().toISOString(), docId:"", docTitle:"", label:String(g.title||"(ohne Titel)").slice(0,80), where:{}, data:{task:{title:g.title||"", notes:g.notes||"", due:g.due||""}}});
+      }
+    }
     await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`, {method:"DELETE"});
     wsOnItemDeleted("goal", taskId);
     await loadGTasks();
@@ -2183,6 +2190,9 @@ async function migrateTask(id, when){
 async function deleteTask(id){
   setSync("busy");
   const t=tasks.find(x=>x.id===id);
+  if(t){
+    try{ wsTrashPut({id:wsId(), kind:"todo", deletedAt:new Date().toISOString(), docId:"", docTitle:"", label:String(t.title||"(ohne Titel)").slice(0,80), where:{}, data:{task:JSON.parse(JSON.stringify(t)), logs:JSON.parse(JSON.stringify(logs.filter(l=>l.itemId===id)))}}); }catch(e){ console.warn("Papierkorb:", e); }
+  }
   if(t) await deleteCalendar(t);
   wsOnItemDeleted("todo", id);
   tasks=tasks.filter(x=>x.id!==id);
@@ -3182,6 +3192,16 @@ function render(){
         <button id="resetSheetBtn" style="padding:12px 16px;background-color:#f44336;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;width:100%;margin-top:8px">🗑️ Tabelle zurücksetzen</button>
       </div>
       
+      <div class="section-title">Rückgängig machen</div>
+      <div class="card">
+        <div class="body"><div class="title">Papierkorb</div><div class="sub">Gelöschte ToDos und Arbeitsbereich-Einträge, 3 Tage lang</div></div>
+        <button class="icon-btn" id="trashOpenBtn">🗑 ${wsTrashCount()}</button>
+      </div>
+      <div class="card">
+        <div class="body"><div class="title">Zuletzt abgehakt</div><div class="sub">Versehentlich erledigt? Hier wieder öffnen</div></div>
+        <button class="icon-btn" id="doneListBtn">Liste</button>
+      </div>
+
       <div class="section-title">Konto</div>
       <div class="card">
         <div class="body">
@@ -3195,6 +3215,7 @@ function render(){
     `;
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
     ksBindSettings();
+    { const tb=$("trashOpenBtn"); if(tb) tb.onclick=()=>wsOpenTrash(); const db=$("doneListBtn"); if(db) db.onclick=()=>openDoneList(); }
     [...document.querySelectorAll("[data-calvis]")].forEach(btn=>{
       btn.onclick=async ()=>{
         const id=btn.dataset.calvis;
@@ -3556,7 +3577,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v216";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v218";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -5293,7 +5314,7 @@ function openForm(type, existing){
     $("modalBg").remove();
     let savedT = null;
     if(convertingFromGoal){
-      if(existing && existing.id) await deleteGTask(existing.id);
+      if(existing && existing.id) await deleteGTask(existing.id, true);
       savedT = await addTask(data);
     } else if(isEdit){
       await updateTask(existing.id, data);
@@ -5613,11 +5634,13 @@ function wsTrashItem(kind, doc, obj, where){
 function wsTrashNorm(arr){
   const out = [];
   (Array.isArray(arr)?arr:[]).forEach(i=>{
-    if(!i || typeof i!=="object" || !i.id || !["node","att","block","doc"].includes(i.kind) || !i.data || isNaN(Date.parse(i.deletedAt))) return;
+    if(!i || typeof i!=="object" || !i.id || !["node","att","block","doc","todo","gtask"].includes(i.kind) || !i.data || isNaN(Date.parse(i.deletedAt))) return;
     let data = null;
     if(i.kind==="node") data = wsNormNodes([i.data])[0];
     else if(i.kind==="att") data = wsNormAtt(i.data);
     else if(i.kind==="block"){ const d = wsNormalizeDocs([{blocks:[i.data]}])[0]; data = d && d.blocks[0]; }
+    else if(i.kind==="gtask"){ data = (i.data.task && typeof i.data.task==="object" && i.data.task.title!==undefined) ? {task:{title:String(i.data.task.title||""), notes:String(i.data.task.notes||""), due:String(i.data.task.due||"")}} : null; }
+    else if(i.kind==="todo"){ data = (i.data.task && i.data.task.id) ? {task:i.data.task, logs:Array.isArray(i.data.logs)?i.data.logs:[]} : null; }
     else data = wsNormalizeDocs([i.data])[0];
     if(!data) return;
     const w = i.where && typeof i.where==="object" ? i.where : {};
@@ -6498,17 +6521,67 @@ function wsTrashLeft(i){
   const ms = Date.parse(i.deletedAt)+WS_TRASH_MS-Date.now(), h = Math.max(1, Math.ceil(ms/3600000));
   return h>=24 ? "noch "+Math.floor(h/24)+" Tg "+(h%24)+" Std" : "noch "+h+" Std";
 }
+/* Zuletzt abgehakte Aufgaben (ToDos, Pflichten, Gewohnheiten aus dem Sheet; Ziele und Google-Aufgaben der letzten 7 Tage direkt aus Google Tasks): Haken wieder entfernen */
+function openDoneList(){
+  if(document.getElementById("modalBg")) return;
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>✅ Zuletzt abgehakt</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:8px">Die letzten 40 Erledigungen. „Öffnen“ nimmt den Haken zurück. Ziele und Google-Aufgaben reichen sieben Tage zurück.</p>
+    <div class="ws-implist" id="dl_list"><div class="muted center" style="padding:14px">Lade …</div></div>
+    <div class="modal-actions"><button class="btn-primary" id="dl_close">Schließen</button></div></div></div>`);
+  const kinds = {todo:"ToDo", habit:"Gewohnheit", duty:"Pflicht"};
+  const fmt = iso=>{ const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"})+" "+d.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"}); };
+  let rows = [], gErr = false;
+  const load = async ()=>{
+    const sheet = logs.filter(l=>l.doneAt && !String(l.itemId).startsWith("gt_") && tasks.some(t=>t.id===l.itemId))
+      .map(l=>{ const t = tasks.find(x=>x.id===l.itemId); return {src:"s", log:l, id:l.itemId, title:t.title||"(ohne Titel)", label:kinds[t.type]||"Aufgabe", at:l.doneAt}; });
+    let g = []; gErr = false;
+    try{
+      if(!defaultGTaskListId) await loadGTasks();
+      const min = new Date(Date.now()-7*86400000).toISOString();
+      const res = await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId||"@default")}/tasks?showCompleted=true&showHidden=true&completedMin=${encodeURIComponent(min)}&maxResults=100`);
+      g = ((res && res.items)||[]).filter(t=>t.status==="completed" && t.completed).map(t=>({src:"g", id:t.id, title:t.title||"(ohne Titel)", label:isGoalTask(t)?"Ziel":"Google-Aufgabe", at:t.completed}));
+    }catch(e){ gErr = true; console.warn("Erledigte Google-Aufgaben nicht ladbar", e); }
+    rows = sheet.concat(g).sort((a,b)=>String(b.at).localeCompare(String(a.at))).slice(0,40);
+  };
+  const draw = ()=>{
+    const el = $("dl_list"); if(!el) return;
+    el.innerHTML = (gErr?`<div class="muted" style="font-size:12px;padding:4px 0">Ziele konnten gerade nicht geladen werden.</div>`:"") + (rows.map((r,i)=>
+      `<div class="ws-improw" data-i="${i}"><span class="ws-wkchip">${esc(r.label)}</span><span class="ws-imptx">${esc(r.title)}<br><span class="muted" style="font-size:12px">${esc(fmt(r.at))}</span></span><button class="ws-addbtn" data-dact="undo">↩ Öffnen</button></div>`).join("") || `<div class="muted center" style="padding:14px">Noch nichts abgehakt.</div>`);
+  };
+  load().then(draw);
+  $("dl_list").onclick = async e=>{
+    const b = e.target.closest("[data-dact]"), row = e.target.closest("[data-i]"); if(!b || !row) return;
+    const r = rows[+row.dataset.i]; if(!r) return;
+    b.disabled = true;
+    if(r.src==="g"){
+      await uncompleteGTask(r.id);
+      const keep = logs.filter(l=>l.itemId!==r.id && l.itemId!=="gt_"+r.id);
+      if(keep.length!==logs.length){ logs = keep; try{ await saveLogs(); }catch(err){ console.warn(err); } }
+    }else{
+      const t = tasks.find(x=>x.id===r.id);
+      setSync("busy");
+      logs = logs.filter(x=>x!==r.log);
+      if(t && t.type==="todo" && t.scheduleType!=="weekly") wsOnItemDone("todo", t.id, isEverDone(t.id));
+      try{ await saveLogs(); }catch(err){ logs.push(r.log); setSync("on"); toast("Rückgängig fehlgeschlagen: "+(err.message||err)); return; }
+      setSync("on"); render();
+    }
+    toast("Wieder offen: "+r.title.slice(0,40));
+    await load(); draw();
+  };
+  $("dl_close").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+}
 function wsOpenTrash(){
   if(document.getElementById("modalBg")) return;
-  const icon = {node:"☑", att:"📎", block:"▭", doc:"📄"}, kn = {node:"Punkt", att:"Anhang", block:"Block", doc:"Dokument"};
+  const icon = {node:"☑", att:"📎", block:"▭", doc:"📄", todo:"✅", gtask:"🎯"}, kn = {node:"Punkt", att:"Anhang", block:"Block", doc:"Dokument", todo:"ToDo", gtask:"Ziel / Aufgabe"};
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>🗑 Papierkorb</h2>
-    <p class="muted" style="font-size:13px;margin-bottom:8px">Gelöschte Einträge bleiben hier 3 Tage erhalten. Verknüpfungen mit ToDos oder Zielen werden beim Zurücklegen gelöst.</p>
+    <p class="muted" style="font-size:13px;margin-bottom:8px">Gelöschte ToDos und Einträge des Arbeitsbereichs bleiben hier 3 Tage erhalten. Verknüpfungen von Arbeitsbereich-Punkten mit ToDos oder Zielen werden beim Zurücklegen gelöst.</p>
     <div class="ws-implist" id="wst_list"></div>
     <div class="modal-actions"><button class="btn-ghost" id="wst_empty">Papierkorb leeren</button><button class="btn-primary" id="wst_close">Schließen</button></div></div></div>`);
   const draw = ()=>{
     const items = wsTrashLive(wsTrash, Date.now());
     $("wst_list").innerHTML = items.map(i=>`<div class="ws-improw" data-tid="${esc(i.id)}"><span class="ws-wkchip">${icon[i.kind]} ${kn[i.kind]}</span>
-      <span class="ws-imptx">${esc(i.label)}<br><span class="muted" style="font-size:12px">${i.kind==="doc"?"":"aus „"+esc(i.docTitle||"(ohne Titel)")+"“ · "}${esc(wsTrashLeft(i))}</span></span>
+      <span class="ws-imptx">${esc(i.label)}<br><span class="muted" style="font-size:12px">${(i.kind==="doc"||i.kind==="todo"||i.kind==="gtask")?"":"aus „"+esc(i.docTitle||"(ohne Titel)")+"“ · "}${esc(wsTrashLeft(i))}</span></span>
       <button class="ws-addbtn" data-tact="restore">↩ Zurück</button><button class="ws-mini" data-tact="purge" title="Endgültig löschen">✕</button></div>`).join("") || `<div class="muted center" style="padding:14px">Der Papierkorb ist leer.</div>`;
     $("wst_empty").style.display = items.length ? "" : "none";
   };
@@ -6517,6 +6590,32 @@ function wsOpenTrash(){
     const b = e.target.closest("[data-tact]"), row = e.target.closest("[data-tid]"); if(!b || !row) return;
     const item = wsTrash.find(i=>i.id===row.dataset.tid); if(!item) return;
     if(b.dataset.tact==="purge"){ if(confirm("Endgültig löschen? Das lässt sich nicht rückgängig machen.")){ wsTrashDrop(item.id); draw(); } return; }
+    if(item.kind==="gtask"){
+      const g = item.data.task;
+      (async()=>{
+        setSync("busy");
+        try{
+          if(!defaultGTaskListId) await loadGTasks();
+          await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId||"@default")}/tasks`, {method:"POST", body:JSON.stringify({title:g.title, notes:g.notes, due:g.due||undefined})});
+          await loadGTasks();
+        }catch(err){ setSync("on"); toast("Wiederherstellen fehlgeschlagen: "+(err.message||err)); return; }
+        wsTrashDrop(item.id); setSync("on"); draw(); toast("Zurückgelegt: "+item.label.slice(0,40)); render();
+      })();
+      return;
+    }
+    if(item.kind==="todo"){
+      const t = item.data.task;
+      (async()=>{
+        if(tasks.some(x=>x.id===t.id)){ toast("Dieses ToDo gibt es schon"); wsTrashDrop(item.id); draw(); return; }
+        setSync("busy"); const tt = JSON.parse(JSON.stringify(t)); tt.calendarEventId = "";
+        tasks.push(tt);
+        try{ await syncCalendar(tt); }catch(err){ console.warn(err); }
+        item.data.logs.forEach(l=>{ if(!logs.some(x=>x.itemId===l.itemId && x.date===l.date)) logs.push(l); });
+        try{ await saveTasks(); await saveLogs(); }catch(err){ setSync("on"); toast("Wiederherstellen fehlgeschlagen: "+(err.message||err)); return; }
+        wsTrashDrop(item.id); setSync("on"); draw(); toast("Zurückgelegt: "+item.label.slice(0,40)); render();
+      })();
+      return;
+    }
     const r = wsRestore(wsDocs, item);
     if(!r.ok){ toast(r.msg); return; }
     wsDeleted.delete(r.docId); wsTouch(r.doc); wsTrashDrop(item.id); draw();

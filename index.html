@@ -3522,11 +3522,11 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v201";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v202";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
-  drag:null, scrollL:null, filter:"due", q:"", showSet:false, deleted:new Set(), range:{from:360,to:1320}, ppm:2};
+  drag:null, scrollL:null, filter:"due", q:"", showSet:false, hideDone:(function(){ try{ return localStorage.getItem("tpHideDone")==="1"; }catch(e){ return false; } })(), deleted:new Set(), range:{from:360,to:1320}, ppm:2};
 const tpPad = n=>String(n).padStart(2,"0");
 const tpHM = m=>tpPad(Math.floor(m/60)%24)+":"+tpPad(m%60);
 const tpCl = (v,a,b)=>Math.max(a,Math.min(b,v));
@@ -3650,7 +3650,7 @@ function tpLanes(blocks){
   sorted.forEach(b=>{ let i = ends.findIndex(e=>e<=b.start); if(i<0){ i = ends.length; ends.push(0); } ends[i] = b.end; lane.set(b.id, i); });
   return {lane, n:Math.max(ends.length, 3)};
 }
-function tpDur(m){ const h = Math.floor(m/60), mi = m%60; return (h?h+" h ":"")+(mi?mi+" min":(h?"":"0 min")); }
+function tpDur(m){ const h = Math.floor(m/60), mi = m%60; return ((h?h+" h ":"")+(mi?mi+" min":(h?"":"0 min"))).trim(); }
 function tpDayTitle(day){ const d = parseDate(day); return d ? d.toLocaleDateString("de-DE",{weekday:"long", day:"numeric", month:"long", year:"numeric"}) : day; }
 
 /* ---- Ansicht ---- */
@@ -3689,7 +3689,8 @@ function tpPoolRender(){ const el = document.getElementById("tp_pool"); if(el) e
 function tpSumText(){
   const bl = tpDayBlocks(tp.day); let all = 0, done = 0;
   bl.forEach(b=>{ all += b.end-b.start; if(b.done) done += b.end-b.start; });
-  return bl.length ? `${bl.length} Block${bl.length===1?"":"e"}, geplant ${tpDur(all)}, davon erledigt ${tpDur(done)}` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein ToDo übernehmen.";
+  const hid = tp.hideDone ? bl.filter(b=>b.done).length : 0;
+  return bl.length ? `${bl.length} ${bl.length===1?"Block":"Blöcke"}, geplant ${tpDur(all)}, davon erledigt ${tpDur(done)}${hid?" ("+hid+" erledigte ausgeblendet)":""}` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein ToDo übernehmen.";
 }
 function tpMount(m){
   if(!accessToken){ m.innerHTML = '<p class="muted" style="padding:18px">Bitte zuerst anmelden.</p>'; return; }
@@ -3705,7 +3706,7 @@ function tpMount(m){
   const s = tpSettings();
   tp.range = tpRangeFor(tp.day); tp.ppm = s.pph/60;
   const prevScroll = document.getElementById("tp_scroll"); if(prevScroll) tp.scrollL = prevScroll.scrollLeft;
-  const bl = tpDayBlocks(tp.day), L = tpLanes(bl), W = (tp.range.to-tp.range.from)*tp.ppm, H = L.n*44+8;
+  const allBl = tpDayBlocks(tp.day), bl = tp.hideDone ? allBl.filter(b=>!b.done) : allBl, L = tpLanes(bl), W = (tp.range.to-tp.range.from)*tp.ppm, H = L.n*44+8;
   let hours = ""; for(let h = tp.range.from/60; h<tp.range.to/60; h++) hours += `<span style="left:${(h*60-tp.range.from)*tp.ppm}px">${tpPad(h)}:00</span>`;
   const now = new Date(), nowM = now.getHours()*60+now.getMinutes();
   const showNow = tp.day===todayKey() && nowM>=tp.range.from && nowM<=tp.range.to;
@@ -3716,7 +3717,7 @@ function tpMount(m){
       <button class="tp-btn" data-tp="prev">‹</button><button class="tp-btn" data-tp="today">Heute</button><button class="tp-btn" data-tp="next">›</button>
       <input type="date" id="tp_date" value="${esc(tp.day)}"><span class="tp-title">${esc(tpDayTitle(tp.day))}</span>
       <span style="flex:1"></span>
-      <button class="tp-btn pri" data-tp="add">+ Block</button><button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙</button>
+      <button class="tp-btn pri" data-tp="add">+ Block</button><button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button><button class="tp-btn${tp.hideDone?" on":""}" data-tp="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tp.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙</button>
     </div>
     ${tp.showSet?`<div class="tp-set">Beginn <select id="tp_from">${opt(rng(0,23), s.from, v=>tpPad(v)+":00")}</select> Ende <select id="tp_to">${opt(rng(1,24), s.to, v=>tpPad(v)+":00")}</select>
       Raster <select id="tp_snap">${opt([5,10,15,30], s.snap, v=>v+" min")}</select> Breite <select id="tp_pph">${opt([60,90,120,180,240], s.pph, v=>v+" px je Stunde")}</select></div>`:""}
@@ -3793,17 +3794,18 @@ function tpAct(a, el){
   else if(a==="today"){ tp.day = todayKey(); tp.scrollL = null; render(); }
   else if(a==="add"){ const dur = 30, st = tpFree(tp.day, dur); tpEdit("", {id:uid(), title:"", start:st, end:st+dur, color:TP_COLORS[0], done:false, note:"", src:null}); }
   else if(a==="set"){ tp.showSet = !tp.showSet; render(); }
+  else if(a==="hd"){ tp.hideDone = !tp.hideDone; try{ localStorage.setItem("tpHideDone", tp.hideDone?"1":"0"); }catch(_){} render(); }
   else if(a==="retry"){ tp.err = ""; render(); }
   else if(a==="pf"){ tp.filter = el.dataset.v; tp.q = ""; tpPoolRender(); document.querySelectorAll("#tp_pool [data-tp=pf]").forEach(x=>x.classList.toggle("on", x.dataset.v===tp.filter)); }
   else if(a==="padd"){ tpAddFromPool(el.dataset.k, el.dataset.r); }
   else if(a==="carry"){
     const open = tpDayBlocks(tp.day).filter(b=>!b.done);
     if(!open.length){ toast("Nichts Offenes an diesem Tag"); return; }
-    if(!confirm(open.length+" unerledigte Block"+(open.length===1?"":"e")+" auf den nächsten Tag verschieben?")) return;
+    if(!confirm(open.length+(open.length===1?" unerledigter Block":" unerledigte Blöcke")+" auf den nächsten Tag verschieben?")) return;
     const cur = tp.day; tpShift(1); const nxt = tp.day; tp.day = cur;
     const src = tpEnsureDay(cur), dst = tpEnsureDay(nxt);
     open.forEach(b=>{ const i = src.indexOf(b); if(i>=0) src.splice(i,1); dst.push(b); });
-    tpDirty(); render(); toast(open.length+" Block"+(open.length===1?"":"e")+" verschoben");
+    tpDirty(); render(); toast(open.length+(open.length===1?" Block":" Blöcke")+" verschoben");
   }
 }
 
@@ -3908,7 +3910,8 @@ function tpReset(){ if(typeof tmReset==="function") tmReset(); clearTimeout(tp.s
    Meta-Projekte aus dem Arbeitsbereich werden nur GELESEN (Auswahlliste, Deadline-Markierung); es wird nichts in Arbeitsbereich, ToDos, Ziele oder Kalender zurückgeschrieben. */
 const TM_FILE = "Metaprojektplanung.json";
 const tm = {data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false, drag:null,
-  scrollL:null, q:"", filter:"all", showSet:false, deleted:new Set(), range:{from:0,to:1}, ppd:24, suppressClick:0};
+  scrollL:null, q:"", filter:"all", showSet:false, deleted:new Set(), range:{from:0,to:1}, ppd:24, suppressClick:0,
+  hideDone:(function(){ try{ return localStorage.getItem("tmHideDone")==="1"; }catch(e){ return false; } })()};
 tp.mode = (function(){ try{ return localStorage.getItem("tpMode")==="meta" ? "meta" : "day"; }catch(e){ return "day"; } })();
 const tmDN = k=>{ const p = String(k).split("-"); return Math.round(Date.UTC(+p[0], +p[1]-1, +p[2])/864e5); };
 const tmKey = n=>{ const d = new Date(n*864e5); return d.getUTCFullYear()+"-"+tpPad(d.getUTCMonth()+1)+"-"+tpPad(d.getUTCDate()); };
@@ -4050,7 +4053,7 @@ function tmMount(m){
   tm.ppd = tm.data.settings.ppd; tm.range = tmRange();
   const prev = document.getElementById("tm_scroll"); if(prev) tm.scrollL = prev.scrollLeft;
   const R = tm.range, days = R.to-R.from+1, W = days*tm.ppd, ppd = tm.ppd, metaMap = tmMetaMap();
-  const L = tmLanes(tm.data.blocks), H = L.n*44+8, today = tmDN(todayKey());
+  const vis = tm.hideDone ? tm.data.blocks.filter(b=>!b.done) : tm.data.blocks, L = tmLanes(vis), H = L.n*44+8, today = tmDN(todayKey());
   let mon = "", dayRow = "", shade = "", i0 = R.from;
   while(i0<=R.to){
     const d = new Date(i0*864e5), y = d.getUTCFullYear(), mo = d.getUTCMonth();
@@ -4070,16 +4073,16 @@ function tmMount(m){
     <div class="tp-bar">
       <button class="tp-btn" data-tm="left">‹ Zurück</button><button class="tp-btn" data-tm="today">Heute</button><button class="tp-btn" data-tm="right">Weiter ›</button>
       <span class="tp-title">Metaprojekte</span><span style="flex:1"></span>
-      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
+      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
     </div>
     ${tm.showSet?`<div class="tp-set">Breite <select id="tm_ppd">${opt([8,12,16,24,36,56], ppd, v=>v+" px je Tag")}</select></div>`:""}
     <div class="tp-scroll" id="tm_scroll"><div class="tp-inner" style="width:${W}px">
       <div class="tm-mon">${mon}</div><div class="tm-days">${dayRow}</div>
       <div class="tp-track" id="tm_track" style="height:${H}px">${shade}
-        ${tm.data.blocks.map(b=>tmBlockHtml(b, L.lane.get(b.id), metaMap)).join("")}
+        ${vis.map(b=>tmBlockHtml(b, L.lane.get(b.id), metaMap)).join("")}
         ${today>=R.from&&today<=R.to?`<div class="tp-now" style="left:${(today-R.from)*ppd+ppd/2}px"></div>`:""}
       </div></div></div>
-    <div class="tp-sum">${tm.data.blocks.length ? `${tm.data.blocks.length} Block${tm.data.blocks.length===1?"":"e"}, zusammen ${sumDays} Tage geplant` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein Meta-Projekt übernehmen."}</div>
+    <div class="tp-sum">${tm.data.blocks.length ? `${tm.data.blocks.length} ${tm.data.blocks.length===1?"Block":"Blöcke"}, zusammen ${sumDays} Tage geplant${tm.hideDone&&vis.length<tm.data.blocks.length?" ("+(tm.data.blocks.length-vis.length)+" erledigte ausgeblendet)":""}` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein Meta-Projekt übernehmen."}</div>
     <div class="tp-pool" id="tm_pool">${tmPoolHtml()}</div>
     <div class="tp-note">Die Metaprojektplanung liegt in der eigenen Drive-Datei „${TM_FILE}“. Änderungen hier verändern keine Meta-Projekte, ToDos oder Termine im Arbeitsbereich. Die Fahne ⚑ zeigt die Deadline des Meta-Projekts (nur Anzeige). Programmstand ${APP_VER}.</div>
   </div>`;
@@ -4226,6 +4229,7 @@ function tmAct(a, el){
   else if(a==="pf"){ tm.filter = el.dataset.v; tm.q = ""; tmPoolRender(); }
   else if(a==="padd"){ tmAddFromPool(el.dataset.r); }
   else if(a==="term"){ tmTermView(""); }
+  else if(a==="hd"){ tm.hideDone = !tm.hideDone; try{ localStorage.setItem("tmHideDone", tm.hideDone?"1":"0"); }catch(_){} render(); }
 }
 function tmDragApply(clientX){
   const d = tm.drag; if(!d) return;

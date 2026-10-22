@@ -3523,7 +3523,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v207";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v209";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -9025,6 +9025,7 @@ function wsOpenLinkMenu(docId, nid){
   document.body.insertAdjacentHTML("beforeend",
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${esc(wsTitleOf(n)||(att?"Anhang":"Punkt"))}</h2>
+      ${att?"":wsParentBoxHtml(doc, nid)}
       <label>${att?"Titel":"Text"}</label><textarea id="wsl_text" rows="2" maxlength="2000" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px;resize:vertical">${esc(att?(n.title||""):(n.text||""))}</textarea>
       <label>Tag</label><input type="text" id="wsl_tag" maxlength="140" list="wsl_tags" value="${esc(n.tag||"")}" placeholder="${esc(inhTag?"geerbt: "+inhTag+", hier weitere mit Komma":"z. B. Job, Projekt")}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;font-family:inherit;margin-bottom:10px">
       <datalist id="wsl_tags">${wsAllTags(wsDocs).concat(["Privat","Job","Projekt"]).filter((t,i,a)=>a.findIndex(x=>wsTagKey(x)===wsTagKey(t))===i).map(t=>`<option value="${esc(t)}">`).join("")}</datalist>
@@ -9064,6 +9065,14 @@ function wsOpenLinkMenu(docId, nid){
     touched = true; kind = b.dataset.k; $("wsl_calrow").style.display = kind ? "" : "none";
     if(kind && !$("wsl_date").value && !($("wsl_dl") && $("wsl_dl").value)) $("wsl_date").value = todayKey();
     upEnd();
+  });
+  if(!att) wsParentBoxWire($("modalBg"), ()=>({docId, nid}), (res, t)=>{
+    const keep = {}; ["wsl_text","wsl_tag","wsl_date","wsl_dur","wsl_dl"].forEach(k=>{ if($(k)) keep[k] = $(k).value; });
+    const on = {}; ["wsl_done","wsl_hid","wsl_meta","wsl_cal"].forEach(k=>{ if($(k)) on[k] = $(k).classList.contains("on"); });
+    $("modalBg").remove(); render();
+    wsOpenLinkMenu(res.doc.id, nid);
+    Object.keys(keep).forEach(k=>{ if($(k)) $(k).value = keep[k]; });
+    Object.keys(on).forEach(k=>{ if($(k)) $(k).classList.toggle("on", on[k]); });
   });
   $("wsl_cal").onclick = ()=>$("wsl_cal").classList.toggle("on");
   $("wsl_done").onclick = ()=>$("wsl_done").classList.toggle("on");
@@ -9273,8 +9282,11 @@ function wsParentLabel(doc, nid){
   return head ? "unter Überschrift „"+head.slice(0,50)+"“ · "+dt : "oberste Ebene · "+dt;
 }
 /* box: Container; extra: [{label, val}] zusätzliche Zeilen ganz oben; onPick(cand|{kind:"extra", val}) */
-function wsPickerMount(box, cands, onPick, extra){
+function wsPickerCss(){
   if(!document.getElementById("wspCss")) document.head.insertAdjacentHTML("beforeend", `<style id="wspCss">.wsp_row{padding:7px 9px;border-radius:8px;cursor:pointer}.wsp_row:hover,.wsp_row.act{background:#1f242b}.wsp_t{font-size:14px}.wsp_p{font-size:12px;color:var(--muted,#8b93a1);margin-top:1px}</style>`);
+}
+function wsPickerMount(box, cands, onPick, extra){
+  wsPickerCss();
   box.innerHTML = `<input type="text" class="wsp_in" placeholder="Elternprojekt suchen: Titel oder Dokument …" autocomplete="off" style="width:100%;padding:10px;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;font-size:15px;font-family:inherit"><div class="wsp_list" style="max-height:230px;overflow:auto;margin-top:6px"></div>`;
   const inp = box.querySelector(".wsp_in"), list = box.querySelector(".wsp_list");
   let shown = [];
@@ -9347,6 +9359,96 @@ async function wsAssignTodoParent(t, cand0){
   }
   wsTouch(cand.doc);
   toast("Im Arbeitsbereich unter „"+cand.title.slice(0,40)+"“ angelegt"); render(); return true;
+}
+
+/* ---- Kasten "Elternprojekt" ganz oben in den Menüs: zeigt das aktuelle Elternprojekt und stellt es mit einem Klick ein ---- */
+function wsParentInfo(doc, nid){
+  const r = doc && wsFindNode(doc, nid); if(!r) return null;
+  const dt = doc.title || "Ohne Titel";
+  let head = ""; for(let i = doc.blocks.indexOf(r.block); i>=0; i--){ if(doc.blocks[i].type==="heading"){ head = (doc.blocks[i].text||"").trim(); break; } }
+  const where = [dt, head].filter(Boolean).join(" › ");
+  if(r.parent) return {has:true, title:(wsTitleOf(r.parent)||"(leer)"), meta:!!r.parent.meta, sub:"Unterpunkt in: "+where};
+  if(head) return {has:true, head:true, title:head, sub:"Überschrift in: "+dt};
+  return {has:false, title:"", sub:"oberste Ebene in: "+dt};
+}
+/* Überschriften: Elternprojekt = die Überschrift Ebene 1 darüber (bei Ebene 2); Ebene 1 hat keins */
+function wsParentInfoHead(doc, bid){
+  const i = doc ? doc.blocks.findIndex(b=>b.id===bid) : -1; if(i<0) return null;
+  const h = doc.blocks[i], dt = doc.title || "Ohne Titel";
+  if(wsHLvl(h)===2){
+    for(let k = i-1; k>=0; k--){ const b = doc.blocks[k]; if(b.type==="heading" && wsHLvl(b)===1) return {has:true, head:true, title:(b.text||"").trim()||"(Überschrift ohne Text)", sub:"Ebene 2 unter Ebene 1 in: "+dt}; }
+  }
+  return {has:false, sub:"Ebene "+wsHLvl(h)+", oberste Ebene in: "+dt};
+}
+function wsParentCandsForHead(doc, bid){
+  const i = doc.blocks.findIndex(b=>b.id===bid); if(i<0) return [];
+  const end = wsSecEnd(doc.blocks, i);
+  const inOwn = c=>{
+    if(c.doc!==doc) return false;
+    if(c.kind==="head"){ const k = doc.blocks.indexOf(c.head); return k>=i && k<end; }
+    const r = wsFindNode(doc, c.refId), k = r ? doc.blocks.indexOf(r.block) : -1; return k>=i && k<end;
+  };
+  return wsParentCands("").filter(c=>!inOwn(c) && (c.kind==="node" || wsHLvl(c.head)===1));
+}
+function wsApplyHeadParent(docId, bid, c0){
+  const c = wsResolveCand(c0), doc = wsGet(docId), h = doc && wsBlock(doc, bid);
+  if(!c || !h || h.type!=="heading"){ toast("Das Ziel gibt es nicht mehr"); return false; }
+  const i = doc.blocks.indexOf(h), subs = doc.blocks.slice(i+1, wsSecEnd(doc.blocks, i)).filter(b=>b.type==="heading").length;
+  if(c.kind==="extra"){ wsSetHeadLvl(doc, bid, 1); wsTouch(doc); toast("Kein Elternprojekt mehr: Ebene 1"); return {doc}; }
+  if(c.kind==="head"){
+    if(subs && !confirm("Die Überschrift wird Ebene 2. Ihre "+subs+" Unterüberschrift"+(subs===1?"":"en")+" werden dabei zu Punkten. Fortfahren?")) return false;
+    if(!wsMoveHeadTo(doc, c.doc, bid, {kind:"into", id:c.head.id})){ toast("Dorthin lässt sich die Überschrift nicht verschieben"); return false; }
+    wsTouch(doc); if(c.doc!==doc) wsTouch(c.doc);
+    toast("Elternprojekt: „"+c.title.slice(0,40)+"“"); return {doc:c.doc};
+  }
+  if(!confirm("Die Überschrift wird dabei zu einem Punkt unter „"+c.title.slice(0,40)+"“ (samt allem darunter). Fortfahren?")) return false;
+  const node = wsDemoteHeading(doc, bid, null);
+  if(!node){ toast("Das geht an dieser Stelle nicht"); return false; }
+  if(!wsMoveTo(doc, c.doc, node.id, {block:"", mode:"child", parent:c.node.id})){ toast("Dorthin lässt sich die Überschrift nicht verschieben"); wsTouch(doc); return false; }
+  wsTouch(doc); if(c.doc!==doc) wsTouch(c.doc);
+  toast("Elternprojekt: „"+c.title.slice(0,40)+"“"); return {doc:c.doc};
+}
+function wsParentBoxHtml(doc, nid, note, infoOverride){
+  wsPickerCss();
+  const inf = infoOverride || (doc && nid ? wsParentInfo(doc, nid) : null);
+  const cur = inf
+    ? (inf.has ? `<div style="font-size:16px;font-weight:700">${inf.head?"§ ":(inf.meta?"★ ":"")}${esc(inf.title.slice(0,70))}</div><div class="wsp_p">${esc(inf.sub)}</div>`
+               : `<div style="font-size:16px;font-weight:700;color:var(--muted,#8b93a1)">Kein Elternprojekt</div><div class="wsp_p">${esc(inf.sub)}</div>`)
+    : `<div style="font-size:16px;font-weight:700;color:var(--muted,#8b93a1)">Kein Elternprojekt</div><div class="wsp_p">${esc(note||"noch nicht im Arbeitsbereich")}</div>`;
+  return `<div class="wsp_top" style="border:1px solid #3a4150;background:#14181e;border-radius:12px;padding:10px 12px;margin-bottom:12px">
+    <div class="wsp_p" style="letter-spacing:.06em;font-weight:600">ELTERNPROJEKT</div>${cur}
+    <button type="button" class="btn-primary" data-wsp="set" style="display:block;width:100%;margin-top:8px;padding:9px;font-size:14px">${inf&&inf.has?"Elternprojekt ändern":"Elternprojekt einstellen"} …</button>
+    <div class="wsp_pick" style="display:none;margin-top:6px"></div></div>`;
+}
+/* Verschiebt den Punkt unter die Auswahl; gibt {doc} des Ziels zurück oder false */
+function wsApplyParentPick(docId, nid, c0){
+  const c = wsResolveCand(c0), doc = wsGet(docId), r = doc && wsFindNode(doc, nid);
+  if(!c || !r){ toast("Das Ziel gibt es nicht mehr"); return false; }
+  const ok = c.kind==="extra" ? wsMoveTo(doc, doc, nid, {block:r.block.id, mode:"end"}) : wsMoveToParent(doc, nid, c);
+  if(!ok){ toast("Dorthin lässt sich der Punkt nicht verschieben"); return false; }
+  const dst = c.kind==="extra" ? doc : c.doc;
+  wsTouch(doc); if(dst!==doc) wsTouch(dst);
+  toast(c.kind==="extra" ? "Kein Elternprojekt mehr: oberste Ebene" : "Elternprojekt: „"+c.title.slice(0,40)+"“");
+  return {doc:dst};
+}
+/* root: Modal; target(): {docId, nid} (legt bei Bedarf den Punkt an); done(res): nach dem Verschieben */
+function wsParentBoxWire(root, target, done){
+  const box = root.querySelector(".wsp_top"); if(!box) return;
+  const btn = box.querySelector('[data-wsp="set"]'), pick = box.querySelector(".wsp_pick");
+  btn.onclick = ()=>{
+    if(pick.style.display!=="none"){ pick.style.display = "none"; return; }
+    if(!(typeof wsLoaded!=="undefined" && wsLoaded)){ toast("Arbeitsbereich noch nicht geladen"); return; }
+    const t0 = target(); if(!t0) return;
+    const doc0 = wsGet(t0.docId), hd = t0.head ? wsBlock(doc0, t0.nid) : null;
+    const has = t0.head ? !!(hd && wsHLvl(hd)===2) : !!(doc0 && wsFindNode(doc0, t0.nid) && wsFindNode(doc0, t0.nid).parent);
+    pick.style.display = "block";
+    wsPickerMount(pick, t0.head ? wsParentCandsForHead(doc0, t0.nid) : wsParentCands(t0.nid||""), c=>{
+      const t = target(); if(!t) return;
+      const res = t.head ? wsApplyHeadParent(t.docId, t.nid, c) : wsApplyParentPick(t.docId, t.nid, c);
+      if(res) done(res, t);
+    }, has ? [{label:t0.head ? "Kein Elternprojekt: Ebene 1 (oberste Ebene)" : "Kein Elternprojekt: oberste Ebene dieses Blocks", val:"top"}] : []);
+    const i = pick.querySelector(".wsp_in"); if(i) i.focus();
+  };
 }
 
 /* Punkte: Ein-Schritt-Auswahl des Elternprojekts; Anhänge und genaue Position: das ausführliche Fenster */
@@ -9497,6 +9599,7 @@ function wsOpenHeadMenu(docId, bid){
     `<div class="modal-bg" id="modalBg"><div class="modal">
       <h2>${esc((h.text||"(Überschrift ohne Text)").slice(0,60))}</h2>
       <p class="muted" style="font-size:13px;margin-bottom:10px">Ebene ${wsHLvl(h)} · gilt für die ganze Überschrift samt allem darunter</p>
+      ${wsParentBoxHtml(doc, bid, "", wsParentInfoHead(doc, bid))}
       <label>Fälligkeitsdatum</label><input type="date" id="wsh_date" value="${esc(h.date||"")}" style="${inp}">
       <label>Laufzeit in Tagen (Kalendertage, leer = keine)</label><input type="number" id="wsh_dur" min="0" max="3660" step="1" value="${h.dur||""}" placeholder="z. B. 5" style="${inp}">
       <label>Deadline</label><input type="date" id="wsh_dl" value="${esc(h.dl||"")}" style="${inp}">
@@ -9512,6 +9615,16 @@ function wsOpenHeadMenu(docId, bid){
   };
   ["wsh_date","wsh_dur","wsh_dl"].forEach(id=>{ $(id).oninput = upEnd; $(id).onchange = upEnd; }); upEnd();
   $("wsh_meta").onclick = ()=>$("wsh_meta").classList.toggle("on");
+  wsParentBoxWire($("modalBg"), ()=>({docId, nid:bid, head:true}), res=>{
+    const keep = {}; ["wsh_date","wsh_dur","wsh_dl"].forEach(k=>{ if($(k)) keep[k] = $(k).value; });
+    const meta = $("wsh_meta").classList.contains("on");
+    $("modalBg").remove(); render();
+    const d2 = wsGet(res.doc.id);
+    if(!(d2 && wsBlock(d2, bid))) return;                       // wurde zu einem Punkt: kein Überschrift-Fenster mehr
+    wsOpenHeadMenu(d2.id, bid);
+    Object.keys(keep).forEach(k=>{ if($(k)) $(k).value = keep[k]; });
+    if($("wsh_meta")) $("wsh_meta").classList.toggle("on", meta);
+  });
   $("wsh_cancel").onclick = ()=>$("modalBg").remove();
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
   $("wsh_clear").onclick = ()=>{ $("wsh_date").value = ""; $("wsh_dur").value = ""; $("wsh_dl").value = ""; upEnd(); };
@@ -9621,11 +9734,15 @@ function wsOpenItemMenu(docId, kind, id, scope){
       add("🗑 Löschen", px('[data-wsact="del-block"]'), true);
     }
   }
+  const isHeadItem = kind!=="node" && kind!=="att" && !!(wsBlock(doc, id) && wsBlock(doc, id).type==="heading");
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>${esc(title)}</h2>
+    ${kind==="node" ? wsParentBoxHtml(doc, id) : (isHeadItem ? wsParentBoxHtml(doc, id, "", wsParentInfoHead(doc, id)) : "")}
     <div class="ws-implist ws-imenu">${items.map((it,i)=>`<button class="ws-addbtn ws-imitem${it.danger?" danger":""}" data-im="${i}">${esc(it.label)}</button>`).join("")}</div>
     <div class="modal-actions"><button class="btn-primary" id="wsim_close">Schließen</button></div></div></div>`);
   const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); };
   document.getElementById("wsim_close").onclick = close;
+  if(kind==="node") wsParentBoxWire(document.getElementById("modalBg"), ()=>({docId, nid:id}), ()=>{ close(); render(); });
+  else if(isHeadItem) wsParentBoxWire(document.getElementById("modalBg"), ()=>({docId, nid:id, head:true}), ()=>{ close(); render(); });
   document.getElementById("modalBg").onclick = e=>{
     if(e.target.id==="modalBg"){ close(); return; }
     const b = e.target.closest("[data-im]"); if(!b) return;
@@ -9670,11 +9787,18 @@ function wsCmOpen(btn){
   const tf = ra.querySelector('[data-wsact="task-focus"]');
   if(tf && typeof wsEnsureTaskNode==="function") items.push({k:7, label:"🗂 Im Arbeitsbereich öffnen", fn:()=>{ const hit = wsEnsureTaskNode(tf.dataset.kind, tf.dataset.ref); if(hit) wsGoToItem(hit.doc.id, "node", hit.node.id, false); else toast("Eintrag nicht gefunden"); }});
   items.sort((x,y)=>x.k-y.k);
+  const tHit = (tf && wsLoaded) ? wsFindByLink(wsDocs, tf.dataset.kind, tf.dataset.ref) : null;
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>${esc(((titleEl&&titleEl.textContent)||"Eintrag").trim().slice(0,50))}</h2>
+    ${tf ? wsParentBoxHtml(tHit&&tHit.doc, tHit&&tHit.node.id, wsLoaded?"noch nicht im Arbeitsbereich, wird beim Einstellen angelegt":"Arbeitsbereich noch nicht geladen") : ""}
     <div class="ws-implist ws-imenu">${items.map((it,i)=>`<button class="ws-addbtn ws-imitem${it.danger?" danger":""}" data-im="${i}">${esc(it.label)}</button>`).join("")}</div>
     <div class="modal-actions"><button class="btn-primary" id="wsim_close">Schließen</button></div></div></div>`);
   const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); };
   document.getElementById("wsim_close").onclick = close;
+  if(tf) wsParentBoxWire(document.getElementById("modalBg"), ()=>{
+    const hit = (typeof wsEnsureTaskNode==="function") ? wsEnsureTaskNode(tf.dataset.kind, tf.dataset.ref) : null;
+    if(!hit){ toast("Eintrag nicht gefunden"); return null; }
+    return {docId:hit.doc.id, nid:hit.node.id};
+  }, ()=>{ close(); render(); });
   document.getElementById("modalBg").onclick = e=>{
     if(e.target.id==="modalBg"){ close(); return; }
     const b = e.target.closest("[data-im]"); if(!b) return;

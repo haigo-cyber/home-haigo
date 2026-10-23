@@ -698,6 +698,11 @@
 .tp{display:flex;flex-direction:column;gap:10px}
 .tp-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .tp-bar .tp-title{font-weight:600;font-size:16px;margin:0 6px;min-width:140px}
+.tp-locked .tp-h{display:none}
+.tp-locked .tm-b,.tp-locked .tp-b,.tp-locked .tm-k{touch-action:pan-x pan-y;cursor:default}
+.tp-locked .tp-ck{pointer-events:none;opacity:.75}
+.tp-locked .tp-pool{display:none}
+.tp-more{margin-top:6px;padding:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
 .tp-btn{background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:7px 11px;font-size:13px;cursor:pointer}
 .tp-btn.pri{background:var(--accent2);border-color:var(--accent2);color:#fff}
 .tp-btn.on{border-color:var(--accent);color:#fff}
@@ -1782,6 +1787,13 @@ function completeCalEvent(eventId){
 
 /* ---- Google Task abhaken ---- */
 async function completeGTask(taskId){
+  if(typeof wsLoaded!=="undefined" && wsLoaded){
+    const h = wsFindByLink(wsDocs, "goal", taskId);
+    if(h && !h.node.done){
+      const go = await new Promise(res=>wsGuardDone(h.doc, h.node, ()=>res(true), ()=>res(false)));
+      if(!go){ render(); return; }
+    }
+  }
   setSync("busy");
   try{
     const gt=gtasks.find(t=>t.id===taskId);
@@ -2323,6 +2335,13 @@ async function purgeStaleGoals(){
   return true;
 }
 async function toggleDone(id, key){
+  if(key==="once" && !isEverDone(id) && typeof wsLoaded!=="undefined" && wsLoaded){
+    const h = wsFindByLink(wsDocs, "todo", id);
+    if(h && !h.node.done){
+      const go = await new Promise(res=>wsGuardDone(h.doc, h.node, ()=>res(true), ()=>res(false)));
+      if(!go){ render(); return; }
+    }
+  }
   setSync("busy");
   if(key==="once"){
     // Einmaliges ToDo: Erledigung dauerhaft (nicht datumsgebunden)
@@ -2764,6 +2783,7 @@ function setNavH(){
 }
 window.addEventListener("resize",setNavH);
 function render(){
+  if(view!=="plan"){ tp.unlock = false; tp.more = false; tm.more = false; }       // Struktur ist beim Betreten immer gesperrt
   gameTick();
   ksSyncSoon();
   wsTopBarUpdate();
@@ -3578,7 +3598,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v219";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v221";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -3768,13 +3788,14 @@ function tpMount(m){
   const showNow = tp.day===todayKey() && nowM>=tp.range.from && nowM<=tp.range.to;
   const opt = (arr, cur, f)=>arr.map(v=>`<option value="${v}"${v==cur?" selected":""}>${f?f(v):v}</option>`).join("");
   const rng = (a,b)=>Array.from({length:b-a+1},(_,i)=>a+i);
-  m.innerHTML = `<div class="tp">${tpModeBar()}
+  m.innerHTML = `<div class="tp${tp.unlock?"":" tp-locked"}">${tpModeBar()}
     <div class="tp-bar">
       <button class="tp-btn" data-tp="prev">‹</button><button class="tp-btn" data-tp="today">Heute</button><button class="tp-btn" data-tp="next">›</button>
       <input type="date" id="tp_date" value="${esc(tp.day)}"><span class="tp-title">${esc(tpDayTitle(tp.day))}</span>
       <span style="flex:1"></span>
-      <button class="tp-btn pri" data-tp="add">+ Block</button><button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button><button class="tp-btn${tp.hideDone?" on":""}" data-tp="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tp.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙</button>
+      ${tp.unlock?`<button class="tp-btn pri" data-tp="add">+ Block</button>`:""}<button class="tp-btn${tp.more?" on":""}" data-tp="more" title="Weitere Knöpfe">⋯</button>
     </div>
+    ${tp.more?`<div class="tp-bar tp-more">${tp.unlock?`<button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button>`:""}<button class="tp-btn${tp.hideDone?" on":""}" data-tp="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tp.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙ Einstellungen</button></div>`:""}
     ${tp.showSet?`<div class="tp-set">Beginn <select id="tp_from">${opt(rng(0,23), s.from, v=>tpPad(v)+":00")}</select> Ende <select id="tp_to">${opt(rng(1,24), s.to, v=>tpPad(v)+":00")}</select>
       Raster <select id="tp_snap">${opt([5,10,15,30], s.snap, v=>v+" min")}</select> Breite <select id="tp_pph">${opt([60,90,120,180,240], s.pph, v=>v+" px je Stunde")}</select></div>`:""}
     <div class="tp-scroll" id="tp_scroll"><div class="tp-inner" style="width:${W}px">
@@ -3850,6 +3871,7 @@ function tpAct(a, el){
   else if(a==="today"){ tp.day = todayKey(); tp.scrollL = null; render(); }
   else if(a==="add"){ const dur = 30, st = tpFree(tp.day, dur); tpEdit("", {id:uid(), title:"", start:st, end:st+dur, color:TP_COLORS[0], done:false, note:"", src:null}); }
   else if(a==="set"){ tp.showSet = !tp.showSet; render(); }
+  else if(a==="more"){ tp.more = !tp.more; render(); }
   else if(a==="hd"){ tp.hideDone = !tp.hideDone; try{ localStorage.setItem("tpHideDone", tp.hideDone?"1":"0"); }catch(_){} render(); }
   else if(a==="retry"){ tp.err = ""; render(); }
   else if(a==="pf"){ tp.filter = el.dataset.v; tp.q = ""; tpPoolRender(); document.querySelectorAll("#tp_pool [data-tp=pf]").forEach(x=>x.classList.toggle("on", x.dataset.v===tp.filter)); }
@@ -3882,8 +3904,9 @@ function tpDragApply(clientX){
   d.el.style.left = (ns-R.from)*tp.ppm+"px"; d.el.style.width = (ne-ns)*tp.ppm+"px";
   const mt = d.el.querySelector(".tp-m"); if(mt) mt.textContent = tpHM(ns)+"–"+(ne>=1440?"24:00":tpHM(ne));
 }
+function tpLockHint(){ const t = Date.now(); if(t-(tp.hintT||0)>3000){ tp.hintT = t; toast("Gesperrt. Oben auf „🔒 Ansicht“ tippen, um zu bearbeiten"); } }
 function tpDown(e){
-  if(view!=="plan" || tp.mode!=="day") return;
+  if(view!=="plan" || tp.mode!=="day" || !tp.unlock) return;
   const b = e.target.closest && e.target.closest(".tp-b"); if(!b || !b.closest("#tp_track")) return;
   if(e.target.closest("[data-ck]")) return;
   if(e.pointerType==="mouse" && e.button!==0) return;
@@ -3913,6 +3936,12 @@ function tpUp(e){
 }
 function tpClick(e){
   if(view!=="plan" || tp.mode!=="day") return;
+  if(!tp.unlock){
+    const a0 = e.target.closest && e.target.closest("[data-tp]");
+    if(a0 && ["prev","next","today","set","hd","retry","more"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
+    else if(e.target.closest && e.target.closest(".tp-b,#tp_track,.tp-pool")) tpLockHint();
+    return;
+  }
   const ck = e.target.closest && e.target.closest("[data-ck]");
   if(ck){ const b = ck.closest(".tp-b"); if(b) tpToggleDone(b.dataset.id); return; }
   const a = e.target.closest && e.target.closest("[data-tp]");
@@ -4130,7 +4159,7 @@ function tmPoolHtml(){
     ${list.length>80?`<div class="tp-note">… und ${list.length-80} weitere, bitte suchen</div>`:""}`;
 }
 function tpModeBar(){
-  return `<div class="tp-bar"><button class="tp-btn${tp.mode==="day"?" on":""}" data-tpmode="day">Tag</button><button class="tp-btn${tp.mode==="meta"?" on":""}" data-tpmode="meta">Metaprojekte</button></div>`;
+  return `<div class="tp-bar"><button class="tp-btn${tp.mode==="day"?" on":""}" data-tpmode="day">Tag</button><button class="tp-btn${tp.mode==="meta"?" on":""}" data-tpmode="meta">Metaprojekte</button><span style="flex:1"></span><button class="tp-btn${tp.unlock?" pri":""}" data-tpunlock="1" title="${tp.unlock?"Bearbeiten ist an. Antippen zum Sperren":"Gesperrt: nur ansehen. Antippen zum Bearbeiten"}">${tp.unlock?"✏️ Bearbeiten":"🔒 Ansicht"}</button></div>`;
 }
 function tmMount(m){
   if(tm.drag) return;
@@ -4164,12 +4193,13 @@ function tmMount(m){
   }
   const opt = (arr, cur, f)=>arr.map(v=>`<option value="${v}"${v==cur?" selected":""}>${f?f(v):v}</option>`).join("");
   let sumDays = 0; tm.data.blocks.forEach(b=>{ sumDays += tmDN(b.end)-tmDN(b.start)+1; });
-  m.innerHTML = `<div class="tp">${tpModeBar()}
+  m.innerHTML = `<div class="tp${tp.unlock?"":" tp-locked"}">${tpModeBar()}
     <div class="tp-bar">
       <button class="tp-btn" data-tm="left">‹ Zurück</button><button class="tp-btn" data-tm="today">Heute</button><button class="tp-btn" data-tm="right">Weiter ›</button>
       <span class="tp-title">Metaprojekte</span><span style="flex:1"></span>
-      <button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn" data-tm="chk" title="Prüfen, ob alle Unterpunkte im Zeitraum ihres Meta-Projekts liegen">Zeitrange prüfen</button><button class="tp-btn pri" data-tm="add">+ Block</button><button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.showKids?" on":""}" data-tm="kids" title="Unterpunkte der Meta-Projekte unter den Balken ein- oder ausblenden">${tm.showKids?"Unterpunkte ausblenden":"Unterpunkte einblenden"}</button><button class="tp-btn${tm.hideFlags?" on":""}" data-tm="hf" title="Rote Deadline-Flaggen ein- oder ausblenden">${tm.hideFlags?"Deadlines einblenden":"Deadlines ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙</button>
+      ${tp.unlock?`<button class="tp-btn pri" data-tm="add">+ Block</button>`:""}<button class="tp-btn${tm.more?" on":""}" data-tm="more" title="Weitere Knöpfe">⋯</button>
     </div>
+    ${tm.more?`<div class="tp-bar tp-more">${tp.unlock?`<button class="tp-btn" data-tm="term" title="Start und Deadline der Meta-Projekte in der ToDo-App bearbeiten">Start/Deadline bearbeiten</button><button class="tp-btn" data-tm="chk" title="Prüfen, ob alle Unterpunkte im Zeitraum ihres Meta-Projekts liegen">Zeitrange prüfen</button>`:""}<button class="tp-btn${tm.hideDone?" on":""}" data-tm="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tm.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tm.showKids?" on":""}" data-tm="kids" title="Unterpunkte der Meta-Projekte unter den Balken ein- oder ausblenden">${tm.showKids?"Unterpunkte ausblenden":"Unterpunkte einblenden"}</button><button class="tp-btn${tm.hideFlags?" on":""}" data-tm="hf" title="Rote Deadline-Flaggen ein- oder ausblenden">${tm.hideFlags?"Deadlines einblenden":"Deadlines ausblenden"}</button><button class="tp-btn${tm.showSet?" on":""}" data-tm="set" title="Einstellungen">⚙ Breite</button></div>`:""}
     ${tm.showSet?`<div class="tp-set">Breite <select id="tm_ppd">${opt([8,12,16,24,36,56,75,112], ppd, v=>v+" px je Tag")}</select></div>`:""}
     <div class="tp-scroll" id="tm_scroll"><div class="tp-inner" style="width:${W}px">
       <div class="tm-mon">${mon}</div><div class="tm-days">${dayRow}</div>
@@ -4180,7 +4210,7 @@ function tmMount(m){
       </div></div></div>
     <div class="tp-sum">${tm.data.blocks.length ? `${tm.data.blocks.length} ${tm.data.blocks.length===1?"Block":"Blöcke"}, zusammen ${sumDays} Tage geplant${tm.hideDone&&vis.length<tm.data.blocks.length?" ("+(tm.data.blocks.length-vis.length)+" erledigte ausgeblendet)":""}` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein Meta-Projekt übernehmen."}</div>
     <div class="tp-pool" id="tm_pool">${tmPoolHtml()}</div>
-    <div class="tp-note">Die Metaprojektplanung liegt in der eigenen Drive-Datei „${TM_FILE}“. Änderungen hier verändern keine Meta-Projekte, ToDos oder Termine im Arbeitsbereich. Die Fahne ⚑ zeigt die Deadline des Meta-Projekts (nur Anzeige). Programmstand ${APP_VER}.</div>
+    <div class="tp-note">Die Metaprojektplanung liegt in der eigenen Drive-Datei „${TM_FILE}“. Beim Verschieben oder Verlängern eines Blocks werden das zugehörige Meta-Projekt und (nach Rückfrage) seine Unterpunkte im Arbeitsbereich mitgeändert. Die Fahne ⚑ zeigt die Deadline des Meta-Projekts. Bearbeiten ist nur nach Antippen von „Ansicht“ oben rechts möglich. Programmstand ${APP_VER}.</div>
   </div>`;
   const sc = document.getElementById("tm_scroll");
   if(sc){
@@ -4439,6 +4469,7 @@ function tmAct(a, el){
   else if(a==="today" && sc){ tm.scrollL = Math.max(0, (tmDN(todayKey())-3-tm.range.from)*tm.ppd); sc.scrollLeft = tm.scrollL; }
   else if(a==="add"){ const t = todayKey(); tmEdit("", {id:uid(), title:"", start:t, end:tmKey(tmDN(t)+6), color:TP_COLORS[2], done:false, note:"", src:null}); }
   else if(a==="set"){ tm.showSet = !tm.showSet; render(); }
+  else if(a==="more"){ tm.more = !tm.more; render(); }
   else if(a==="retry"){ tm.err = ""; render(); }
   else if(a==="pf"){ tm.filter = el.dataset.v; tm.q = ""; tmPoolRender(); }
   else if(a==="padd"){ tmAddFromPool(el.dataset.r); }
@@ -4534,7 +4565,7 @@ function tmDragApply(clientX){
   const mt = d.el.querySelector(".tp-m"); if(mt) mt.textContent = tmShort(tmKey(ns))+"–"+tmShort(tmKey(ne))+" · "+(ne-ns+1)+" T";
 }
 function tmDown(e){
-  if(view!=="plan" || tp.mode!=="meta") return;
+  if(view!=="plan" || tp.mode!=="meta" || !tp.unlock) return;
   const kb = e.target.closest && e.target.closest(".tm-k[data-kid]");
   if(kb && kb.closest("#tm_track") && kb.dataset.st && kb.dataset.en && !(e.pointerType==="mouse" && e.button!==0)){
     const sc0 = document.getElementById("tm_scroll");
@@ -4583,12 +4614,22 @@ function tmUp(e){
 }
 function tmClick(e){
   if(view!=="plan" || tp.mode!=="meta") return;
+  if(!tp.unlock){
+    const a0 = e.target.closest && e.target.closest("[data-tm]");
+    if(a0 && !a0.classList.contains("tm-km") && ["left","right","today","set","hd","hf","kids","more","retry"].includes(a0.dataset.tm)) tmAct(a0.dataset.tm, a0);
+    else if(e.target.closest && e.target.closest(".tm-b,.tm-k,.tm-km,#tm_track,.tp-pool")) tpLockHint();
+    return;
+  }
   const ck = e.target.closest && e.target.closest("[data-ck]");
   const km = e.target.closest && e.target.closest(".tm-km[data-kmore]");
   if(km){ tmKidsList(km.dataset.kmore); return; }
   const kidEl = e.target.closest && e.target.closest(".tm-k[data-kid]");
   if(kidEl && !(typeof tm!=="undefined" && Date.now()-tm.suppressClick<350)){ wsOpenItemMenu(kidEl.dataset.doc, kidEl.dataset.kk==="head"?"block":"node", kidEl.dataset.kid, null); return; }
-  if(ck){ const b = ck.closest(".tm-b"); const blk = b && tmBlock(b.dataset.id); if(blk){ blk.done = !blk.done; tmDirty(); render(); } return; }
+  if(ck){ const b = ck.closest(".tm-b"); const blk = b && tmBlock(b.dataset.id); if(blk){
+    const go = ()=>{ blk.done = !blk.done; tmDirty(); render(); };
+    const h = (!blk.done && blk.src && typeof wsLoaded!=="undefined" && wsLoaded) ? tmMetaMap().get(blk.src.ref) : null;
+    if(h && h.node.type!=="heading") wsGuardDone(h.doc, h.node, go, ()=>{}); else go();
+  } return; }
   const a = e.target.closest && e.target.closest("[data-tm]");
   if(a){ tmAct(a.dataset.tm, a); return; }
   if(e.target.closest && e.target.closest(".tm-b")) return;
@@ -4611,7 +4652,8 @@ function tmChange(e){
   main.addEventListener("click", e=>{
     if(view!=="plan") return;
     const mb = e.target.closest && e.target.closest("[data-tpmode]");
-    if(mb){ tp.mode = mb.dataset.tpmode==="meta" ? "meta" : "day"; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){} tm.scrollL = null; render(); e.stopPropagation(); }
+    if(mb){ tp.mode = mb.dataset.tpmode==="meta" ? "meta" : "day"; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){} tm.scrollL = null; render(); e.stopPropagation(); return; }
+    if(e.target.closest && e.target.closest("[data-tpunlock]")){ tp.unlock = !tp.unlock; tp.more = false; tm.more = false; render(); toast(tp.unlock ? "Bearbeiten ist an" : "Gesperrt: nur Ansicht"); e.stopPropagation(); }
   }, true);
   main.addEventListener("pointerdown", tmDown);
   main.addEventListener("pointermove", tmMoveEv);
@@ -7559,8 +7601,10 @@ main.addEventListener("click", e=>{
   }
   const doc = wsGet(card.dataset.did), r = doc && wsFindNode(doc, card.dataset.nid); if(!r) return;
   if(act==="wk-done"){
-    r.node.done = !r.node.done; wsTouch(doc); render();
-    if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+    wsGuardDone(doc, r.node, ()=>{
+      r.node.done = !r.node.done; wsTouch(doc); render();
+      if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+    });
     return;
   }
   if(act==="wk-edit"){ wsOpenLinkMenu(doc.id, r.node.id); return; }
@@ -8488,8 +8532,10 @@ main.addEventListener("click", e=>{
   }
   if(act==="meta-done"){
     const hit = wsMetaNodes().find(h=>h.node.id===a.dataset.nid); if(!hit) return;
-    hit.node.done = true; wsFocusDrop(hit.doc, hit.node.id); wsTouch(hit.doc); render();
-    if(hit.node.link) wsLinkRun(()=>wsPushDone(hit.doc, hit.node));
+    wsGuardDone(hit.doc, hit.node, ()=>{
+      hit.node.done = true; wsFocusDrop(hit.doc, hit.node.id); wsTouch(hit.doc); render();
+      if(hit.node.link) wsLinkRun(()=>wsPushDone(hit.doc, hit.node));
+    });
     return;
   }
   if(act==="dl-open"){
@@ -8502,8 +8548,10 @@ main.addEventListener("click", e=>{
     const hb = (d && !r0) ? d.blocks.find(x=>x.id===a.dataset.nid && x.type==="heading") : null;
     if(hb){ hb.done = true; wsFocusDrop(d, hb.id); wsTouch(d); render(); return; }
     const r = r0; if(!r) return;
-    r.node.done = true; wsTouch(d); render();
-    if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(d, node)); }
+    wsGuardDone(d, r.node, ()=>{
+      r.node.done = true; wsTouch(d); render();
+      if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(d, node)); }
+    });
     return;
   }
   if(act==="gs-go"){
@@ -8624,8 +8672,10 @@ main.addEventListener("click", e=>{
       return;
     }
     if(act==="done"){
-      r.node.done = !r.node.done; if(r.node.done) wsFocusDrop(doc, r.node.id); wsTouch(doc); wsRerender(doc.id);
-      if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+      wsGuardDone(doc, r.node, ()=>{
+        r.node.done = !r.node.done; if(r.node.done) wsFocusDrop(doc, r.node.id); wsTouch(doc); wsRerender(doc.id);
+        if(r.node.link){ const node = r.node; wsLinkRun(()=>wsPushDone(doc, node)); }
+      });
       return;
     }
     if(act==="link-menu"){ wsOpenLinkMenu(doc.id, nid); return; }
@@ -9510,6 +9560,11 @@ function wsOpenLinkMenu(docId, nid){
       const nu = parseInt(o.dur, 10);
       const r2 = await wsAskChildren(doc, n, wsIsDate(o.date)?o.date:"", (nu>0 && nu<=3660)?nu:0, wsIsDate(o.dl)?o.dl:"");
       if(r2.cancel) return; upd = r2.updates;
+    }
+    if(!att && o.done && !n.done && wsOpenKids(n).length){
+      const g = await wsConfirmKids(n);
+      if(g===null) return;
+      if(g==="all") wsDoneKids(doc, n);
     }
     $("modalBg").remove(); await wsApplyMenu(docId, nid, o);
     await wsApplyChildUpdates(doc, upd);
@@ -10525,6 +10580,30 @@ async function wsDeleteDocFlow(doc){
 }
 
 /* ---- Eintrag -> Punkt: Änderungen aus den übrigen Ansichten der App ---- */
+/* ---- Elternpunkt abhaken: offene Unterpunkte nie stillschweigend übergehen ---- */
+function wsOpenKids(n){ const out = []; const w = a=>(a||[]).forEach(c=>{ if(!c.done) out.push(c); w(c.children); }); w(n.children); return out; }
+function wsDoneKids(doc, n){
+  wsOpenKids(n).forEach(c=>{ c.done = true; wsFocusDrop(doc, c.id); if(c.link){ const x = c; wsLinkRun(()=>wsPushDone(doc, x)); } });
+  wsTouch(doc);
+}
+function wsConfirmKids(n){
+  return new Promise(resolve=>{
+    const k = wsOpenKids(n).length;
+    document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="wskBg"><div class="modal"><h2>Unterpunkte sind noch offen</h2>
+      <p style="font-size:14px;margin-bottom:12px">Unter „${esc((wsTitleOf(n)||"Punkt").slice(0,60))}“ ${k===1?"ist":"sind"} noch ${k} Unterpunkt${k===1?"":"e"} nicht erledigt. Was soll geschehen?</p>
+      <div class="modal-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+        <button class="btn-primary" data-a="all">Alle Unterpunkte ebenfalls erledigen</button>
+        <button class="btn-ghost" data-a="only">Nur diesen Punkt erledigen</button>
+        <button class="btn-ghost" data-a="x">Abbrechen</button></div></div></div>`);
+    const bg = document.getElementById("wskBg"), done = v=>{ bg.remove(); resolve(v); };
+    bg.onclick = e=>{ const b = e.target.closest("[data-a]"); if(b) done(b.dataset.a==="x" ? null : b.dataset.a); else if(e.target===bg) done(null); };
+  });
+}
+/* go() läuft, wenn abgehakt werden darf (bei Bedarf nach Rückfrage), cancel() bei Abbruch */
+function wsGuardDone(doc, n, go, cancel){
+  if(!n || n.done || !wsOpenKids(n).length){ go(); return; }
+  wsConfirmKids(n).then(g=>{ if(g===null){ if(cancel) cancel(); return; } if(g==="all") wsDoneKids(doc, n); go(); });
+}
 function wsOnItemDone(kind, ref, done){
   if(!wsLoaded) return;
   const h = wsFindByLink(wsDocs, kind, ref); if(!h || h.node.done===done) return;

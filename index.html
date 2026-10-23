@@ -77,10 +77,10 @@
   .fab{position:fixed;right:calc(50% - 280px + 16px);bottom:calc(var(--navh,96px) + 14px);width:54px;height:54px;border-radius:50%;
     background:var(--accent2);color:#fff;border:none;font-size:28px;cursor:pointer;
     box-shadow:0 6px 18px rgba(0,0,0,.4);z-index:6}
-  .fab-quick{position:fixed;right:calc(50% - 280px + 16px);bottom:calc(var(--navh,96px) + 78px);width:46px;height:46px;border-radius:50%;
+  .fab-quick{position:fixed;right:calc(50% - 280px + 16px);bottom:calc(var(--navh,96px) + 14px);width:54px;height:54px;border-radius:50%;
     background:var(--green);color:#fff;border:none;font-size:20px;cursor:pointer;
     box-shadow:0 6px 18px rgba(0,0,0,.4);z-index:6}
-  @media(max-width:592px){.fab{right:16px}.fab-quick{right:20px}}
+  @media(max-width:592px){.fab{right:16px}.fab-quick{right:16px}}
 
   nav{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--surface);
     border-top:1px solid var(--line);display:flex;max-width:560px;margin:0 auto;
@@ -752,6 +752,7 @@
 .tm-k.done .tm-kt{color:#8b93a1;text-decoration:line-through}
 .tm-km{position:absolute;height:14px;font-size:10.5px;line-height:14px;color:#8b93a1;white-space:nowrap}
 .tm-dl{position:absolute;font-style:normal;color:var(--red);font-size:15px;line-height:40px;height:40px;z-index:2;pointer-events:none;transform:translateX(-4px);text-shadow:0 1px 2px #000}
+@media (max-width:899px){ nav button{flex:1 1 0;max-width:none} }
 </style>
 </head>
 <body>
@@ -768,18 +769,9 @@
   <button class="fab" id="fab" style="display:none">+</button>
   <nav id="nav" style="display:none">
     <button data-view="today" class="active"><span class="nico">📅</span>Heute</button>
-    <button data-view="kalender"><span class="nico">🗓</span>Kalender</button>
-    <button data-view="plan"><span class="nico">🧭</span>Struktur</button>
-    <button data-view="deadlines"><span class="nico">⏱</span>Deadlines</button>
-    <button data-view="notes"><span class="nico">🗂</span>Arbeit</button>
-    <button data-view="distractions"><span class="nico">🧹</span>Ablenkungen</button>
-    <button data-view="goals"><span class="nico">⭐</span>Ziele</button>
-    <button data-view="habits"><span class="nico">🔥</span>Gewohn.</button>
-    <button data-view="duties"><span class="nico">🔁</span>Pflicht</button>
-    <button data-view="todos"><span class="nico">✓</span>ToDos</button>
-    <button data-view="migrate"><span class="nico">↪️</span>Offen</button>
-    <button data-view="stats"><span class="nico">📊</span>Statistik</button>
-    <button data-view="settings"><span class="nico">⚙️</span>Konto</button>
+    <button data-view="grp_plan"><span class="nico">🧭</span>Struktur</button>
+    <button data-view="grp_lists"><span class="nico">✓</span>Listen</button>
+    <button data-view="grp_acc"><span class="nico">⚙️</span>Konto</button>
   </nav>
 </div>
 <div class="toast" id="toast"></div>
@@ -2775,6 +2767,49 @@ function trophyGridHtml(){
   }).join("")+`</div>`;
 }
 
+/* Sammelpunkte in der Navigation: mehrere Ansichten hinter einem Eintrag, Umschalter oben in der Ansicht */
+const NAV_GROUPS = {
+  grp_plan:{views:["kalender","plan","notes","deadlines"], items:[
+    {k:"kalender",label:"Kalender",v:"kalender"},
+    {k:"day",label:"Tag",v:"plan",mode:"day"},
+    {k:"job",label:"Job",v:"plan",mode:"job"},
+    {k:"meta",label:"Metaprojekte",v:"plan",mode:"meta"},
+    {k:"deadlines",label:"Deadlines",v:"deadlines"},
+    {k:"docs",label:"Dokumente",v:"notes",tab:"docs"},
+    {k:"gantt",label:"Gantt",v:"notes",tab:"gantt"}]},
+  grp_lists:{views:["todos","goals","habits","duties","migrate","distractions"], items:[
+    {k:"goals",label:"Ziele",v:"goals"},{k:"todos",label:"ToDos",v:"todos"},{k:"duties",label:"Pflicht",v:"duties"},
+    {k:"habits",label:"Gewohnheiten",v:"habits"},{k:"migrate",label:"Offen",v:"migrate"},{k:"distractions",label:"Ablenkungen",v:"distractions"}]},
+  grp_acc:{views:["settings","stats"], items:[
+    {k:"settings",label:"Konto",v:"settings"},{k:"stats",label:"Statistik",v:"stats"},
+    {k:"trash",label:"Papierkorb",act:"trash"},{k:"done",label:"Zuletzt abgehakt",act:"done"}]}
+};
+function navKey(v){ for(const g in NAV_GROUPS) if(NAV_GROUPS[g].views.includes(v)) return g; return v; }
+function navItemKey(g){
+  const it = NAV_GROUPS[g].items.find(x=>x.v===view && (x.mode?x.mode===tp.mode:true) && (x.tab?x.tab===wsTab:true));
+  return it ? it.k : "";
+}
+function navGo(g, k){
+  const it = NAV_GROUPS[g].items.find(x=>x.k===k); if(!it) return;
+  if(it.act){ if(it.act==="trash") wsOpenTrash(); else openDoneList(); return; }
+  view = it.v;
+  if(it.mode){ tp.mode = it.mode; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){} tm.scrollL = null; }
+  if(it.tab){ wsTab = it.tab; try{ localStorage.setItem("wsTab", wsTab); }catch(_){} }
+  render();
+}
+function navLast(g){ let k = ""; try{ k = localStorage.getItem("navLast_"+g)||""; }catch(_){} const it = NAV_GROUPS[g].items.find(x=>x.k===k && !x.act) || NAV_GROUPS[g].items[0]; return it.k; }
+function navBarHtml(g){ const cur = navItemKey(g); return `<div class="tp-bar nav-sub" style="margin-bottom:10px;flex-wrap:wrap">${NAV_GROUPS[g].items.map(x=>`<button class="tp-btn${x.k===cur?" on":""}" data-navsub="${x.k}" data-navg="${g}">${x.label}</button>`).join("")}</div>`; }
+(function(){
+  const r0 = render;
+  render = function(){
+    const g = navKey(view);
+    if(NAV_GROUPS[g]){ const k = navItemKey(g); if(k){ try{ localStorage.setItem("navLast_"+g, k); }catch(_){} } }
+    const res = r0.apply(this, arguments);
+    if(NAV_GROUPS[g] && main && !main.querySelector(".nav-sub")) main.insertAdjacentHTML("afterbegin", navBarHtml(g));
+    return res;
+  };
+  main.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-navsub]"); if(b){ navGo(b.dataset.navg, b.dataset.navsub); e.stopPropagation(); } }, true);
+})();
 function setNavH(){
   const nv=document.getElementById("nav"); if(!nv) return;
   const desk=window.matchMedia("(min-width:900px)").matches;
@@ -2787,11 +2822,11 @@ function render(){
   gameTick();
   ksSyncSoon();
   wsTopBarUpdate();
-  $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  $("nav").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b.dataset.view===navKey(view==="notes"?"plan":view)));
   setNavH();
-  const titles={today:"Heute",distractions:"Ablenkungen",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",notes:"Arbeitsbereich",kalender:"Kalender",plan:"Tagesstruktur",settings:"Konto"};
+  const titles={today:"Heute",distractions:"Ablenkungen",goals:"Tages-Ziele",habits:"Gewohnheiten",duties:"Pflichtaufgaben",todos:"ToDos",migrate:"Offene Punkte",stats:"Statistik",notes:"Struktur",kalender:"Kalender",plan:"Struktur",settings:"Konto"};
   $("hTitle").textContent=titles[view]||"ToDo";
-  $("fab").style.display=(view==="today"||view==="kalender"||view==="plan"||view==="settings"||view==="stats"||view==="migrate"||view==="deadlines"||(view==="notes"&&wsTab!=="notes"))?"none":"block";
+  $("fab").style.display="none";                                              // der Plus-Knopf ist im Blitz-Knopf aufgegangen (Mehr … im Schnellformular)
   $("fabQuick").style.display=(view==="settings")?"none":"block";
   const active=tasks.filter(t=>!t.archived);
 
@@ -3598,7 +3633,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v221";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v226";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
@@ -3607,29 +3642,32 @@ const tpPad = n=>String(n).padStart(2,"0");
 const tpHM = m=>tpPad(Math.floor(m/60)%24)+":"+tpPad(m%60);
 const tpCl = (v,a,b)=>Math.max(a,Math.min(b,v));
 const tpInt = (v,a,b,d)=>{ v = Math.floor(Number(v)); return Number.isFinite(v) ? tpCl(v,a,b) : d; };
-function tpDefault(){ return {v:1, settings:{from:6,to:22,snap:15,pph:120}, days:{}}; }
+function tpDefault(){ return {v:1, settings:{from:6,to:22,snap:15,pph:120}, days:{}, jdays:{}, items:[]}; }
 function tpNorm(d){
   const o = tpDefault();
   if(!d || typeof d!=="object") return o;
   const s = d.settings || {};
   o.settings = {from:tpInt(s.from,0,23,6), to:tpInt(s.to,1,24,22), snap:[5,10,15,30].includes(+s.snap)?+s.snap:15, pph:tpInt(s.pph,40,400,120)};
   if(o.settings.to<=o.settings.from) o.settings.to = Math.min(24, o.settings.from+1);
-  Object.keys(d.days||{}).forEach(k=>{
+  const parse = (src, dst)=>Object.keys(src||{}).forEach(k=>{
     if(!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
-    const bl = ((d.days[k]||{}).blocks||[]).map(b=>{
+    const bl = ((src[k]||{}).blocks||[]).map(b=>{
       const st = tpInt(b&&b.start,0,1439,-1), en = tpInt(b&&b.end,1,1440,-1);
       if(!b || st<0 || en<=st) return null;
       return {id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:st, end:en, color:String(b.color||TP_COLORS[0]).slice(0,20), done:!!b.done, note:String(b.note||"").slice(0,500),
         src:(b.src && b.src.kind && b.src.ref) ? {kind:String(b.src.kind), ref:String(b.src.ref)} : null};
     }).filter(Boolean);
-    if(bl.length) o.days[k] = {blocks:bl};
+    if(bl.length) dst[k] = {blocks:bl};
   });
+  parse(d.days, o.days); parse(d.jdays, o.jdays);
+  o.items = (Array.isArray(d.items)?d.items:[]).map(x=>x && x.title ? {id:String(x.id||uid()), title:String(x.title).slice(0,120), min:tpInt(x.min,5,720,30), color:String(x.color||TP_COLORS[0]).slice(0,20)} : null).filter(Boolean).slice(0,80);
   return o;
 }
 function tpSettings(){ return (tp.data && tp.data.settings) || tpDefault().settings; }
-function tpDayBlocks(day){ const d = tp.data && tp.data.days[day]; return d ? d.blocks : []; }
+function tpDays(){ return tp.mode==="job" ? tp.data.jdays : tp.data.days; }
+function tpDayBlocks(day){ const d = tp.data && tpDays()[day]; return d ? d.blocks : []; }
 function tpBlock(id){ return tpDayBlocks(tp.day).find(b=>b.id===id); }
-function tpEnsureDay(day){ if(!tp.data.days[day]) tp.data.days[day] = {blocks:[]}; return tp.data.days[day].blocks; }
+function tpEnsureDay(day){ const D = tpDays(); if(!D[day]) D[day] = {blocks:[]}; return D[day].blocks; }
 function tpRangeFor(day){
   const s = tpSettings(); let from = s.from*60, to = s.to*60;
   tpDayBlocks(day).forEach(b=>{ from = Math.min(from, Math.floor(b.start/60)*60); to = Math.max(to, Math.ceil(b.end/60)*60); });
@@ -3668,14 +3706,18 @@ function tpDirty(){
 }
 function tpMerge(remote){
   // Fremde Änderungen (anderes Gerät) übernehmen: unbekannte Blöcke bleiben erhalten, lokale Stände und lokal gelöschte Blöcke gewinnen
-  Object.keys(remote.days).forEach(day=>{
-    const loc = tp.data.days[day] ? tp.data.days[day].blocks : null;
-    remote.days[day].blocks.forEach(b=>{
-      if(tp.deleted.has(b.id)) return;
-      if(!loc){ tpEnsureDay(day).push(b); return; }
-      if(!loc.some(x=>x.id===b.id)) loc.push(b);
+  [["days"],["jdays"]].forEach(([key])=>{
+    const L = tp.data[key], R = remote[key]||{};
+    Object.keys(R).forEach(day=>{
+      const loc = L[day] ? L[day].blocks : null;
+      R[day].blocks.forEach(b=>{
+        if(tp.deleted.has(b.id)) return;
+        if(!loc){ if(!L[day]) L[day] = {blocks:[]}; L[day].blocks.push(b); return; }
+        if(!loc.some(x=>x.id===b.id)) loc.push(b);
+      });
     });
   });
+  (remote.items||[]).forEach(it=>{ if(!tp.deleted.has(it.id) && !tp.data.items.some(x=>x.id===it.id)) tp.data.items.push(it); });
 }
 async function tpSave(){
   if(!tp.data || !tp.pending) return;
@@ -3689,7 +3731,7 @@ async function tpSave(){
         try{ tpMerge(tpNorm(JSON.parse(await blob.text()))); if(view==="plan" && !tp.drag) render(); }catch(e){}
       }
     }
-    Object.keys(tp.data.days).forEach(k=>{ if(!tp.data.days[k].blocks.length) delete tp.data.days[k]; });
+    ["days","jdays"].forEach(key=>Object.keys(tp.data[key]).forEach(k=>{ if(!tp.data[key][k].blocks.length) delete tp.data[key][k]; }));
     const json = JSON.stringify(tp.data);
     if(!tp.fileId){
       const f = await wsDriveUpload(new File([json], TP_FILE, {type:"application/json"}));
@@ -3736,6 +3778,74 @@ function tpBlockHtml(b, lane){
     <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${b.done?"✓":""}</span>
     <div class="tp-t">${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${tpHM(b.start)}–${b.end>=1440?"24:00":tpHM(b.end)}</div><i class="tp-h r" data-h="r"></i></div>`;
 }
+/* ---- Job-Baukasten: Bausteine definieren und in den Tag schieben ---- */
+function tpJobHtml(){
+  const it = tp.data.items;
+  return `<h3>Bausteine für den Job-Tag</h3>
+    <div class="tp-note" style="padding:0 0 8px">Baustein antippen (＋) oder auf die Zeitleiste ziehen. Das Ziehen funktioniert am Griff ⠿.</div>
+    ${it.map(x=>`<div class="tp-it tp-bs" data-bs="${esc(x.id)}"><span class="tp-grip" data-grip="${esc(x.id)}" style="touch-action:none;cursor:grab;padding:4px 6px">⠿</span><i style="width:12px;height:12px;border-radius:3px;background:${esc(x.color)};display:inline-block"></i><span class="tx">${esc(x.title)}</span><span class="dt">${esc(tpDur(x.min))}</span>${tp.unlock?`<button class="tp-btn" data-tp="bedit" data-r="${esc(x.id)}" title="Baustein bearbeiten">✎</button>`:""}<button class="tp-btn" data-tp="badd" data-r="${esc(x.id)}">＋</button></div>`).join("") || `<div class="tp-note" style="padding:8px 2px">Noch keine Bausteine. Mit „Baustein anlegen“ den ersten definieren (zum Beispiel Unterricht, Konferenz, Korrekturen).</div>`}
+    ${tp.unlock?`<div style="margin-top:8px"><button class="tp-btn pri" data-tp="bnew">Baustein anlegen</button></div>`:""}`;
+}
+function tpJobPlace(item, start){
+  const dur = item.min, st = start==null ? tpFree(tp.day, dur) : tpCl(start, 0, 1440-dur);
+  tpAdd({id:uid(), title:item.title, start:st, end:st+dur, color:item.color, done:false, note:"", src:null});
+  render();
+}
+function tpItemEdit(id){
+  if(document.getElementById("modalBg")) return;
+  const isNew = !id, b = isNew ? {id:uid(), title:"", min:30, color:TP_COLORS[0]} : tp.data.items.find(x=>x.id===id);
+  if(!b) return;
+  const inp = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px";
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>${isNew?"Neuer Baustein":"Baustein bearbeiten"}</h2>
+    <label>Titel</label><input type="text" id="tpi_t" maxlength="120" value="${esc(b.title)}" style="${inp}">
+    <label>Dauer in Minuten</label><input type="number" id="tpi_m" min="5" max="720" step="5" value="${b.min}" style="${inp}">
+    <label>Farbe</label><div class="tp-col" id="tpi_c">${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.color?"on":""}"></button>`).join("")}</div>
+    <div class="modal-actions">${isNew?"":`<button class="btn-ghost" id="tpi_del" style="color:#ff8a8e">Löschen</button>`}<button class="btn-ghost" id="tpi_x">Abbrechen</button><button class="btn-primary" id="tpi_ok">Speichern</button></div></div></div>`);
+  let color = b.color;
+  $("tpi_c").onclick = e=>{ const c = e.target.closest("[data-c]"); if(!c) return; color = c.dataset.c; [...$("tpi_c").children].forEach(x=>x.classList.toggle("on", x===c)); };
+  $("tpi_x").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  if($("tpi_del")) $("tpi_del").onclick = ()=>{ $("modalBg").remove(); const i = tp.data.items.findIndex(x=>x.id===b.id); if(i>=0){ tp.deleted.add(b.id); tp.data.items.splice(i,1); tpDirty(); render(); } };
+  $("tpi_ok").onclick = ()=>{
+    const t = $("tpi_t").value.trim(); if(!t){ toast("Bitte einen Titel eingeben"); return; }
+    b.title = t.slice(0,120); b.min = tpInt($("tpi_m").value,5,720,30); b.color = color;
+    if(isNew) tp.data.items.push(b);
+    tpDirty(); $("modalBg").remove(); render();
+  };
+  setTimeout(()=>{ const t = $("tpi_t"); if(t) t.focus(); }, 50);
+}
+(function tpJobDrag(){
+  let g = null;
+  main.addEventListener("pointerdown", e=>{
+    if(view!=="plan" || tp.mode!=="job") return;
+    const h = e.target.closest && e.target.closest("[data-grip]"); if(!h) return;
+    if(!tp.unlock){ tpLockHint(); return; }
+    const item = tp.data.items.find(x=>x.id===h.dataset.grip); if(!item) return;
+    g = {item, pid:e.pointerId, ghost:null, moved:false, x0:e.clientX, y0:e.clientY};
+    try{ h.setPointerCapture(e.pointerId); }catch(_){}
+    e.preventDefault();
+  });
+  main.addEventListener("pointermove", e=>{
+    if(!g || e.pointerId!==g.pid) return;
+    if(!g.moved && Math.abs(e.clientX-g.x0)+Math.abs(e.clientY-g.y0)<6) return;
+    g.moved = true;
+    if(!g.ghost){ g.ghost = document.createElement("div"); g.ghost.style.cssText = "position:fixed;z-index:9999;pointer-events:none;padding:6px 10px;border-radius:8px;font-size:13px;color:#fff;opacity:.9;background:"+g.item.color; g.ghost.textContent = g.item.title+" · "+tpDur(g.item.min); document.body.appendChild(g.ghost); }
+    g.ghost.style.left = (e.clientX+8)+"px"; g.ghost.style.top = (e.clientY-34)+"px";
+    const sc = document.getElementById("tp_scroll");
+    if(sc){ const r = sc.getBoundingClientRect(); if(e.clientY>=r.top && e.clientY<=r.bottom){ if(e.clientX<r.left+40) sc.scrollLeft -= 12; else if(e.clientX>r.right-40) sc.scrollLeft += 12; } }
+  });
+  const end = e=>{
+    if(!g || e.pointerId!==g.pid) return;
+    const d = g; g = null; if(d.ghost) d.ghost.remove();
+    if(!d.moved || e.type!=="pointerup") return;
+    const track = document.getElementById("tp_track"); if(!track) return;
+    const r = track.getBoundingClientRect();
+    if(e.clientX<r.left || e.clientX>r.right || e.clientY<r.top-30 || e.clientY>r.bottom+30){ toast("Zum Einfügen auf die Zeitleiste ziehen"); return; }
+    const snap = tpSettings().snap, st = Math.floor((tp.range.from + (e.clientX-r.left)/tp.ppm)/snap)*snap;
+    tpJobPlace(d.item, st);
+  };
+  main.addEventListener("pointerup", end); main.addEventListener("pointercancel", end);
+})();
 function tpPoolItems(day){
   const used = new Set(tpDayBlocks(day).filter(b=>b.src).map(b=>b.src.kind+":"+b.src.ref));
   const q = tp.q.trim().toLowerCase(), out = [];
@@ -3761,12 +3871,12 @@ function tpPoolHtml(){
       || `<div class="tp-note" style="padding:8px 2px">Nichts in dieser Auswahl.</div>`}
     ${list.length>80?`<div class="tp-note">… und ${list.length-80} weitere, bitte suchen</div>`:""}`;
 }
-function tpPoolRender(){ const el = document.getElementById("tp_pool"); if(el) el.innerHTML = tpPoolHtml(); const q = document.getElementById("tp_q"); if(q && document.activeElement!==q && tp.q){ /* Fokus nicht erzwingen */ } }
+function tpPoolRender(){ const el = document.getElementById("tp_pool"); if(el) el.innerHTML = tp.mode==="job"?tpJobHtml():tpPoolHtml(); const q = document.getElementById("tp_q"); if(q && document.activeElement!==q && tp.q){ /* Fokus nicht erzwingen */ } }
 function tpSumText(){
   const bl = tpDayBlocks(tp.day); let all = 0, done = 0;
   bl.forEach(b=>{ all += b.end-b.start; if(b.done) done += b.end-b.start; });
   const hid = tp.hideDone ? bl.filter(b=>b.done).length : 0;
-  return bl.length ? `${bl.length} ${bl.length===1?"Block":"Blöcke"}, geplant ${tpDur(all)}, davon erledigt ${tpDur(done)}${hid?" ("+hid+" erledigte ausgeblendet)":""}` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein ToDo übernehmen.";
+  return bl.length ? `${bl.length} ${bl.length===1?"Block":"Blöcke"}, geplant ${tpDur(all)}, davon erledigt ${tpDur(done)}${hid?" ("+hid+" erledigte ausgeblendet)":""}` : (tp.mode==="job"?"Noch nichts geplant. Unten einen Baustein antippen oder in die Zeitleiste ziehen.":"Noch nichts geplant. In die Zeitleiste tippen oder unten ein ToDo übernehmen.");
 }
 function tpMount(m){
   if(!accessToken){ m.innerHTML = '<p class="muted" style="padding:18px">Bitte zuerst anmelden.</p>'; return; }
@@ -3804,8 +3914,8 @@ function tpMount(m){
         ${bl.map(b=>tpBlockHtml(b, L.lane.get(b.id))).join("")}${showNow?`<div class="tp-now" id="tp_now" style="left:${(nowM-tp.range.from)*tp.ppm}px"></div>`:""}
       </div></div></div>
     <div class="tp-sum" id="tp_sum">${esc(tpSumText())}</div>
-    <div class="tp-pool" id="tp_pool">${tpPoolHtml()}</div>
-    <div class="tp-note">Die Tagesstruktur liegt in der eigenen Drive-Datei „${TP_FILE}“. Änderungen hier verändern keine ToDos, Ziele oder Kalendertermine. Programmstand ${APP_VER}.</div>
+    <div class="tp-pool" id="tp_pool">${tp.mode==="job"?tpJobHtml():tpPoolHtml()}</div>
+    <div class="tp-note">${tp.mode==="job"?"Job-Tag: eigene Planung mit Bausteinen. ":"Die Tagesstruktur "}liegt in der eigenen Drive-Datei „${TP_FILE}“. Änderungen hier verändern keine ToDos, Ziele oder Kalendertermine. Programmstand ${APP_VER}.</div>
   </div>`;
   const sc = document.getElementById("tp_scroll");
   if(sc){
@@ -3876,6 +3986,9 @@ function tpAct(a, el){
   else if(a==="retry"){ tp.err = ""; render(); }
   else if(a==="pf"){ tp.filter = el.dataset.v; tp.q = ""; tpPoolRender(); document.querySelectorAll("#tp_pool [data-tp=pf]").forEach(x=>x.classList.toggle("on", x.dataset.v===tp.filter)); }
   else if(a==="padd"){ tpAddFromPool(el.dataset.k, el.dataset.r); }
+  else if(a==="badd"){ if(!tp.unlock){ tpLockHint(); return; } const it = tp.data.items.find(x=>x.id===el.dataset.r); if(it) tpJobPlace(it, null); }
+  else if(a==="bnew"){ tpItemEdit(""); }
+  else if(a==="bedit"){ tpItemEdit(el.dataset.r); }
   else if(a==="carry"){
     const open = tpDayBlocks(tp.day).filter(b=>!b.done);
     if(!open.length){ toast("Nichts Offenes an diesem Tag"); return; }
@@ -3906,7 +4019,7 @@ function tpDragApply(clientX){
 }
 function tpLockHint(){ const t = Date.now(); if(t-(tp.hintT||0)>3000){ tp.hintT = t; toast("Gesperrt. Oben auf „🔒 Ansicht“ tippen, um zu bearbeiten"); } }
 function tpDown(e){
-  if(view!=="plan" || tp.mode!=="day" || !tp.unlock) return;
+  if(view!=="plan" || tp.mode==="meta" || !tp.unlock) return;
   const b = e.target.closest && e.target.closest(".tp-b"); if(!b || !b.closest("#tp_track")) return;
   if(e.target.closest("[data-ck]")) return;
   if(e.pointerType==="mouse" && e.button!==0) return;
@@ -3935,7 +4048,7 @@ function tpUp(e){
   else render();
 }
 function tpClick(e){
-  if(view!=="plan" || tp.mode!=="day") return;
+  if(view!=="plan" || tp.mode==="meta") return;
   if(!tp.unlock){
     const a0 = e.target.closest && e.target.closest("[data-tp]");
     if(a0 && ["prev","next","today","set","hd","retry","more"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
@@ -3956,11 +4069,11 @@ function tpClick(e){
   }
 }
 function tpInput(e){
-  if(view!=="plan" || tp.mode!=="day") return;
+  if(view!=="plan" || tp.mode==="meta") return;
   if(e.target.id==="tp_q"){ tp.q = e.target.value; const el = document.getElementById("tp_pool"); if(el){ el.innerHTML = tpPoolHtml(); const q = document.getElementById("tp_q"); if(q){ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(_){} } } }
 }
 function tpChange(e){
-  if(view!=="plan" || tp.mode!=="day") return;
+  if(view!=="plan" || tp.mode==="meta") return;
   const id = e.target.id;
   if(id==="tp_date"){ if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)){ tp.day = e.target.value; render(); } return; }
   if(["tp_from","tp_to","tp_snap","tp_pph"].includes(id)){
@@ -3999,7 +4112,7 @@ const tm = {data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, savi
   hideDone:(function(){ try{ return localStorage.getItem("tmHideDone")==="1"; }catch(e){ return false; } })(),
   hideFlags:(function(){ try{ return localStorage.getItem("tmHideFlags")==="1"; }catch(e){ return false; } })(),
   showKids:(function(){ try{ return localStorage.getItem("tmShowKids")!=="0"; }catch(e){ return true; } })()};
-tp.mode = (function(){ try{ return localStorage.getItem("tpMode")==="meta" ? "meta" : "day"; }catch(e){ return "day"; } })();
+tp.mode = (function(){ try{ const v = localStorage.getItem("tpMode"); return v==="meta"||v==="job" ? v : "day"; }catch(e){ return "day"; } })();
 const tmDN = k=>{ const p = String(k).split("-"); return Math.round(Date.UTC(+p[0], +p[1]-1, +p[2])/864e5); };
 const tmKey = n=>{ const d = new Date(n*864e5); return d.getUTCFullYear()+"-"+tpPad(d.getUTCMonth()+1)+"-"+tpPad(d.getUTCDate()); };
 const tmShort = k=>{ const p = String(k).split("-"); return p[2]+"."+p[1]+"."; };
@@ -4158,8 +4271,9 @@ function tmPoolHtml(){
       || `<div class="tp-note" style="padding:8px 2px">Nichts in dieser Auswahl.</div>`}
     ${list.length>80?`<div class="tp-note">… und ${list.length-80} weitere, bitte suchen</div>`:""}`;
 }
-function tpModeBar(){
-  return `<div class="tp-bar"><button class="tp-btn${tp.mode==="day"?" on":""}" data-tpmode="day">Tag</button><button class="tp-btn${tp.mode==="meta"?" on":""}" data-tpmode="meta">Metaprojekte</button><span style="flex:1"></span><button class="tp-btn${tp.unlock?" pri":""}" data-tpunlock="1" title="${tp.unlock?"Bearbeiten ist an. Antippen zum Sperren":"Gesperrt: nur ansehen. Antippen zum Bearbeiten"}">${tp.unlock?"✏️ Bearbeiten":"🔒 Ansicht"}</button></div>`;
+function tpModeBar(inWork){
+  if(inWork) return "";
+  return `<div class="tp-bar"><span style="flex:1"></span><button class="tp-btn${tp.unlock?" pri":""}" data-tpunlock="1" title="${tp.unlock?"Bearbeiten ist an. Antippen zum Sperren":"Gesperrt: nur ansehen. Antippen zum Bearbeiten"}">${tp.unlock?"✏️ Bearbeiten":"🔒 Ansicht"}</button></div>`;
 }
 function tmMount(m){
   if(tm.drag) return;
@@ -4650,9 +4764,14 @@ function tmChange(e){
 }
 (function tmInit(){
   main.addEventListener("click", e=>{
-    if(view!=="plan") return;
+    if(view!=="plan" && view!=="notes") return;
     const mb = e.target.closest && e.target.closest("[data-tpmode]");
-    if(mb){ tp.mode = mb.dataset.tpmode==="meta" ? "meta" : "day"; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){} tm.scrollL = null; render(); e.stopPropagation(); return; }
+    if(mb){
+      if(mb.dataset.tpmode==="work"){ view = "notes"; }
+      else{ tp.mode = ["meta","job"].includes(mb.dataset.tpmode) ? mb.dataset.tpmode : "day"; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){} view = "plan"; }
+      tm.scrollL = null; render(); e.stopPropagation(); return;
+    }
+    if(view!=="plan") return;
     if(e.target.closest && e.target.closest("[data-tpunlock]")){ tp.unlock = !tp.unlock; tp.more = false; tm.more = false; render(); toast(tp.unlock ? "Bearbeiten ist an" : "Gesperrt: nur Ansicht"); e.stopPropagation(); }
   }, true);
   main.addEventListener("pointerdown", tmDown);
@@ -5220,6 +5339,7 @@ function openQuickAdd(){
       <p class="muted" style="font-size:12px;margin-top:8px" id="q_hint">Wird als ToDo angelegt. Details kannst du später ergänzen.</p>
       <div class="modal-actions">
         <button class="btn-ghost" id="q_cancel">Abbrechen</button>
+        <button class="btn-ghost" id="q_full" title="Ausführliches Formular mit allen Feldern">Mehr …</button>
         <button class="btn-primary" id="q_save">Speichern</button>
       </div>
     </div></div>`);
@@ -5243,6 +5363,16 @@ function openQuickAdd(){
   };
   $("q_cancel").onclick=()=>$("modalBg").remove();
   $("modalBg").onclick=(e)=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  { const pre = view==="goals"?"goal":view==="habits"?"habit":view==="duties"?"duty":""; if(pre){ $("q_type").value = pre; $("q_hint").textContent = HINTS[pre]; } }
+  $("q_full").onclick=()=>{
+    const qt=$("q_type").value, txt=$("q_text").value.trim();
+    $("modalBg").remove();
+    if(view==="distractions") return openDistractionForm();
+    if(view==="notes" && wsTab==="notes") return openNoteForm();
+    if(qt==="goal"){ if(goalTasks.length>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele"); return; } openForm("goal"); }
+    else openForm(qt);
+    if(txt){ setTimeout(()=>{ const f = document.getElementById("f_title") || document.querySelector("#modalBg input[type=text]"); if(f && !f.value) f.value = txt; }, 30); }
+  };
 
   const quickSave=async()=>{
     const title=$("q_text").value.trim();
@@ -7616,9 +7746,9 @@ main.addEventListener("click", e=>{
   }
 });
 function wsViewHtml(){
-  let h = `<div class="seg" style="margin-bottom:12px">
+  if(wsTab==="week") wsTab = "docs";                                           // Woche ist aus der Oberfläche entfernt
+  let h = `<div class="tp" style="margin-bottom:10px">${tpModeBar(true)}</div><div class="seg" style="margin-bottom:12px">
     <button data-wstab="docs" class="${wsTab==="docs"?"sel":""}">Dokumente</button>
-    <button data-wstab="week" class="${wsTab==="week"?"sel":""}">Woche</button>
     <button data-wstab="gantt" class="${wsTab==="gantt"?"sel":""}">Gantt</button>
     <button data-wstab="3d" class="${wsTab==="3d"?"sel":""}">3D</button>
     <button data-wstab="notes" class="${wsTab==="notes"?"sel":""}">Notizen</button>
@@ -8730,7 +8860,7 @@ function wsOpenPlusMenu(docId, kind, id){
     const r = wsFindNode(doc, id); if(!r) return;
     title = "Zu „"+(r.node.text||"(ohne Text)").slice(0,30)+"“ hinzufügen";
     items = [["n-sib","Punkt darunter (gleiche Ebene)"],["n-kid","Unterpunkt (eine Ebene tiefer)"],["n-h1","Überschrift Ebene 1 darunter"],["n-h2","Überschrift Ebene 2 darunter"],
-      ["a-text","Anhang: Text / Notiz"],["a-table","Anhang: Tabelle"],["a-link","Anhang: Link"],["a-file","Anhang: Bild / PDF"],["i-kid","ToDo / Ziel aus der App als Unterpunkt einfügen"]];
+      ["a-text","Anhang: Text / Notiz"],["a-table","Anhang: Tabelle"],["a-link","Anhang: Link"],["a-file","Anhang: Bild / PDF"]];
   }else if(kind==="block"){
     const b = wsBlock(doc, id); if(!b) return;
     title = b.type==="heading" ? "Unter „"+(b.text||"Überschrift").slice(0,30)+"“ hinzufügen" : "Danach hinzufügen";
@@ -10148,6 +10278,41 @@ function wsOpenMoveHead(docId, bid){
   };
 }
 /* ---- Ein Menü für jeden Eintrag: Punkt (E3 und tiefer), Überschrift (E1, E2), Notiz, Tabelle, Anhang ---- */
+/* ---- Verknüpfung mit ToDo oder Tages-Ziel: alles an einer Stelle ---- */
+function wsOpenLinkBox(docId, nid){
+  const doc = wsGet(docId), n = doc && wsFindNode(doc, nid) && wsFindNode(doc, nid).node; if(!n) return;
+  if(document.getElementById("modalBg")) return;
+  const L = n.link, today = todayKey(), day = n.date || n.dl || today;
+  const kn = {todo:"ToDo", goal:"Tages-Ziel"};
+  const btn = (id, label)=>`<button class="ws-addbtn" id="${id}" style="display:block;width:100%;text-align:left;margin-bottom:6px">${label}</button>`;
+  let body = "";
+  if(L){
+    const other = L.kind==="goal" ? "todo" : "goal";
+    body = `<p style="font-size:14px;margin-bottom:10px">Verknüpft mit einem ${kn[L.kind]}${wsLinkDay(n)?" am "+esc(wsShortDate(wsLinkDay(n))):""}${L.cal?", mit Kalendertermin":""}. Titel, Datum und Erledigt-Status werden in beide Richtungen abgeglichen.</p>`
+      + btn("wlb_conv", "In "+kn[other]+" umwandeln") + btn("wlb_cal", L.cal ? "Kalendertermin entfernen" : "Kalendertermin anlegen (ganztägig)")
+      + btn("wlb_edit", "Termine und Details bearbeiten …") + btn("wlb_unlink", "Verknüpfung lösen");
+  }else{
+    body = `<p style="font-size:14px;margin-bottom:10px">Dieser Punkt ist mit nichts verknüpft.</p>`
+      + (n.meta ? `<p class="muted" style="font-size:13px;margin-bottom:10px">Meta-Projekte bleiben beim reinen Datum. Zum Verknüpfen zuerst die Meta-Markierung entfernen.</p>`
+                : btn("wlb_todo", "Als ToDo anlegen (am "+esc(wsShortDate(day))+")") + btn("wlb_goal", "Als Tages-Ziel anlegen (am "+esc(wsShortDate(day))+")"))
+      + btn("wlb_imp", "Vorhandenes ToDo oder Ziel als Unterpunkt einfügen …");
+  }
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>🔗 Verknüpfung</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:8px">${esc((n.text||"(ohne Text)").slice(0,60))}</p>${body}
+    <div class="modal-actions"><button class="btn-primary" id="wlb_close">Schließen</button></div></div></div>`);
+  const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); };
+  const on = (id, fn)=>{ const e = document.getElementById(id); if(e) e.onclick = ()=>{ close(); setTimeout(fn, 0); }; };
+  document.getElementById("wlb_close").onclick = close;
+  document.getElementById("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+  const core = o=>wsApplyMenuCore(docId, nid, Object.assign({date:n.date||"", dur:n.dur>0?n.dur:0, dl:n.dl||"", meta:!!n.meta, cal:!!(n.link&&n.link.cal)}, o));
+  on("wlb_todo", ()=>core({date:day, kind:"todo"}));
+  on("wlb_goal", ()=>core({date:day, kind:"goal"}));
+  on("wlb_imp", ()=>wsOpenImport({docId, parent:nid}));
+  on("wlb_conv", ()=>wsLinkRun(()=>wsConvertLink(doc, n, L.kind==="goal"?"todo":"goal", !!L.cal)));
+  on("wlb_cal", ()=>core({cal:!L.cal}));
+  on("wlb_edit", ()=>wsOpenLinkMenu(docId, nid));
+  on("wlb_unlink", ()=>wsUnlink(docId, nid));
+}
 function wsOpenItemMenu(docId, kind, id, scope){
   if(document.getElementById("modalBg")) return;
   const doc = wsGet(docId); if(!doc) return;
@@ -10159,7 +10324,8 @@ function wsOpenItemMenu(docId, kind, id, scope){
   if(kind==="node"){
     const r = wsFindNode(doc, id); if(!r) return; const n = r.node;
     title = (n.text||"(ohne Text)").slice(0,50);
-    add("✏️ Bearbeiten: Termine, Meta-Projekt, ToDo / Ziel", ()=>wsOpenLinkMenu(docId, id));
+    add("✏️ Bearbeiten: Termine und Meta-Projekt", ()=>wsOpenLinkMenu(docId, id));
+    add(n.link ? "🔗 Verknüpfung: "+(n.link.kind==="goal"?"Tages-Ziel":"ToDo") : "🔗 Verknüpfung: ToDo oder Tages-Ziel", ()=>wsOpenLinkBox(docId, id));
     add(n.meta ? "★ Kein Meta-Projekt mehr" : "☆ Als Meta-Projekt markieren", metaToggle(n));
     add(n.done ? "↩ Wieder öffnen" : "✓ Als erledigt markieren", px('[data-wsact="done"]'));
     add("📌 Fokus in Heute an / aus", px('[data-wsact="focus"]'));
@@ -10955,7 +11121,7 @@ function wsBriefOpen(){
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-brief]"); if(b){ e.preventDefault(); wsBriefOpen(); } });
 
 /* ============ EVENTS ============ */
-$("nav").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b){ view=b.dataset.view; render(); }});
+$("nav").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b){ const g=b.dataset.view; if(NAV_GROUPS[g]) navGo(g, navLast(g)); else{ view=g; render(); } }});
 $("fabQuick").addEventListener("click",openQuickAdd);
 $("fab").addEventListener("click",()=>{
   if(view==="goals"){

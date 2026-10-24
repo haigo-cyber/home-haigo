@@ -3677,7 +3677,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v247";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v248";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -3980,7 +3980,7 @@ function tpJobHtml(){
   return `<h3>Bausteine für den Job-Tag</h3>
     <div class="tp-note" style="padding:0 0 8px">Baustein antippen (＋) oder auf die Zeitleiste ziehen. Das Ziehen funktioniert am Griff ⠿.</div>
     ${it.map(x=>`<div class="tp-it tp-bs" data-bs="${esc(x.id)}">${tpAuto(x)?`<span style="padding:4px 6px">🔁</span>`:`<span class="tp-grip" data-grip="${esc(x.id)}" style="touch-action:none;cursor:grab;padding:4px 6px">⠿</span>`}${tpSw(x)}<span class="tx">${esc(x.title)}</span><span class="dt">${esc(tpDur(x.min))}${x.rep?" · "+esc(tpRepText(x))+(tpAuto(x)&&x.rep.from?", ab "+esc(wsShortDate(x.rep.from)):""):""}</span>${tp.unlock?`<button class="tp-btn" data-tp="bedit" data-r="${esc(x.id)}" title="Baustein bearbeiten">✎</button>`:""}${tpAuto(x)?`<button class="tp-btn" data-tp="bgo" data-r="${esc(x.id)}" title="Zur nächsten Stunde springen">→</button>`:`<button class="tp-btn" data-tp="badd" data-r="${esc(x.id)}">＋</button>`}</div>`).join("") || `<div class="tp-note" style="padding:8px 2px">Noch keine Bausteine. Mit „Baustein anlegen“ den ersten definieren (zum Beispiel Unterricht, Konferenz, Korrekturen).</div>`}
-    ${tp.unlock?`<div style="margin-top:8px"><button class="tp-btn pri" data-tp="bnew">Baustein anlegen</button></div>`:""}${tpAbHtml()}${tpBreakListHtml()}`;
+    ${tp.unlock?`<div style="margin-top:8px"><button class="tp-btn pri" data-tp="bnew">Baustein anlegen</button></div>`:""}${tpAbHtml()}${tpKcalHtml()}${tpBreakListHtml()}`;
 }
 /* Listenansicht: alle Unterrichtsstunden der nächsten 10 Tage ab dem eingestellten Tag, direkt bearbeitbar */
 const TP_LIST_DAYS = 10;
@@ -4139,6 +4139,12 @@ function tpReportOpen(){
     try{ await navigator.clipboard.writeText(txt); toast("Bericht in die Zwischenablage kopiert"); }
     catch(e){ const ta = document.createElement("textarea"); ta.value = txt; ta.style.cssText = "position:fixed;left:-999px"; document.body.appendChild(ta); ta.select(); let ok = false; try{ ok = document.execCommand("copy"); }catch(_){} ta.remove(); toast(ok ? "Bericht in die Zwischenablage kopiert" : "Kopieren nicht möglich"); }
   };
+}
+function tpKcalHtml(){
+  const id = ksCalId("job"), cal = id ? (calendars||[]).concat(allCalendars||[]).find(c=>c.id===id) : null;
+  return `<h3 style="margin-top:14px">Google Kalender</h3><div class="tp-note" style="padding:0 0 6px">Die Stunden und Job-Blöcke der nächsten ${KS_JOB_DAYS} Tage werden mit Uhrzeit in einen eigenen Google Kalender geschrieben. Vergangene Termine bleiben stehen.</div>
+  <div class="tp-it"><span class="tx">${id ? "Eingeschaltet: Kalender „"+esc(cal?cal.summary:"ausgewählter Kalender")+"“" : "Ausgeschaltet"}</span>${id?`<button class="tp-btn" data-tp="ksync">Jetzt abgleichen</button>`:`<button class="tp-btn pri" data-tp="kcal">Kalender „ToDo Stunden“ anlegen</button>`}</div>
+  ${id && ksStatus ? `<div class="tp-note" style="padding:4px 0 0">${esc(ksStatus).slice(0,300)}</div>` : ""}`;
 }
 function tpAbHtml(){
   const ab = tpSettings().ab, wt = tpWeekType(todayKey());
@@ -4590,6 +4596,8 @@ function tpAct(a, el){
   else if(a==="add"){ const dur = 30, st = tpFree(tp.day, dur); tpEdit("", {id:uid(), title:"", start:st, end:st+dur, color:TP_COLORS[0], done:false, note:"", src:null}); }
   else if(a==="set"){ tp.showSet = !tp.showSet; render(); }
   else if(a==="school"){ try{ localStorage.setItem("tpSchool", tpSchoolOn()?"0":"1"); }catch(e){} render(); toast(tpSchoolOn()?"Schultermine eingeblendet":"Schultermine ausgeblendet"); }
+  else if(a==="kcal"){ ksCreateCal("job"); }
+  else if(a==="ksync"){ ksStatusSet("Gleiche ab …"); ksSyncNow(true); setTimeout(()=>{ if(view==="plan") render(); }, 4000); }
   else if(a==="hist"){ if(!tp.unlock){ tpLockHint(); return; } tpHist(); }
   else if(a==="more"){ tp.more = !tp.more; render(); }
   else if(a==="hd"){ tp.hideDone = !tp.hideDone; try{ localStorage.setItem("tpHideDone", tp.hideDone?"1":"0"); }catch(_){} render(); }
@@ -4679,7 +4687,7 @@ function tpClick(e){
   }
   if(!tp.unlock){
     const a0 = e.target.closest && e.target.closest("[data-tp]");
-    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report","school"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
+    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report","school","kcal","ksync"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
     else if(e.target.closest && e.target.closest(".tp-b,#tp_track,.tp-pool")) tpLockHint();
     return;
   }

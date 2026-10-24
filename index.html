@@ -716,6 +716,7 @@
 .tp-track{position:relative;cursor:cell}
 .tp-b{position:absolute;height:calc(40px*var(--f,1));border-radius:9px;color:#fff;font-size:calc(12px*var(--f,1));padding:3px 24px 3px 9px;overflow:hidden;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border:1px solid rgba(255,255,255,.28);box-shadow:0 2px 6px rgba(0,0,0,.45)}
 .tp-b.drag{cursor:grabbing;z-index:4;box-shadow:0 6px 16px rgba(0,0,0,.6)}
+.tp-b.tp-sch{outline:2px dashed rgba(255,255,255,.55);outline-offset:-3px;opacity:.85}
 .tp-b.done{opacity:.55}.tp-b.done .tp-t{text-decoration:line-through}
 .tp-b.narrow .tp-ck{display:none}.tp-b.narrow{padding-right:6px}
 .tp-t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
@@ -3328,26 +3329,52 @@ function render(){
 /* ============ AUTOMATISCHER EINTRAG IN EIGENE GOOGLE KALENDER (Tagesziele, fällige Metaprojekte) ============ */
 /* Prinzip: Aus dem aktuellen Stand der App wird der Soll-Zustand berechnet und mit den Terminen im Zielkalender abgeglichen.
    Angefasst werden nur Termine mit der Markierung todoSrc (privat erweiterte Eigenschaft); alles andere im Kalender bleibt unberührt. */
-const KS_KEYS = {goal:"kalSyncGoalCal", meta:"kalSyncMetaCal"};
-const KS_LABEL = {goal:"Tagesziele", meta:"Metaprojekte"};
+const KS_KEYS = {goal:"kalSyncGoalCal", meta:"kalSyncMetaCal", job:"kalSyncJobCal"};
+const KS_KINDS = ["goal","meta","job"], KS_JOB_DAYS = 120;
+const KS_LABEL = {goal:"Tagesziele", meta:"Metaprojekte", job:"Stunden"};
 const KS_SCOPE_CREATE = "https://www.googleapis.com/auth/calendar.app.created";
-let ksRetries = 0, ksBusy = false, ksAgain = false, ksTimer = null, ksLast = {goal:"", meta:""};
+let ksRetries = 0, ksBusy = false, ksAgain = false, ksTimer = null, ksLast = {goal:"", meta:"", job:""};
 let ksStatus = localStorage.getItem("ksStatus") || "";
+function ksAny(){ return KS_KINDS.some(k=>ksCalId(k)); }
 function ksCalId(kind){ const v = localStorage.getItem(KS_KEYS[kind]) || ""; return v==="off" ? "" : v; }
 /* Geht die Einstellung verloren (anderes Gerät, geleerter Browserspeicher), werden die von der App angelegten Kalender anhand ihres Namens wieder übernommen.
    Bewusst abgeschaltet ("off") bleibt abgeschaltet. */
 function ksAutoAdopt(){
   const all = (allCalendars||[]).concat(calendars||[]);
   let adopted = false;
-  ["goal","meta"].forEach(kind=>{
+  KS_KINDS.forEach(kind=>{
     if(localStorage.getItem(KS_KEYS[kind]) !== null) return;
-    const name = kind==="goal" ? "ToDo Tagesziele" : "ToDo Metaprojekte";
+    const name = ksCalName(kind);
     const hit = all.find(c=>c.summary===name);
     if(hit){ localStorage.setItem(KS_KEYS[kind], hit.id); ksLast[kind] = ""; adopted = true; }
   });
   if(adopted) ksSyncSoon();
 }
 
+function ksCalName(kind){ return kind==="goal" ? "ToDo Tagesziele" : kind==="meta" ? "ToDo Metaprojekte" : "ToDo Stunden"; }
+const ksMs = (date, min)=>{ const a = String(date).split("-").map(Number); return new Date(a[0], a[1]-1, a[2], 0, min).getTime(); };
+function ksLocal(date, min){ if(min>=1440){ return nextDayKey(date)+"T"+String(Math.floor((min-1440)/60)).padStart(2,"0")+":"+String((min-1440)%60).padStart(2,"0")+":00"; } return date+"T"+String(Math.floor(min/60)).padStart(2,"0")+":"+String(min%60).padStart(2,"0")+":00"; }
+/* Stunden und Job-Blöcke der nächsten Wochen aus der Job-Struktur (null = Daten noch nicht sicher geladen: nichts ändern) */
+function ksDesiredJob(){
+  if(!tp.data || tp.err || tp.loading) return null;
+  const m = new Map(), t0 = parseDate(todayKey()); if(!t0) return null;
+  for(let i=0;i<KS_JOB_DAYS;i++){
+    const d = new Date(t0.getTime()); d.setDate(d.getDate()+i); const day = dateKey(d), wt = tpWeekType(day);
+    tp.data.items.forEach(it=>tpSlots(it, day).forEach(({q,key})=>{
+      const o = it.occ[key] || {};
+      const desc = [o.topic&&"Thema: "+o.topic, o.hw&&"LZA"+(o.hwDue?" zu "+wsShortDate(o.hwDue):"")+": "+o.hw, o.note&&"Notiz: "+o.note, wt&&wt+"-Woche", "Stunde aus der ToDo-App"].filter(Boolean).join("\n");
+      m.set("L:"+it.id+":"+key, {title:it.title, date:day, st:q.start, en:Math.min(1440,q.start+q.min), desc});
+    }));
+    const jd = tp.data.jdays[day];
+    if(jd) jd.blocks.forEach(b=>m.set("B:"+b.id, {title:b.title||"(ohne Titel)", date:day, st:b.start, en:b.end, desc:(b.note?b.note+"\n":"")+"Job-Block aus der ToDo-App"}));
+  }
+  return m;
+}
+function ksSame(e, d){
+  if(e.summary!==d.title || (e.description||"")!==d.desc) return false;
+  if(d.st==null) return !!(e.start && e.start.date===d.date && e.end && e.end.date===nextDayKey(d.date));
+  return !!(e.start && e.start.dateTime && e.end && e.end.dateTime && Date.parse(e.start.dateTime)===ksMs(d.date,d.st) && Date.parse(e.end.dateTime)===ksMs(d.date,d.en));
+}
 function ksDesiredGoals(){
   const m = new Map();
   allOpenGoals.forEach(g=>{
@@ -3368,6 +3395,9 @@ function ksDesiredMeta(){
   return m;
 }
 function ksBody(kind, ref, d){
+  if(d.st!=null){ const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || "Europe/Berlin";
+    return {summary:d.title, description:d.desc, start:{dateTime:ksLocal(d.date,d.st), timeZone:tz}, end:{dateTime:ksLocal(d.date,d.en), timeZone:tz},
+      transparency:"opaque", reminders:{useDefault:false}, extendedProperties:{private:{todoSrc:kind, todoRef:ref}}}; }
   return {summary:d.title, description:d.desc, start:{date:d.date}, end:{date:nextDayKey(d.date)},
     transparency:"transparent", reminders:{useDefault:false},
     extendedProperties:{private:{todoSrc:kind, todoRef:ref}}};
@@ -3386,7 +3416,9 @@ async function ksSyncKind(kind, force){
   const calId = ksCalId(kind); if(!calId) return null;
   if(kind==="goal" && !gtasksLoadedOk) return null;      // Ziele nicht sicher geladen: nichts löschen
   if(kind==="meta" && !wsLoaded) return null;            // Arbeitsbereich nicht geladen: nichts löschen
-  const want = kind==="goal" ? ksDesiredGoals() : ksDesiredMeta();
+  if(kind==="job" && !tp.data){ if(!tp.loading && !tp.err) tpLoad().then(()=>ksSyncSoon()).catch(()=>{}); return null; }
+  const want = kind==="goal" ? ksDesiredGoals() : kind==="meta" ? ksDesiredMeta() : ksDesiredJob();
+  if(!want) return null;
   const sig = JSON.stringify([calId, [...want.entries()].sort((a,b)=>a[0]<b[0]?-1:1)]);
   if(!force && sig===ksLast[kind]) return null;
   const existing = await ksListExisting(calId, kind);
@@ -3401,13 +3433,12 @@ async function ksSyncKind(kind, force){
   want.forEach((d, ref)=>{
     const e = byRef.get(ref);
     if(!e){ toAdd.push([ref, d]); return; }
-    const same = e.summary===d.title && (e.description||"")===d.desc && e.start && e.start.date===d.date && e.end && e.end.date===nextDayKey(d.date);
-    if(!same) toUpd.push([e, ref, d]);
+    if(!ksSame(e, d)) toUpd.push([e, ref, d]);
   });
   byRef.forEach((e, ref)=>{
     if(want.has(ref)) return;
-    const day = e.start && e.start.date;
-    if(kind==="goal" && day && day<today) return;        // vergangene Ziele bleiben als Verlauf stehen
+    const day = e.start && (e.start.date || String(e.start.dateTime||"").slice(0,10));
+    if((kind==="goal" || kind==="job") && day && day<today) return;        // vergangene Ziele bleiben als Verlauf stehen
     toDel.push(e);
   });
   let delSkipped = false;
@@ -3442,11 +3473,11 @@ function ksStatusSet(txt){
 async function ksSyncNow(force){
   if(!accessToken) return;
   if(ksBusy){ ksAgain = true; return; }
-  if(!ksCalId("goal") && !ksCalId("meta")) return;
+  if(!ksAny()) return;
   ksBusy = true;
   const parts = []; let changed = false, ran = false, retry = false;
   try{
-    for(const kind of ["goal","meta"]){
+    for(const kind of KS_KINDS){
       try{
         const r = await ksSyncKind(kind, force);
         if(!r) continue;
@@ -3473,7 +3504,7 @@ async function ksSyncNow(force){
 }
 function ksSyncSoon(){
   if(!accessToken) return;
-  if(!ksCalId("goal") && !ksCalId("meta")) return;
+  if(!ksAny()) return;
   clearTimeout(ksTimer); ksTimer = setTimeout(()=>{ ksSyncNow(false); }, 3000);
 }
 function ksRequestScope(scope){
@@ -3484,7 +3515,7 @@ function ksRequestScope(scope){
   });
 }
 function ksCreateCal(kind){
-  const name = kind==="goal" ? "ToDo Tagesziele" : "ToDo Metaprojekte";
+  const name = ksCalName(kind);
   const exist = (allCalendars||[]).concat(calendars||[]).find(c=>c.summary===name);
   if(exist){
     localStorage.setItem(KS_KEYS[kind], exist.id); ksLast[kind] = "";
@@ -3516,11 +3547,12 @@ function ksSettingsHtml(){
       <div class="sub" style="margin-bottom:2px">Tagesziele und fällige Metaprojekte werden als Ganztagstermine in einen eigenen Kalender geschrieben und bei Änderungen nachgeführt. Angefasst werden nur Termine, die von der App markiert sind.</div>
       ${row("goal","Tagesziele","Ein Termin pro Ziel am Zieltag, erledigte Ziele mit Haken")}
       ${row("meta","Fällige Metaprojekte","Ein Termin am Tag der Deadline, sonst am Ende des Zeitraums")}
+      ${row("job","Stunden und Job-Blöcke","Die Unterrichtsstunden und Blöcke der Job-Struktur der nächsten "+KS_JOB_DAYS+" Tage mit Uhrzeit, samt Thema und Lernzeitaufgabe in der Beschreibung. Ferien, Ausfälle und A/B-Wochen sind berücksichtigt. Vergangene Termine bleiben stehen.")}
       <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="mini" id="ks_now">Jetzt abgleichen</button><span class="muted" id="ks_status" style="font-size:12px">${esc(ksStatus)}</span></div>
     </div></div>`;
 }
 function ksBindSettings(){
-  ["goal","meta"].forEach(kind=>{
+  KS_KINDS.forEach(kind=>{
     const sel = $("ks_sel_"+kind), nb = $("ks_new_"+kind);
     if(sel) sel.onchange = ()=>{
       localStorage.setItem(KS_KEYS[kind], sel.value || "off"); ksLast[kind] = "";
@@ -3645,7 +3677,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v242";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v244";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -3736,8 +3768,8 @@ function tpSlotsAll(it, day){
 }
 function tpSlots(it, day){ return tpSlotsAll(it, day).filter(x=>!x.skip); }
 function tpSlotByKey(it, key){ const day = key.slice(0,10); const f = tpSlots(it, day).find(x=>x.key===key); return f ? f.q : null; }
-function tpRepBlocks(day){
-  if(!tp.data || tp.mode!=="job") return [];
+function tpRepBlocks(day, force){
+  if(!tp.data || (tp.mode!=="job" && !force)) return [];
   const out = [];
   tp.data.items.forEach(it=>{
     tpSlots(it, day).forEach(({q,key})=>{
@@ -3748,11 +3780,14 @@ function tpRepBlocks(day){
   return out;
 }
 function tpDayBlocks(day){ const d = tp.data && tpDays()[day]; const st = d ? d.blocks : []; return tp.mode==="job" ? st.concat(tpRepBlocks(day)) : st; }
-function tpBlock(id){ return tpDayBlocks(tp.day).find(b=>b.id===id); }
+/* Tag-Ansicht: Unterricht aus der Job-Struktur zusätzlich einblenden (nur Anzeige, nicht verschiebbar, zählt nicht in Summe und „Offenes → morgen“) */
+const tpSchoolOn = ()=>{ try{ return localStorage.getItem("tpSchool")==="1"; }catch(e){ return false; } };
+function tpShown(day){ return (tp.mode==="day" && tpSchoolOn()) ? tpDayBlocks(day).concat(tpRepBlocks(day, true)) : tpDayBlocks(day); }
+function tpBlock(id){ return tpShown(tp.day).find(b=>b.id===id); }
 function tpEnsureDay(day){ const D = tpDays(); if(!D[day]) D[day] = {blocks:[]}; return D[day].blocks; }
 function tpRangeFor(day){
   const s = tpSettings(); let from = s.from*60, to = s.to*60;
-  tpDayBlocks(day).forEach(b=>{ from = Math.min(from, Math.floor(b.start/60)*60); to = Math.max(to, Math.ceil(b.end/60)*60); });
+  tpShown(day).forEach(b=>{ from = Math.min(from, Math.floor(b.start/60)*60); to = Math.max(to, Math.ceil(b.end/60)*60); });
   return {from, to};
 }
 
@@ -3844,7 +3879,7 @@ async function tpSave(){
 /* ---- Hilfen ---- */
 function tpFree(day, dur, prefer){
   const r = tp.range, snap = tpSettings().snap;
-  const bl = tpDayBlocks(day).slice().sort((a,b)=>a.start-b.start);
+  const bl = tpShown(day).slice().sort((a,b)=>a.start-b.start);
   let t = r.from;
   if(day===todayKey()){ const n = new Date(); t = Math.max(t, Math.ceil((n.getHours()*60+n.getMinutes())/snap)*snap); }
   if(prefer!=null) t = prefer;
@@ -3870,9 +3905,9 @@ function tpDn(b){
 }
 function tpBlockHtml(b, lane){
   const w = (b.end-b.start)*tp.ppm, left = (b.start-tp.range.from)*tp.ppm;
-  return `<div class="tp-b${tpDn(b)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${tpHM(b.start)}–${tpHM(b.end)}" style="left:${left}px;width:${w}px;top:${4+lane*tpLP()}px;background:${esc(tpBg(b))};${tpStripes(b).length?"padding-left:"+(9+6*tpStripes(b).length)+"px":""}">
+  return `<div class="tp-b${tpDn(b)?" done":""}${w<46?" narrow":""}${b.rep&&tp.mode!=="job"?" tp-sch":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${tpHM(b.start)}–${tpHM(b.end)}" style="left:${left}px;width:${w}px;top:${4+lane*tpLP()}px;background:${esc(tpBg(b))};${tpStripes(b).length?"padding-left:"+(9+6*tpStripes(b).length)+"px":""}">
     <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${tpDn(b)?"✓":""}</span>
-    <div class="tp-t">${b.rep?"🔁 ":""}${esc(b.title||"(ohne Titel)")}${b.rep&&b.note?" · "+esc(b.note):""}</div><div class="tp-m">${tpHM(b.start)}–${b.end>=1440?"24:00":tpHM(b.end)}</div><i class="tp-h r" data-h="r"></i></div>`;
+    <div class="tp-t">${b.rep?(tp.mode==="job"?"🔁 ":"🏫 "):""}${esc(b.title||"(ohne Titel)")}${b.rep&&b.note?" · "+esc(b.note):""}</div><div class="tp-m">${tpHM(b.start)}–${b.end>=1440?"24:00":tpHM(b.end)}</div><i class="tp-h r" data-h="r"></i></div>`;
 }
 /* ---- Job-Baukasten: Bausteine definieren und in den Tag schieben ---- */
 function tpJobHtml(){
@@ -4377,7 +4412,7 @@ function tpMount(m){
   const s = tpSettings();
   tp.range = tpRangeFor(tp.day); tp.ppm = s.pph/60;
   const prevScroll = document.getElementById("tp_scroll"); if(prevScroll) tp.scrollL = prevScroll.scrollLeft;
-  const allBl = tpDayBlocks(tp.day), bl = tp.hideDone ? allBl.filter(b=>!tpDn(b)) : allBl, L = tpLanes(bl), W = (tp.range.to-tp.range.from)*tp.ppm, H = L.n*tpLP()+8;
+  const allBl = tpShown(tp.day), bl = tp.hideDone ? allBl.filter(b=>!tpDn(b)) : allBl, L = tpLanes(bl), W = (tp.range.to-tp.range.from)*tp.ppm, H = L.n*tpLP()+8;
   let hours = ""; for(let h = tp.range.from/60; h<tp.range.to/60; h++) hours += `<span style="left:${(h*60-tp.range.from)*tp.ppm}px">${tpPad(h)}:00</span>`;
   const now = new Date(), nowM = now.getHours()*60+now.getMinutes();
   const showNow = tp.day===todayKey() && nowM>=tp.range.from && nowM<=tp.range.to;
@@ -4388,7 +4423,7 @@ function tpMount(m){
       <button class="tp-btn" data-tp="prev">‹</button><button class="tp-btn" data-tp="today">Heute</button><button class="tp-btn" data-tp="next">›</button>
       <input type="date" id="tp_date" value="${esc(tp.day)}"><span class="tp-title">${esc(tpDayTitle(tp.day))}</span>
       <span style="flex:1"></span>
-      ${tp.mode==="job"?`<button class="tp-btn" data-tp="report" title="Bericht über einen Zeitraum, als PDF druckbar">📄 Bericht</button>`:""}${tp.unlock?`<button class="tp-btn pri" data-tp="add">+ Block</button>`:""}<button class="tp-btn${tp.more?" on":""}" data-tp="more" title="Weitere Knöpfe">⋯</button>
+      ${tp.mode==="day"?`<button class="tp-btn${tpSchoolOn()?" on":""}" data-tp="school" title="Unterrichtsstunden aus der Job-Struktur in dieser Ansicht anzeigen">🏫 Schule</button>`:""}${tp.mode==="job"?`<button class="tp-btn" data-tp="report" title="Bericht über einen Zeitraum, als PDF druckbar">📄 Bericht</button>`:""}${tp.unlock?`<button class="tp-btn pri" data-tp="add">+ Block</button>`:""}<button class="tp-btn${tp.more?" on":""}" data-tp="more" title="Weitere Knöpfe">⋯</button>
     </div>
     ${tp.more?`<div class="tp-bar tp-more">${tp.unlock?`<button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button>`:""}<button class="tp-btn${tp.hideDone?" on":""}" data-tp="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tp.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙ Einstellungen</button></div>`:""}
     ${tp.showSet?`<div class="tp-set">Beginn <select id="tp_from">${opt(rng(0,23), s.from, v=>tpPad(v)+":00")}</select> Ende <select id="tp_to">${opt(rng(1,24), s.to, v=>tpPad(v)+":00")}</select>
@@ -4489,6 +4524,7 @@ function tpAct(a, el){
   else if(a==="today"){ tp.day = todayKey(); tp.scrollL = null; render(); }
   else if(a==="add"){ const dur = 30, st = tpFree(tp.day, dur); tpEdit("", {id:uid(), title:"", start:st, end:st+dur, color:TP_COLORS[0], done:false, note:"", src:null}); }
   else if(a==="set"){ tp.showSet = !tp.showSet; render(); }
+  else if(a==="school"){ try{ localStorage.setItem("tpSchool", tpSchoolOn()?"0":"1"); }catch(e){} render(); toast(tpSchoolOn()?"Schultermine eingeblendet":"Schultermine ausgeblendet"); }
   else if(a==="more"){ tp.more = !tp.more; render(); }
   else if(a==="hd"){ tp.hideDone = !tp.hideDone; try{ localStorage.setItem("tpHideDone", tp.hideDone?"1":"0"); }catch(_){} render(); }
   else if(a==="retry"){ tp.err = ""; render(); }
@@ -4567,7 +4603,7 @@ function tpUp(e){
 }
 function tpClick(e){
   if(view!=="plan" || tp.mode==="meta") return;
-  if(tp.mode==="job"){
+  {
     const rb = e.target.closest && e.target.closest('.tp-b[data-id^="rep:"]');
     if(rb && rb.closest("#tp_track")){
       const parts = rb.dataset.id.split(":");
@@ -4577,7 +4613,7 @@ function tpClick(e){
   }
   if(!tp.unlock){
     const a0 = e.target.closest && e.target.closest("[data-tp]");
-    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
+    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report","school"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
     else if(e.target.closest && e.target.closest(".tp-b,#tp_track,.tp-pool")) tpLockHint();
     return;
   }

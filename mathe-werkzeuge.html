@@ -5447,8 +5447,8 @@ renderStell();
     const pre = "rg"; let mode = "r";
     const DEF = { r: { n: 35761, k: 3 }, a: { n: 35761, k: 3 }, b: { n: 36000, k: 3 } };
     const V = Object.assign({}, DEF.r);
-    const PL = ["Einer", "Zehner", "Hunderter", "Tausender", "Zehntausender", "Hunderttausender", "Millionen", "Zehnmillionen", "Hundertmillionen", "Milliarden", "Zehnmilliarden", "Hundertmilliarden"];
-    const PD = ["Einern", "Zehnern", "Hundertern", "Tausendern", "Zehntausendern", "Hunderttausendern", "Millionen", "Zehnmillionen", "Hundertmillionen", "Milliarden", "Zehnmilliarden", "Hundertmilliarden"];
+    const PL = ["Einer", "Zehner", "Hunderter", "Tausender", "Zehntausender", "Hunderttausender", "Millionen", "Zehnmillionen", "Hundertmillionen", "Milliarden", "Zehnmilliarden", "Hundertmilliarden", "Billionen"];
+    const PD = ["Einern", "Zehnern", "Hundertern", "Tausendern", "Zehntausendern", "Hunderttausendern", "Millionen", "Zehnmillionen", "Hundertmillionen", "Milliarden", "Zehnmilliarden", "Hundertmilliarden", "Billionen"];
     const grp = x => String(x).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
     const nw = t => t.replace(/\d{1,3}(?:\u2009\d{3})+/g, m => '<span style="white-space:nowrap">' + m + "</span>");
     const stp = (t, txt, vis, cls, r, q) => step(t, nw(txt), vis, cls, r, q);
@@ -5594,7 +5594,7 @@ renderStell();
       return out;
     }
     const sp = stepper({ pre: pre, carry: false, build: () => {
-      if (!Number.isInteger(V.n) || V.n < 10 || V.n > 999999999999) return "Bitte eine ganze Zahl von 10 bis 999 999 999 999 eingeben.";
+      if (!Number.isInteger(V.n) || V.n < 10 || V.n > 1000000000000) return "Bitte eine ganze Zahl von 10 bis 1 000 000 000 000 eingeben.";
       if (mode !== "a" && !(V.k >= 1 && V.k <= String(V.n).length - 1)) return "Bitte eine Rundungsstelle aus der Liste wählen.";
       if (mode === "b" && V.n % P10(V.k) !== 0) return "Die gerundete Zahl muss bei der Rundungsstelle " + PL[V.k] + " auf " + V.k + (V.k === 1 ? " Null" : " Nullen") + " enden, zum Beispiel " + grp(3 * P10(V.k)) + ". Gib so eine Zahl ein oder wähle eine andere Rundungsstelle.";
       return mode === "r" ? buildR() : mode === "a" ? buildA() : buildB();
@@ -5602,14 +5602,14 @@ renderStell();
     const SEL = "font-size:1.5rem;padding:.35rem .6rem;border-radius:10px;background:#0e1624;color:#e6e8eb;border:2px solid #5fd06f";
     function fillSel() {
       const se = $(pre + "Row").querySelector("select"); if (!se) return;
-      const mk = Number.isInteger(V.n) && V.n >= 10 ? Math.min(11, String(V.n).length - 1) : 4;
+      const mk = Number.isInteger(V.n) && V.n >= 10 ? Math.min(12, String(V.n).length - 1) : 4;
       if (V.k > mk) V.k = mk; if (V.k < 1) V.k = 1;
       let o = ""; for (let k = 1; k <= mk; k++) o += '<option value="' + k + '"' + (k === V.k ? " selected" : "") + ">" + PL[k] + "</option>";
       se.innerHTML = o;
     }
     function inputs() {
       const row = $(pre + "Row");
-      row.innerHTML = '<div class="gbox"><div class="note">' + (mode === "b" ? "Gerundete Zahl" : "Zahl") + '</div><div class="numbox"><input type="number" data-k="n" min="10" max="999999999999" value="' + (Number.isInteger(V.n) ? V.n : "") + '" style="color:#6cc0f5;border-color:#6cc0f5"></div></div>' +
+      row.innerHTML = '<div class="gbox"><div class="note">' + (mode === "b" ? "Gerundete Zahl" : "Zahl") + '</div><div class="numbox"><input type="number" data-k="n" min="10" max="1000000000000" value="' + (Number.isInteger(V.n) ? V.n : "") + '" style="color:#6cc0f5;border-color:#6cc0f5"></div></div>' +
         (mode === "a" ? "" : sym("auf") + '<select data-k="k" aria-label="Rundungsstelle" style="' + SEL + '"></select>');
       row.querySelector("input").addEventListener("input", e => { V.n = e.target.value === "" ? NaN : Number(e.target.value); fillSel(); sp.reset(); sp.render(); });
       const se = row.querySelector("select"); if (se) se.addEventListener("change", () => { V.k = Number(se.value); sp.reset(); sp.render(); });

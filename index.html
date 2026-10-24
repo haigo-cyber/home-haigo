@@ -738,6 +738,8 @@
 .tp-col{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .tp-col button{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer}
 .tp-col button.on{border-color:#fff}
+.tp-col button{border:2px solid rgba(255,255,255,.18)}
+.tp-col button.tp-none{background:transparent;color:var(--text);font-size:16px;line-height:1}
 .nav-sub .tp-btn{font-size:13px}
 .tm-mon{position:relative;height:22px;border-bottom:1px solid var(--line)}
 .tm-mon span{position:absolute;top:3px;font-size:12px;font-weight:600;color:var(--text);padding-left:6px;border-left:1px solid var(--line);height:18px;white-space:nowrap;overflow:hidden;box-sizing:border-box}
@@ -3643,10 +3645,16 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v240";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v241";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
-const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
+const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
+const TP_HEXRE = /^#[0-9a-fA-F]{6}$/;
+const tpHex = v=>TP_HEXRE.test(String(v||"")) ? String(v) : "";
+/* Mehrfarbig: color = Fach (Hauptfläche), cs = Schule (erster Streifen links), ck = Klassenstufe (zweiter Streifen) */
+function tpStripes(o){ return [tpHex(o&&o.cs), tpHex(o&&o.ck)].filter(Boolean); }
+function tpBg(o){ const st = tpStripes(o), c = o.color; if(!st.length) return c; let g = [], x = 0; st.forEach(k=>{ g.push(k+" "+x+"px "+(x+6)+"px"); x += 6; }); g.push(c+" "+x+"px"); return "linear-gradient(90deg,"+g.join(",")+")"; }
+function tpSw(o){ const st = tpStripes(o); if(!st.length) return `<i style="width:12px;height:12px;border-radius:3px;background:${esc(o.color)};display:inline-block"></i>`; const all = st.concat([o.color]), n = all.length; return `<i style="width:${n*8}px;height:12px;border-radius:3px;background:linear-gradient(90deg,${all.map((k,i)=>k+" "+(i*100/n)+"% "+((i+1)*100/n)+"%").join(",")});display:inline-block;border:1px solid rgba(255,255,255,.25)"></i>`; }
 const tp = {day:"", data:null, loading:false, err:"", fileId:"", mt:"", saveT:null, saving:false, again:false, pending:false,
   drag:null, scrollL:null, filter:"due", q:"", showSet:false, hideDone:(function(){ try{ return localStorage.getItem("tpHideDone")==="1"; }catch(e){ return false; } })(), deleted:new Set(), range:{from:360,to:1320}, ppm:2};
 const tpPad = n=>String(n).padStart(2,"0");
@@ -3665,7 +3673,7 @@ function tpNorm(d){
     const bl = ((src[k]||{}).blocks||[]).map(b=>{
       const st = tpInt(b&&b.start,0,1439,-1), en = tpInt(b&&b.end,1,1440,-1);
       if(!b || st<0 || en<=st) return null;
-      return {id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:st, end:en, color:String(b.color||TP_COLORS[0]).slice(0,20), done:!!b.done, note:String(b.note||"").slice(0,500),
+      return {id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:st, end:en, color:String(b.color||TP_COLORS[0]).slice(0,20), cs:tpHex(b.cs), ck:tpHex(b.ck), done:!!b.done, note:String(b.note||"").slice(0,500),
         src:(b.src && b.src.kind && b.src.ref) ? {kind:String(b.src.kind), ref:String(b.src.ref)} : null};
     }).filter(Boolean);
     if(bl.length) dst[k] = {blocks:bl};
@@ -3674,7 +3682,7 @@ function tpNorm(d){
   const dk = v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||"")) ? String(v) : "";
   o.items = (Array.isArray(d.items)?d.items:[]).map(x=>{
     if(!x || !x.title) return null;
-    const it = {id:String(x.id||uid()), title:String(x.title).slice(0,120), min:tpInt(x.min,5,720,30), color:String(x.color||TP_COLORS[0]).slice(0,20), rep:null, occ:{}};
+    const it = {id:String(x.id||uid()), title:String(x.title).slice(0,120), min:tpInt(x.min,5,720,30), color:String(x.color||TP_COLORS[0]).slice(0,20), cs:tpHex(x.cs), ck:tpHex(x.ck), rep:null, occ:{}};
     const r = x.rep;
     if(r && typeof r==="object"){
       let slots = [];
@@ -3727,7 +3735,7 @@ function tpRepBlocks(day){
   tp.data.items.forEach(it=>{
     tpSlots(it, day).forEach(({q,key})=>{
       const o = it.occ[key] || {};
-      out.push({id:"rep:"+it.id+":"+key, title:it.title, start:q.start, end:Math.min(1440, q.start+q.min), color:it.color, done:!!o.done, note:o.topic||"", src:null, rep:{item:it.id, day:key}});
+      out.push({id:"rep:"+it.id+":"+key, title:it.title, start:q.start, end:Math.min(1440, q.start+q.min), color:it.color, cs:it.cs, ck:it.ck, done:!!o.done, note:o.topic||"", src:null, rep:{item:it.id, day:key}});
     });
   });
   return out;
@@ -3855,7 +3863,7 @@ function tpDn(b){
 }
 function tpBlockHtml(b, lane){
   const w = (b.end-b.start)*tp.ppm, left = (b.start-tp.range.from)*tp.ppm;
-  return `<div class="tp-b${tpDn(b)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${tpHM(b.start)}–${tpHM(b.end)}" style="left:${left}px;width:${w}px;top:${4+lane*tpLP()}px;background:${esc(b.color)}">
+  return `<div class="tp-b${tpDn(b)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${tpHM(b.start)}–${tpHM(b.end)}" style="left:${left}px;width:${w}px;top:${4+lane*tpLP()}px;background:${esc(tpBg(b))};${tpStripes(b).length?"padding-left:"+(9+6*tpStripes(b).length)+"px":""}">
     <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${tpDn(b)?"✓":""}</span>
     <div class="tp-t">${b.rep?"🔁 ":""}${esc(b.title||"(ohne Titel)")}${b.rep&&b.note?" · "+esc(b.note):""}</div><div class="tp-m">${tpHM(b.start)}–${b.end>=1440?"24:00":tpHM(b.end)}</div><i class="tp-h r" data-h="r"></i></div>`;
 }
@@ -3864,7 +3872,7 @@ function tpJobHtml(){
   const it = tp.data.items;
   return `<h3>Bausteine für den Job-Tag</h3>
     <div class="tp-note" style="padding:0 0 8px">Baustein antippen (＋) oder auf die Zeitleiste ziehen. Das Ziehen funktioniert am Griff ⠿.</div>
-    ${it.map(x=>`<div class="tp-it tp-bs" data-bs="${esc(x.id)}">${tpAuto(x)?`<span style="padding:4px 6px">🔁</span>`:`<span class="tp-grip" data-grip="${esc(x.id)}" style="touch-action:none;cursor:grab;padding:4px 6px">⠿</span>`}<i style="width:12px;height:12px;border-radius:3px;background:${esc(x.color)};display:inline-block"></i><span class="tx">${esc(x.title)}</span><span class="dt">${esc(tpDur(x.min))}${x.rep?" · "+esc(tpRepText(x))+(tpAuto(x)&&x.rep.from?", ab "+esc(wsShortDate(x.rep.from)):""):""}</span>${tp.unlock?`<button class="tp-btn" data-tp="bedit" data-r="${esc(x.id)}" title="Baustein bearbeiten">✎</button>`:""}${tpAuto(x)?`<button class="tp-btn" data-tp="bgo" data-r="${esc(x.id)}" title="Zur nächsten Stunde springen">→</button>`:`<button class="tp-btn" data-tp="badd" data-r="${esc(x.id)}">＋</button>`}</div>`).join("") || `<div class="tp-note" style="padding:8px 2px">Noch keine Bausteine. Mit „Baustein anlegen“ den ersten definieren (zum Beispiel Unterricht, Konferenz, Korrekturen).</div>`}
+    ${it.map(x=>`<div class="tp-it tp-bs" data-bs="${esc(x.id)}">${tpAuto(x)?`<span style="padding:4px 6px">🔁</span>`:`<span class="tp-grip" data-grip="${esc(x.id)}" style="touch-action:none;cursor:grab;padding:4px 6px">⠿</span>`}${tpSw(x)}<span class="tx">${esc(x.title)}</span><span class="dt">${esc(tpDur(x.min))}${x.rep?" · "+esc(tpRepText(x))+(tpAuto(x)&&x.rep.from?", ab "+esc(wsShortDate(x.rep.from)):""):""}</span>${tp.unlock?`<button class="tp-btn" data-tp="bedit" data-r="${esc(x.id)}" title="Baustein bearbeiten">✎</button>`:""}${tpAuto(x)?`<button class="tp-btn" data-tp="bgo" data-r="${esc(x.id)}" title="Zur nächsten Stunde springen">→</button>`:`<button class="tp-btn" data-tp="badd" data-r="${esc(x.id)}">＋</button>`}</div>`).join("") || `<div class="tp-note" style="padding:8px 2px">Noch keine Bausteine. Mit „Baustein anlegen“ den ersten definieren (zum Beispiel Unterricht, Konferenz, Korrekturen).</div>`}
     ${tp.unlock?`<div style="margin-top:8px"><button class="tp-btn pri" data-tp="bnew">Baustein anlegen</button></div>`:""}${tpBreakListHtml()}`;
 }
 /* Listenansicht: alle Unterrichtsstunden der nächsten 10 Tage ab dem eingestellten Tag, direkt bearbeitbar */
@@ -4071,13 +4079,13 @@ function tpJobPlace(item, start){
       if(!free.length){ toast("Alle Stundenplan-Termine dieses Tages sind schon gesetzt"); return; }
       const q = free[0], en = Math.min(1440, q.start+q.min);
       const br = tpBreakFor(tp.day, q); if(br){ toast("Entfällt: "+br.label); return; }
-      tpAdd({id:uid(), title:item.title, start:q.start, end:en, color:item.color, done:false, note:"", src:null});
+      tpAdd({id:uid(), title:item.title, start:q.start, end:en, color:item.color, cs:item.cs, ck:item.ck, done:false, note:"", src:null});
       render(); toast("Auf "+tpHM(q.start)+" Uhr gesetzt (Stundenplan)"); return;
     }
     toast("Kein Stundenplan-Termin an diesem Wochentag, deshalb frei gesetzt");
   }
   const dur = item.min, st = start==null ? tpFree(tp.day, dur) : tpCl(start, 0, 1440-dur);
-  tpAdd({id:uid(), title:item.title, start:st, end:st+dur, color:item.color, done:false, note:"", src:null});
+  tpAdd({id:uid(), title:item.title, start:st, end:st+dur, color:item.color, cs:item.cs, ck:item.ck, done:false, note:"", src:null});
   render();
 }
 const TP_WD = [[1,"Mo"],[2,"Di"],[3,"Mi"],[4,"Do"],[5,"Fr"],[6,"Sa"],[0,"So"]];
@@ -4101,7 +4109,7 @@ function tpAuto(it){ return !!(it.rep && it.rep.auto!==false); }
 function tpRepText(it){ const r = it.rep; if(!r) return ""; return (r.auto!==false?"🔁 ":"")+r.slots.slice().sort((a,b)=>((a.wd+6)%7)-((b.wd+6)%7)||a.start-b.start).map(q=>TP_WD.find(x=>x[0]===q.wd)[1]+" "+tpHM(q.start)).join(", "); }
 function tpItemEdit(id){
   if(document.getElementById("modalBg")) return;
-  const isNew = !id, b = isNew ? {id:uid(), title:"", min:30, color:TP_COLORS[0], rep:null, occ:{}} : tp.data.items.find(x=>x.id===id);
+  const isNew = !id, b = isNew ? {id:uid(), title:"", min:30, color:TP_COLORS[0], cs:"", ck:"", rep:null, occ:{}} : tp.data.items.find(x=>x.id===id);
   if(!b) return;
   const inp = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px";
   const R = b.rep ? {slots:b.rep.slots.map(q=>({wd:q.wd,start:q.start,min:q.min,n:q.n,custom:q.min!==b.min})), from:b.rep.from, to:b.rep.to, skip:b.rep.skip.map(x=>({from:x.from,to:x.to,label:x.label||""}))} : {slots:[], from:"", to:"", skip:[]};
@@ -4109,7 +4117,10 @@ function tpItemEdit(id){
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal" style="max-height:90vh;overflow:auto"><h2>${isNew?"Neuer Baustein":"Baustein bearbeiten"}</h2>
     <label>Titel</label><input type="text" id="tpi_t" maxlength="120" value="${esc(b.title)}" style="${inp}">
     <label>Standarddauer in Minuten</label><input type="number" id="tpi_m" min="5" max="720" step="5" value="${b.min}" style="${inp}">
-    <label>Farbe</label><div class="tp-col" id="tpi_c">${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.color?"on":""}"></button>`).join("")}</div>
+    <label>Farbe Fach (Hauptfarbe)</label><div class="tp-col" id="tpi_c">${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.color?"on":""}"></button>`).join("")}</div>
+    <label>Farbe Schule (Streifen links, zum Beispiel EvT oder Herder)</label><div class="tp-col" id="tpi_cs"><button type="button" data-c="" class="tp-none${b.cs?"":" on"}">–</button>${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.cs?"on":""}"></button>`).join("")}</div>
+    <label>Farbe Klassenstufe (zweiter Streifen)</label><div class="tp-col" id="tpi_ck"><button type="button" data-c="" class="tp-none${b.ck?"":" on"}">–</button>${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.ck?"on":""}"></button>`).join("")}</div>
+    <div id="tpi_prev" style="margin:0 0 8px"></div>
     <label style="margin-top:10px">Stundenplan: Termine (beliebig viele, auch mehrere am selben Wochentag)</label>
     <div id="tpi_slots"></div>
     <button type="button" class="tp-btn" id="tpi_sadd">+ Termin hinzufügen</button>
@@ -4127,7 +4138,11 @@ function tpItemEdit(id){
       <div class="tp-note" style="padding:6px 0 0">Ohne Enddatum gilt der Ausfall nur für diesen einen Tag.</div>
     </div>
     <div class="modal-actions">${isNew?"":`<button class="btn-ghost" id="tpi_del" style="color:#ff8a8e">Löschen</button>`}<button class="btn-ghost" id="tpi_x">Abbrechen</button><button class="btn-primary" id="tpi_ok">Speichern</button></div></div></div>`);
-  let color = b.color;
+  let color = b.color, cs = b.cs||"", ck = b.ck||"";
+  const prev = ()=>{ $("tpi_prev").innerHTML = `<div class="tp-b" style="position:relative;display:inline-block;width:190px;height:34px;background:${esc(tpBg({color,cs,ck}))};padding-left:${9+6*tpStripes({cs,ck}).length}px"><div class="tp-t">${esc($("tpi_t").value||"Vorschau")}</div></div>`; };
+  const pick = (box, set)=>{ $(box).onclick = e=>{ const c = e.target.closest("[data-c]"); if(!c) return; set(c.dataset.c); [...$(box).children].forEach(x=>x.classList.toggle("on", x===c)); prev(); }; };
+  pick("tpi_c", v=>{ color = v||color; }); pick("tpi_cs", v=>{ cs = v; }); pick("tpi_ck", v=>{ ck = v; });
+  $("tpi_t").addEventListener("input", prev); prev();
   const gridList = ()=>{ const out = []; ($("tpi_grid").value||"").split("\n").forEach(l=>{ const m = /(\d{1,2})[:.](\d{2})\s*[-–]\s*(\d{1,2})[:.](\d{2})/.exec(l); if(m){ const f = +m[1]*60+ +m[2], t = +m[3]*60+ +m[4]; if(f<1440 && t>f && t<=1440) out.push({from:f,to:t}); } }); return out.slice(0,20); };
   const slotsUi = ()=>{
     const G = gridList(), ord = a=>((a.wd+6)%7);
@@ -4164,7 +4179,6 @@ function tpItemEdit(id){
   $("tpi_grid").onchange = ()=>slotsUi();
   $("tpi_slots").onclick = e=>{ const d = e.target.closest("[data-sdel]"); if(!d) return; R.slots.splice(+d.dataset.sdel,1); slotsUi(); };
   $("tpi_sadd").onclick = ()=>{ const last = R.slots[R.slots.length-1]; R.slots.push({wd:last?last.wd:1, start:last?last.start:480, min:tpInt($("tpi_m").value,5,720,b.min), n:-1}); slotsUi(); };
-  $("tpi_c").onclick = e=>{ const c = e.target.closest("[data-c]"); if(!c) return; color = c.dataset.c; [...$("tpi_c").children].forEach(x=>x.classList.toggle("on", x===c)); };
   $("tpi_rep").onchange = ()=>{ repOn = $("tpi_rep").checked; $("tpi_rbox").style.display = repOn?"block":"none"; if(repOn){ addFirst(); slotsUi(); } };
   $("tpi_skadd").onclick = ()=>{
     const a = $("tpi_sk1").value, c = $("tpi_sk2").value || a;
@@ -4190,7 +4204,7 @@ function tpItemEdit(id){
       tpSettings().grid = gridList();
     }else if(repOn && false){ }
     if(rp){ const u = {}; rp.slots.forEach(q=>{ if(q.n>=0){ (u[q.wd]=u[q.wd]||new Set()).add(q.n); } }); rp.slots.forEach(q=>{ if(q.n<0){ const st = (u[q.wd]=u[q.wd]||new Set()); let n=0; while(st.has(n)) n++; st.add(n); q.n=n; } }); }
-    b.title = t.slice(0,120); b.min = tpInt($("tpi_m").value,5,720,30); b.color = color; b.rep = rp;
+    b.title = t.slice(0,120); b.min = tpInt($("tpi_m").value,5,720,30); b.color = color; b.cs = cs; b.ck = ck; b.rep = rp;
     if(isNew) tp.data.items.push(b);
     tpDirty(); $("modalBg").remove();
     if(tpAuto(b) && tp.mode==="job"){ const n = tpGoFirst(b); render(); toast(n?"Alle Termine eingetragen, erste Stunde: "+wsShortDate(n):"Gespeichert, aber keine Stunde im eingestellten Zeitraum"); }

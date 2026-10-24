@@ -3643,7 +3643,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v236";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v237";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
@@ -3653,7 +3653,7 @@ const tpPad = n=>String(n).padStart(2,"0");
 const tpHM = m=>tpPad(Math.floor(m/60)%24)+":"+tpPad(m%60);
 const tpCl = (v,a,b)=>Math.max(a,Math.min(b,v));
 const tpInt = (v,a,b,d)=>{ v = Math.floor(Number(v)); return Number.isFinite(v) ? tpCl(v,a,b) : d; };
-function tpDefault(){ return {v:1, settings:{from:6,to:22,snap:15,pph:120}, days:{}, jdays:{}, items:[]}; }
+function tpDefault(){ return {v:1, settings:{from:6,to:22,snap:15,pph:120}, days:{}, jdays:{}, items:[], breaks:[]}; }
 function tpNorm(d){
   const o = tpDefault();
   if(!d || typeof d!=="object") return o;
@@ -3694,17 +3694,32 @@ function tpNorm(d){
     });
     return it;
   }).filter(Boolean).slice(0,80);
+  o.breaks = (Array.isArray(d.breaks)?d.breaks:[]).map(x=>{
+    const f = dk(x&&x.from), t = dk(x&&(x.to||x.from)); if(!f || !t || t<f) return null;
+    const tf = tpInt(x.tfrom,0,1439,-1), tt = tpInt(x.tto,1,1440,-1);
+    return {id:String(x.id||uid()), label:String(x.label||"Ferien").slice(0,60), from:f, to:t, tfrom:(tf>=0&&tt>tf)?tf:-1, tto:(tf>=0&&tt>tf)?tt:-1};
+  }).filter(Boolean).slice(0,200);
   return o;
 }
 function tpSettings(){ return (tp.data && tp.data.settings) || tpDefault().settings; }
 function tpDays(){ return tp.mode==="job" ? tp.data.jdays : tp.data.days; }
 function tpSlotKey(day, q){ return q.n>0 ? day+"#"+q.n : day; }
-function tpSlots(it, day){
+function tpBreakFor(day, q){            // gemeinsame Ferien und freie Tage (gelten für alle Bausteine)
+  const bs = (tp.data && tp.data.breaks) || [];
+  return bs.find(b=>day>=b.from && day<=b.to && (b.tfrom<0 || !q || (q.start<b.tto && q.start+q.min>b.tfrom)));
+}
+function tpDayBreaks(day){ return ((tp.data&&tp.data.breaks)||[]).filter(b=>day>=b.from && day<=b.to); }
+function tpBreakText(b){ return b.label+": "+wsShortDate(b.from)+(b.to!==b.from?" – "+wsShortDate(b.to):"")+(b.tfrom>=0?", "+tpHM(b.tfrom)+"–"+tpHM(b.tto):""); }
+function tpSlotsAll(it, day){
   const r = it.rep; if(!r) return []; const d = parseDate(day); if(!d) return [];
   if(r.from && day<r.from) return []; if(r.to && day>r.to) return [];
-  if(r.skip.some(x=>day>=x.from && day<=x.to)) return [];
-  return r.slots.filter(x=>x.wd===d.getDay()).sort((a,b)=>a.start-b.start).map(q=>({q, key:tpSlotKey(day,q)}));
+  const isk = r.skip.find(x=>day>=x.from && day<=x.to);
+  return r.slots.filter(x=>x.wd===d.getDay()).sort((a,b)=>a.start-b.start).map(q=>{
+    const br = tpBreakFor(day, q);
+    return {q, key:tpSlotKey(day,q), skip: br ? br.label : (isk ? (isk.label||"Ausfall") : "")};
+  });
 }
+function tpSlots(it, day){ return tpSlotsAll(it, day).filter(x=>!x.skip); }
 function tpSlotByKey(it, key){ const day = key.slice(0,10); const f = tpSlots(it, day).find(x=>x.key===key); return f ? f.q : null; }
 function tpRepBlocks(day){
   if(!tp.data || tp.mode!=="job") return [];
@@ -3769,6 +3784,7 @@ function tpMerge(remote){
       });
     });
   });
+  (remote.breaks||[]).forEach(br=>{ if(!tp.deleted.has(br.id) && !tp.data.breaks.some(x=>x.id===br.id)) tp.data.breaks.push(br); });
   (remote.items||[]).forEach(it=>{
     if(tp.deleted.has(it.id)) return;
     const loc = tp.data.items.find(x=>x.id===it.id);
@@ -3849,7 +3865,7 @@ function tpJobHtml(){
   return `<h3>Bausteine für den Job-Tag</h3>
     <div class="tp-note" style="padding:0 0 8px">Baustein antippen (＋) oder auf die Zeitleiste ziehen. Das Ziehen funktioniert am Griff ⠿.</div>
     ${it.map(x=>`<div class="tp-it tp-bs" data-bs="${esc(x.id)}">${x.rep?`<span style="padding:4px 6px">🔁</span>`:`<span class="tp-grip" data-grip="${esc(x.id)}" style="touch-action:none;cursor:grab;padding:4px 6px">⠿</span>`}<i style="width:12px;height:12px;border-radius:3px;background:${esc(x.color)};display:inline-block"></i><span class="tx">${esc(x.title)}</span><span class="dt">${esc(tpDur(x.min))}${x.rep?" · "+esc(tpRepText(x))+(x.rep.from?", ab "+esc(wsShortDate(x.rep.from)):""):""}</span>${tp.unlock?`<button class="tp-btn" data-tp="bedit" data-r="${esc(x.id)}" title="Baustein bearbeiten">✎</button>`:""}${x.rep?`<button class="tp-btn" data-tp="bgo" data-r="${esc(x.id)}" title="Zur nächsten Stunde springen">→</button>`:`<button class="tp-btn" data-tp="badd" data-r="${esc(x.id)}">＋</button>`}</div>`).join("") || `<div class="tp-note" style="padding:8px 2px">Noch keine Bausteine. Mit „Baustein anlegen“ den ersten definieren (zum Beispiel Unterricht, Konferenz, Korrekturen).</div>`}
-    ${tp.unlock?`<div style="margin-top:8px"><button class="tp-btn pri" data-tp="bnew">Baustein anlegen</button></div>`:""}`;
+    ${tp.unlock?`<div style="margin-top:8px"><button class="tp-btn pri" data-tp="bnew">Baustein anlegen</button></div>`:""}${tpBreakListHtml()}`;
 }
 /* Listenansicht: alle Unterrichtsstunden der nächsten 10 Tage ab dem eingestellten Tag, direkt bearbeitbar */
 const TP_LIST_DAYS = 10;
@@ -3867,7 +3883,9 @@ function tpListHtml(){
   if(!tp.data.items.some(x=>x.rep)) h += `<div class="tp-note" style="padding:6px 0">Noch keine wiederkehrenden Bausteine. Einen Baustein mit „Wiederkehrend einplanen“ anlegen, dann erscheinen hier seine Stunden.</div>`;
   rows.forEach(r=>{
     h += `<div style="font-weight:600;font-size:calc(13px*var(--f,1));margin:12px 0 4px;color:var(--muted)">${esc(tpDayTitle(r.day))}${r.day===todayKey()?" (heute)":""}</div>`;
-    if(!r.list.length){ h += `<div class="tp-note" style="padding:0 0 2px">Kein Unterricht</div>`; return; }
+    const bk = tpDayBreaks(r.day).map(b=>`🏖 ${esc(b.label)}${b.tfrom>=0?" ("+tpHM(b.tfrom)+"–"+tpHM(b.tto)+")":""}`).join(", ");
+    if(!r.list.length){ h += `<div class="tp-note" style="padding:0 0 2px">${bk?bk+" · ":""}Kein Unterricht</div>`; return; }
+    if(bk) h += `<div class="tp-note" style="padding:0 0 4px">${bk}</div>`;
     r.list.forEach(({it,q,key})=>{
       const o = it.occ[key] || {}, pk = tpOccNeighbor(it, key, -1), po = pk ? (it.occ[pk]||null) : null;
       h += `<div class="tp-lrow" data-lk="${esc(it.id)}|${esc(key)}" style="border:1px solid var(--line);border-left:4px solid ${esc(it.color)};border-radius:8px;padding:6px 8px;margin-bottom:6px">
@@ -3895,12 +3913,10 @@ function tpReportRows(o){
   for(let d = new Date(d0.getTime()), n = 0; d<=d1 && n<400; d.setDate(d.getDate()+1), n++){
     const day = dateKey(d);
     items.forEach(it=>{
-      const l = tpSlots(it, day);
-      if(l.length){ l.forEach(({q,key})=>rows.push({it, day, key, q, occ:it.occ[key]||{}, skip:null})); return; }
-      if(!o.skips) return;
-      const r = it.rep; if(r.from && day<r.from) return; if(r.to && day>r.to) return;
-      const sk = r.skip.find(x=>day>=x.from && day<=x.to); if(!sk) return;
-      r.slots.filter(q=>q.wd===d.getDay()).sort((a,b)=>a.start-b.start).forEach(q=>rows.push({it, day, key:tpSlotKey(day,q), q, occ:{}, skip:sk.label||"Ausfall"}));
+      tpSlotsAll(it, day).forEach(({q,key,skip})=>{
+        if(!skip) rows.push({it, day, key, q, occ:it.occ[key]||{}, skip:null});
+        else if(o.skips) rows.push({it, day, key, q, occ:{}, skip});
+      });
     });
   }
   rows.sort((a,b)=>a.day<b.day?-1:a.day>b.day?1:a.q.start-b.q.start);
@@ -4008,6 +4024,41 @@ function tpReportOpen(){
     try{ await navigator.clipboard.writeText(txt); toast("Bericht in die Zwischenablage kopiert"); }
     catch(e){ const ta = document.createElement("textarea"); ta.value = txt; ta.style.cssText = "position:fixed;left:-999px"; document.body.appendChild(ta); ta.select(); let ok = false; try{ ok = document.execCommand("copy"); }catch(_){} ta.remove(); toast(ok ? "Bericht in die Zwischenablage kopiert" : "Kopieren nicht möglich"); }
   };
+}
+function tpBreakListHtml(){
+  const bs = tp.data.breaks.slice().sort((a,b)=>a.from<b.from?-1:1);
+  return `<h3 style="margin-top:14px">Ferien und freie Tage</h3><div class="tp-note" style="padding:0 0 6px">An diesen Tagen entfallen alle wiederkehrenden Stunden. Von Hand gesetzte Blöcke bleiben.</div>`
+    + (bs.map(b=>`<div class="tp-it"><span>🏖</span><span class="tx">${esc(b.label)}</span><span class="dt">${esc(wsShortDate(b.from))}${b.to!==b.from?" – "+esc(wsShortDate(b.to)):""}${b.tfrom>=0?" · "+tpHM(b.tfrom)+"–"+tpHM(b.tto):""}</span>${tp.unlock?`<button class="tp-btn" data-tp="brkedit" data-r="${esc(b.id)}">✎</button>`:""}</div>`).join("") || `<div class="tp-note" style="padding:4px 0">Noch keine eingetragen.</div>`)
+    + (tp.unlock?`<div style="margin-top:8px"><button class="tp-btn pri" data-tp="brknew">Ferien oder freien Tag anlegen</button></div>`:"");
+}
+function tpBreakEdit(id){
+  if(document.getElementById("modalBg")) return;
+  const isNew = !id, b = isNew ? {id:uid(), label:"", from:tp.day, to:"", tfrom:-1, tto:-1} : tp.data.breaks.find(x=>x.id===id);
+  if(!b) return;
+  const inp = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px;box-sizing:border-box";
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal" style="max-height:90vh;overflow:auto"><h2>${isNew?"Ferien oder freier Tag":"Ferien bearbeiten"}</h2>
+    <label>Bezeichnung</label><input type="text" id="brk_l" maxlength="60" placeholder="z. B. Herbstferien, Studientag" value="${esc(b.label)}" style="${inp}">
+    <div style="display:flex;gap:8px"><div style="flex:1"><label>Von (Datum)</label><input type="date" id="brk_f" value="${esc(b.from)}" style="${inp}"></div><div style="flex:1"><label>Bis (Datum)</label><input type="date" id="brk_t" value="${esc(b.to||b.from)}" style="${inp}"></div></div>
+    <label style="display:flex;gap:8px;align-items:center;margin:4px 0 6px"><input type="checkbox" id="brk_tm"${b.tfrom>=0?" checked":""}> Nur zu bestimmten Uhrzeiten (sonst ganztägig)</label>
+    <div id="brk_tbox" style="display:${b.tfrom>=0?"flex":"none"};gap:8px"><div style="flex:1"><label>Von (Uhrzeit)</label><input type="time" id="brk_tf" value="${tpHM(b.tfrom>=0?b.tfrom:480)}" style="${inp}"></div><div style="flex:1"><label>Bis (Uhrzeit)</label><input type="time" id="brk_tt" value="${tpHM(b.tto>=0?b.tto:780)}" style="${inp}"></div></div>
+    <div class="modal-actions">${isNew?"":`<button class="btn-ghost" id="brk_del" style="color:#ff8a8e">Löschen</button>`}<button class="btn-ghost" id="brk_x">Abbrechen</button><button class="btn-primary" id="brk_ok">Speichern</button></div></div></div>`);
+  const $c = i=>document.getElementById(i), pm = v=>{ const m = /^(\d{1,2}):(\d{2})$/.exec(v||""); return m ? +m[1]*60+ +m[2] : -1; };
+  $c("brk_f").onchange = ()=>{ if(!$c("brk_t").value || $c("brk_t").value<$c("brk_f").value) $c("brk_t").value = $c("brk_f").value; };
+  $c("brk_tm").onchange = ()=>{ $c("brk_tbox").style.display = $c("brk_tm").checked ? "flex" : "none"; };
+  $c("brk_x").onclick = ()=>$c("modalBg").remove();
+  $c("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $c("modalBg").remove(); };
+  if($c("brk_del")) $c("brk_del").onclick = ()=>{ $c("modalBg").remove(); const i = tp.data.breaks.findIndex(x=>x.id===b.id); if(i>=0){ tp.deleted.add(b.id); tp.data.breaks.splice(i,1); tpDirty(); render(); } };
+  $c("brk_ok").onclick = ()=>{
+    const f = $c("brk_f").value, t = $c("brk_t").value || f;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(f)){ toast("Bitte ein Anfangsdatum angeben"); return; }
+    if(t<f){ toast("Das Ende liegt vor dem Anfang"); return; }
+    let tf = -1, tt = -1;
+    if($c("brk_tm").checked){ tf = pm($c("brk_tf").value); tt = pm($c("brk_tt").value); if(tf<0 || tt<=tf){ toast("Die Endzeit muss nach der Anfangszeit liegen"); return; } }
+    b.label = ($c("brk_l").value.trim()||"Ferien").slice(0,60); b.from = f; b.to = t; b.tfrom = tf; b.tto = tt;
+    if(isNew) tp.data.breaks.push(b);
+    tpDirty(); $c("modalBg").remove(); render();
+  };
+  setTimeout(()=>{ const x = $c("brk_l"); if(x) x.focus(); }, 50);
 }
 function tpJobPlace(item, start){
   const dur = item.min, st = start==null ? tpFree(tp.day, dur) : tpCl(start, 0, 1440-dur);
@@ -4288,6 +4339,7 @@ function tpMount(m){
     ${tp.more?`<div class="tp-bar tp-more">${tp.unlock?`<button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button>`:""}<button class="tp-btn${tp.hideDone?" on":""}" data-tp="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tp.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙ Einstellungen</button></div>`:""}
     ${tp.showSet?`<div class="tp-set">Beginn <select id="tp_from">${opt(rng(0,23), s.from, v=>tpPad(v)+":00")}</select> Ende <select id="tp_to">${opt(rng(1,24), s.to, v=>tpPad(v)+":00")}</select>
       Raster <select id="tp_snap">${opt([5,10,15,30], s.snap, v=>v+" min")}</select> Breite <select id="tp_pph">${opt([60,90,120,180,240], s.pph, v=>v+" px je Stunde")}</select></div>`:""}
+    ${tp.mode==="job"&&tpDayBreaks(tp.day).length?`<div class="tp-note" style="padding:2px 2px 8px;font-size:14px">${tpDayBreaks(tp.day).map(b=>"🏖 "+esc(tpBreakText(b))).join(" · ")}. Wiederkehrende Stunden entfallen.</div>`:""}
     <div class="tp-scroll" id="tp_scroll"><div class="tp-inner" style="width:${W}px">
       <div class="tp-hours">${hours}</div>
       <div class="tp-track" id="tp_track" style="height:${H}px;background-image:linear-gradient(to right,rgba(255,255,255,.13) 1px,transparent 1px),linear-gradient(to right,rgba(255,255,255,.05) 1px,transparent 1px);background-size:${s.pph}px 100%,${s.pph/2}px 100%">
@@ -4400,6 +4452,8 @@ function tpAct(a, el){
     tp.day = d; tp.scrollL = null; render();
   }
   else if(a==="bnew"){ tpItemEdit(""); }
+  else if(a==="brknew"){ tpBreakEdit(""); }
+  else if(a==="brkedit"){ tpBreakEdit(el.dataset.r); }
   else if(a==="bedit"){ tpItemEdit(el.dataset.r); }
   else if(a==="carry"){
     const open = tpDayBlocks(tp.day).filter(b=>!b.done);

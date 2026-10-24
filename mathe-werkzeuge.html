@@ -108,8 +108,12 @@
   .ustep.cur { opacity:1; border-color:#aeb4bb; box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 2px 0.588rem rgba(0,0,0,.6); }
 
   /* Mitraten: drei Möglichkeiten vor dem nächsten Schritt */
-  .ptoggle { margin-left:auto; flex:none; font-size:0.9rem; white-space:nowrap; }
-  .ptoggle + .tb-nav { margin-left:0.6rem; }
+  .ptoggle { margin-left:0.6rem; flex:none; font-size:0.9rem; white-space:nowrap; }
+  .tb-speak { margin-left:auto; display:flex; gap:0.4rem; flex:none; }
+  .icon-btn.on { background:rgba(108,192,245,.25); border-color:#6cc0f5; }
+  .speakb { display:inline-flex; align-items:center; gap:0.4rem; }
+  .speakb svg { width:1.1rem; height:1.1rem; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  @media (max-width: 760px) { .ptoggle .lbl { display:none; } }
   .pgate { border-color:#ffb347 !important; flex-wrap:wrap; }
   .pgate .unum { background:#ffb347 !important; color:#14161a !important; }
   .popts { display:flex; flex-wrap:wrap; gap:0.6rem; margin:0.5rem 0; }
@@ -310,7 +314,6 @@
   .tb-title h1 { font-size:1.28rem; margin:1px 0 0; line-height:1.2; }
   .tb-sub { margin:2px 0 0; color:var(--muted); font-size:.9rem; line-height:1.3; }
   .tb-nav { margin-left:auto; display:flex; gap:0.471rem; flex:none; }
-  .ptoggle ~ .tb-nav { margin-left:0.6rem; }
   main { max-width:94.118rem; width:100%; margin:0 auto; padding:1.059rem 1.294rem 2.824rem; }
   .scrim { display:none; }
   button:focus-visible, input:focus-visible, .nav-item:focus-visible { outline:3px solid #f2a900; outline-offset:2px; }
@@ -541,6 +544,7 @@
     <nav class="side-nav" id="sideNav" role="tablist" aria-orientation="vertical" aria-label="Themen"></nav>
     <div class="side-foot">
       <div class="fsz"><label>Schriftgröße <span id="fszVal">100 %</span><input type="range" id="fszR" min="70" max="180" step="5" value="100" aria-label="Schriftgröße"></label></div>
+      <div class="fsz"><label>Sprechtempo <span id="spdVal">90 %</span><input type="range" id="spdR" min="60" max="130" step="5" value="90" aria-label="Sprechtempo"></label></div>
       <button id="fsBtn" title="Vollbild ein/aus" aria-label="Vollbild ein oder aus"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="foot-text">Vollbild</span></button>
     </div>
   </aside>
@@ -552,7 +556,12 @@
         <h1 id="pageTitle"></h1>
         <p class="tb-sub" id="pageSub"></p>
       </div>
-      <label class="opt ptoggle" title="Mathematische Schritte selbst auswählen"><input type="checkbox" id="predictToggle" checked> Mitrechnen</label>
+      <div class="tb-speak">
+        <button class="icon-btn" id="speakBtn" aria-label="Vorlesen" title="Vorlesen"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4 4 0 010 6M19 6.5a8 8 0 010 11"/></svg></button>
+        <button class="icon-btn" id="speakStop" aria-label="Vorlesen beenden" title="Vorlesen beenden"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+      </div>
+      <label class="opt ptoggle" title="Neue Schritte und Fragen automatisch vorlesen"><input type="checkbox" id="speakAuto"> <span class="lbl">Mitlesen</span></label>
+      <label class="opt ptoggle" title="Mathematische Schritte selbst auswählen"><input type="checkbox" id="predictToggle" checked> <span class="lbl">Mitrechnen</span></label>
       <div class="tb-nav">
         <button class="icon-btn" id="topicPrev" aria-label="Vorheriges Thema" title="Vorheriges Thema"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
         <button class="icon-btn" id="topicNext" aria-label="Nächstes Thema" title="Nächstes Thema"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
@@ -771,6 +780,8 @@
   <section id="panel-kue" hidden></section>
   <section id="panel-umg" hidden></section>
   <section id="panel-ggt" hidden></section>
+  <section id="panel-pfz" hidden></section>
+  <section id="panel-tbr" hidden></section>
   <section id="panel-lgs" hidden></section>
   <section id="panel-ter" hidden></section>
   <section id="panel-aeq" hidden></section>
@@ -1064,12 +1075,115 @@ window.Predict = (function () {
 })();
 document.addEventListener("DOMContentLoaded", () => { const t = document.getElementById("predictToggle"); if (!t) return; t.checked = window.Predict.isOn(); t.addEventListener("change", () => window.Predict.setOn(t.checked)); });
 
+
+/* ===== Sprachausgabe: liest Schritte, Quizfragen und Texte aller Module vor (Sprachausgabe des Browsers) ===== */
+window.Sprache = (function () {
+  const syn = window.speechSynthesis, supported = !!(syn && window.SpeechSynthesisUtterance);
+  let voice = null, rate = 0.9, auto = false, lastSig = "", timer = null, speaking = false;
+  try { const r = parseFloat(localStorage.getItem("mw_rate")); if (r >= 0.6 && r <= 1.3) rate = r; auto = localStorage.getItem("mw_auto") === "1"; } catch (e) {}
+  const ONES = { 1: "ein", 2: "zwei", 3: "drei", 4: "vier", 5: "fünf", 6: "sechs", 7: "sieben", 8: "acht", 9: "neun", 10: "zehn" };
+  const NENN = { 2: ["Halbes", "Halbe"], 3: ["Drittel", "Drittel"], 4: ["Viertel", "Viertel"], 5: ["Fünftel", "Fünftel"], 6: ["Sechstel", "Sechstel"], 7: ["Siebtel", "Siebtel"], 8: ["Achtel", "Achtel"], 9: ["Neuntel", "Neuntel"], 10: ["Zehntel", "Zehntel"], 11: ["Elftel", "Elftel"], 12: ["Zwölftel", "Zwölftel"], 20: ["Zwanzigstel", "Zwanzigstel"], 25: ["Fünfundzwanzigstel", "Fünfundzwanzigstel"], 50: ["Fünfzigstel", "Fünfzigstel"], 100: ["Hundertstel", "Hundertstel"], 1000: ["Tausendstel", "Tausendstel"] };
+  function digits(a) { return String(a).split("").join(" "); }
+  function frac(p, q) {
+    p = String(p).trim(); q = String(q).trim();
+    if (/^\d+$/.test(p) && /^\d+$/.test(q) && NENN[+q]) return (+p === 1 ? "ein " : p + " ") + NENN[+q][+p === 1 ? 0 : 1] + " ";
+    return " " + p + " durch " + q + " ";
+  }
+  function spoken(t) {
+    t = String(t).replace(/[     ]/g, " ");
+    t = t.replace(/(\d) (?=\d{3}(?!\d))/g, "$1");
+    t = t.replace(/(\d+),(\d+)/g, (m, a, b) => a + " Komma " + digits(b));
+    t = t.replace(/(\d+)\s*(km|dm|cm|mm|m)\s*²/g, (m, n, u) => n + " Quadrat" + { km: "kilometer", dm: "dezimeter", cm: "zentimeter", mm: "millimeter", m: "meter" }[u]);
+    t = t.replace(/(\d+)\s*(km|dm|cm|mm|m)\s*³/g, (m, n, u) => n + " Kubik" + { km: "kilometer", dm: "dezimeter", cm: "zentimeter", mm: "millimeter", m: "meter" }[u]);
+    t = t.replace(/\b(km|dm|cm|mm)\s*²/g, (m, u) => "Quadrat" + { km: "kilometer", dm: "dezimeter", cm: "zentimeter", mm: "millimeter" }[u]).replace(/\bm\s*²/g, "Quadratmeter");
+    t = t.replace(/\b(km|dm|cm|mm)\s*³/g, (m, u) => "Kubik" + { km: "kilometer", dm: "dezimeter", cm: "zentimeter", mm: "millimeter" }[u]).replace(/\bm\s*³/g, "Kubikmeter");
+    t = t.replace(/\bkm\b/g, "Kilometer").replace(/\bdm\b/g, "Dezimeter").replace(/\bcm\b/g, "Zentimeter").replace(/\bmm\b/g, "Millimeter").replace(/(\d)\s*m\b/g, "$1 Meter");
+    t = t.replace(/ggT/g, "g g T").replace(/kgV/g, "k g V");
+    t = t.replace(/(\d)\s*:\s*(\d)/g, "$1 geteilt durch $2").replace(/ : /g, " geteilt durch ");
+    t = t.replace(/[·∙×]/g, " mal ").replace(/−/g, " minus ").replace(/\+/g, " plus ").replace(/≈/g, " ungefähr gleich ").replace(/≠/g, " ungleich ").replace(/≤/g, " kleiner oder gleich ").replace(/≥/g, " größer oder gleich ")
+      .replace(/=/g, " gleich ").replace(/</g, " kleiner als ").replace(/>/g, " größer als ").replace(/%/g, " Prozent").replace(/€/g, " Euro").replace(/√/g, " Wurzel aus ")
+      .replace(/²/g, " hoch zwei").replace(/³/g, " hoch drei").replace(/⁴/g, " hoch vier").replace(/⁵/g, " hoch fünf").replace(/⁶/g, " hoch sechs").replace(/[→⇒]/g, " ergibt ").replace(/…/g, " und so weiter. ").replace(/[{}]/g, ", ").replace(/[|▶●■◆•]/g, ", ");
+    t = t.replace(/\b(in|von|nach|aus|zu) m\b/g, "$1 Metern").replace(/([:;])(?=[^\s\d])/g, "$1 ").replace(/([:;])(?=\d)/g, "$1 ").replace(/([?!])\s*\./g, "$1");
+    return t.replace(/\s+/g, " ").replace(/\s+([.,;!?])/g, "$1").trim();
+  }
+  // Text eines Elements ohne Bilder, Tabellen und Knöpfe; Brüche werden als Wörter gesprochen
+  function textOf(el) {
+    if (!el) return "";
+    const c = el.cloneNode(true);
+    c.querySelectorAll("svg,table,script,style,button,.unav,.unum,.zsw,.qzn,.speakb,canvas,input,select").forEach(n => n.remove());
+    c.querySelectorAll(".ifr").forEach(n => { const k = n.children; n.replaceWith(document.createTextNode(frac(k[0] ? k[0].textContent : "", k[1] ? k[1].textContent : ""))); });
+    c.querySelectorAll(".ufrac").forEach(n => { const k = n.querySelectorAll("s"); n.replaceWith(document.createTextNode(frac(k[0] ? k[0].textContent : "", k[1] ? k[1].textContent : ""))); });
+    c.querySelectorAll(".utitle,.utext,.zeq,p,div,li").forEach(n => { n.appendChild(document.createTextNode(". ")); });
+    return spoken(c.textContent).replace(/\.\s*\./g, ".").replace(/([:])\s*\./g, "$1");
+  }
+  function pickVoice() {
+    if (!supported) return; const vs = syn.getVoices() || [];
+    voice = vs.find(v => /^de[-_]DE/i.test(v.lang) && /google|anna|petra|katja|hedda|natural|online/i.test(v.name)) || vs.find(v => /^de[-_]DE/i.test(v.lang)) || vs.find(v => /^de/i.test(v.lang)) || null;
+  }
+  function setBtn() { const b = document.getElementById("speakBtn"); if (b) b.classList.toggle("on", speaking); }
+  function stop() { if (!supported) return; syn.cancel(); speaking = false; setBtn(); }
+  function say(text) {
+    if (!supported || !text) return; stop();
+    const parts = String(text).match(/[^.!?]+[.!?]?/g) || [text];
+    const q = []; parts.forEach(s => { s = s.trim(); if (s.length > 1) q.push(s); });
+    if (!q.length) return; if (!voice) pickVoice(); speaking = true; setBtn();
+    q.forEach((s, i) => {
+      const u = new SpeechSynthesisUtterance(s); u.lang = "de-DE"; if (voice) u.voice = voice; u.rate = rate;
+      if (i === q.length - 1) { u.onend = u.onerror = () => { speaking = false; setBtn(); }; }
+      syn.speak(u);
+    });
+  }
+  const panel = () => document.querySelector('section[id^="panel-"]:not([hidden])');
+  // Was gerade vorgelesen werden soll
+  function currentText() {
+    const pn = panel(); if (!pn) return "";
+    const gate = pn.querySelector(".pgate");
+    if (gate) { const opts = [...gate.querySelectorAll(".popt")].map((b, i) => "Möglichkeit " + (i + 1) + ": " + textOf(b)); return textOf(gate.querySelector(".utitle")) + " " + opts.join(". "); }
+    const q = pn.querySelector(".qzq");
+    if (q) { const k = pn.querySelector(".qzk"), opts = [...pn.querySelectorAll(".qzopt")].map((b, i) => "Möglichkeit " + (i + 1) + ": " + textOf(b)); return textOf(q) + " " + (k ? textOf(k) + " " : "") + opts.join(". "); }
+    const st = pn.querySelector(".ustep.cur");
+    if (st) return stepText(st);
+    const parts = []; pn.querySelectorAll(".card .note,.utext,.zeq,.bn,.explain,p.note").forEach(n => { if (!n.closest("[hidden]") && n.offsetParent !== null) parts.push(textOf(n)); });
+    return parts.filter(Boolean).join(" ") || (document.getElementById("pageSub") || {}).textContent || "";
+  }
+  function stepText(st) {
+    const num = st.querySelector(".unum"), ti = st.querySelector(".utitle"), ut = st.querySelector(".utext");
+    const more = [...st.querySelectorAll(".zbig,.zeq")].map(textOf).join(" ");
+    return (num ? "Schritt " + num.textContent.trim() + ". " : "") + (ti ? textOf(ti) + ". " : "") + (ut ? textOf(ut) : "") + " " + more;
+  }
+  function signature() {
+    const pn = panel(); if (!pn) return "";
+    const q = pn.querySelector(".qzq"); if (q) return pn.id + "|q|" + q.textContent.slice(0, 80);
+    const st = pn.querySelector(".ustep.cur:not(.pgate)"); if (!st) return "";
+    return pn.id + "|s|" + (st.querySelector(".unum") || {}).textContent + "|" + ((st.querySelector(".utitle") || {}).textContent || "") + "|" + st.querySelectorAll(".zo").length;
+  }
+  function onChange() {
+    if (!auto || !supported) return; clearTimeout(timer);
+    timer = setTimeout(() => { const sg = signature(); if (!sg || sg === lastSig) return; lastSig = sg; const t = currentText(); if (t) say(t); }, 350);
+  }
+  function init() {
+    const bt = document.getElementById("speakBtn"), sp = document.getElementById("speakStop"), au = document.getElementById("speakAuto"), rg = document.getElementById("spdR"), rv = document.getElementById("spdVal");
+    if (!supported) { [bt, sp, au && au.closest("label"), rg && rg.closest(".fsz")].forEach(n => { if (n) n.style.display = "none"; }); return; }
+    pickVoice(); if (syn.addEventListener) syn.addEventListener("voiceschanged", pickVoice);
+    bt.addEventListener("click", () => { if (speaking) stop(); else say(currentText()); });
+    sp.addEventListener("click", stop);
+    au.checked = auto; au.addEventListener("change", () => { auto = au.checked; try { localStorage.setItem("mw_auto", auto ? "1" : "0"); } catch (e) {} lastSig = signature(); if (!auto) stop(); });
+    rg.value = Math.round(rate * 100); rv.textContent = rg.value + " %";
+    rg.addEventListener("input", () => { rate = rg.value / 100; rv.textContent = rg.value + " %"; try { localStorage.setItem("mw_rate", String(rate)); } catch (e) {} });
+    document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-speak]"); if (!b) return; const st = b.closest(".ustep"); say(st ? stepText(st) : currentText()); });
+    const host = document.querySelector(".content"); if (host) new MutationObserver(onChange).observe(host, { childList: true, subtree: true });
+    window.addEventListener("hashchange", () => { stop(); lastSig = ""; });
+  }
+  document.addEventListener("DOMContentLoaded", init);
+  return { say: say, stop: stop, textOf: textOf, spoken: spoken, current: currentText, supported: supported };
+})();
+
 /* ===== Schrittknöpfe direkt am aktuellen Schritt (für die digitale Tafel) ===== */
 /* Skalierungsfaktor: passt Material und Layout an die Bildschirmgröße an (Basis 17 px) */
 function msK() { return (parseFloat(getComputedStyle(document.documentElement).fontSize) || 17) / 17; }
 
 function navBtns(pre, last, canBack) {
-  return '<div class="unav">' + (canBack ? '<button data-nav="back">Schritt zurück</button>' : "") +
+  return '<div class="unav"><button class="speakb" data-speak="1" aria-label="Schritt vorlesen"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4 4 0 010 6M19 6.5a8 8 0 010 11"/></svg>Vorlesen</button>' + (canBack ? '<button data-nav="back">Schritt zurück</button>' : "") +
     (last ? '<button data-nav="restart">Neu starten</button>' : '<button class="primary" data-nav="next">Nächster Schritt</button>') + "</div>";
 }
 function bindNav(host, pre) {
@@ -1118,6 +1232,10 @@ const TOPICS = [
     i: '<path d="M5 8h10M5 13h10M5 18h6"/><path d="M19 6v12M16 9l3-3 3 3"/>' },
   { k: "ggt", g: "Zahlen und Rechenoperationen", t: "ggT und kgV", s: "Größter gemeinsamer Teiler und kleinstes gemeinsames Vielfaches: mit Teiler- und Vielfachenmengen und mit der Primfaktorzerlegung, mit Probe und Anwendung beim Kürzen und beim Hauptnenner",
     i: '<path d="M4 6h7v5H4z"/><path d="M13 13h7v5h-7z"/><path d="M11 8.5h3v7h-1"/>' },
+  { k: "pfz", g: "Zahlen und Rechenoperationen", t: "Primfaktorzerlegung", s: "Zahlen bis 100 in Primfaktoren zerlegen: Faktorbaum, Divisionsleiter und Sieb des Eratosthenes",
+    i: '<circle cx="12" cy="5" r="2.4"/><circle cx="6.5" cy="13" r="2.4"/><circle cx="17.5" cy="13" r="2.4"/><circle cx="14" cy="20" r="1.8"/><path d="M10.6 6.8l-3 4.4M13.4 6.8l3 4.4M16.4 15l-1.6 3.4"/>' },
+  { k: "tbr", g: "Zahlen und Rechenoperationen", t: "Teilbarkeitsregeln", s: "Ohne Rechnen prüfen, ob eine Zahl durch 2, 3, 4, 5, 6, 8, 9, 10 oder 25 teilbar ist: Endziffern, Quersumme und das Bündelbild",
+    i: '<circle cx="12" cy="6" r="1.9"/><path d="M4 12h16"/><circle cx="12" cy="18" r="1.9"/>' },
   { k: "qz1", g: "Zahlen und Rechenoperationen", t: "Quiz: Zahlen und Rechenoperationen", s: "Spiel mit Punkten, Smileys, Serien und Bossaufgabe: aus 7 Möglichkeiten alle richtigen anklicken (Einmaleins, Geteiltaufgaben, Zehnerübergang, Stellenwerte, Flächenmodell, schriftlich rechnen)",
     i: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="17" r=".8"/>' },
   { k: "anv", g: "Brüche", t: "Anteile verstehen", s: "Bruch am Streifen, bei der Menge und am Zahlenstrahl lesen und legen, Brüche vergleichen",
@@ -5020,6 +5138,307 @@ renderStell();
     window.__dz = Object.assign(window.__dz || {}, { setGk: (m, a, b) => { mode = m; V.a = a; V.b = b; mark(m); sp.reset(); inputs(); sp.render(); } });
   })();
 
+
+  /* ================= 11a. Primfaktorzerlegung bis 100: Faktorbaum, Divisionsleiter, Sieb ================= */
+  (function () {
+    const pre = "pf"; let mode = "bm";
+    const V = { n: 60 }, DEF = { bm: 60, ld: 84, sv: 91 };
+    const PR = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
+    const isP = n => PR.indexOf(n) >= 0;
+    const spf = n => { for (let p = 2; p * p <= n; p++) if (n % p === 0) return p; return n; };
+    const fac = n => { const o = []; while (n > 1) { const p = spf(n); o.push(p); n /= p; } return o; };
+    const SUP = { 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶" };
+    const pfStr = f => f.join(" · ");
+    const pwStr = f => { const m = {}; f.forEach(p => { m[p] = (m[p] || 0) + 1; }); return Object.keys(m).map(Number).sort((a, b) => a - b).map(p => m[p] > 1 ? p + SUP[m[p]] : String(p)).join(" · "); };
+    const hasPow = f => f.some((p, i) => f.indexOf(p) !== i);
+    panel("pfz", pre, [["bm", "Faktorbaum"], ["ld", "Divisionsleiter"], ["sv", "Primzahlen bis 100 (Sieb)"]], [
+      ["Zahlen:", "Primzahl, zusammengesetzte Zahl, Faktor, Primfaktor, Produkt, Teiler, Vielfaches, Potenz, Hochzahl, Faktorbaum, Sieb des Eratosthenes"],
+      ["Tätigkeiten:", "zerlegen, teilen, streichen, prüfen, zusammenfassen (Potenz schreiben), Probe machen (alle Primfaktoren malnehmen)"],
+      ["Satzanfänge:", "60 ist keine Primzahl, denn 60 geteilt durch 2 ist 30. · Die kleinste Primzahl, die in 60 steckt, ist 2. · 60 ist 2 mal 30. Die 2 ist eine Primzahl. Die 30 zerlege ich weiter. · Unten im Baum stehen nur Primzahlen. Dann bin ich fertig. · 60 ist 2 mal 2 mal 3 mal 5, das schreibe ich als 2 hoch 2 mal 3 mal 5. · Eine Primzahl hat genau zwei Teiler: die 1 und sich selbst."],
+      ["Fragen zur Rechnung:", "Ist die Zahl eine Primzahl? · Welche ist die kleinste Primzahl, die aufgeht? · Welche Zahlen stehen unten im Baum? · Geht die Probe auf? Ist das Produkt wieder die Ausgangszahl?"]
+    ]);
+    /* ---- Faktorbaum: Schritte, immer wird die linke noch nicht primzahlige Zahl zerlegt ---- */
+    function treeSnaps(n) {
+      const root = { v: n, id: 0, kids: [] }, snaps = []; let nid = 1;
+      const clone = () => JSON.parse(JSON.stringify(root));
+      snaps.push({ tree: clone(), hl: [], split: null });
+      const nextLeaf = () => { let f = null; (function walk(nd) { if (f) return; if (!nd.kids.length) { if (!isP(nd.v)) f = nd; return; } nd.kids.forEach(walk); })(root); return f; };
+      let nd;
+      while (!isP(n) && (nd = nextLeaf())) {
+        const pp = spf(nd.v), qq = nd.v / pp, a = { v: pp, id: nid++, kids: [] }, b = { v: qq, id: nid++, kids: [] };
+        nd.kids = [a, b]; snaps.push({ tree: clone(), hl: [a.id, b.id], split: { x: nd.v, p: pp, q: qq } });
+      }
+      return snaps;
+    }
+    function treeSvg(root, hl) {
+      let leafI = 0, maxD = 0; const W = 78, H = 86;
+      (function lay(nd, d) { nd.d = d; maxD = Math.max(maxD, d); if (!nd.kids.length) nd.x = leafI++; else { nd.kids.forEach(k => lay(k, d + 1)); nd.x = (nd.kids[0].x + nd.kids[nd.kids.length - 1].x) / 2; } })(root, 0);
+      const w = Math.max(leafI, 2) * W + 20, h = (maxD + 1) * H + 8, X = nd => 10 + W / 2 + nd.x * W, Y = nd => 38 + nd.d * H;
+      let e = "", c = "";
+      (function draw(nd) {
+        nd.kids.forEach(k => { e += '<line x1="' + X(nd).toFixed(1) + '" y1="' + (Y(nd) + 26) + '" x2="' + X(k).toFixed(1) + '" y2="' + (Y(k) - 26) + '" stroke="#8a93a3" stroke-width="3"/>'; draw(k); });
+        const pr = isP(nd.v), on = hl.indexOf(nd.id) >= 0;
+        c += '<circle cx="' + X(nd).toFixed(1) + '" cy="' + Y(nd) + '" r="27" fill="' + (pr ? "#1f5a2c" : "#1a202b") + '" stroke="' + (on ? "#ffb347" : pr ? "#5fd06f" : "#8a93a3") + '" stroke-width="' + (on ? 6 : 3.5) + '"/><text x="' + X(nd).toFixed(1) + '" y="' + (Y(nd) + 8) + '" text-anchor="middle" font-size="24" font-weight="700" fill="#e6e8eb">' + nd.v + "</text>";
+      })(root);
+      return '<svg viewBox="0 0 ' + w + " " + h + '" style="width:100%;max-width:' + Math.round(w * 1.05) + 'px;display:block;margin:6px 0" role="img" aria-label="Faktorbaum, grün sind Primzahlen">' + e + c + "</svg>";
+    }
+    function primeCheck(n) {
+      const lim = Math.floor(Math.sqrt(n)), tried = PR.filter(x => x <= lim);
+      return tried.length ? "Ich prüfe die Primzahlen " + tried.join(", ") + ": Keine von ihnen geht in " + n + " auf. Weiter muss ich nicht prüfen, denn " + (tried[tried.length - 1]) + " · " + (tried[tried.length - 1]) + " und das Nächste wären schon zu groß." : "Es gibt keine kleinere Primzahl, die in " + n + " aufgeht.";
+    }
+    function qFinal(n, f) {
+      const w1 = f.slice(); w1[w1.length - 1] = (PR[PR.indexOf(w1[w1.length - 1]) + 1] || w1[w1.length - 1] + 2);
+      const w2 = f.length > 2 ? [f[0] * f[1]].concat(f.slice(2)) : ["1", n];
+      return { head: "Wie lautet die Primfaktorzerlegung von " + n + "?", a: [pfStr(f), pfStr(w1), pfStr(w2)], why: ["", "Das Produkt ist nicht " + n + ". Mache die Probe: " + pfStr(w1) + " = " + w1.reduce((x, y) => x * y, 1) + ".", f.length > 2 ? "Das Produkt stimmt, aber " + f[0] * f[1] + " ist keine Primzahl. Zerlege weiter: " + f[0] * f[1] + " = " + f[0] + " · " + f[1] + "." : "Die 1 ist keine Primzahl, und " + n + " ist nicht prim. Zerlege " + n + " weiter."] };
+    }
+    function buildBm() {
+      const n = V.n, f = fac(n), snaps = treeSnaps(n), out = [];
+      out.push(step("Aufgabe", "Ich zerlege " + T(n, "zo") + " in <b>Primfaktoren</b>. Eine <b>Primzahl</b> hat genau zwei Teiler: die 1 und sich selbst. Im <b>Faktorbaum</b> zerlege ich die Zahl in zwei Faktoren. Dann zerlege ich jeden Faktor weiter, bis unten nur noch Primzahlen stehen. Primzahlen sind grün.", treeSvg(snaps[0].tree, [])));
+      if (isP(n)) {
+        out.push(step(n + " ist eine Primzahl", T(n, "zg") + " ist eine Primzahl und lässt sich nicht weiter zerlegen. " + primeCheck(n), treeSvg(snaps[0].tree, []) + '<div class="zbig">' + n + " ist eine Primzahl</div>", "good"));
+        return out;
+      }
+      snaps.slice(1).forEach((sn, i) => {
+        const x = sn.split.x, pp = sn.split.p, qq = sn.split.q, qPrim = isP(qq);
+        const alt = []; for (let d = 2; d < x; d++) if (x % d === 0 && !isP(d) && d !== qq) { alt.push(d); break; }
+        const wrong2 = alt.length ? alt[0] + " · " + x / alt[0] : pp + " · " + (qq + 1);
+        out.push(step(x + " zerlegen", T(x, "zs") + " ist keine Primzahl. Die kleinste Primzahl, die in " + x + " steckt, ist " + T(pp, "zg") + ", denn " + x + " : " + pp + " = " + qq + " ohne Rest. Also gilt " + T(x + " = " + pp + " · " + qq, "zo") + ". " + pp + " ist eine Primzahl (grün). " + (qPrim ? qq + " ist auch eine Primzahl (grün)." : qq + " ist noch keine Primzahl. Ich zerlege " + qq + " im nächsten Schritt weiter."), treeSvg(sn.tree, sn.hl), undefined, undefined,
+          { head: "Wie zerlege ich " + x + " mit der kleinsten Primzahl?", a: [pp + " · " + qq, pp + " · " + (qq + 1), alt.length ? wrong2 : (pp + 1) + " · " + qq], why: ["", "Das Produkt ist nicht " + x + ". Mache die Probe: " + pp + " · " + (qq + 1) + " = " + pp * (qq + 1) + ".", alt.length ? "Das stimmt als Rechnung, aber " + alt[0] + " ist keine Primzahl. Wir nehmen die kleinste Primzahl: " + pp + "." : "Das Produkt ist nicht " + x + ". Nimm die kleinste Primzahl, die aufgeht."] }));
+      });
+      const last = snaps[snaps.length - 1];
+      out.push(step("Primfaktorzerlegung", "Unten im Baum stehen nur grüne Primzahlen: " + T(f.join(", "), "zg") + ". Ich schreibe sie als Produkt auf. " + (hasPow(f) ? "Gleiche Faktoren fasse ich als Potenz zusammen. Die Hochzahl sagt, wie oft der Faktor vorkommt." : "Jeder Primfaktor kommt nur einmal vor.") + " Zur Probe multipliziere ich alle Primfaktoren: " + pfStr(f) + " = " + n + ".",
+        treeSvg(last.tree, []) + '<div class="zbig">' + n + " = " + T(pfStr(f), "zg") + (hasPow(f) ? " = " + T(pwStr(f), "zg") : "") + "</div>" + line("Probe:", pfStr(f) + " = " + n), "good", undefined, qFinal(n, f)));
+      return out;
+    }
+    /* ---- Divisionsleiter ---- */
+    function ladderHtml(rows, hlIdx) {
+      const td = "padding:.2rem .9rem;font-size:1.6rem;font-weight:700;";
+      return '<table style="border-collapse:collapse;margin:.5rem 0"><tbody>' + rows.map((r, i) => '<tr><td style="' + td + "text-align:right;border-right:3px solid #8a93a3;color:" + (i === hlIdx ? "#ffb347" : "#e6e8eb") + '">' + r.v + '</td><td style="' + td + 'color:#5fd06f">' + (r.p === null ? "" : r.p) + "</td></tr>").join("") + "</tbody></table>";
+    }
+    function buildLd() {
+      const n = V.n, f = fac(n), out = [];
+      out.push(step("Aufgabe", "Ich zerlege " + T(n, "zo") + " mit der <b>Divisionsleiter</b>. Ich teile immer durch die kleinste Primzahl, die aufgeht: 2, 3, 5, 7, 11, … Das Ergebnis schreibe ich darunter. Ich mache weiter, bis 1 übrig bleibt. Die Zahlen in der rechten Spalte sind die Primfaktoren.", ladderHtml([{ v: n, p: null }], 0)));
+      if (isP(n)) out.push(step(n + " ist eine Primzahl", T(n, "zg") + " ist eine Primzahl. " + primeCheck(n) + " Die Leiter hat nur einen Schritt: " + n + " : " + n + " = 1.", ladderHtml([{ v: n, p: n }, { v: 1, p: null }], 1) + '<div class="zbig">' + n + " ist eine Primzahl</div>", "good"));
+      else {
+        let cur = n; const rows = [{ v: n, p: null }];
+        f.forEach(pp => {
+          const qq = cur / pp; rows[rows.length - 1].p = pp; rows.push({ v: qq, p: null });
+          out.push(step(cur + " durch " + pp, "Die kleinste Primzahl, die in " + T(cur, "zs") + " steckt, ist " + T(pp, "zg") + ". Ich rechne " + cur + " : " + pp + " = " + T(qq, "zo") + " ohne Rest. Die " + pp + " ist ein Primfaktor und kommt in die rechte Spalte. Die " + qq + " schreibe ich in die nächste Zeile.", ladderHtml(rows.map(r => ({ v: r.v, p: r.p })), rows.length - 1), undefined, undefined,
+            { head: "Was ist " + cur + " : " + pp + "?", a: [String(qq), String(qq + 1), String(qq > 1 ? qq - 1 : qq + 2)], why: ["", "Mache die Probe: " + (qq + 1) + " · " + pp + " = " + (qq + 1) * pp + ", nicht " + cur + ".", "Mache die Probe: " + (qq > 1 ? qq - 1 : qq + 2) + " · " + pp + " = " + (qq > 1 ? qq - 1 : qq + 2) * pp + ", nicht " + cur + "."] }));
+          cur = qq;
+        });
+        out.push(step("Primfaktorzerlegung", "Unten steht die 1. Die Leiter ist fertig. Die rechte Spalte zeigt die Primfaktoren: " + T(f.join(", "), "zg") + ". " + (hasPow(f) ? "Gleiche Faktoren fasse ich als Potenz zusammen. " : "") + "Zur Probe multipliziere ich: " + pfStr(f) + " = " + n + ".",
+          ladderHtml(rows, -1) + '<div class="zbig">' + n + " = " + T(pfStr(f), "zg") + (hasPow(f) ? " = " + T(pwStr(f), "zg") : "") + "</div>" + line("Probe:", pfStr(f) + " = " + n), "good", undefined, qFinal(n, f)));
+      }
+      return out;
+    }
+    /* ---- Sieb des Eratosthenes ---- */
+    function sieveSvg(struck, prim, mark) {
+      const C = 58; let h = '<svg viewBox="0 0 ' + C * 10 + " " + C * 10 + '" style="width:100%;max-width:36rem;display:block;margin:6px 0" role="img" aria-label="Hundertertafel mit dem Sieb des Eratosthenes">';
+      for (let k = 1; k <= 100; k++) {
+        const x = ((k - 1) % 10) * C, y = Math.floor((k - 1) / 10) * C, st = struck[k], pr = prim[k];
+        h += '<rect x="' + (x + 2) + '" y="' + (y + 2) + '" width="' + (C - 4) + '" height="' + (C - 4) + '" rx="6" fill="' + (pr ? "#1f5a2c" : st ? "#14161a" : "#26292d") + '" stroke="' + (k === mark ? "#ffb347" : pr ? "#5fd06f" : "#3a4150") + '" stroke-width="' + (k === mark ? 5 : 2) + '"/>';
+        h += '<text x="' + (x + C / 2) + '" y="' + (y + C / 2 + 8) + '" text-anchor="middle" font-size="23" font-weight="700" fill="' + (st ? "#4b5262" : "#e6e8eb") + '">' + k + "</text>";
+        if (st) h += '<line x1="' + (x + 10) + '" y1="' + (y + C - 10) + '" x2="' + (x + C - 10) + '" y2="' + (y + 10) + '" stroke="#e4572e" stroke-width="3" opacity=".7"/>';
+      }
+      return h + "</svg>";
+    }
+    function buildSv() {
+      const n = V.n, struck = { 1: true }, prim = {}, out = [], mark = n;
+      const snap = () => ({ s: Object.assign({}, struck), p: Object.assign({}, prim) });
+      let sn = snap();
+      out.push(step("Aufgabe", "Im <b>Sieb des Eratosthenes</b> finde ich alle Primzahlen bis 100. Ich streiche Zahlen, die keine Primzahlen sind. Die Zahl 1 ist keine Primzahl, denn sie hat nur einen Teiler. Ich streiche sie zuerst. Die Zahl " + T(n, "zo") + " ist orange umrandet.", sieveSvg(sn.s, sn.p, mark)));
+      [2, 3, 5, 7].forEach(pp => {
+        const gone = []; prim[pp] = true;
+        for (let m = pp * 2; m <= 100; m += pp) if (!struck[m]) { struck[m] = true; gone.push(m); }
+        sn = snap();
+        const wrong = []; for (let k = pp + 1; wrong.length < 2 && k <= 100; k++) if (struck[k] && !prim[k]) wrong.push(k);
+        out.push(step("Vielfache von " + pp + " streichen", "Die kleinste Zahl, die noch nicht gestrichen ist, ist " + T(pp, "zg") + ". Sie ist eine Primzahl (grün). Ich streiche alle Vielfachen von " + pp + ": " + pp + " · 2, " + pp + " · 3, " + pp + " · 4, … " + (gone.length ? "Das sind " + gone.length + " neue Zahlen." : "Es wird nichts Neues gestrichen."), sieveSvg(sn.s, sn.p, mark), undefined, undefined,
+          { head: "Welche Zahl ist die nächste Primzahl, die nicht gestrichen ist?", a: [String(pp), String(wrong[0]), String(wrong[1] || wrong[0] + 1)], why: ["", wrong[0] + " ist schon gestrichen. Sie ist ein Vielfaches einer kleineren Primzahl.", (wrong[1] || wrong[0] + 1) + " ist schon gestrichen. Sie ist ein Vielfaches einer kleineren Primzahl."] }));
+      });
+      for (let k = 2; k <= 100; k++) if (!struck[k]) prim[k] = true;
+      sn = snap();
+      const f = fac(n), verdict = isP(n) ? n + " ist nicht gestrichen. " + T(n, "zg") + " ist eine <b>Primzahl</b>." : n + " ist gestrichen, denn " + n + " ist ein Vielfaches von " + spf(n) + ". " + T(n, "zs") + " ist <b>keine</b> Primzahl. Es gilt " + n + " = " + pfStr(f) + (hasPow(f) ? " = " + pwStr(f) : "") + ".";
+      out.push(step("Die Primzahlen bis 100", "Alle Zahlen, die nicht gestrichen sind, sind Primzahlen (grün): " + T(PR.join(", "), "zg") + ". Das sind genau " + PR.length + " Primzahlen. Ich musste nur bis 7 streichen, denn 11 · 11 = 121 ist schon größer als 100. " + verdict, sieveSvg(sn.s, sn.p, mark), "good"));
+      return out;
+    }
+    const sp = stepper({ pre: pre, carry: false, build: () => {
+      if (!Number.isInteger(V.n) || V.n < 2 || V.n > 100) return "Bitte eine ganze Zahl von 2 bis 100 eingeben.";
+      return mode === "bm" ? buildBm() : mode === "ld" ? buildLd() : buildSv();
+    }, note: () => mode === "bm" ? "Faktorbaum: Ich zerlege die Zahl in zwei Faktoren und dann jeden Faktor weiter, bis unten nur Primzahlen stehen." : mode === "ld" ? "Divisionsleiter: Ich teile immer durch die kleinste Primzahl, die aufgeht, bis 1 übrig bleibt." : "Sieb des Eratosthenes: Ich streiche alle Vielfachen der Primzahlen. Übrig bleiben die Primzahlen." });
+    function inputs() {
+      $(pre + "Row").innerHTML = '<div class="gbox"><div class="note">Zahl (2 bis 100)</div><div class="numbox"><input type="number" data-k="n" min="2" max="100" value="' + V.n + '" style="color:#6cc0f5;border-color:#6cc0f5"></div></div>';
+      $(pre + "Row").querySelector("input").addEventListener("input", e => { V.n = e.target.value === "" ? NaN : Number(e.target.value); sp.reset(); sp.render(); });
+    }
+    const KEYS = ["bm", "ld", "sv"];
+    const mark = m => KEYS.forEach(k => $(pre + "_" + k).setAttribute("aria-selected", k === m ? "true" : "false"));
+    function setMode(m) { mode = m; V.n = DEF[m]; mark(m); sp.reset(); inputs(); sp.render(); }
+    KEYS.forEach(k => $(pre + "_" + k).addEventListener("click", () => setMode(k)));
+    $(pre + "Random").addEventListener("click", () => { let n; for (let t = 0; t < 50; t++) { n = ri(4, 100); if (!isP(n) || Math.random() < 0.15) break; } V.n = n; sp.reset(); inputs(); sp.render(); });
+    inputs(); sp.render();
+    window.__dz = Object.assign(window.__dz || {}, { setPf: (m, n) => { mode = m; V.n = n; mark(m); sp.reset(); inputs(); sp.render(); }, pfTree: n => { const sn = treeSnaps(n); return treeSvg(sn[Math.min(1, sn.length - 1)].tree, []); }, pfFac: fac });
+  })();
+
+
+  /* ================= 11b. Teilbarkeitsregeln ================= */
+  (function () {
+    const pre = "tb"; let mode = "e";
+    const OPT = { e: [2, 5, 10], z: [4, 25, 8], q: [3, 9], k: [6, 12, 15, 18] };
+    const DEF = { e: { n: 1345, d: 5 }, z: { n: 3724, d: 4 }, q: { n: 4527, d: 9 }, k: { n: 7428, d: 6 }, a: { n: 2520, d: 0 } };
+    const V = Object.assign({}, DEF.e);
+    const PAIR = { 6: [2, 3], 12: [3, 4], 15: [3, 5], 18: [2, 9] };
+    const AB = ["E", "Z", "H", "T", "ZT", "HT"], PN = ["Einer", "Zehner", "Hunderter", "Tausender", "Zehntausender", "Hunderttausender"];
+    const dg = n => String(n).split("").map(Number);
+    const qs = n => dg(n).reduce((a, b) => a + b, 0);
+    const divS = (a, d) => a + " : " + d + " = " + Math.floor(a / d) + (a % d ? " Rest " + a % d : "");
+    const grp = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    panel("tbr", pre, [["e", "Endziffer (2, 5, 10)"], ["z", "Letzte Stellen (4, 25, 8)"], ["q", "Quersumme (3, 9)"], ["k", "Zusammengesetzt (6, 12, 15, 18)"], ["a", "Alle Regeln auf einmal"]], [
+      ["Zahlen:", "teilbar, Teiler, Vielfaches, Rest, Endziffer, Quersumme, gerade, ungerade, Einer, Zehner, Hunderter, Tausender, Bündel"],
+      ["Tätigkeiten:", "prüfen, teilen, Ziffern addieren (Quersumme bilden), letzte Stellen ablesen, zerlegen, Probe machen"],
+      ["Satzanfänge:", "Zehner sind Bündel aus 10. 10 ist durch 2 teilbar. Darum zählen nur die Einer. · Die letzte Ziffer ist 5. Darum ist die Zahl durch 5 teilbar. · Jedes Bündel besteht aus lauter Neunerpaketen und 1 Rest. Die Reste zähle ich: Das ist die Quersumme. · Die Quersumme ist 12. 12 geteilt durch 3 geht ohne Rest auf. · Die Zahl ist durch 2 und durch 3 teilbar. Darum ist sie durch 6 teilbar."],
+      ["Fragen zur Rechnung:", "Welche Stellen kann ich ignorieren? · Was bleibt bei den letzten Stellen übrig? · Wie groß ist die Quersumme? · Bleibt ein Rest? · Geht die Probe auf?"]
+    ]);
+    /* ---- Bilder ---- */
+    function placeSvg(n, k, d, mid) {
+      const ds = dg(n), L = ds.length, kk = Math.min(k, L), BW = 66, w = L * (BW + 8) + 20; let h = '<svg viewBox="0 0 ' + w + ' 170" style="width:100%;max-width:' + Math.round(w * 1.1) + 'px;display:block;margin:6px 0" role="img" aria-label="Zahl in der Stellenwerttafel, die letzten ' + kk + ' Stellen sind orange">';
+      for (let i = 0; i < L; i++) {
+        const pos = L - 1 - i, x = 10 + i * (BW + 8), last = pos < kk;
+        h += '<text x="' + (x + BW / 2) + '" y="24" text-anchor="middle" font-size="20" font-weight="700" fill="#9aa3b2">' + AB[pos] + "</text>";
+        h += '<rect x="' + x + '" y="34" width="' + BW + '" height="' + BW + '" rx="8" fill="' + (last ? "#4a3414" : "#1f3a2a") + '" stroke="' + (last ? "#ffb347" : "#5fd06f") + '" stroke-width="3.5"/>';
+        h += '<text x="' + (x + BW / 2) + '" y="' + (34 + BW / 2 + 12) + '" text-anchor="middle" font-size="36" font-weight="700" fill="#e6e8eb">' + ds[i] + "</text>";
+      }
+      const xs = 10, xm = 10 + (L - kk) * (BW + 8), xe = w - 10;
+      const cap = (t, span, col, cx) => '<text x="' + cx + '" y="136" text-anchor="middle" font-size="18" font-weight="700" fill="' + col + '"' + (t.length * 10.5 > span - 6 ? ' textLength="' + Math.max(20, span - 6) + '" lengthAdjust="spacingAndGlyphs"' : "") + ">" + t + "</text>";
+      if (L > kk) { const sp1 = xm - 8 - xs; h += '<path d="M' + xs + " 112 H" + (xm - 8) + '" stroke="#5fd06f" stroke-width="3"/>' + cap(sp1 < 150 ? "teilbar" : "immer durch " + d + " teilbar", sp1, "#5fd06f", xs + sp1 / 2); }
+      h += '<path d="M' + xm + " 112 H" + xe + '" stroke="#ffb347" stroke-width="3"/>' + cap(mid || "hier prüfen", xe - xm, "#ffb347", xm + (xe - xm) / 2);
+      return h + "</svg>";
+    }
+    function qsSvg(n) {
+      const ds = dg(n), L = ds.length, BW = 66, X0 = 86, w = X0 + L * (BW + 8) + 14;
+      let h = '<svg viewBox="0 0 ' + w + ' 290" style="width:100%;max-width:' + Math.round(w * 1.1) + 'px;display:block;margin:6px 0" role="img" aria-label="Jede Stelle besteht aus Neunerpaketen und Resten, die Reste ergeben die Quersumme">';
+      h += '<text x="6" y="66" font-size="17" font-weight="700" fill="#9aa3b2">Zahl</text><text x="6" y="136" font-size="17" font-weight="700" fill="#9aa3b2">Pakete</text><text x="6" y="206" font-size="17" font-weight="700" fill="#ffb347">Reste</text>';
+      for (let i = 0; i < L; i++) {
+        const pos = L - 1 - i, x = X0 + i * (BW + 8), dd = ds[i];
+        h += '<text x="' + (x + BW / 2) + '" y="20" text-anchor="middle" font-size="18" font-weight="700" fill="#9aa3b2">' + AB[pos] + "</text>";
+        h += '<rect x="' + x + '" y="30" width="' + BW + '" height="50" rx="8" fill="#26292d" stroke="#8a93a3" stroke-width="3"/><text x="' + (x + BW / 2) + '" y="66" text-anchor="middle" font-size="30" font-weight="700" fill="#e6e8eb">' + dd + "</text>";
+        const pk = pos === 0 ? "–" : dd + " · " + "9".repeat(pos);
+        h += '<rect x="' + x + '" y="100" width="' + BW + '" height="50" rx="8" fill="#1f3a2a" stroke="#5fd06f" stroke-width="2.5"/><text x="' + (x + BW / 2) + '" y="132" text-anchor="middle" font-size="' + (pos > 2 ? 15 : 19) + '" font-weight="700" fill="#cfeedd">' + pk + "</text>";
+        for (let j = 0; j < dd; j++) h += '<circle cx="' + (x + 14 + (j % 3) * 19) + '" cy="' + (180 + Math.floor(j / 3) * 20) + '" r="7.5" fill="#ffb347"/>';
+      }
+      return h + "</svg>";
+    }
+    function groupsSvg(Q, d) {
+      const per = d === 3 ? 3 : 9, cols = per === 3 ? 3 : 3, GW = per === 3 ? 84 : 84, full = Math.floor(Q / d), r = Q % d, tot = full + (r ? 1 : 0), PER_ROW = 8, rows = Math.max(1, Math.ceil(tot / PER_ROW));
+      const w = Math.min(Math.max(tot, 1), PER_ROW) * (GW + 14) + 14, gh = d === 3 ? 44 : 84;
+      let h = '<svg viewBox="0 0 ' + w + " " + (rows * (gh + 24) + 10) + '" style="width:100%;max-width:' + Math.round(w * 1.1) + 'px;display:block;margin:6px 0" role="img" aria-label="Die Quersumme ' + Q + ' in Gruppen zu ' + d + '">';
+      for (let g = 0; g < tot; g++) {
+        const x = 14 + (g % PER_ROW) * (GW + 14), y = 8 + Math.floor(g / PER_ROW) * (gh + 24), cnt = g < full ? d : r, isR = g >= full;
+        h += '<rect x="' + x + '" y="' + y + '" width="' + GW + '" height="' + gh + '" rx="9" fill="' + (isR ? "#4a3414" : "#1f3a2a") + '" stroke="' + (isR ? "#ffb347" : "#5fd06f") + '" stroke-width="3"' + (isR ? ' stroke-dasharray="7 5"' : "") + "/>";
+        for (let j = 0; j < cnt; j++) h += '<circle cx="' + (x + 16 + (j % 3) * 26) + '" cy="' + (y + 16 + Math.floor(j / 3) * 26) + '" r="9" fill="' + (isR ? "#ffb347" : "#5fd06f") + '"/>';
+      }
+      return h + "</svg>";
+    }
+    function chipsSvg(items) {
+      const W = 86, w = items.length * (W + 10) + 10; let h = '<svg viewBox="0 0 ' + w + ' 100" style="width:100%;max-width:' + Math.round(w * 1.1) + 'px;display:block;margin:6px 0" role="img" aria-label="Teilbarkeit: grün ja, rot nein">';
+      items.forEach((it, i) => {
+        const x = 10 + i * (W + 10), ok = it[1], col = ok === null ? "#8a93a3" : ok ? "#5fd06f" : "#e4572e", fill = ok === null ? "#1a202b" : ok ? "#1f5a2c" : "#4a2418";
+        h += '<rect x="' + x + '" y="8" width="' + W + '" height="84" rx="12" fill="' + fill + '" stroke="' + col + '" stroke-width="3.5"/><text x="' + (x + W / 2) + '" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#e6e8eb">' + it[0] + '</text><text x="' + (x + W / 2) + '" y="76" text-anchor="middle" font-size="26" font-weight="700" fill="' + col + '">' + (ok === null ? "?" : ok ? "✓" : "✗") + "</text>";
+      });
+      return h + "</svg>";
+    }
+    /* ---- Fragen an den mathematischen Schritten ---- */
+    function qRest(m, d) {
+      const r = m % d, seen = {}, cand = []; seen[r] = 1;
+      [(r + 1) % d, (r + 2) % d, d, r + d, r + 1].forEach(v => { if (!seen[v]) { seen[v] = 1; cand.push(v); } });
+      const lab = v => v === 0 ? "kein Rest" : "Rest " + v, why = v => v >= d ? "Der Rest ist immer kleiner als der Teiler " + d + "." : "Rechne nach: " + d + " · " + Math.floor(m / d) + " = " + d * Math.floor(m / d) + ". Bis " + m + " fehlt noch " + r + (r ? ". Das ist der Rest." : ", also bleibt kein Rest.");
+      return { head: "Was bleibt bei " + m + " : " + d + " übrig?", a: [lab(r), lab(cand[0]), lab(cand[1])], why: ["", why(cand[0]), why(cand[1])] };
+    }
+    function qQuer(n) {
+      const Q = qs(n), ds = dg(n);
+      return { head: "Wie groß ist die Quersumme von " + n + "?", a: [String(Q), String(Q + 1), String(Q > 1 ? Q - 1 : Q + 2)], why: ["", "Addiere alle Ziffern noch einmal: " + ds.join(" + ") + " = " + Q + ".", "Addiere alle Ziffern noch einmal: " + ds.join(" + ") + " = " + Q + "."] };
+    }
+    /* ---- Regeln ---- */
+    function rule(n, a) {
+      const x = n % 10, m2 = n % 100, m3 = n % 1000, Q = qs(n);
+      if (a === 2) return { ok: x % 2 === 0, txt: "Die letzte Ziffer ist " + x + ". " + (x % 2 === 0 ? x + " ist gerade." : x + " ist ungerade.") + " Also ist " + n + (x % 2 === 0 ? " durch 2 teilbar." : " nicht durch 2 teilbar."), q: qRest(x, 2) };
+      if (a === 5) return { ok: x % 5 === 0, txt: "Die letzte Ziffer ist " + x + ". Nur 0 und 5 gehen durch 5. Also ist " + n + (x % 5 === 0 ? " durch 5 teilbar." : " nicht durch 5 teilbar."), q: qRest(x, 5) };
+      if (a === 10) return { ok: x === 0, txt: "Die letzte Ziffer ist " + x + ". Nur die 0 geht durch 10. Also ist " + n + (x === 0 ? " durch 10 teilbar." : " nicht durch 10 teilbar."), q: qRest(x, 10) };
+      if (a === 4 || a === 25) return { ok: m2 % a === 0, txt: "Die letzten zwei Ziffern bilden die Zahl " + m2 + ". " + divS(m2, a) + ". Also ist " + n + (m2 % a === 0 ? " durch " + a + " teilbar." : " nicht durch " + a + " teilbar."), q: qRest(m2, a) };
+      if (a === 8) return { ok: m3 % 8 === 0, txt: "Die letzten drei Ziffern bilden die Zahl " + m3 + ". " + divS(m3, 8) + ". Also ist " + n + (m3 % 8 === 0 ? " durch 8 teilbar." : " nicht durch 8 teilbar."), q: qRest(m3, 8) };
+      return { ok: Q % a === 0, txt: "Die Quersumme ist " + dg(n).join(" + ") + " = " + Q + ". " + divS(Q, a) + ". Also ist " + n + (Q % a === 0 ? " durch " + a + " teilbar." : " nicht durch " + a + " teilbar."), q: qQuer(n) };
+    }
+    const res = (n, d, ok) => step("Ergebnis", T(n, "zo") + (ok ? " ist durch " + d + " teilbar." : " ist nicht durch " + d + " teilbar.") + " Zur Probe teile ich wirklich: " + divS(n, d) + ".", '<div class="zbig">' + n + (ok ? " ist durch " + d + " teilbar" : " ist nicht durch " + d + " teilbar") + "</div>" + line("Probe:", divS(n, d)), ok ? "good" : "bad");
+    function buildE() {
+      const n = V.n, d = V.d, x = n % 10, ok = n % d === 0, out = [], r = rule(n, d);
+      const regel = d === 2 ? "Eine Zahl ist durch 2 teilbar, wenn die letzte Ziffer gerade ist: 0, 2, 4, 6 oder 8." : d === 5 ? "Eine Zahl ist durch 5 teilbar, wenn die letzte Ziffer 0 oder 5 ist." : "Eine Zahl ist durch 10 teilbar, wenn die letzte Ziffer 0 ist.";
+      out.push(step("Aufgabe", "Ich prüfe, ob " + T(n, "zo") + " durch " + T(d, "zg") + " teilbar ist, ohne zu teilen. " + regel + " Ich muss nur die letzte Ziffer ansehen.", placeSvg(n, 1, d)));
+      out.push(step("Warum zählen nur die Einer?", "Zehner, Hunderter, Tausender … sind Bündel aus 10. Die Zahl 10 ist durch " + d + " teilbar: 10 : " + d + " = " + 10 / d + ". Darum sind alle Bündel (grün) immer durch " + d + " teilbar. Nur die Einer (orange) können einen Rest übrig lassen.", placeSvg(n, 1, d)));
+      out.push(step("Die Einer prüfen", "Die Einer sind " + T(x, "zo") + ". " + r.txt.replace(/^Die letzte Ziffer ist \d\. /, ""), placeSvg(n, 1, d, "Einer: " + x), undefined, undefined, r.q));
+      out.push(res(n, d, ok)); return out;
+    }
+    function buildZ() {
+      const n = V.n, d = V.d, k = d === 8 ? 3 : 2, base = d === 8 ? 1000 : 100, m = n % base, ok = n % d === 0, out = [], r = rule(n, d), bn = d === 8 ? "Tausender" : "Hunderter";
+      out.push(step("Aufgabe", "Ich prüfe, ob " + T(n, "zo") + " durch " + T(d, "zg") + " teilbar ist, ohne die ganze Zahl zu teilen. Ich muss nur die letzten " + k + " Ziffern ansehen.", placeSvg(n, k, d)));
+      out.push(step("Warum nur die letzten " + k + " Stellen?", bn + ", " + (d === 8 ? "Zehntausender" : "Tausender") + " … sind Bündel aus " + base + ". Die Zahl " + base + " ist durch " + d + " teilbar: " + base + " : " + d + " = " + base / d + ". Darum sind alle diese Bündel (grün) immer durch " + d + " teilbar. Nur die letzten " + k + " Stellen (orange) können einen Rest übrig lassen.", placeSvg(n, k, d)));
+      out.push(step("Die letzten " + k + " Stellen prüfen", (n < base ? "Die Zahl hat nur " + k + " Stellen oder weniger, ich prüfe sie ganz. " : "") + "Die letzten " + k + " Ziffern bilden die Zahl " + T(m, "zo") + ". " + T(divS(m, d), "zg") + ".", placeSvg(n, k, d, "letzte " + k + " Stellen: " + m), undefined, undefined, r.q));
+      out.push(res(n, d, ok)); return out;
+    }
+    function buildQ() {
+      const n = V.n, d = V.d, Q = qs(n), ok = n % d === 0, ds = dg(n), out = [], pk = d === 3 ? "durch 3 teilbar (3, 33, 333 …)" : "durch 9 teilbar (9, 99, 999 …)";
+      out.push(step("Aufgabe", "Ich prüfe, ob " + T(n, "zo") + " durch " + T(d, "zg") + " teilbar ist. Dazu bilde ich die <b>Quersumme</b>: Ich addiere alle Ziffern. Eine Zahl ist durch " + d + " teilbar, wenn ihre Quersumme durch " + d + " teilbar ist.", qsSvg(n)));
+      out.push(step("Warum die Quersumme?", "Jedes Bündel (10, 100, 1000 …) besteht aus <b>Neunerpaketen</b> und genau <b>1 Rest</b>: 10 = 9 + 1, 100 = 99 + 1, 1000 = 999 + 1. Die Pakete (grün) sind immer " + pk + ". Nur die Reste (orange) zählen. Jede Ziffer liefert so viele Reste, wie die Ziffer groß ist. Alle Reste zusammen sind die Quersumme.", qsSvg(n)));
+      out.push(step("Quersumme bilden", "Ich addiere die Ziffern von " + n + ": " + T(ds.join(" + ") + " = " + Q, "zo") + ".", qsSvg(n) + '<div class="zbig">' + ds.join(" + ") + " = " + T(Q, "zo") + "</div>", undefined, undefined, qQuer(n)));
+      out.push(step("Quersumme prüfen", "Ich sortiere die " + Q + " Reste in Gruppen zu je " + d + ". " + (Q % d === 0 ? "Alle Gruppen werden voll, es bleibt kein Rest." : "Eine Gruppe wird nicht voll (orange): Es bleibt Rest " + Q % d + ".") + " " + T(divS(Q, d), "zg") + ".", groupsSvg(Q, d), undefined, undefined, qRest(Q, d)));
+      out.push(res(n, d, ok)); return out;
+    }
+    function buildK() {
+      const n = V.n, d = V.d, a = PAIR[d][0], b = PAIR[d][1], ra = rule(n, a), rb = rule(n, b), out = [];
+      out.push(step("Aufgabe", "Ich prüfe, ob " + T(n, "zo") + " durch " + T(d, "zg") + " teilbar ist. Ich zerlege " + d + " in zwei Zahlen ohne gemeinsamen Teiler: " + T(d + " = " + a + " · " + b, "zg") + ". Dann gilt: " + n + " ist durch " + d + " teilbar, wenn " + n + " durch " + a + " <b>und</b> durch " + b + " teilbar ist.", chipsSvg([[a, null], [b, null]]) + (d === 12 ? line("Achtung:", "Für 12 nehme ich 3 und 4, nicht 2 und 6. Beispiel: 18 ist durch 2 und durch 6 teilbar, aber nicht durch 12.") : "")));
+      out.push(step("Durch " + a + " prüfen", ra.txt, chipsSvg([[a, ra.ok], [b, null]]), undefined, undefined, ra.q));
+      out.push(step("Durch " + b + " prüfen", rb.txt, chipsSvg([[a, ra.ok], [b, rb.ok]]), undefined, undefined, rb.q));
+      const ok = ra.ok && rb.ok;
+      out.push(step("Ergebnis", T(n, "zo") + " ist " + (ra.ok ? "" : "nicht ") + "durch " + a + " und " + (rb.ok ? "" : "nicht ") + "durch " + b + " teilbar. " + (ok ? "Beides stimmt, also ist " + n + " durch " + d + " teilbar." : "Es stimmt nicht beides, also ist " + n + " nicht durch " + d + " teilbar.") + " Zur Probe teile ich wirklich: " + divS(n, d) + ".", chipsSvg([[a, ra.ok], [b, rb.ok], [d, ok]]) + '<div class="zbig">' + n + (ok ? " ist durch " + d + " teilbar" : " ist nicht durch " + d + " teilbar") + "</div>" + line("Probe:", divS(n, d)), ok ? "good" : "bad"));
+      return out;
+    }
+    function buildA() {
+      const n = V.n, x = n % 10, m2 = n % 100, m3 = n % 1000, Q = qs(n), out = [], DL = [2, 3, 4, 5, 6, 8, 9, 10];
+      const R = {}; DL.forEach(t => { R[t] = n % t === 0; });
+      const chips = known => chipsSvg(DL.map(t => [t, known.indexOf(t) >= 0 ? R[t] : null]));
+      out.push(step("Aufgabe", "Ich prüfe " + T(n, "zo") + " mit allen Regeln, ohne zu teilen. Grün heißt teilbar, rot heißt nicht teilbar.", chips([])));
+      out.push(step("Endziffer: 2, 5 und 10", "Die letzte Ziffer ist " + T(x, "zo") + ". Gerade Endziffer (0, 2, 4, 6, 8): durch 2 teilbar. Endziffer 0 oder 5: durch 5 teilbar. Endziffer 0: durch 10 teilbar. Hier: 2 " + (R[2] ? "ja" : "nein") + ", 5 " + (R[5] ? "ja" : "nein") + ", 10 " + (R[10] ? "ja" : "nein") + ".", chips([2, 5, 10]) + placeSvg(n, 1, "2, 5 und 10", "Einer: " + x)));
+      out.push(step("Letzte Stellen: 4 und 8", "Die letzten zwei Ziffern bilden " + T(m2, "zo") + ": " + divS(m2, 4) + ". Also 4: " + (R[4] ? "ja" : "nein") + ". Die letzten drei Ziffern bilden " + T(m3, "zo") + ": " + divS(m3, 8) + ". Also 8: " + (R[8] ? "ja" : "nein") + ".", chips([2, 4, 5, 8, 10]), undefined, undefined, qRest(m2, 4)));
+      out.push(step("Quersumme: 3 und 9", "Die Quersumme ist " + T(dg(n).join(" + ") + " = " + Q, "zo") + ". " + divS(Q, 3) + ": 3 " + (R[3] ? "ja" : "nein") + ". " + divS(Q, 9) + ": 9 " + (R[9] ? "ja" : "nein") + ".", chips([2, 3, 4, 5, 8, 9, 10]) + qsSvg(n), undefined, undefined, qQuer(n)));
+      out.push(step("Sechs: durch 2 und durch 3", "Eine Zahl ist durch 6 teilbar, wenn sie durch 2 und durch 3 teilbar ist. Hier: 2 " + (R[2] ? "ja" : "nein") + ", 3 " + (R[3] ? "ja" : "nein") + ". Also 6: " + (R[6] ? "ja" : "nein") + ".", chips(DL)));
+      const yes = DL.filter(t => R[t]);
+      out.push(step("Ergebnis", T(n, "zo") + (yes.length ? " ist durch " + yes.join(", ") + " teilbar." : " ist durch keine dieser Zahlen teilbar.") + " Zur Probe teile ich wirklich: " + (yes.length ? yes.slice(0, 3).map(t => divS(n, t)).join("; ") : divS(n, 2) + "; " + divS(n, 3)) + ".", chips(DL) + '<div class="zbig">' + n + (yes.length ? " : " + yes.join(", ") + " geht ohne Rest" : ": keine Regel passt") + "</div>", yes.length ? "good" : "bad"));
+      return out;
+    }
+    const sp = stepper({ pre: pre, carry: false, build: () => {
+      if (!Number.isInteger(V.n) || V.n < 1 || V.n > 999999) return "Bitte eine ganze Zahl von 1 bis 999999 eingeben.";
+      if (mode !== "a" && OPT[mode].indexOf(V.d) < 0) return "Bitte einen Teiler aus der Liste wählen.";
+      return mode === "e" ? buildE() : mode === "z" ? buildZ() : mode === "q" ? buildQ() : mode === "k" ? buildK() : buildA();
+    }, note: () => ({ e: "Endziffer: Bündel aus 10 sind immer durch 2, 5 und 10 teilbar. Nur die Einer entscheiden.", z: "Letzte Stellen: Bündel aus 100 (und 1000) sind immer durch 4 und 25 (und 8) teilbar. Nur die letzten Stellen entscheiden.", q: "Quersumme: Jedes Bündel besteht aus Neunerpaketen und 1 Rest. Nur die Reste zählen: die Quersumme.", k: "Zusammengesetzte Zahlen: Ich prüfe die beiden Faktoren einzeln.", a: "Alle Regeln: Ich prüfe eine Zahl mit allen Teilbarkeitsregeln." })[mode] });
+    const SEL = "font-size:1.5rem;padding:.35rem .6rem;border-radius:10px;background:#0e1624;color:#e6e8eb;border:2px solid #5fd06f";
+    function inputs() {
+      const row = $(pre + "Row");
+      row.innerHTML = '<div class="gbox"><div class="note">Zahl</div><div class="numbox"><input type="number" data-k="n" min="1" max="999999" value="' + V.n + '" style="color:#6cc0f5;border-color:#6cc0f5"></div></div>' +
+        (mode === "a" ? "" : sym("durch") + '<select data-k="d" aria-label="Teiler" style="' + SEL + '">' + OPT[mode].map(x => '<option value="' + x + '"' + (x === V.d ? " selected" : "") + ">" + x + "</option>").join("") + "</select>");
+      row.querySelector("input").addEventListener("input", e => { V.n = e.target.value === "" ? NaN : Number(e.target.value); sp.reset(); sp.render(); });
+      const se = row.querySelector("select"); if (se) se.addEventListener("change", () => { V.d = Number(se.value); sp.reset(); sp.render(); });
+    }
+    const KEYS = ["e", "z", "q", "k", "a"];
+    const mark = m => KEYS.forEach(k => $(pre + "_" + k).setAttribute("aria-selected", k === m ? "true" : "false"));
+    function setMode(m) { mode = m; Object.assign(V, DEF[m]); mark(m); sp.reset(); inputs(); sp.render(); }
+    KEYS.forEach(k => $(pre + "_" + k).addEventListener("click", () => setMode(k)));
+    $(pre + "Random").addEventListener("click", () => {
+      const d = mode === "a" ? 0 : OPT[mode][ri(0, OPT[mode].length - 1)]; let n = ri(12, mode === "a" ? 9999 : 99999);
+      if (Math.random() < 0.55) { const t = mode === "a" ? [2, 3, 4, 5, 6, 8, 9, 10][ri(0, 7)] : d; n = Math.max(t, n - n % t); }
+      V.n = n; if (d) V.d = d; sp.reset(); inputs(); sp.render();
+    });
+    inputs(); sp.render();
+    window.__dz = Object.assign(window.__dz || {}, { setTb: (m, n, d) => { mode = m; V.n = n; V.d = d || 0; mark(m); sp.reset(); inputs(); sp.render(); } });
+  })();
+
   /* ================= 12. Lineare Gleichungssysteme ================= */
   (function () {
     const pre = "lg"; let mode = "add";
@@ -5948,10 +6367,14 @@ renderStell();
     KEYS.forEach(k => $(pre + "_" + k).addEventListener("click", () => setMode(k)));
     $(pre + "Random").addEventListener("click", () => {
       const nz = (lo, hi) => { let n = 0; while (!n) n = ri(lo, hi); return n; };
-      const s = ri(-8, 8), integer = Math.random() < 0.8; let a = nz(-6, 7), b = nz(-12, 12), c = 0, d;
-      if (mode === "e1") d = integer ? a * s + b : ri(-20, 20);
-      else if (mode === "e2" || mode === "e4") { do { c = nz(-6, 7); } while (c === a); d = integer ? (a - c) * s + b : ri(-20, 20); if (Math.random() < 0.08) { c = a; d = b + nz(-5, 5); } }
-      else { do { c = ri(-4, 6); } while (c === a); b = nz(-6, 6); d = integer ? a * (s + b) - c * s : ri(-20, 20); }
+      let a, b, c, d;
+      for (let t = 0; t < 200; t++) {
+        const s = ri(-8, 8), integer = Math.random() < 0.8; a = nz(-6, 7); b = nz(-12, 12); c = 0;
+        if (mode === "e1") d = integer ? a * s + b : ri(-20, 20);
+        else if (mode === "e2" || mode === "e4") { do { c = nz(-6, 7); } while (c === a); d = integer ? (a - c) * s + b : ri(-20, 20); if (Math.random() < 0.08) { c = a; d = b + nz(-5, 5); } }
+        else { do { c = ri(-4, 6); } while (c === a); b = nz(-6, 6); d = integer ? a * (s + b) - c * s : ri(-20, 20); }
+        if ([a, b, c, d].every(v => Math.abs(v) <= 99)) break;
+      }
       Object.assign(V, { a: a, b: b, c: c, d: d }); sp.reset(); inputs(); refresh();
     });
     setMode("e2");
@@ -6593,12 +7016,63 @@ document.querySelectorAll(".card").forEach(c => {
       expl: () => "Zwischen " + big + " und " + small + " liegen " + sh + " Spalten der Stellenwerttafel (Faktor " + Math.pow(10, sh) + "). Die Ziffern wandern, das Komma steht bei der Einheit. Fehlende Stellen füllst du mit Nullen auf." };
   }
 
+
+  function gPfz() {
+    let n; do { n = ri(12, 100); } while (PRIMS.indexOf(n) >= 0 || n === 64 && Math.random() < 0.5);
+    const f = []; let m = n; for (let p = 2; m > 1; p++) while (m % p === 0) { f.push(p); m /= p; }
+    const SUPQ = { 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶" };
+    const pw = a => { const c = {}; a.forEach(p => { c[p] = (c[p] || 0) + 1; }); return Object.keys(c).map(Number).sort((x, y) => x - y).map(p => c[p] > 1 ? p + SUPQ[c[p]] : String(p)).join(" · "); };
+    const pf = a => a.join(" · "), prod = a => a.reduce((x, y) => x * y, 1);
+    const corr = [], wrong = [], seen = {};
+    const addC = s => { if (!seen[s]) { seen[s] = 1; corr.push(O(s, s)); } };
+    addC(pf(f)); addC(pf(f.slice().reverse())); if (f.some((p, i) => f.indexOf(p) !== i)) { addC(pw(f)); addC(pw(f).split(" · ").reverse().join(" · ")); }
+    const sh = f.slice(); sh.push(sh.shift()); addC(pf(sh));
+    const W = (s, why) => { if (!seen[s]) { seen[s] = 1; wrong.push(O(s, s, why)); } };
+    const nxt = p => PRIMS[PRIMS.indexOf(p) + 1] || p + 2;
+    for (let i = 0; i < f.length; i++) { const w = f.slice(); w[i] = nxt(w[i]); if (prod(w) !== n) W(pf(w), "Das Produkt ist " + prod(w) + ", nicht " + n + ". Mache die Probe."); }
+    if (f.length > 2) { const w = [f[0] * f[1]].concat(f.slice(2)); W(pf(w), "Das Produkt stimmt, aber " + f[0] * f[1] + " ist keine Primzahl. Es gilt " + f[0] * f[1] + " = " + f[0] + " · " + f[1] + "."); const w2 = [f[0]].concat([f.slice(1).reduce((x, y) => x * y, 1)]); W(pf(w2), "Das Produkt stimmt, aber " + w2[1] + " ist keine Primzahl. Zerlege weiter."); }
+    else W("1 · " + n, "Die 1 ist keine Primzahl, und " + n + " ist nicht prim.");
+    W(pf(f.slice(0, -1)), "Ein Faktor fehlt. Das Produkt ist " + prod(f.slice(0, -1)) + ", nicht " + n + ".");
+    W(pf(f.concat([f[f.length - 1]])), "Ein Faktor ist zu viel. Das Produkt ist " + prod(f.concat([f[f.length - 1]])) + ", nicht " + n + ".");
+    if (f.some((p, i) => f.indexOf(p) !== i)) { const c = {}; f.forEach(p => { c[p] = (c[p] || 0) + 1; }); const ks = Object.keys(c).map(Number).sort((x, y) => x - y), k0 = ks.find(p => c[p] > 1); const w = ks.map(p => p === k0 ? p + " · " + c[p] : String(p)).join(" · "); W(w, "Das ist keine Potenz: Die Hochzahl sagt, wie oft der Faktor vorkommt, sie wird nicht mit dem Faktor malgenommen."); }
+    W(String(n) + " = 1 · " + n, "Die 1 ist keine Primzahl. Zerlege " + n + " in Primfaktoren.");
+    let pic = ""; if (f.length > 2) { try { pic = window.__dz.pfTree(n); } catch (e) { pic = ""; } }
+    return { top: "pfz", kind: "tgt", tgt: String(n), q: "Welche Schreibweisen sind die Primfaktorzerlegung von " + T(n, "zo") + "?" + (pic ? " Der Faktorbaum zeigt den ersten Schritt." : "") + pic, corr: corr, wrong: wrong,
+      expl: c => "Bei der Primfaktorzerlegung steht " + n + " als Produkt aus lauter Primzahlen. Richtig: " + c.map(o => o.h).join(", ") + ". Probe: " + pf(f) + " = " + n + "." };
+  }
+
+
+  function gTbr() {
+    const DS = [2, 3, 4, 5, 6, 8, 9, 10, 25], dgs = n => String(n).split("").map(Number), qsn = n => dgs(n).reduce((a, b) => a + b, 0);
+    const corr = [], wrong = [], seen = {};
+    const why = (n, d) => {
+      const x = n % 10, m2 = n % 100, m3 = n % 1000, Q = qsn(n);
+      if (d === 2) return "Die letzte Ziffer ist " + x + ". " + n + " ist " + (n % 2 ? "ungerade" : "gerade") + ".";
+      if (d === 5 || d === 10) return "Die letzte Ziffer ist " + x + (d === 5 ? ". Nur 0 und 5 gehen durch 5." : ". Nur die 0 geht durch 10.");
+      if (d === 4 || d === 25) return "Die letzten zwei Ziffern bilden " + m2 + ". " + m2 + " : " + d + " = " + Math.floor(m2 / d) + " Rest " + m2 % d + ".";
+      if (d === 8) return "Die letzten drei Ziffern bilden " + m3 + ". " + m3 + " : 8 = " + Math.floor(m3 / 8) + " Rest " + m3 % 8 + ".";
+      if (d === 3 || d === 9) return "Die Quersumme von " + n + " ist " + Q + ". " + Q + " : " + d + " = " + Math.floor(Q / d) + " Rest " + Q % d + ".";
+      return n % 2 ? n + " ist ungerade, also nicht durch 2 und nicht durch 6." : "Die Quersumme von " + n + " ist " + Q + ", nicht durch 3 teilbar. Also nicht durch 6.";
+    };
+    for (let i = 0; i < 40 && corr.length < 5; i++) { const d = pick(DS); let n = ri(12, 9999); n = Math.max(d, n - n % d); const t = n + " ist durch " + d + " teilbar."; if (!seen[t]) { seen[t] = 1; corr.push(O(t, t)); } }
+    for (let i = 0; i < 80 && wrong.length < 12; i++) {
+      const d = pick(DS); let n = ri(12, 9999); if (n % d === 0) n += pick([1, 2, 3]);
+      if (n % d === 0) continue;
+      const t = n + " ist durch " + d + " teilbar."; if (!seen[t]) { seen[t] = 1; wrong.push(O(t, t, "Das stimmt nicht. " + why(n, d))); }
+    }
+    for (let i = 0; i < 3; i++) { const n = ri(112, 9999), Q = qsn(n), good = "Die Quersumme von " + n + " ist " + Q + "."; if (!seen[good]) { seen[good] = 1; corr.push(O(good, good)); } const bq = Q + pick([1, -1, 9]), bt = "Die Quersumme von " + n + " ist " + bq + "."; if (bq > 0 && !seen[bt]) { seen[bt] = 1; wrong.push(O(bt, bt, "Addiere die Ziffern: " + dgs(n).join(" + ") + " = " + Q + ".")); } }
+    corr.length = Math.min(corr.length, 6);
+    return { top: "tbr", kind: "eqs", q: "Hier stehen Aussagen zur Teilbarkeit. Prüfe mit den Teilbarkeitsregeln, ohne zu teilen. Welche Aussagen stimmen?", corr: corr, wrong: wrong,
+      expl: () => "Endziffer: durch 2 bei gerader Endziffer, durch 5 bei 0 oder 5, durch 10 bei 0. Letzte zwei Ziffern: durch 4 und 25. Letzte drei Ziffern: durch 8. Quersumme: durch 3 und durch 9. Durch 6, wenn die Zahl durch 2 und 3 teilbar ist." };
+  }
+
   /* ---------- ggT und kgV, lineare Gleichungssysteme, quadratische Ergänzung ---------- */
   const sg = n => n < 0 ? "−" + Math.abs(n) : String(n);
   const sgp = n => n < 0 ? "(−" + Math.abs(n) + ")" : String(n);
   const ptxt = (x, y) => "(" + sg(x) + " | " + sg(y) + ")";
   const lt = (a, b, c) => { let s = ""; if (a) s += (a < 0 ? "−" : "") + (Math.abs(a) === 1 ? "" : Math.abs(a)) + "x"; if (b) s += (s ? (b < 0 ? " − " : " + ") : (b < 0 ? "−" : "")) + (Math.abs(b) === 1 ? "" : Math.abs(b)) + "y"; return s + " = " + sg(c); };
   const nrm = arr => { const seen = {}; return arr.filter(o => o && !seen[o.p] && (seen[o.p] = 1)); };
+  const PRIMS = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101];
   function gGgtKgv() {
     const mk = () => { const g = ri(2, 12); let u, v; do { u = ri(2, 9); v = ri(2, 9); } while (u === v || gcd(u, v) !== 1); const a = g * u, b = g * v; return { a: a, b: b, g: g, l: a * b / g }; };
     const sG = (x, v) => "ggT(" + x.a + ", " + x.b + ") = " + v, sL = (x, v) => "kgV(" + x.a + ", " + x.b + ") = " + v;
@@ -6950,9 +7424,9 @@ document.querySelectorAll(".card").forEach(c => {
     return { aeq: gAeq, lf: gLf, lfg: gLfg, lp: gLp, prop: gProp, dreis: gDreis, proz: gProz, zins: gZins, zz: gZz };
   })();
 
-  const G = { ein: gEin, geteilt: gGeteilt, uez: gUez, stell: gStell, fl: gFl, swr: gSwr, gl: gGl, kue: gKue, gem: gGem, anteil: gAnteil, addsub: gAddSub, muldiv: gMulDiv, stufe: gStufe, bd: gBd, komma: gKomma, dadd: gDadd, dmul: gDmul, rund: gRunden, gro: gGroessen, ggtk: gGgtKgv, lgs: gLgs, qe: gQe, qgl: gQgl, aeq: GFP.aeq, lf: GFP.lf, lfg: GFP.lfg, lp: GFP.lp, prop: GFP.prop, dreis: GFP.dreis, proz: GFP.proz, zins: GFP.zins, zz: GFP.zz };
+  const G = { ein: gEin, geteilt: gGeteilt, uez: gUez, stell: gStell, fl: gFl, swr: gSwr, gl: gGl, kue: gKue, gem: gGem, anteil: gAnteil, addsub: gAddSub, muldiv: gMulDiv, stufe: gStufe, bd: gBd, komma: gKomma, dadd: gDadd, dmul: gDmul, rund: gRunden, gro: gGroessen, ggtk: gGgtKgv, pfz: gPfz, tbr: gTbr, lgs: gLgs, qe: gQe, qgl: gQgl, aeq: GFP.aeq, lf: GFP.lf, lfg: GFP.lfg, lp: GFP.lp, prop: GFP.prop, dreis: GFP.dreis, proz: GFP.proz, zins: GFP.zins, zz: GFP.zz };
   const RUB = {
-    qz1: { t: "Zahlen und Rechenoperationen", arena: "Zahlen-Arena", col: "#7cc4f7", tops: [["ein", "Einmaleins"], ["geteilt", "Geteiltaufgaben"], ["uez", "Zehnerübergang"], ["stell", "Stellenwerte"], ["fl", "Flächenmodell"], ["swr", "Schriftlich rechnen"], ["ggtk", "ggT und kgV"]] },
+    qz1: { t: "Zahlen und Rechenoperationen", arena: "Zahlen-Arena", col: "#7cc4f7", tops: [["ein", "Einmaleins"], ["geteilt", "Geteiltaufgaben"], ["uez", "Zehnerübergang"], ["stell", "Stellenwerte"], ["fl", "Flächenmodell"], ["swr", "Schriftlich rechnen"], ["ggtk", "ggT und kgV"], ["pfz", "Primfaktorzerlegung"], ["tbr", "Teilbarkeitsregeln"]] },
     qz2: { t: "Brüche", arena: "Bruch-Arena", col: "#c4a1ff", tops: [["anteil", "Anteile am Streifen"], ["gl", "Gleichwertige Brüche"], ["kue", "Brüche kürzen"], ["gem", "Unechte Brüche und gemischte Zahlen"], ["stufe", "Stufenzahlen"], ["addsub", "Addieren und Subtrahieren"], ["muldiv", "Multiplizieren und Dividieren"]] },
     qz3: { t: "Dezimalzahlen", arena: "Komma-Arena", col: "#7fdcae", tops: [["bd", "Brüche und Dezimalzahlen"], ["komma", "Kommaverschiebung"], ["dadd", "Addieren und Subtrahieren"], ["dmul", "Multiplizieren und Dividieren"], ["rund", "Runden am Zahlenstrahl"], ["gro", "Größen und Stellenwerte"]] },
     qz5: { t: "Funktionen und Prozente", arena: "Funktionen-Arena", col: "#ff8fb1", tops: [["lf", "Lineare Funktionen"], ["lfg", "Graph einer Geraden"], ["lp", "Gerade durch zwei Punkte"], ["prop", "Proportional oder antiproportional"], ["dreis", "Dreisatz"], ["proz", "Prozentrechnung"], ["zins", "Zinsen für ein Jahr"], ["zz", "Zinseszins"]] },

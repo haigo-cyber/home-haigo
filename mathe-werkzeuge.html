@@ -782,6 +782,7 @@
   <section id="panel-ggt" hidden></section>
   <section id="panel-pfz" hidden></section>
   <section id="panel-tbr" hidden></section>
+  <section id="panel-rgz" hidden></section>
   <section id="panel-lgs" hidden></section>
   <section id="panel-ter" hidden></section>
   <section id="panel-aeq" hidden></section>
@@ -1218,6 +1219,8 @@ function bogenHtml(l, r, op, k) {
 const TOPICS = [
   { k: "stell", g: "Zahlen und Rechenoperationen", t: "Stellenwerttafel", s: "Zahlen mit Stellenwertmaterial in der Tafel darstellen",
     i: '<rect x="3" y="14" width="4" height="7"/><rect x="10" y="9" width="4" height="12"/><rect x="17" y="4" width="4" height="17"/>' },
+  { k: "rgz", g: "Zahlen und Rechenoperationen", t: "Große Zahlen runden", s: "Runden mit der Stellenwerttafel bis zu den Milliarden: Rundungsstelle festlegen, Ziffer rechts daneben ansehen, auf- oder abrunden, alle Stellen und der Rundungsbereich",
+    i: '<path d="M4 9c2.7-2.7 5.3 2.7 8 0s5.3 2.7 8 0"/><path d="M4 15c2.7-2.7 5.3 2.7 8 0s5.3 2.7 8 0"/>' },
   { k: "uez", g: "Zahlen und Rechenoperationen", t: "Zehnerübergang", s: "Addition mit Zehnerüberschreitung und Subtraktion mit Zehnerunterschreitung: bündeln und entbündeln (Stange aufbrechen), Multiplikation mit Stufenzahlen",
     i: '<path d="M4 18h16"/><path d="M5 14C7 6 15 6 18 12"/><path d="M14.5 12H18.5V8"/>' },
   { k: "gdr", g: "Zahlen und Rechenoperationen", t: "Multiplizieren und Dividieren", s: "Erklärung in Schritten (mal, gerecht verteilen, gleichmäßig aufteilen) und Aufgaben mit dem Punktefeld oder am Zahlenstrahl",
@@ -5439,6 +5442,199 @@ renderStell();
     window.__dz = Object.assign(window.__dz || {}, { setTb: (m, n, d) => { mode = m; V.n = n; V.d = d || 0; mark(m); sp.reset(); inputs(); sp.render(); } });
   })();
 
+  /* ================= 11c. Große Zahlen runden: Rundungsstelle, Ziffer rechts daneben, Stellenwerttafel bis zu den Milliarden ================= */
+  (function () {
+    const pre = "rg"; let mode = "r";
+    const DEF = { r: { n: 35761, k: 3 }, a: { n: 35761, k: 3 }, b: { n: 36000, k: 3 } };
+    const V = Object.assign({}, DEF.r);
+    const PL = ["Einer", "Zehner", "Hunderter", "Tausender", "Zehntausender", "Hunderttausender", "Millionen", "Zehnmillionen", "Hundertmillionen", "Milliarden", "Zehnmilliarden", "Hundertmilliarden"];
+    const PD = ["Einern", "Zehnern", "Hundertern", "Tausendern", "Zehntausendern", "Hunderttausendern", "Millionen", "Zehnmillionen", "Hundertmillionen", "Milliarden", "Zehnmilliarden", "Hundertmilliarden"];
+    const grp = x => String(x).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    const nw = t => t.replace(/\d{1,3}(?:\u2009\d{3})+/g, m => '<span style="white-space:nowrap">' + m + "</span>");
+    const stp = (t, txt, vis, cls, r, q) => step(t, nw(txt), vis, cls, r, q);
+    const ln = (a, b) => line(a, nw(b));
+    const TN = (x, cls) => '<span class="' + cls + '" style="white-space:nowrap">' + grp(x) + "</span>";
+    const dAt = (n, p) => Math.floor(n / P10(p)) % 10;
+    function calc(n, k) {
+      const D = P10(k), L = Math.floor(n / D) * D, rem = n - L, up = rem * 2 >= D;
+      return { D: D, L: L, U: L + D, rem: rem, up: up, tie: rem * 2 === D, R: L + (up ? D : 0), dig: Math.floor(rem / (D / 10)), at: dAt(n, k), mid: L + D / 2 };
+    }
+    panel("rgz", pre, [["r", "Auf eine Stelle runden"], ["a", "Auf alle Stellen runden"], ["b", "Welche Zahlen runden zu …?"]], [
+      ["Zahlen:", "runden, Rundungsstelle, aufrunden, abrunden, ungefähr gleich (≈), Einer, Zehner, Hunderter, Tausender, Zehntausender, Hunderttausender, Millionen, Milliarden"],
+      ["Tätigkeiten:", "die Rundungsstelle festlegen, die Ziffer rechts daneben ansehen, aufrunden, abrunden, Nullen schreiben, die Mitte bestimmen"],
+      ["Satzanfänge:", "Ich runde auf Tausender. Die Rundungsstelle ist die Ziffer bei den Tausendern. · Rechts davon steht die 7. Sie gehört zu 5, 6, 7, 8, 9. Darum runde ich auf. · Rechts davon steht die 2. Sie gehört zu 0, 1, 2, 3, 4. Darum runde ich ab. · Alle Ziffern rechts von der Rundungsstelle werden 0. · 35 761 ist ungefähr 36 000."],
+      ["Fragen zur Rechnung:", "Auf welche Stelle runde ich? · Welche Ziffer steht an der Rundungsstelle? · Welche Ziffer steht rechts daneben? · Wird aufgerundet oder abgerundet? · Welche Ziffern werden zu 0?"]
+    ]);
+    /* ---- Stellenwerttafel wie im Schulbuch: Milliarden, Millionen, Tausender, Einer ---- */
+    const GN = ["", "Tausender", "Millionen", "Milliarden", "Billionen"], GC = ["#2c4a6b", "#2f5236", "#5a4f2a", "#5a3a35", "#4a3a5a"];
+    const CELL = { d: ["#232a36", "#e6e8eb", "#3a4252"], x: ["#232a36", "#6b7384", "#3a4252"], r: ["#3d1f1f", "#ff8a7a", "#ff6b5e"], o: ["#4a3414", "#ffb347", "#ffb347"], g: ["#1f3a2a", "#5fd06f", "#5fd06f"], z: ["#1b3350", "#6cc0f5", "#6cc0f5"] };
+    function tafelH(rows) {
+      const len = Math.max.apply(null, rows.map(r => String(r.n).length)), ng = Math.max(2, Math.ceil(len / 3)), cols = ng * 3;
+      let h = '<div style="overflow-x:auto"><table style="border-collapse:collapse;margin:6px 0;font-weight:700" aria-label="Stellenwerttafel"><tr><th></th>';
+      for (let g = ng - 1; g >= 0; g--) h += '<th colspan="3" style="background:' + GC[g] + ';padding:.15rem .5rem;font-size:.95rem;border:2px solid #0e1624;color:#e6e8eb">' + GN[g] + "</th>";
+      h += "</tr><tr><th></th>";
+      for (let p = cols - 1; p >= 0; p--) h += '<th style="background:' + GC[Math.floor(p / 3)] + ';font-size:.9rem;padding:.1rem .4rem;border:2px solid #0e1624;color:#cfd6e0">' + "EZH"[p % 3] + "</th>";
+      h += "</tr>";
+      rows.forEach(r => {
+        const s = String(r.n);
+        h += '<tr><td style="padding:.2rem .7rem .2rem 0;font-size:.95rem;color:#9aa3b2;white-space:nowrap">' + r.lab + "</td>";
+        for (let p = cols - 1; p >= 0; p--) {
+          const has = p < s.length, st = CELL[(r.cls && r.cls[p]) || "d"];
+          h += '<td style="min-width:2.6rem;height:2.9rem;text-align:center;font-size:2.1rem;border:2px solid #0e1624;background:' + (has ? st[0] : "#1a1f29") + ";color:" + st[1] + (has && st[2] !== "#3a4252" ? ";box-shadow:inset 0 0 0 3px " + st[2] : "") + '">' + (has ? s[s.length - 1 - p] : "") + "</td>";
+        }
+        h += "</tr>";
+      });
+      return h + "</table></div>";
+    }
+    const cls1 = (k, stage) => { const c = {}; if (stage >= 1) c[k] = "r"; if (stage >= 2) { c[k - 1] = "o"; for (let p = 0; p < k - 1; p++) c[p] = "x"; } return c; };
+    const cls2 = (n, k, R) => { const c = {}, m = Math.max(String(n).length, String(R).length); for (let p = 0; p < m; p++) { if (p < k) c[p] = "z"; else if (p === k || dAt(R, p) !== dAt(n, p)) c[p] = "g"; } return c; };
+    const rowsFor = (n, k, stage, R) => stage >= 3 ? [{ lab: "Zahl", n: n, cls: cls1(k, 2) }, { lab: "gerundet", n: R, cls: cls2(n, k, R) }] : [{ lab: "Zahl", n: n, cls: cls1(k, stage) }];
+    /* ---- Ziffernstreifen mit Pfeil, wie im Buch: Rundungsstelle (rot), Ziffer rechts daneben (orange) ---- */
+    function strip(n, k, stage, R) {
+      const s = String(n), r = String(R == null ? n : R), Lc = Math.max(s.length, r.length), W = 56, GAP = 18, X0 = 104, RP = 140, c = calc(n, k);
+      const xc = p => X0 + (Lc - 1 - p) * W + (Math.floor((Lc - 1) / 3) - Math.floor(p / 3)) * GAP + W / 2;
+      const w = X0 + Lc * W + Math.floor((Lc - 1) / 3) * GAP + RP, H = stage >= 3 ? 292 : 176;
+      let h = '<svg viewBox="0 0 ' + w + " " + H + '" style="width:100%;max-width:' + Math.round(w * 1.2) + 'px;display:block;margin:6px 0" role="img" aria-label="Die Zahl ' + grp(n) + ", die Rundungsstelle sind die " + PL[k] + '">';
+      const cell = (p, y, ch, key) => { const st = CELL[key]; return '<rect x="' + (xc(p) - W / 2 + 2) + '" y="' + y + '" width="' + (W - 4) + '" height="60" rx="8" fill="' + st[0] + '" stroke="' + st[2] + '" stroke-width="3.5"/><text x="' + xc(p) + '" y="' + (y + 44) + '" text-anchor="middle" font-size="38" font-weight="700" fill="' + st[1] + '">' + ch + "</text>"; };
+      h += '<text x="6" y="82" font-size="17" font-weight="700" fill="#9aa3b2">Zahl</text>';
+      const k1 = cls1(k, stage);
+      for (let p = s.length - 1; p >= 0; p--) h += cell(p, 40, s[s.length - 1 - p], k1[p] || "d");
+      if (stage >= 2) {
+        const xr = xc(k), xn = xc(k - 1);
+        h += '<path d="M' + xn + " 36 V18 H" + xr + ' V30" fill="none" stroke="#ffb347" stroke-width="3.5"/><polygon points="' + (xr - 8) + " 28 " + (xr + 8) + " 28 " + xr + ' 38" fill="#ffb347"/>';
+      }
+      if (stage >= 1) {
+        h += '<path d="M' + xc(k) + ' 102 V116" stroke="#ff6b5e" stroke-width="3"/><text x="' + (xc(k) + 22) + '" y="134" text-anchor="end" font-size="17" font-weight="700" fill="#ff8a7a">Rundungsstelle</text><text x="' + (xc(k) + 22) + '" y="154" text-anchor="end" font-size="17" fill="#ff8a7a">(' + PL[k] + ")</text>";
+      }
+      if (stage >= 2) {
+        h += '<path d="M' + xc(k - 1) + ' 102 V116" stroke="#ffb347" stroke-width="3"/><text x="' + (xc(k - 1) - 22) + '" y="134" font-size="17" font-weight="700" fill="#ffb347">Ziffer rechts: ' + c.dig + '</text><text x="' + (xc(k - 1) - 22) + '" y="154" font-size="17" fill="#ffb347">' + (c.up ? "5 bis 9: aufrunden" : "0 bis 4: abrunden") + "</text>";
+      }
+      if (stage >= 3) {
+        const y2 = 176;
+        h += '<text x="6" y="' + (y2 + 42) + '" font-size="17" font-weight="700" fill="#5fd06f">gerundet</text>';
+        const k2 = cls2(n, k, R);
+        for (let p = r.length - 1; p >= 0; p--) h += cell(p, y2, r[r.length - 1 - p], k2[p] || "d");
+        h += '<path d="M' + (xc(k - 1) - W / 2 + 6) + " " + (y2 + 76) + " H" + (xc(0) + W / 2 - 6) + '" stroke="#6cc0f5" stroke-width="3"/><text x="' + (xc(0) + W / 2) + '" y="' + (y2 + 100) + '" text-anchor="end" font-size="17" font-weight="700" fill="#6cc0f5">' + (k === 1 ? "rechts davon: 0" : "rechts davon: lauter Nullen") + "</text>";
+      }
+      return h + "</svg>";
+    }
+    function nlNear(c, n) {
+      return nlSvg({ aria: "Zahlenstrahl zwischen " + grp(c.L) + " und " + grp(c.U), ticks: [{ f: 0, big: true, lab: grp(c.L) }, { f: 0.5, big: true, lab: grp(c.mid), col: "#ffb347" }, { f: 1, big: true, lab: grp(c.U) }], seg: c.up ? [0.5, 1] : [0, 0.5], mark: { f: c.rem / c.D, lab: grp(n), col: "#6cc0f5" }, circle: c.up ? 1 : 0 });
+    }
+    /* ---- Fragen an den mathematischen Schritten ---- */
+    function qDigit(n, k) {
+      const c = calc(n, k), a = c.at, cand = [], seen = {}; seen[a] = 1;
+      const L = String(n).length, order = []; [k - 1, k + 1].forEach(p => { if (p >= 0 && p < L) order.push(p); }); for (let p = 0; p < L; p++) if (order.indexOf(p) < 0 && p !== k) order.push(p);
+      order.forEach(p => { const d = dAt(n, p); if (!seen[d]) { seen[d] = 1; cand.push([d, "Die Ziffer " + d + " steht bei den " + PD[p] + ", nicht bei den " + PD[k] + "."]); } });
+      for (let d = 0; d < 10 && cand.length < 2; d++) if (!seen[d]) { seen[d] = 1; cand.push([d, "Zähle von rechts bis zu den " + PL[k] + ": " + PL.slice(0, k + 1).join(", ") + ". Dort steht die " + a + "."]); }
+      return { head: "Welche Ziffer steht an der Rundungsstelle (" + PL[k] + ")?", a: [String(a), String(cand[0][0]), String(cand[1][0])], why: ["", cand[0][1], cand[1][1]] };
+    }
+    function qRicht(n, k) {
+      const c = calc(n, k), rule = "Die Ziffer " + c.dig + " gehört zu " + (c.up ? "5, 6, 7, 8, 9: Es wird aufgerundet." : "0, 1, 2, 3, 4: Es wird abgerundet.");
+      return { head: "Die Ziffer rechts neben der Rundungsstelle ist " + c.dig + ". Wird aufgerundet oder abgerundet?", a: [c.up ? "aufrunden" : "abrunden", c.up ? "abrunden" : "aufrunden", "Die Zahl bleibt gleich"], why: ["", rule, rule] };
+    }
+    function qErg(n, k) {
+      const c = calc(n, k), R = c.R, opts = [], seen = {}; seen[R] = 1;
+      const add = (v, why) => { if (v >= 0 && !seen[v]) { seen[v] = 1; opts.push([v, why]); } };
+      add(c.up ? c.L : c.U, "Hier wurde in die falsche Richtung gerundet. Die Ziffer rechts neben der Rundungsstelle ist " + c.dig + ": " + (c.up ? "Es wird aufgerundet." : "Es wird abgerundet."));
+      add(c.up ? R + c.rem : n, "Alle Ziffern rechts von der Rundungsstelle müssen 0 werden.");
+      const k2 = k > 1 ? k - 1 : k + 1; if (String(n).length > k2) add(calc(n, k2).R, "Das ist auf " + PL[k2] + " gerundet, nicht auf " + PL[k] + ".");
+      add(R + c.D, "Das Ergebnis muss " + grp(c.L) + " oder " + grp(c.U) + " sein.");
+      add(R + 2 * c.D, "Das Ergebnis muss " + grp(c.L) + " oder " + grp(c.U) + " sein.");
+      return { head: "Wie lautet " + grp(n) + " gerundet auf " + PL[k] + "?", a: [grp(R), grp(opts[0][0]), grp(opts[1][0])], why: ["", opts[0][1], opts[1][1]] };
+    }
+    function roundText(n, k) {
+      const c = calc(n, k), a = c.at, s = String(n), zeros = k === 1 ? " Die Einer werden 0." : " Alle " + k + " Ziffern rechts davon werden 0.";
+      if (!c.up) return "Abrunden: Die Rundungsstelle bleibt gleich: " + T(a, "zr") + "." + zeros;
+      if (a < 9) return "Aufrunden: Die Rundungsstelle wird um 1 größer: " + a + " + 1 = " + T(a + 1, "zg") + "." + zeros;
+      let m = 0; while (dAt(n, k + m) === 9) m++;
+      let t = "Aufrunden: Die Rundungsstelle ist 9. 9 + 1 = 10. Ich schreibe 0 und gebe die 1 an die nächste Stelle links weiter. ";
+      if (m > 1) t += "Es stehen " + m + " Neunen hintereinander. Sie werden alle zu 0. ";
+      t += k + m < s.length ? "Die nächste Ziffer links ist " + dAt(n, k + m) + ". Sie wird um 1 größer: " + dAt(n, k + m) + " + 1 = " + T(dAt(n, k + m) + 1, "zg") + "." : "Links davon steht nichts mehr. Dort entsteht eine neue Stelle mit der " + T(1, "zg") + ".";
+      return t + zeros;
+    }
+    const resTab = rows => rows.map(r => ln("auf " + PL[r[0]] + ":", TN(r[1], "zo") + " ≈ " + TN(r[2], "zg"))).join("");
+    /* ---- Modus r: auf eine Stelle runden ---- */
+    function buildR() {
+      const n = V.n, k = V.k, c = calc(n, k), nm = PL[k], out = [];
+      out.push(stp("Aufgabe", "Ich runde " + TN(n, "zo") + " auf " + T(nm, "zg") + ". Beim Runden lege ich zuerst fest, auf welche Stelle gerundet wird. Diese Stelle heißt <b>Rundungsstelle</b>. Dann sehe ich die Ziffer rechts daneben an: Bei 5, 6, 7, 8 oder 9 wird <b>aufgerundet</b>, bei 0, 1, 2, 3 oder 4 wird <b>abgerundet</b>.", tafelH([{ lab: "Zahl", n: n }])));
+      out.push(stp("Die Rundungsstelle festlegen", "Ich runde auf " + T(nm, "zg") + ". Ich zähle von rechts: " + PL.slice(0, k + 1).join(", ") + ". Die Rundungsstelle ist die Stelle der " + nm + ". Dort steht die Ziffer " + T(c.at, "zr") + ".", strip(n, k, 1) + tafelH(rowsFor(n, k, 1)), undefined, undefined, qDigit(n, k)));
+      out.push(stp("Die Ziffer rechts daneben ansehen", "Rechts von der Rundungsstelle steht die Ziffer " + T(c.dig, "zo") + ". Sie entscheidet. " + c.dig + " gehört zu " + (c.up ? "5, 6, 7, 8, 9. Es wird " + T("aufgerundet", "zg") + "." : "0, 1, 2, 3, 4. Es wird " + T("abgerundet", "zg") + ".") + (c.tie ? " Die Zahl liegt genau in der Mitte zwischen " + grp(c.L) + " und " + grp(c.U) + ". Auch dann wird aufgerundet." : ""), strip(n, k, 2) + tafelH(rowsFor(n, k, 2)), undefined, undefined, qRicht(n, k)));
+      out.push(stp("Runden", roundText(n, k), strip(n, k, 3, c.R) + tafelH(rowsFor(n, k, 3, c.R)), undefined, undefined, qErg(n, k)));
+      const d1 = c.rem, d2 = c.D - c.rem;
+      out.push(stp("Ergebnis", "Gerundet auf " + nm + ": " + TN(n, "zo") + " ≈ " + TN(c.R, "zg") + ". Mit dem Wellenzeichen schreibe ich: ist ungefähr gleich. Beim Runden ändert sich der Wert ein wenig.", '<div class="zbig">' + TN(n, "zo") + " ≈ " + TN(c.R, "zg") + "</div>" + nlNear(c, n) + ln("Probe am Zahlenstrahl:", "Der Abstand zu " + grp(c.L) + " ist " + grp(d1) + ". Der Abstand zu " + grp(c.U) + " ist " + grp(d2) + ". " + (c.tie ? "Gleich weit weg. In der Mitte wird aufgerundet." : "Der nähere Strich ist " + T(grp(c.R), "zg") + ".")), "g"));
+      return out;
+    }
+    /* ---- Modus a: auf alle Stellen runden ---- */
+    function buildA() {
+      const n = V.n, len = String(n).length, out = [], rows = [];
+      out.push(stp("Aufgabe", "Ich runde " + TN(n, "zo") + " nacheinander auf jede Stelle: auf Zehner, auf Hunderter, auf Tausender und so weiter. Bei jeder Stelle fange ich wieder bei der Zahl " + TN(n, "zo") + " an.", tafelH([{ lab: "Zahl", n: n }])));
+      for (let k = 1; k < len; k++) {
+        const c = calc(n, k); rows.push([k, n, c.R]);
+        out.push(stp("Auf " + PL[k] + " runden", "Rundungsstelle: " + T(PL[k], "zg") + ", dort steht die " + T(c.at, "zr") + ". Rechts daneben steht die " + T(c.dig, "zo") + ": " + (c.up ? "aufrunden" : "abrunden") + ". " + TN(n, "zo") + " ≈ " + TN(c.R, "zg") + ".", strip(n, k, 3, c.R) + resTab(rows), undefined, undefined, qErg(n, k)));
+      }
+      out.push(stp("Ergebnis", "Je weiter links die Rundungsstelle liegt, desto gröber ist das Ergebnis. Ich runde immer von der Zahl " + TN(n, "zo") + " aus und nicht von einem Ergebnis, das schon gerundet ist.", resTab(rows), "g"));
+      return out;
+    }
+    /* ---- Modus b: welche Zahlen runden zu ...? ---- */
+    function nlRange(R, D, lo, hi, segA, segB) {
+      const f = x => (x - (R - D)) / (2 * D);
+      return nlSvg({ aria: "Zahlenstrahl von " + grp(R - D) + " bis " + grp(R + D), ticks: [{ f: 0, big: true, lab: grp(R - D) }, { f: f(lo), big: true, lab: grp(lo), col: "#ffb347" }, { f: 0.5, big: true, lab: grp(R), col: "#5fd06f" }, { f: f(hi + 1), big: true, lab: "", col: "#ffb347" }, { f: 1, big: true, lab: grp(R + D) }], seg: [f(segA), f(segB)], circle: 0.5 });
+    }
+    function buildB() {
+      const R = V.n, k = V.k, D = P10(k), H = D / 2, lo = R - H, hi = R + H - 1, nm = PL[k], out = [], T0 = R - D, T1 = R + D;
+      out.push(stp("Aufgabe", "Welche Zahlen ergeben gerundet auf " + T(nm, "zg") + " die Zahl " + TN(R, "zg") + "? Ich suche die kleinste und die größte solche Zahl. Die Striche der Rundungsstelle sind " + grp(T0) + ", " + grp(R) + " und " + grp(T1) + ".", nlRange(R, D, lo, hi, R, R)));
+      const w = "Rechne: " + grp(D) + " : 2 = " + grp(H) + ". Die Mitte ist " + grp(R) + " − " + grp(H) + " = " + grp(lo) + ".";
+      out.push(stp("Die kleinste Zahl", "Zwischen " + grp(T0) + " und " + grp(R) + " liegt die Mitte " + T(grp(lo), "zo") + ". In der Mitte wird aufgerundet. Darum wird schon " + TN(lo, "zo") + " auf " + TN(R, "zg") + " gerundet. Die Zahl direkt davor, " + grp(lo - 1) + ", wird auf " + grp(T0) + " abgerundet. Die kleinste Zahl ist " + TN(lo, "zo") + ".", nlRange(R, D, lo, hi, lo, R),
+        undefined, undefined, { head: "Wo liegt die Mitte zwischen " + grp(T0) + " und " + grp(R) + "?", a: [grp(lo), grp(lo + D / 10), grp(lo - D / 10)], why: ["", w, w] }));
+      const w2 = "Die Ziffer rechts neben der Rundungsstelle muss 0 bis 4 sein, damit abgerundet wird. Die größte Zahl dafür ist " + grp(hi) + ".";
+      out.push(stp("Die größte Zahl", "Zwischen " + grp(R) + " und " + grp(T1) + " liegt die Mitte " + T(grp(R + H), "zo") + ". Sie wird aufgerundet auf " + grp(T1) + ". Direkt davor liegt " + TN(hi, "zo") + ". Diese Zahl wird noch auf " + TN(R, "zg") + " abgerundet. Die größte Zahl ist " + TN(hi, "zo") + ".", nlRange(R, D, lo, hi, lo, hi),
+        undefined, undefined, { head: "Was ist die größte Zahl, die noch auf " + grp(R) + " gerundet wird?", a: [grp(hi), grp(R + H), grp(hi - D / 10)], why: ["", "Die Mitte " + grp(R + H) + " wird aufgerundet auf " + grp(T1) + ".", w2] }));
+      out.push(stp("Ergebnis", "Alle Zahlen von " + TN(lo, "zo") + " bis " + TN(hi, "zo") + " werden auf " + nm + " gerundet zu " + TN(R, "zg") + ". Das sind " + grp(D) + " Zahlen.", '<div class="zbig">' + TN(lo, "zo") + " bis " + TN(hi, "zo") + " ≈ " + TN(R, "zg") + "</div>" + nlRange(R, D, lo, hi, lo, hi) + ln("Probe:", grp(lo) + " ≈ " + grp(calc(lo, k).R) + ". " + grp(hi) + " ≈ " + grp(calc(hi, k).R) + ". " + grp(lo - 1) + " ≈ " + grp(calc(lo - 1, k).R) + ". " + grp(hi + 1) + " ≈ " + grp(calc(hi + 1, k).R) + "."), "g"));
+      return out;
+    }
+    const sp = stepper({ pre: pre, carry: false, build: () => {
+      if (!Number.isInteger(V.n) || V.n < 10 || V.n > 999999999999) return "Bitte eine ganze Zahl von 10 bis 999 999 999 999 eingeben.";
+      if (mode !== "a" && !(V.k >= 1 && V.k <= String(V.n).length - 1)) return "Bitte eine Rundungsstelle aus der Liste wählen.";
+      if (mode === "b" && V.n % P10(V.k) !== 0) return "Die gerundete Zahl muss bei der Rundungsstelle " + PL[V.k] + " auf " + V.k + (V.k === 1 ? " Null" : " Nullen") + " enden, zum Beispiel " + grp(3 * P10(V.k)) + ". Gib so eine Zahl ein oder wähle eine andere Rundungsstelle.";
+      return mode === "r" ? buildR() : mode === "a" ? buildA() : buildB();
+    }, note: () => ({ r: "Runden: Rundungsstelle festlegen, Ziffer rechts daneben ansehen, auf- oder abrunden, rechts lauter Nullen.", a: "Runden auf jede Stelle: Ich fange bei jeder Stelle wieder bei der ursprünglichen Zahl an.", b: "Rundungsbereich: Ich suche die kleinste und die größte Zahl, die zum gleichen Ergebnis gerundet wird." })[mode] });
+    const SEL = "font-size:1.5rem;padding:.35rem .6rem;border-radius:10px;background:#0e1624;color:#e6e8eb;border:2px solid #5fd06f";
+    function fillSel() {
+      const se = $(pre + "Row").querySelector("select"); if (!se) return;
+      const mk = Number.isInteger(V.n) && V.n >= 10 ? Math.min(11, String(V.n).length - 1) : 4;
+      if (V.k > mk) V.k = mk; if (V.k < 1) V.k = 1;
+      let o = ""; for (let k = 1; k <= mk; k++) o += '<option value="' + k + '"' + (k === V.k ? " selected" : "") + ">" + PL[k] + "</option>";
+      se.innerHTML = o;
+    }
+    function inputs() {
+      const row = $(pre + "Row");
+      row.innerHTML = '<div class="gbox"><div class="note">' + (mode === "b" ? "Gerundete Zahl" : "Zahl") + '</div><div class="numbox"><input type="number" data-k="n" min="10" max="999999999999" value="' + (Number.isInteger(V.n) ? V.n : "") + '" style="color:#6cc0f5;border-color:#6cc0f5"></div></div>' +
+        (mode === "a" ? "" : sym("auf") + '<select data-k="k" aria-label="Rundungsstelle" style="' + SEL + '"></select>');
+      row.querySelector("input").addEventListener("input", e => { V.n = e.target.value === "" ? NaN : Number(e.target.value); fillSel(); sp.reset(); sp.render(); });
+      const se = row.querySelector("select"); if (se) se.addEventListener("change", () => { V.k = Number(se.value); sp.reset(); sp.render(); });
+      fillSel();
+    }
+    const KEYS = ["r", "a", "b"];
+    const mark = m => KEYS.forEach(k => $(pre + "_" + k).setAttribute("aria-selected", k === m ? "true" : "false"));
+    function setMode(m) { mode = m; Object.assign(V, DEF[m]); mark(m); sp.reset(); inputs(); sp.render(); }
+    KEYS.forEach(k => $(pre + "_" + k).addEventListener("click", () => setMode(k)));
+    const setDig = (n, p, d) => n - dAt(n, p) * P10(p) + d * P10(p);
+    $(pre + "Random").addEventListener("click", () => {
+      if (mode === "b") { const k = ri(1, 6); V.k = k; V.n = ri(2, 99) * P10(k); }
+      else {
+        const len = mode === "a" ? ri(4, 7) : ri(4, 10); let s = String(ri(1, 9)); for (let i = 1; i < len; i++) s += ri(0, 9);
+        let n = Number(s); const k = ri(1, len - 1), t = Math.random();
+        if (mode === "r" && t < 0.2) { n = setDig(n, k, 9); n = setDig(n, k - 1, ri(5, 9)); }
+        else if (mode === "r" && t < 0.3) n = Math.floor(n / P10(k)) * P10(k) + P10(k) / 2;
+        V.n = n; V.k = k;
+      }
+      sp.reset(); inputs(); sp.render();
+    });
+    inputs(); sp.render();
+    window.__dz = Object.assign(window.__dz || {}, { setRg: (m, n, k) => { mode = m; V.n = n; V.k = k || 3; mark(m); sp.reset(); inputs(); sp.render(); }, rgTafel: n => tafelH([{ lab: "Zahl", n: n }]) });
+  })();
+
   /* ================= 12. Lineare Gleichungssysteme ================= */
   (function () {
     const pre = "lg"; let mode = "add";
@@ -7066,6 +7262,26 @@ document.querySelectorAll(".card").forEach(c => {
       expl: () => "Endziffer: durch 2 bei gerader Endziffer, durch 5 bei 0 oder 5, durch 10 bei 0. Letzte zwei Ziffern: durch 4 und 25. Letzte drei Ziffern: durch 8. Quersumme: durch 3 und durch 9. Durch 6, wenn die Zahl durch 2 und 3 teilbar ist." };
   }
 
+  function gRgz() {
+    const PLn = ["Einer", "Zehner", "Hunderter", "Tausender", "Zehntausender", "Hunderttausender", "Millionen", "Zehnmillionen", "Hundertmillionen", "Milliarden"];
+    const gp = x => String(x).replace(/\B(?=(\d{3})+(?!\d))/g, "\u2009");
+    const len = ri(5, 9); let N = ri(Math.pow(10, len - 1), Math.pow(10, len) - 1); if (N % 10 === 0) N += ri(1, 9);
+    const ks = []; for (let k = 1; k < len; k++) ks.push(k);
+    for (let i = ks.length - 1; i > 0; i--) { const j = ri(0, i), t = ks[i]; ks[i] = ks[j]; ks[j] = t; }
+    const use = ks.slice(0, 4), corr = [], wrong = [], seen = {};
+    const cl = k => { const D = Math.pow(10, k), L = Math.floor(N / D) * D, rem = N - L, up = rem * 2 >= D; return { D: D, L: L, rem: rem, up: up, R: L + (up ? D : 0), dig: Math.floor(rem / (D / 10)) }; };
+    const line = (v, k) => gp(N) + " ≈ " + gp(v) + " (auf " + PLn[k] + " gerundet)";
+    const addW = (v, k, why) => { const t = line(v, k); if (!seen[t] && v !== cl(k).R) { seen[t] = 1; wrong.push(O(t, t, why)); } };
+    use.forEach((k, idx) => {
+      const c = cl(k), t = line(c.R, k); seen[t] = 1; if (idx < 3) corr.push(O(t, t));
+      addW(c.up ? c.L : c.L + c.D, k, "Die Ziffer rechts neben der Rundungsstelle ist " + c.dig + ": Es wird " + (c.up ? "aufgerundet" : "abgerundet") + ".");
+      addW(c.up ? c.R + c.rem : N, k, "Alle Ziffern rechts von der Rundungsstelle müssen 0 werden.");
+      const k2 = k > 1 ? k - 1 : k + 1; if (k2 < len) addW(cl(k2).R, k, "Das ist auf " + PLn[k2] + " gerundet, nicht auf " + PLn[k] + ".");
+    });
+    return { top: "rgz", kind: "eqs", q: "Die Zahl " + T(gp(N), "zo") + " steht in der Stellenwerttafel. Welche Aussagen zum Runden stimmen?" + (window.__dz && window.__dz.rgTafel ? window.__dz.rgTafel(N) : ""), corr: corr, wrong: wrong,
+      expl: () => "Runden: Zuerst die Rundungsstelle festlegen. Dann die Ziffer rechts daneben ansehen: 0 bis 4 abrunden, 5 bis 9 aufrunden. Alle Ziffern rechts von der Rundungsstelle werden 0." };
+  }
+
   /* ---------- ggT und kgV, lineare Gleichungssysteme, quadratische Ergänzung ---------- */
   const sg = n => n < 0 ? "−" + Math.abs(n) : String(n);
   const sgp = n => n < 0 ? "(−" + Math.abs(n) + ")" : String(n);
@@ -7424,9 +7640,9 @@ document.querySelectorAll(".card").forEach(c => {
     return { aeq: gAeq, lf: gLf, lfg: gLfg, lp: gLp, prop: gProp, dreis: gDreis, proz: gProz, zins: gZins, zz: gZz };
   })();
 
-  const G = { ein: gEin, geteilt: gGeteilt, uez: gUez, stell: gStell, fl: gFl, swr: gSwr, gl: gGl, kue: gKue, gem: gGem, anteil: gAnteil, addsub: gAddSub, muldiv: gMulDiv, stufe: gStufe, bd: gBd, komma: gKomma, dadd: gDadd, dmul: gDmul, rund: gRunden, gro: gGroessen, ggtk: gGgtKgv, pfz: gPfz, tbr: gTbr, lgs: gLgs, qe: gQe, qgl: gQgl, aeq: GFP.aeq, lf: GFP.lf, lfg: GFP.lfg, lp: GFP.lp, prop: GFP.prop, dreis: GFP.dreis, proz: GFP.proz, zins: GFP.zins, zz: GFP.zz };
+  const G = { ein: gEin, geteilt: gGeteilt, uez: gUez, stell: gStell, fl: gFl, swr: gSwr, gl: gGl, kue: gKue, gem: gGem, anteil: gAnteil, addsub: gAddSub, muldiv: gMulDiv, stufe: gStufe, bd: gBd, komma: gKomma, dadd: gDadd, dmul: gDmul, rund: gRunden, gro: gGroessen, ggtk: gGgtKgv, pfz: gPfz, tbr: gTbr, rgz: gRgz, lgs: gLgs, qe: gQe, qgl: gQgl, aeq: GFP.aeq, lf: GFP.lf, lfg: GFP.lfg, lp: GFP.lp, prop: GFP.prop, dreis: GFP.dreis, proz: GFP.proz, zins: GFP.zins, zz: GFP.zz };
   const RUB = {
-    qz1: { t: "Zahlen und Rechenoperationen", arena: "Zahlen-Arena", col: "#7cc4f7", tops: [["ein", "Einmaleins"], ["geteilt", "Geteiltaufgaben"], ["uez", "Zehnerübergang"], ["stell", "Stellenwerte"], ["fl", "Flächenmodell"], ["swr", "Schriftlich rechnen"], ["ggtk", "ggT und kgV"], ["pfz", "Primfaktorzerlegung"], ["tbr", "Teilbarkeitsregeln"]] },
+    qz1: { t: "Zahlen und Rechenoperationen", arena: "Zahlen-Arena", col: "#7cc4f7", tops: [["ein", "Einmaleins"], ["geteilt", "Geteiltaufgaben"], ["uez", "Zehnerübergang"], ["stell", "Stellenwerte"], ["fl", "Flächenmodell"], ["swr", "Schriftlich rechnen"], ["ggtk", "ggT und kgV"], ["pfz", "Primfaktorzerlegung"], ["tbr", "Teilbarkeitsregeln"], ["rgz", "Große Zahlen runden"]] },
     qz2: { t: "Brüche", arena: "Bruch-Arena", col: "#c4a1ff", tops: [["anteil", "Anteile am Streifen"], ["gl", "Gleichwertige Brüche"], ["kue", "Brüche kürzen"], ["gem", "Unechte Brüche und gemischte Zahlen"], ["stufe", "Stufenzahlen"], ["addsub", "Addieren und Subtrahieren"], ["muldiv", "Multiplizieren und Dividieren"]] },
     qz3: { t: "Dezimalzahlen", arena: "Komma-Arena", col: "#7fdcae", tops: [["bd", "Brüche und Dezimalzahlen"], ["komma", "Kommaverschiebung"], ["dadd", "Addieren und Subtrahieren"], ["dmul", "Multiplizieren und Dividieren"], ["rund", "Runden am Zahlenstrahl"], ["gro", "Größen und Stellenwerte"]] },
     qz5: { t: "Funktionen und Prozente", arena: "Funktionen-Arena", col: "#ff8fb1", tops: [["lf", "Lineare Funktionen"], ["lfg", "Graph einer Geraden"], ["lp", "Gerade durch zwei Punkte"], ["prop", "Proportional oder antiproportional"], ["dreis", "Dreisatz"], ["proz", "Prozentrechnung"], ["zins", "Zinsen für ein Jahr"], ["zz", "Zinseszins"]] },

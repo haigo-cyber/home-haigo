@@ -3677,7 +3677,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v244";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v247";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -3810,12 +3810,75 @@ async function tpLoad(){
       const blob = await wsDriveFetch(id);
       let parsed = null; try{ parsed = JSON.parse(await blob.text()); }catch(e){ throw new Error("Datei Tagesstruktur.json ist nicht lesbar"); }
       tp.data = tpNorm(parsed); tp.fileId = id; try{ localStorage.setItem("tpFileId", id); }catch(e){}
+      tpRestoreBreaks();
     }else{
       tp.data = tpDefault(); tp.fileId = "";     // Datei wird beim ersten Speichern angelegt
     }
   }catch(e){
     tp.err = String(e.message||e).slice(0,200); tp.data = null;
   }finally{ tp.loading = false; }
+}
+/* Lokale Sicherung der Ferien: fehlen sie nach dem Laden in Drive (zum Beispiel von einem Gerät mit älterem Programmstand überschrieben), werden noch gültige Ferien wiederhergestellt */
+function tpRestoreBreaks(){
+  let bak = []; try{ bak = JSON.parse(localStorage.getItem("tpBreaksBak")||"[]"); }catch(e){}
+  if(!Array.isArray(bak) || !bak.length || !tp.data) return;
+  const t0 = todayKey(); let n = 0;
+  tpNorm({breaks:bak}).breaks.forEach(b=>{ if(b.to>=t0 && !tp.data.breaks.some(x=>x.id===b.id) && !tp.deleted.has(b.id)){ tp.data.breaks.push(b); n++; } });
+  if(n){ tpDirty(); try{ toast(n+(n===1?" Ferieneintrag":" Ferieneinträge")+" aus der Sicherung auf diesem Gerät wiederhergestellt"); }catch(e){} }
+}
+/* Frühere Versionen der Datei aus Drive ansehen und Fehlendes (Ferien, Farben, Wochenangaben, Bausteine, Einträge) in den heutigen Stand übernehmen; Neueres bleibt unverändert */
+function tpHistDiff(r){
+  const d = {brk:0, items:0, col:0, wk:0, occ:0}, L = tp.data;
+  r.breaks.forEach(b=>{ if(!L.breaks.some(x=>x.id===b.id) && !tp.deleted.has(b.id)) d.brk++; });
+  r.items.forEach(it=>{
+    const loc = L.items.find(x=>x.id===it.id);
+    if(!loc){ if(!tp.deleted.has(it.id)) d.items++; return; }
+    if((it.cs && !loc.cs) || (it.ck && !loc.ck)) d.col++;
+    if(it.rep && loc.rep) it.rep.slots.forEach(q=>{ if(q.w && loc.rep.slots.some(y=>y.wd===q.wd && y.start===q.start && !y.w)) d.wk++; });
+    Object.keys(it.occ).forEach(k=>{ if(!loc.occ[k]) d.occ++; });
+  });
+  return d;
+}
+function tpHistApply(r){
+  tpMerge(r);
+  r.items.forEach(it=>{
+    const loc = tp.data.items.find(x=>x.id===it.id); if(!loc) return;
+    if(it.cs && !loc.cs) loc.cs = it.cs;
+    if(it.ck && !loc.ck) loc.ck = it.ck;
+    if(it.rep && loc.rep) it.rep.slots.forEach(q=>{ if(q.w){ const y = loc.rep.slots.find(z=>z.wd===q.wd && z.start===q.start && !z.w); if(y) y.w = q.w; } });
+  });
+  tpDirty(); render();
+}
+async function tpHist(){
+  if(document.getElementById("modalBg")) return;
+  if(!tp.fileId){ toast("Es gibt noch keine gespeicherte Datei in Drive"); return; }
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal" style="max-height:90vh;overflow:auto"><h2>Frühere Versionen aus Drive</h2><div class="tp-note" id="th_info" style="padding:0 0 8px">Lade die Versionsliste …</div><div id="th_list"></div><div id="th_res" style="margin-top:10px"></div><div class="modal-actions"><button class="btn-ghost" id="th_x">Schließen</button></div></div></div>`);
+  const $h = i=>document.getElementById(i);
+  $h("th_x").onclick = ()=>$h("modalBg").remove();
+  $h("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $h("modalBg").remove(); };
+  try{
+    const r = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(tp.fileId)+"/revisions?pageSize=200&fields="+encodeURIComponent("revisions(id,modifiedTime,size)"));
+    const list = ((r&&r.revisions)||[]).slice().reverse();
+    if(!$h("th_list")) return;
+    $h("th_info").textContent = list.length ? "Eine Version wählen und prüfen. Es wird nur übernommen, was heute fehlt. Neuere Änderungen bleiben." : "Drive hat keine früheren Versionen gespeichert.";
+    $h("th_list").innerHTML = list.map(v=>`<div class="tp-it"><span class="tx">${esc(new Date(v.modifiedTime).toLocaleString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}))}</span><span class="dt">${v.size?esc(String(Math.round(v.size/100)/10))+" KB":""}</span><button class="tp-btn" data-rev="${esc(v.id)}">Prüfen</button></div>`).join("");
+    $h("th_list").onclick = async e=>{
+      const b = e.target.closest("[data-rev]"); if(!b) return;
+      $h("th_res").textContent = "Lade diese Version …";
+      try{
+        const url = "https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(tp.fileId)+"/revisions/"+encodeURIComponent(b.dataset.rev)+"?alt=media";
+        let rs = await fetch(url, {headers:{Authorization:"Bearer "+accessToken}});
+        if(rs.status===401){ try{ await requestToken(false); }catch(_){ await requestToken(true); } rs = await fetch(url, {headers:{Authorization:"Bearer "+accessToken}}); }
+        if(!rs.ok) throw new Error("Drive "+rs.status);
+        const rem = tpNorm(JSON.parse(await rs.text())), d = tpHistDiff(rem), nCol = rem.items.filter(x=>x.cs||x.ck).length, nW = rem.items.reduce((n,x)=>n+(x.rep?x.rep.slots.filter(q=>q.w).length:0),0);
+        const todo = d.brk+d.items+d.col+d.wk+d.occ;
+        $h("th_res").innerHTML = `<div style="border:1px solid #30343b;border-radius:8px;padding:8px 10px;font-size:14px"><b>Inhalt dieser Version</b><div class="muted" style="margin-top:4px">${rem.breaks.length} Ferieneinträge, ${rem.items.length} Bausteine (${nCol} mit Schul- oder Klassenfarbe, ${nW} Termine mit A/B-Woche)</div>
+          <div style="margin-top:6px">Heute fehlen: ${d.brk} Ferieneinträge, ${d.items} Bausteine, ${d.col} Bausteine mit Farben, ${d.wk} Wochenangaben, ${d.occ} Wocheneinträge</div>
+          ${todo?`<button class="tp-btn pri" id="th_ok" style="margin-top:8px">Fehlendes übernehmen</button>`:`<div class="muted" style="margin-top:6px">Nichts zu übernehmen.</div>`}</div>`;
+        const ok = $h("th_ok"); if(ok) ok.onclick = ()=>{ tpHistApply(rem); $h("modalBg").remove(); toast("Fehlendes aus der früheren Version übernommen"); };
+      }catch(err){ $h("th_res").textContent = "Fehler: "+String(err.message||err).slice(0,160); }
+    };
+  }catch(err){ const i = $h("th_info"); if(i) i.textContent = "Versionsliste nicht verfügbar: "+String(err.message||err).slice(0,160); }
 }
 function tpDirty(){
   tp.pending = true; clearTimeout(tp.saveT);
@@ -3848,11 +3911,12 @@ async function tpSave(){
   tp.saving = true; tp.pending = false; setSync("busy");
   try{
     if(tp.fileId){
-      const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(tp.fileId)+"?fields=modifiedTime");
-      if(f && f.modifiedTime && tp.mt && f.modifiedTime!==tp.mt){
-        const blob = await wsDriveFetch(tp.fileId);
-        try{ tpMerge(tpNorm(JSON.parse(await blob.text()))); if(view==="plan" && !tp.drag) render(); }catch(e){}
-      }
+      // Vor jedem Speichern den Stand in Drive einlesen und fremde Ferien, Bausteine und Blöcke übernehmen, damit ein veraltetes Gerät nichts überschreibt
+      const blob = await wsDriveFetch(tp.fileId);
+      let remote = null; try{ remote = tpNorm(JSON.parse(await blob.text())); }catch(e){ throw new Error("Datei in Drive nicht lesbar, Speichern abgebrochen"); }
+      const nb = tp.data.breaks.length + tp.data.items.length;
+      tpMerge(remote);
+      if(tp.data.breaks.length + tp.data.items.length !== nb && view==="plan" && !tp.drag) render();
     }
     ["days","jdays"].forEach(key=>Object.keys(tp.data[key]).forEach(k=>{ if(!tp.data[key][k].blocks.length) delete tp.data[key][k]; }));
     const json = JSON.stringify(tp.data);
@@ -3866,6 +3930,7 @@ async function tpSave(){
       tp.mt = (r && r.modifiedTime) || tp.mt;
     }
     tp.deleted.clear();
+    try{ localStorage.setItem("tpBreaksBak", JSON.stringify(tp.data.breaks)); }catch(e){}
   }catch(e){
     tp.pending = true; console.error("Tagesstruktur speichern:", e.message);
     toast("Tagesstruktur: Speichern fehlgeschlagen, neuer Versuch folgt");
@@ -4425,7 +4490,7 @@ function tpMount(m){
       <span style="flex:1"></span>
       ${tp.mode==="day"?`<button class="tp-btn${tpSchoolOn()?" on":""}" data-tp="school" title="Unterrichtsstunden aus der Job-Struktur in dieser Ansicht anzeigen">🏫 Schule</button>`:""}${tp.mode==="job"?`<button class="tp-btn" data-tp="report" title="Bericht über einen Zeitraum, als PDF druckbar">📄 Bericht</button>`:""}${tp.unlock?`<button class="tp-btn pri" data-tp="add">+ Block</button>`:""}<button class="tp-btn${tp.more?" on":""}" data-tp="more" title="Weitere Knöpfe">⋯</button>
     </div>
-    ${tp.more?`<div class="tp-bar tp-more">${tp.unlock?`<button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button>`:""}<button class="tp-btn${tp.hideDone?" on":""}" data-tp="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tp.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙ Einstellungen</button></div>`:""}
+    ${tp.more?`<div class="tp-bar tp-more">${tp.unlock?`<button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button>`:""}<button class="tp-btn${tp.hideDone?" on":""}" data-tp="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tp.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙ Einstellungen</button><button class="tp-btn" data-tp="hist" title="Frühere Version aus Drive ansehen und Fehlendes übernehmen">⟲ Frühere Version</button></div>`:""}
     ${tp.showSet?`<div class="tp-set">Beginn <select id="tp_from">${opt(rng(0,23), s.from, v=>tpPad(v)+":00")}</select> Ende <select id="tp_to">${opt(rng(1,24), s.to, v=>tpPad(v)+":00")}</select>
       Raster <select id="tp_snap">${opt([5,10,15,30], s.snap, v=>v+" min")}</select> Breite <select id="tp_pph">${opt([60,90,120,180,240], s.pph, v=>v+" px je Stunde")}</select></div>`:""}
     ${tp.mode==="job"&&tpDayBreaks(tp.day).length?`<div class="tp-note" style="padding:2px 2px 8px;font-size:14px">${tpDayBreaks(tp.day).map(b=>"🏖 "+esc(tpBreakText(b))).join(" · ")}. Wiederkehrende Stunden entfallen.</div>`:""}
@@ -4525,6 +4590,7 @@ function tpAct(a, el){
   else if(a==="add"){ const dur = 30, st = tpFree(tp.day, dur); tpEdit("", {id:uid(), title:"", start:st, end:st+dur, color:TP_COLORS[0], done:false, note:"", src:null}); }
   else if(a==="set"){ tp.showSet = !tp.showSet; render(); }
   else if(a==="school"){ try{ localStorage.setItem("tpSchool", tpSchoolOn()?"0":"1"); }catch(e){} render(); toast(tpSchoolOn()?"Schultermine eingeblendet":"Schultermine ausgeblendet"); }
+  else if(a==="hist"){ if(!tp.unlock){ tpLockHint(); return; } tpHist(); }
   else if(a==="more"){ tp.more = !tp.more; render(); }
   else if(a==="hd"){ tp.hideDone = !tp.hideDone; try{ localStorage.setItem("tpHideDone", tp.hideDone?"1":"0"); }catch(_){} render(); }
   else if(a==="retry"){ tp.err = ""; render(); }

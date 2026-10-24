@@ -3643,7 +3643,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v235";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v236";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
@@ -3834,7 +3834,7 @@ function tpDayTitle(day){ const d = parseDate(day); return d ? d.toLocaleDateStr
 function tpDn(b){
   if(b.done) return true;
   if(b.src && b.src.kind==="todo") return isEverDone(b.src.ref);
-  if(b.src && b.src.kind==="goal"){ const g = goalTasks.find(x=>x.id===b.src.ref); return !!(g && g.completed); }
+  if(b.src && b.src.kind==="goal"){ const g = goalTasks.find(x=>x.id===b.src.ref); if(g) return !!g.completed; return !allOpenGoals.some(x=>x.id===b.src.ref) && isEverDone(b.src.ref); }
   return false;
 }
 function tpBlockHtml(b, lane){
@@ -4671,6 +4671,20 @@ function tmKidsHtml(b, ki, top, plo, phi){
   }
   return out;
 }
+function tmNodeOf(ref, metaMap){            // auch bereits erledigte Meta-Projekte finden (die stehen nicht mehr in der Meta-Liste)
+  const h = (metaMap||tmMetaMap()).get(ref); if(h) return h;
+  if(typeof wsLoaded==="undefined" || !wsLoaded || !Array.isArray(wsDocs)) return null;
+  for(const doc of wsDocs){
+    const bl = (doc.blocks||[]).find(x=>x.id===ref && x.type==="heading"); if(bl) return {doc, node:bl};
+    const r = wsFindNode(doc, ref); if(r && r.node) return {doc, node:r.node};
+  }
+  return null;
+}
+function tmDn(b, metaMap){
+  if(b.done) return true;
+  const h = b.src ? tmNodeOf(b.src.ref, metaMap) : null;
+  return !!(h && h.node.done);
+}
 function tmBlockHtml(b, top, metaMap, ki){
   const s = tmDN(b.start), e = tmDN(b.end), days = e-s+1;
   const left = (s-tm.range.from)*tm.ppd, w = days*tm.ppd;
@@ -4681,8 +4695,8 @@ function tmBlockHtml(b, top, metaMap, ki){
     flag = `<i class="tm-dl" title="Deadline ${esc(tmShort(h.node.dl))} (aus dem Arbeitsbereich)" style="left:${(dn-tm.range.from)*tm.ppd}px;top:${top}px">⚑</i>`;
   }
   const kidTxt = ki && ki.total ? ` · ${ki.done}/${ki.total} ✓` : "";
-  return `<div class="tp-b tm-b${b.done?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})${ki&&ki.total?" · Unterpunkte: "+ki.done+" von "+ki.total+" erledigt":""}" style="left:${left}px;width:${w}px;top:${top}px;background:${esc(b.color)}">
-    <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${b.done?"✓":""}</span>
+  return `<div class="tp-b tm-b${tmDn(b,metaMap)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})${ki&&ki.total?" · Unterpunkte: "+ki.done+" von "+ki.total+" erledigt":""}" style="left:${left}px;width:${w}px;top:${top}px;background:${esc(b.color)}">
+    <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${tmDn(b,metaMap)?"✓":""}</span>
     <div class="tp-t">${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${esc(tmShort(b.start))}–${esc(tmShort(b.end))} · ${days} T${kidTxt}</div><i class="tp-h r" data-h="r"></i></div>${flag}`;
 }
 function tmPoolItems(){
@@ -4722,7 +4736,7 @@ function tmMount(m){
   tm.ppd = tm.data.settings.ppd; tm.range = tmRange();
   const prev = document.getElementById("tm_scroll"); if(prev) tm.scrollL = prev.scrollLeft;
   const R = tm.range, days = R.to-R.from+1, W = days*tm.ppd, ppd = tm.ppd, metaMap = tmMetaMap();
-  const vis = tm.hideDone ? tm.data.blocks.filter(b=>!b.done) : tm.data.blocks, L = tmLanes(vis), today = tmDN(todayKey());
+  const vis = tm.hideDone ? tm.data.blocks.filter(b=>!tmDn(b,metaMap)) : tm.data.blocks, L = tmLanes(vis), today = tmDN(todayKey());
   const kidInfo = new Map(); vis.forEach(b=>{ const h = b.src ? metaMap.get(b.src.ref) : null; kidInfo.set(b.id, tmKidInfo(h, b)); });
   const laneRows = new Array(L.n).fill(0);
   if(tm.showKids) vis.forEach(b=>{ const ki = kidInfo.get(b.id), ln = L.lane.get(b.id); if(ki && ki.rows>laneRows[ln]) laneRows[ln] = ki.rows; });
@@ -5176,9 +5190,16 @@ function tmClick(e){
   const kidEl = e.target.closest && e.target.closest(".tm-k[data-kid]");
   if(kidEl && !(typeof tm!=="undefined" && Date.now()-tm.suppressClick<350)){ wsOpenItemMenu(kidEl.dataset.doc, kidEl.dataset.kk==="head"?"block":"node", kidEl.dataset.kid, null); return; }
   if(ck){ const b = ck.closest(".tm-b"); const blk = b && tmBlock(b.dataset.id); if(blk){
-    const go = ()=>{ blk.done = !blk.done; tmDirty(); render(); };
-    const h = (!blk.done && blk.src && typeof wsLoaded!=="undefined" && wsLoaded) ? tmMetaMap().get(blk.src.ref) : null;
-    if(h && h.node.type!=="heading") wsGuardDone(h.doc, h.node, go, ()=>{}); else go();
+    const mm = tmMetaMap(), h0 = blk.src ? tmNodeOf(blk.src.ref, mm) : null, cur = tmDn(blk, mm);
+    const apply = (val)=>{                       // Block und Meta-Projekt im Arbeitsbereich gemeinsam setzen
+      blk.done = val; tmDirty();
+      if(h0 && h0.node.type!=="heading" && !!h0.node.done!==val){
+        h0.node.done = val; if(val) wsFocusDrop(h0.doc, h0.node.id); wsTouch(h0.doc);
+        if(h0.node.link) wsLinkRun(()=>wsPushDone(h0.doc, h0.node));
+      }
+      render();
+    };
+    if(!cur && h0 && h0.node.type!=="heading") wsGuardDone(h0.doc, h0.node, ()=>apply(true), ()=>{}); else apply(!cur);
   } return; }
   const a = e.target.closest && e.target.closest("[data-tm]");
   if(a){ tmAct(a.dataset.tm, a); return; }

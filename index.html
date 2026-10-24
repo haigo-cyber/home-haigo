@@ -3330,10 +3330,12 @@ function render(){
 /* Prinzip: Aus dem aktuellen Stand der App wird der Soll-Zustand berechnet und mit den Terminen im Zielkalender abgeglichen.
    Angefasst werden nur Termine mit der Markierung todoSrc (privat erweiterte Eigenschaft); alles andere im Kalender bleibt unberührt. */
 const KS_KEYS = {goal:"kalSyncGoalCal", meta:"kalSyncMetaCal", job:"kalSyncJobCal"};
-const KS_KINDS = ["goal","meta","job"], KS_JOB_DAYS = 120;
+const KS_KINDS = ["goal","meta","job"], KS_JOB_DAYS = 35;
 const KS_LABEL = {goal:"Tagesziele", meta:"Metaprojekte", job:"Stunden"};
 const KS_SCOPE_CREATE = "https://www.googleapis.com/auth/calendar.app.created";
-let ksRetries = 0, ksBusy = false, ksAgain = false, ksTimer = null, ksLast = {goal:"", meta:"", job:""};
+let ksRetries = 0, ksBusy = false, ksAgain = false, ksTimer = null, ksLast = {goal:"", meta:"", job:""}, ksBack = {goal:0, meta:0, job:0}, ksFails = {goal:0, meta:0, job:0}, ksRecent = {goal:{}, meta:{}, job:{}}, ksLastRef = 0;
+/* Nach Fehlern wartet der Abgleich immer länger (1, 2, 4 … bis 15 Minuten), damit nichts in einer Schleife neu geschrieben wird */
+function ksPenalty(kind){ ksFails[kind]++; ksBack[kind] = Date.now() + Math.min(900000, 60000*Math.pow(2, ksFails[kind]-1)); }
 let ksStatus = localStorage.getItem("ksStatus") || "";
 function ksAny(){ return KS_KINDS.some(k=>ksCalId(k)); }
 function ksCalId(kind){ const v = localStorage.getItem(KS_KEYS[kind]) || ""; return v==="off" ? "" : v; }
@@ -3414,6 +3416,7 @@ async function ksListExisting(calId, kind){
 }
 async function ksSyncKind(kind, force){
   const calId = ksCalId(kind); if(!calId) return null;
+  if(!force && Date.now() < ksBack[kind]) return null;
   if(kind==="goal" && !gtasksLoadedOk) return null;      // Ziele nicht sicher geladen: nichts löschen
   if(kind==="meta" && !wsLoaded) return null;            // Arbeitsbereich nicht geladen: nichts löschen
   if(kind==="job" && !tp.data){ if(!tp.loading && !tp.err) tpLoad().then(()=>ksSyncSoon()).catch(()=>{}); return null; }
@@ -3428,11 +3431,15 @@ async function ksSyncKind(kind, force){
     if(!ref) return;
     if(byRef.has(ref)) dupes.push(e); else byRef.set(ref, e);
   });
+  // Gerade angelegte Termine sind in Googles Suche erst verzögert auffindbar: nicht erneut anlegen, sondern als vorhanden behandeln
+  const nowT = Date.now();
+  Object.keys(ksRecent[kind]).forEach(ref=>{ const rc = ksRecent[kind][ref]; if(nowT-rc.t>1200000){ delete ksRecent[kind][ref]; return; } if(!byRef.has(ref)) byRef.set(ref, {id:rc.id, recent:true, start:{date:rc.day}}); });
   const today = todayKey();
   const toAdd = [], toUpd = [], toDel = dupes.slice();
   want.forEach((d, ref)=>{
     const e = byRef.get(ref);
     if(!e){ toAdd.push([ref, d]); return; }
+    if(e.recent) return;
     if(!ksSame(e, d)) toUpd.push([e, ref, d]);
   });
   byRef.forEach((e, ref)=>{
@@ -3447,7 +3454,7 @@ async function ksSyncKind(kind, force){
   let failed = 0, lastErr = "";
   const wr = async (url, opts)=>{
     for(let k=0; k<5; k++){
-      try{ const r = await api(url, opts); await new Promise(ok=>setTimeout(ok, 250)); return r; }
+      try{ const r = await api(url, opts); await new Promise(ok=>setTimeout(ok, kind==="job"?600:250)); return r; }
       catch(err){
         const m = String(err.message||err);
         if(k<4 && /API (403|429|500|502|503)/.test(m) && !/insufficient|forbidden for non|notFound/i.test(m)){ await new Promise(ok=>setTimeout(ok, 1200*(k+1))); continue; }
@@ -3456,14 +3463,14 @@ async function ksSyncKind(kind, force){
     }
   };
   let nAdd = 0, nUpd = 0, nDel = 0;
-  for(const [ref,d] of toAdd){ try{ await wr(calUrl(calId), {method:"POST", body:JSON.stringify(ksBody(kind, ref, d))}); nAdd++; }catch(err){ failed++; lastErr = String(err.message||err); } }
+  for(const [ref,d] of toAdd){ try{ const nr = await wr(calUrl(calId), {method:"POST", body:JSON.stringify(ksBody(kind, ref, d))}); nAdd++; if(nr && nr.id) ksRecent[kind][ref] = {id:nr.id, t:Date.now(), day:d.date}; }catch(err){ failed++; lastErr = String(err.message||err); } }
   for(const [e,ref,d] of toUpd){
     const b = ksBody(kind, ref, d);
     try{ await wr(calUrl(calId)+"/"+encodeURIComponent(e.id), {method:"PATCH", body:JSON.stringify({summary:b.summary, description:b.description, start:b.start, end:b.end})}); nUpd++; }catch(err){ failed++; lastErr = String(err.message||err); }
   }
   for(const e of toDel){ try{ await wr(calUrl(calId)+"/"+encodeURIComponent(e.id), {method:"DELETE"}); nDel++; }catch(err){ failed++; lastErr = String(err.message||err); } }
-  if(failed){ ksLast[kind] = ""; }      // nächster Lauf versucht es erneut
-  else ksLast[kind] = sig;
+  if(failed){ ksLast[kind] = ""; ksPenalty(kind); }      // nächster Lauf versucht es später erneut
+  else{ ksLast[kind] = sig; ksFails[kind] = 0; ksBack[kind] = 0; }
   return {add:nAdd, upd:nUpd, del:nDel, skipped:delSkipped, total:want.size, failed, lastErr};
 }
 function ksStatusSet(txt){
@@ -3486,15 +3493,15 @@ async function ksSyncNow(force){
         parts.push(KS_LABEL[kind]+": "+r.total+" Termine, "+r.add+" neu, "+r.upd+" geändert, "+r.del+" entfernt"+(r.skipped?" (Löschen übersprungen)":"")+(r.failed?" – "+r.failed+" Fehler, neuer Versuch folgt ("+r.lastErr.slice(0,100)+")":""));
         if(r.failed) retry = true;
       }catch(e){
-        ran = true; ksLast[kind] = "";
+        ran = true; ksLast[kind] = ""; ksPenalty(kind);
         parts.push(KS_LABEL[kind]+": Fehler "+String(e.message||e).slice(0,140));
       }
     }
     if(ran){
       const t = new Date(); const hm = String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
       ksStatusSet("Abgeglichen um "+hm+". "+parts.join(" | "));
-      if(changed && typeof kalRefresh==="function") kalRefresh();
-      if(retry && ksRetries<4){ ksRetries++; clearTimeout(ksTimer); ksTimer = setTimeout(()=>{ ksSyncNow(false); }, 15000); }
+      if(changed && typeof kalRefresh==="function" && Date.now()-ksLastRef>30000){ ksLastRef = Date.now(); kalRefresh(); }
+      if(retry && ksRetries<6){ ksRetries++; clearTimeout(ksTimer); ksTimer = setTimeout(()=>{ ksSyncNow(false); }, 65000); }
       else if(!retry) ksRetries = 0;
     }
   }finally{
@@ -3677,7 +3684,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v248";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v249";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];

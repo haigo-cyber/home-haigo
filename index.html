@@ -1839,6 +1839,7 @@ async function uncompleteGTask(taskId){
     await api(`${GTASKS}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`, {
       method:"PATCH", body:JSON.stringify({status:"needsAction", completed:null})
     });
+    if(logs.some(l=>l.itemId===taskId)){ logs=logs.filter(l=>l.itemId!==taskId); await saveLogs(); }     // wieder geöffnet: nicht mehr in der Statistik zählen
     wsOnItemDone("goal", taskId, false);
     await loadGTasks();
     render(); setSync("on");
@@ -3642,7 +3643,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v234";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v235";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b"];
@@ -3830,10 +3831,16 @@ function tpDur(m){ const h = Math.floor(m/60), mi = m%60; return ((h?h+" h ":"")
 function tpDayTitle(day){ const d = parseDate(day); return d ? d.toLocaleDateString("de-DE",{weekday:"long", day:"numeric", month:"long", year:"numeric"}) : day; }
 
 /* ---- Ansicht ---- */
+function tpDn(b){
+  if(b.done) return true;
+  if(b.src && b.src.kind==="todo") return isEverDone(b.src.ref);
+  if(b.src && b.src.kind==="goal"){ const g = goalTasks.find(x=>x.id===b.src.ref); return !!(g && g.completed); }
+  return false;
+}
 function tpBlockHtml(b, lane){
   const w = (b.end-b.start)*tp.ppm, left = (b.start-tp.range.from)*tp.ppm;
-  return `<div class="tp-b${b.done?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${tpHM(b.start)}–${tpHM(b.end)}" style="left:${left}px;width:${w}px;top:${4+lane*tpLP()}px;background:${esc(b.color)}">
-    <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${b.done?"✓":""}</span>
+  return `<div class="tp-b${tpDn(b)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${tpHM(b.start)}–${tpHM(b.end)}" style="left:${left}px;width:${w}px;top:${4+lane*tpLP()}px;background:${esc(b.color)}">
+    <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${tpDn(b)?"✓":""}</span>
     <div class="tp-t">${b.rep?"🔁 ":""}${esc(b.title||"(ohne Titel)")}${b.rep&&b.note?" · "+esc(b.note):""}</div><div class="tp-m">${tpHM(b.start)}–${b.end>=1440?"24:00":tpHM(b.end)}</div><i class="tp-h r" data-h="r"></i></div>`;
 }
 /* ---- Job-Baukasten: Bausteine definieren und in den Tag schieben ---- */
@@ -4247,8 +4254,8 @@ function tpPoolHtml(){
 function tpPoolRender(){ const el = document.getElementById("tp_pool"); if(el) el.innerHTML = tp.mode==="job"?tpJobHtml():tpPoolHtml(); const q = document.getElementById("tp_q"); if(q && document.activeElement!==q && tp.q){ /* Fokus nicht erzwingen */ } }
 function tpSumText(){
   const bl = tpDayBlocks(tp.day); let all = 0, done = 0;
-  bl.forEach(b=>{ all += b.end-b.start; if(b.done) done += b.end-b.start; });
-  const hid = tp.hideDone ? bl.filter(b=>b.done).length : 0;
+  bl.forEach(b=>{ all += b.end-b.start; if(tpDn(b)) done += b.end-b.start; });
+  const hid = tp.hideDone ? bl.filter(b=>tpDn(b)).length : 0;
   return bl.length ? `${bl.length} ${bl.length===1?"Block":"Blöcke"}, geplant ${tpDur(all)}, davon erledigt ${tpDur(done)}${hid?" ("+hid+" erledigte ausgeblendet)":""}` : (tp.mode==="job"?"Noch nichts geplant. Unten einen Baustein antippen oder in die Zeitleiste ziehen.":"Noch nichts geplant. In die Zeitleiste tippen oder unten ein ToDo übernehmen.");
 }
 function tpMount(m){
@@ -4265,7 +4272,7 @@ function tpMount(m){
   const s = tpSettings();
   tp.range = tpRangeFor(tp.day); tp.ppm = s.pph/60;
   const prevScroll = document.getElementById("tp_scroll"); if(prevScroll) tp.scrollL = prevScroll.scrollLeft;
-  const allBl = tpDayBlocks(tp.day), bl = tp.hideDone ? allBl.filter(b=>!b.done) : allBl, L = tpLanes(bl), W = (tp.range.to-tp.range.from)*tp.ppm, H = L.n*tpLP()+8;
+  const allBl = tpDayBlocks(tp.day), bl = tp.hideDone ? allBl.filter(b=>!tpDn(b)) : allBl, L = tpLanes(bl), W = (tp.range.to-tp.range.from)*tp.ppm, H = L.n*tpLP()+8;
   let hours = ""; for(let h = tp.range.from/60; h<tp.range.to/60; h++) hours += `<span style="left:${(h*60-tp.range.from)*tp.ppm}px">${tpPad(h)}:00</span>`;
   const now = new Date(), nowM = now.getHours()*60+now.getMinutes();
   const showNow = tp.day===todayKey() && nowM>=tp.range.from && nowM<=tp.range.to;
@@ -4317,7 +4324,27 @@ function tpAddFromPool(kind, ref){
   tpAdd({id:uid(), title:item.title, start:st, end:st+dur, color:kind==="goal"?TP_COLORS[1]:TP_COLORS[0], done:false, note:"", src:{kind, ref}});
   render(); toast("Zur Tagesstruktur hinzugefügt");
 }
-function tpToggleDone(id){ const b = tpBlock(id); if(!b) return; b.done = !b.done; tpDirty(); render(); }
+/* Abhaken eines Blocks: ist er aus einem ToDo oder Tagesziel übernommen, wird dieses mit abgehakt (mit Statistik und Protokoll wie in Heute) */
+async function tpSetDone(b, val){
+  if(b.src && (b.src.kind==="goal" || b.src.kind==="todo")){
+    const ref = b.src.ref;
+    try{
+      if(b.src.kind==="goal"){
+        const doneNow = tpDn({src:b.src, done:false});
+        if(val && !doneNow){ await completeGTask(ref); if(allOpenGoals.some(x=>x.id===ref) && !goalTasks.some(x=>x.id===ref && x.completed)) return false; }
+        else if(!val && doneNow) await uncompleteGTask(ref);
+      }else{
+        const t = tasks.find(x=>x.id===ref);
+        if(t){
+          if(val && !isEverDone(ref)){ await toggleDone(ref, "once"); if(!isEverDone(ref)) return false; }
+          else if(!val && isEverDone(ref)) await toggleDone(ref, "once");
+        }
+      }
+    }catch(e){ console.error("Abhaken:", e); toast("Abhaken fehlgeschlagen"); return false; }
+  }
+  b.done = !!val; tpDirty(); return true;
+}
+async function tpToggleDone(id){ const b = tpBlock(id); if(!b) return; await tpSetDone(b, !tpDn(b)); render(); }
 function tpDelete(id){ const arr = tpEnsureDay(tp.day), i = arr.findIndex(b=>b.id===id); if(i>=0){ tp.deleted.add(id); arr.splice(i,1); tpDirty(); } }
 function tpEdit(id, nb){
   if(document.getElementById("modalBg")) return;
@@ -4330,21 +4357,23 @@ function tpEdit(id, nb){
       <div style="flex:1"><label>Bis</label><input type="time" id="tpe_e" value="${b.end>=1440?"00:00":tpHM(b.end)}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px"></div></div>
     <label>Farbe</label><div class="tp-col" id="tpe_c">${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.color?"on":""}"></button>`).join("")}</div>
     <label>Notiz</label><input type="text" id="tpe_n" maxlength="500" value="${esc(b.note||"")}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px">
-    <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="tpe_d"${b.done?" checked":""}> Erledigt (gilt nur in der Tagesstruktur)</label>
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="tpe_d"${tpDn(b)?" checked":""}> ${b.src?"Erledigt (hakt auch das übernommene "+(b.src.kind==="goal"?"Tagesziel":"ToDo")+" ab)":"Erledigt (gilt nur in der Tagesstruktur)"}</label>
     <div class="modal-actions">${isNew?"":`<button class="btn-ghost" id="tpe_del" style="color:#ff8a8e">Löschen</button>`}<button class="btn-ghost" id="tpe_x">Abbrechen</button><button class="btn-primary" id="tpe_ok">Speichern</button></div></div></div>`);
   let color = b.color;
   $("tpe_c").onclick = e=>{ const c = e.target.closest("[data-c]"); if(!c) return; color = c.dataset.c; [...$("tpe_c").children].forEach(x=>x.classList.toggle("on", x===c)); };
   $("tpe_x").onclick = ()=>$("modalBg").remove();
   $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
   if($("tpe_del")) $("tpe_del").onclick = ()=>{ $("modalBg").remove(); tpDelete(b.id); render(); };
-  $("tpe_ok").onclick = ()=>{
+  $("tpe_ok").onclick = async ()=>{
     const pm = v=>{ const m = /^(\d{1,2}):(\d{2})$/.exec(v||""); return m ? +m[1]*60+ +m[2] : -1; };
     const s = pm($("tpe_s").value); let e = pm($("tpe_e").value);
     if(e===0 && s>0) e = 1440;
     if(s<0 || e<0 || e<=s){ toast("Die Endzeit muss nach der Startzeit liegen"); return; }
-    b.title = $("tpe_t").value.trim().slice(0,200); b.start = s; b.end = e; b.color = color; b.note = $("tpe_n").value.trim().slice(0,500); b.done = $("tpe_d").checked;
+    b.title = $("tpe_t").value.trim().slice(0,200); b.start = s; b.end = e; b.color = color; b.note = $("tpe_n").value.trim().slice(0,500); const wantDone = $("tpe_d").checked;
     if(isNew) tpAdd(b); else tpDirty();
-    $("modalBg").remove(); render();
+    $("modalBg").remove();
+    if(wantDone!==tpDn(b)) await tpSetDone(b, wantDone);
+    render();
   };
   setTimeout(()=>{ const t = $("tpe_t"); if(t) t.focus(); }, 50);
 }

@@ -3645,7 +3645,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v241";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v242";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -3661,12 +3661,12 @@ const tpPad = n=>String(n).padStart(2,"0");
 const tpHM = m=>tpPad(Math.floor(m/60)%24)+":"+tpPad(m%60);
 const tpCl = (v,a,b)=>Math.max(a,Math.min(b,v));
 const tpInt = (v,a,b,d)=>{ v = Math.floor(Number(v)); return Number.isFinite(v) ? tpCl(v,a,b) : d; };
-function tpDefault(){ return {v:1, settings:{from:6,to:22,snap:15,pph:120}, days:{}, jdays:{}, items:[], breaks:[]}; }
+function tpDefault(){ return {v:1, settings:{from:6,to:22,snap:15,pph:120,ab:{on:false,ref:""}}, days:{}, jdays:{}, items:[], breaks:[]}; }
 function tpNorm(d){
   const o = tpDefault();
   if(!d || typeof d!=="object") return o;
   const s = d.settings || {};
-  o.settings = {from:tpInt(s.from,0,23,6), to:tpInt(s.to,1,24,22), snap:[5,10,15,30].includes(+s.snap)?+s.snap:15, pph:tpInt(s.pph,40,400,120), grid:(Array.isArray(s.grid)?s.grid:[]).map(g=>({from:tpInt(g&&g.from,0,1439,-1), to:tpInt(g&&g.to,1,1440,-1)})).filter(g=>g.from>=0&&g.to>g.from).slice(0,20)};
+  o.settings = {from:tpInt(s.from,0,23,6), to:tpInt(s.to,1,24,22), snap:[5,10,15,30].includes(+s.snap)?+s.snap:15, pph:tpInt(s.pph,40,400,120), grid:(Array.isArray(s.grid)?s.grid:[]).map(g=>({from:tpInt(g&&g.from,0,1439,-1), to:tpInt(g&&g.to,1,1440,-1)})).filter(g=>g.from>=0&&g.to>g.from).slice(0,20), ab:{on:!!(s.ab&&s.ab.on), ref:/^\d{4}-\d{2}-\d{2}$/.test(String(s.ab&&s.ab.ref||""))?String(s.ab.ref):""}};
   if(o.settings.to<=o.settings.from) o.settings.to = Math.min(24, o.settings.from+1);
   const parse = (src, dst)=>Object.keys(src||{}).forEach(k=>{
     if(!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
@@ -3686,7 +3686,7 @@ function tpNorm(d){
     const r = x.rep;
     if(r && typeof r==="object"){
       let slots = [];
-      if(Array.isArray(r.slots)) slots = r.slots.map(q=>({wd:tpInt(q&&q.wd,0,6,-1), start:tpInt(q&&q.start,0,1439,480), min:tpInt(q&&q.min,5,720,it.min)}));
+      if(Array.isArray(r.slots)) slots = r.slots.map(q=>({wd:tpInt(q&&q.wd,0,6,-1), start:tpInt(q&&q.start,0,1439,480), min:tpInt(q&&q.min,5,720,it.min), w:(q&&(q.w==="A"||q.w==="B"))?q.w:""}));
       else if(Array.isArray(r.days)) slots = r.days.map(n=>({wd:tpInt(n,0,6,-1), start:tpInt(r.start,0,1439,480), min:it.min}));
       slots = slots.filter(q=>q.wd>=0).slice(0,40);
       const cnt = {}; slots.forEach((q,i)=>{ const n0 = tpInt(r.slots&&r.slots[i]&&r.slots[i].n,0,39,-1); q.n = n0; });
@@ -3718,11 +3718,18 @@ function tpBreakFor(day, q){            // gemeinsame Ferien und freie Tage (gel
 }
 function tpDayBreaks(day){ return ((tp.data&&tp.data.breaks)||[]).filter(b=>day>=b.from && day<=b.to); }
 function tpBreakText(b){ return b.label+": "+wsShortDate(b.from)+(b.to!==b.from?" – "+wsShortDate(b.to):"")+(b.tfrom>=0?", "+tpHM(b.tfrom)+"–"+tpHM(b.tto):""); }
+function tpWeekType(day){
+  const ab = tpSettings().ab; if(!ab || !ab.on) return "";
+  const mon = k=>{ const d = parseDate(k); if(!d) return null; return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()-((d.getDay()+6)%7)); };
+  const a = mon(day), r = mon(ab.ref || todayKey()); if(a==null || r==null) return "";
+  const w = Math.round((a-r)/604800000); return (((w%2)+2)%2)===0 ? "A" : "B";
+}
 function tpSlotsAll(it, day){
   const r = it.rep; if(!r || r.auto===false) return []; const d = parseDate(day); if(!d) return [];
   if(r.from && day<r.from) return []; if(r.to && day>r.to) return [];
   const isk = r.skip.find(x=>day>=x.from && day<=x.to);
-  return r.slots.filter(x=>x.wd===d.getDay()).sort((a,b)=>a.start-b.start).map(q=>{
+  const wt = tpWeekType(day);
+  return r.slots.filter(x=>x.wd===d.getDay() && (!wt || !x.w || x.w===wt)).sort((a,b)=>a.start-b.start).map(q=>{
     const br = tpBreakFor(day, q);
     return {q, key:tpSlotKey(day,q), skip: br ? br.label : (isk ? (isk.label||"Ausfall") : "")};
   });
@@ -3852,7 +3859,7 @@ function tpLanes(blocks){
   return {lane, n:Math.max(ends.length, 3)};
 }
 function tpDur(m){ const h = Math.floor(m/60), mi = m%60; return ((h?h+" h ":"")+(mi?mi+" min":(h?"":"0 min"))).trim(); }
-function tpDayTitle(day){ const d = parseDate(day); return d ? d.toLocaleDateString("de-DE",{weekday:"long", day:"numeric", month:"long", year:"numeric"}) : day; }
+function tpDayTitle(day){ const d = parseDate(day); const wt = tp.data ? tpWeekType(day) : ""; return d ? d.toLocaleDateString("de-DE",{weekday:"long", day:"numeric", month:"long", year:"numeric"})+(wt?" · "+wt+"-Woche":"") : day; }
 
 /* ---- Ansicht ---- */
 function tpDn(b){
@@ -3873,7 +3880,7 @@ function tpJobHtml(){
   return `<h3>Bausteine für den Job-Tag</h3>
     <div class="tp-note" style="padding:0 0 8px">Baustein antippen (＋) oder auf die Zeitleiste ziehen. Das Ziehen funktioniert am Griff ⠿.</div>
     ${it.map(x=>`<div class="tp-it tp-bs" data-bs="${esc(x.id)}">${tpAuto(x)?`<span style="padding:4px 6px">🔁</span>`:`<span class="tp-grip" data-grip="${esc(x.id)}" style="touch-action:none;cursor:grab;padding:4px 6px">⠿</span>`}${tpSw(x)}<span class="tx">${esc(x.title)}</span><span class="dt">${esc(tpDur(x.min))}${x.rep?" · "+esc(tpRepText(x))+(tpAuto(x)&&x.rep.from?", ab "+esc(wsShortDate(x.rep.from)):""):""}</span>${tp.unlock?`<button class="tp-btn" data-tp="bedit" data-r="${esc(x.id)}" title="Baustein bearbeiten">✎</button>`:""}${tpAuto(x)?`<button class="tp-btn" data-tp="bgo" data-r="${esc(x.id)}" title="Zur nächsten Stunde springen">→</button>`:`<button class="tp-btn" data-tp="badd" data-r="${esc(x.id)}">＋</button>`}</div>`).join("") || `<div class="tp-note" style="padding:8px 2px">Noch keine Bausteine. Mit „Baustein anlegen“ den ersten definieren (zum Beispiel Unterricht, Konferenz, Korrekturen).</div>`}
-    ${tp.unlock?`<div style="margin-top:8px"><button class="tp-btn pri" data-tp="bnew">Baustein anlegen</button></div>`:""}${tpBreakListHtml()}`;
+    ${tp.unlock?`<div style="margin-top:8px"><button class="tp-btn pri" data-tp="bnew">Baustein anlegen</button></div>`:""}${tpAbHtml()}${tpBreakListHtml()}`;
 }
 /* Listenansicht: alle Unterrichtsstunden der nächsten 10 Tage ab dem eingestellten Tag, direkt bearbeitbar */
 const TP_LIST_DAYS = 10;
@@ -4033,6 +4040,12 @@ function tpReportOpen(){
     catch(e){ const ta = document.createElement("textarea"); ta.value = txt; ta.style.cssText = "position:fixed;left:-999px"; document.body.appendChild(ta); ta.select(); let ok = false; try{ ok = document.execCommand("copy"); }catch(_){} ta.remove(); toast(ok ? "Bericht in die Zwischenablage kopiert" : "Kopieren nicht möglich"); }
   };
 }
+function tpAbHtml(){
+  const ab = tpSettings().ab, wt = tpWeekType(todayKey());
+  return `<h3 style="margin-top:14px">A- und B-Wochen</h3><div class="tp-note" style="padding:0 0 6px">Wenn eingeschaltet, kann jeder Termin eines Bausteins nur in A-Wochen oder nur in B-Wochen liegen (Baustein bearbeiten, Termin, Woche).</div>
+  <div class="tp-it"><span class="tx">A/B-Wochen ${ab.on?"eingeschaltet":"ausgeschaltet"}${ab.on&&wt?" · diese Woche: "+wt:""}</span>${tp.unlock?`<button class="tp-btn${ab.on?"":" pri"}" data-tp="abtoggle">${ab.on?"Ausschalten":"Einschalten"}</button>`:""}</div>
+  ${ab.on?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><span class="tp-note" style="padding:0">Eine A-Woche ist die Woche, in der der</span><input type="date" id="tp_abref" value="${esc(ab.ref)}"${tp.unlock?"":" disabled"} style="background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:6px 8px;font-family:inherit"><span class="tp-note" style="padding:0">liegt (alle zwei Wochen wechselt es).</span></div>`:""}`;
+}
 function tpBreakListHtml(){
   const bs = tp.data.breaks.slice().sort((a,b)=>a.from<b.from?-1:1);
   return `<h3 style="margin-top:14px">Ferien und freie Tage</h3><div class="tp-note" style="padding:0 0 6px">An diesen Tagen entfallen alle wiederkehrenden Stunden. Von Hand gesetzte Blöcke bleiben.</div>`
@@ -4106,13 +4119,14 @@ function tpGoFirst(it){
   if(!d) return ""; d = d.slice(0,10); tp.day = d; tp.scrollL = null; return d;
 }
 function tpAuto(it){ return !!(it.rep && it.rep.auto!==false); }
-function tpRepText(it){ const r = it.rep; if(!r) return ""; return (r.auto!==false?"🔁 ":"")+r.slots.slice().sort((a,b)=>((a.wd+6)%7)-((b.wd+6)%7)||a.start-b.start).map(q=>TP_WD.find(x=>x[0]===q.wd)[1]+" "+tpHM(q.start)).join(", "); }
+function tpRepText(it){ const r = it.rep; if(!r) return ""; return (r.auto!==false?"🔁 ":"")+r.slots.slice().sort((a,b)=>((a.wd+6)%7)-((b.wd+6)%7)||a.start-b.start).map(q=>TP_WD.find(x=>x[0]===q.wd)[1]+" "+tpHM(q.start)+(q.w&&tpSettings().ab.on?" ("+q.w+")":"")).join(", "); }
 function tpItemEdit(id){
   if(document.getElementById("modalBg")) return;
+  const AB = !!tpSettings().ab.on;
   const isNew = !id, b = isNew ? {id:uid(), title:"", min:30, color:TP_COLORS[0], cs:"", ck:"", rep:null, occ:{}} : tp.data.items.find(x=>x.id===id);
   if(!b) return;
   const inp = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px";
-  const R = b.rep ? {slots:b.rep.slots.map(q=>({wd:q.wd,start:q.start,min:q.min,n:q.n,custom:q.min!==b.min})), from:b.rep.from, to:b.rep.to, skip:b.rep.skip.map(x=>({from:x.from,to:x.to,label:x.label||""}))} : {slots:[], from:"", to:"", skip:[]};
+  const R = b.rep ? {slots:b.rep.slots.map(q=>({wd:q.wd,start:q.start,min:q.min,n:q.n,w:q.w||"",custom:q.min!==b.min})), from:b.rep.from, to:b.rep.to, skip:b.rep.skip.map(x=>({from:x.from,to:x.to,label:x.label||""}))} : {slots:[], from:"", to:"", skip:[]};
   let repOn = b.rep ? b.rep.auto!==false : isNew;
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal" style="max-height:90vh;overflow:auto"><h2>${isNew?"Neuer Baustein":"Baustein bearbeiten"}</h2>
     <label>Titel</label><input type="text" id="tpi_t" maxlength="120" value="${esc(b.title)}" style="${inp}">
@@ -4122,7 +4136,7 @@ function tpItemEdit(id){
     <label>Farbe Klassenstufe (zweiter Streifen)</label><div class="tp-col" id="tpi_ck"><button type="button" data-c="" class="tp-none${b.ck?"":" on"}">–</button>${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.ck?"on":""}"></button>`).join("")}</div>
     <div id="tpi_prev" style="margin:0 0 8px"></div>
     <label style="margin-top:10px">Stundenplan: Termine (beliebig viele, auch mehrere am selben Wochentag)</label>
-    <div id="tpi_slots"></div>
+    <div id="tpi_slots"></div>${AB?"":`<div class="tp-note" style="padding:0 0 4px">Für Herder: A- und B-Wochen lassen sich unten bei den Bausteinen einschalten, dann erscheint hier je Termin die Wahl der Woche.</div>`}
     <button type="button" class="tp-btn" id="tpi_sadd">+ Termin hinzufügen</button>
     <details style="margin:8px 0"><summary class="muted" style="font-size:13px;cursor:pointer">Stundenraster (damit „von Stunde bis Stunde“ die Uhrzeit setzt)</summary>
       <div class="tp-note" style="padding:6px 0">Eine Zeile je Unterrichtsstunde, in der Reihenfolge 1., 2., 3. … Format: 07:55-08:40</div>
@@ -4153,7 +4167,7 @@ function tpItemEdit(id){
       return `<div style="border-top:1px solid #30343b;padding:6px 0"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <select data-swd="${i}" style="${inp};margin:0;width:auto">${TP_WD.map(x=>`<option value="${x[0]}"${x[0]===q.wd?" selected":""}>${x[1]}</option>`).join("")}</select>
         <input type="time" data-sst="${i}" value="${tpHM(q.start)}" style="${inp};margin:0;width:auto"><span class="muted" style="font-size:12px">Dauer</span><input type="number" data-smin="${i}" min="5" max="720" step="5" value="${q.min}" style="${inp};margin:0;width:70px"><span class="muted" style="font-size:12px">min</span>
-        <button type="button" class="tp-btn" data-sdel="${i}">×</button></div>
+        ${AB?`<select data-sw="${i}" title="A- oder B-Woche" style="${inp};margin:0;width:auto"><option value="">jede Woche</option><option value="A"${q.w==="A"?" selected":""}>nur A-Woche</option><option value="B"${q.w==="B"?" selected":""}>nur B-Woche</option></select>`:""}<button type="button" class="tp-btn" data-sdel="${i}">×</button></div>
         ${G.length?`<div style="display:flex;gap:6px;align-items:center;margin-top:4px"><span class="muted" style="font-size:12px">Stunde</span>
           <select data-sg1="${i}" style="${inp};margin:0;width:auto"><option value="">von …</option>${G.map((g,k)=>`<option value="${k}"${k===gs?" selected":""}>${k+1}.</option>`).join("")}</select>
           <select data-sg2="${i}" style="${inp};margin:0;width:auto"><option value="">bis …</option>${G.map((g,k)=>`<option value="${k}"${k===ge?" selected":""}>${k+1}.</option>`).join("")}</select></div>`:""}</div>`;
@@ -4166,6 +4180,7 @@ function tpItemEdit(id){
   $("tpi_slots").onchange = e=>{
     const a = e.target.dataset, G = gridList();
     if(a.swd!=null) R.slots[+a.swd].wd = +e.target.value;
+    if(a.sw!=null) R.slots[+a.sw].w = e.target.value;
     if(a.sst!=null){ const m = /^(\d{1,2}):(\d{2})$/.exec(e.target.value||""); if(m) R.slots[+a.sst].start = +m[1]*60+ +m[2]; }
     if(a.smin!=null){ R.slots[+a.smin].min = tpInt(e.target.value,5,720,b.min); R.slots[+a.smin].custom = true; }
     const gi = a.sg1!=null ? +a.sg1 : a.sg2!=null ? +a.sg2 : -1;
@@ -4178,7 +4193,7 @@ function tpItemEdit(id){
   };
   $("tpi_grid").onchange = ()=>slotsUi();
   $("tpi_slots").onclick = e=>{ const d = e.target.closest("[data-sdel]"); if(!d) return; R.slots.splice(+d.dataset.sdel,1); slotsUi(); };
-  $("tpi_sadd").onclick = ()=>{ const last = R.slots[R.slots.length-1]; R.slots.push({wd:last?last.wd:1, start:last?last.start:480, min:tpInt($("tpi_m").value,5,720,b.min), n:-1}); slotsUi(); };
+  $("tpi_sadd").onclick = ()=>{ const last = R.slots[R.slots.length-1]; R.slots.push({wd:last?last.wd:1, start:last?last.start:480, min:tpInt($("tpi_m").value,5,720,b.min), n:-1, w:last&&last.w?(last.w==="A"?"B":"A"):""}); slotsUi(); };
   $("tpi_rep").onchange = ()=>{ repOn = $("tpi_rep").checked; $("tpi_rbox").style.display = repOn?"block":"none"; if(repOn){ addFirst(); slotsUi(); } };
   $("tpi_skadd").onclick = ()=>{
     const a = $("tpi_sk1").value, c = $("tpi_sk2").value || a;
@@ -4200,7 +4215,7 @@ function tpItemEdit(id){
       const from = $("tpi_from").value||(repOn?todayKey():""), to = $("tpi_to").value||"";
       if(to && from && to<from){ toast("Das Ende liegt vor dem Beginn"); return; }
       const dm = tpInt($("tpi_m").value,5,720,30);
-      rp = {slots:R.slots.map(q=>({wd:q.wd,start:q.start,min:q.custom?q.min:dm,n:q.n})), from, to, skip:R.skip.slice(), auto:repOn};
+      rp = {slots:R.slots.map(q=>({wd:q.wd,start:q.start,min:q.custom?q.min:dm,n:q.n,w:q.w||""})), from, to, skip:R.skip.slice(), auto:repOn};
       tpSettings().grid = gridList();
     }else if(repOn && false){ }
     if(rp){ const u = {}; rp.slots.forEach(q=>{ if(q.n>=0){ (u[q.wd]=u[q.wd]||new Set()).add(q.n); } }); rp.slots.forEach(q=>{ if(q.n<0){ const st = (u[q.wd]=u[q.wd]||new Set()); let n=0; while(st.has(n)) n++; st.add(n); q.n=n; } }); }
@@ -4487,6 +4502,7 @@ function tpAct(a, el){
     if(!tpGoFirst(it)){ toast("Keine Stunde im eingestellten Zeitraum"); return; }
     render();
   }
+  else if(a==="abtoggle"){ if(!tp.unlock){ tpLockHint(); return; } const ab = tpSettings().ab; ab.on = !ab.on; if(ab.on && !ab.ref) ab.ref = todayKey(); tpDirty(); render(); }
   else if(a==="bnew"){ tpItemEdit(""); }
   else if(a==="brknew"){ tpBreakEdit(""); }
   else if(a==="brkedit"){ tpBreakEdit(el.dataset.r); }
@@ -4595,6 +4611,7 @@ function tpChange(e){
   if(view!=="plan" || tp.mode==="meta") return;
   if(e.target.dataset && e.target.dataset.lf && tpListStore(e)) return;
   const id = e.target.id;
+  if(id==="tp_abref"){ if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)){ tpSettings().ab.ref = e.target.value; tpDirty(); render(); } return; }
   if(id==="tp_date"){ if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)){ tp.day = e.target.value; render(); } return; }
   if(["tp_from","tp_to","tp_snap","tp_pph"].includes(id)){
     const s = tpSettings(), v = +e.target.value;

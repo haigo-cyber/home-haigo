@@ -3685,7 +3685,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v262";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v263";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -4521,61 +4521,100 @@ function tpMetaSpans(){            // Eintrag -> Zeitraum, so wie ihn die Ansich
   });
   return out;
 }
-function tpMetaSync(){
-  if(tp.mode!=="day" || !tp.data || !tp.day) return false;
-  if(!tm.data){ if(!tm.loading && typeof wsLoaded!=="undefined" && wsLoaded) tmLoad().then(()=>{ if(view==="plan" && tp.mode==="day") render(); }); return false; }
-  if(typeof wsLoaded==="undefined" || !wsLoaded) return false;
+function tpSyncStat(){ return {added:0, moved:0, removed:0, done:0, job:0, reason:""}; }
+function tpMetaSync(days){
+  const st = tpSyncStat(); days = days || [tp.day];
+  if(!tp.data || !days[0]) return st;
+  if(typeof wsLoaded==="undefined" || !wsLoaded){ st.reason = "Der Arbeitsbereich ist noch nicht geladen."; return st; }
+  if(!tm.data){ if(!tm.loading) tmLoad().then(()=>{ if(view==="plan" && tp.mode==="day") render(); }); st.reason = "Die Metaprojektplanung ist noch nicht geladen."; return st; }
   const spans = tpMetaSpans(), today = todayKey(), off = (tp.data.metaOff = tp.data.metaOff || {});
   const inSp = (sp, d)=>!!sp && sp.st<=d && d<=sp.en;
-  let changed = false;
   // 1. Meta-Blöcke an Tagen, an denen der Eintrag in den Metaprojekten nicht mehr steht: auf den neuen Tag verschieben oder entfernen
   Object.keys(tp.data.days).forEach(d=>{
     if(d<today) return; const arr = tp.data.days[d].blocks;
     for(let i = arr.length-1; i>=0; i--){
       const b = arr[i]; if(!b.src || b.src.kind!=="meta") continue;
       const sp = spans.get(b.src.ref); if(inSp(sp, d)) continue;
-      arr.splice(i,1); changed = true;
+      arr.splice(i,1);
       let target = "";
       if(sp){ const from = sp.st>today ? sp.st : today; for(let n = 0; n<90; n++){ const t = tpDayAdd(from, n); if(t>sp.en) break; const ta = tp.data.days[t] && tp.data.days[t].blocks; if(!off[b.src.ref+"|"+t] && !(ta && ta.some(x=>x.src && x.src.kind==="meta" && x.src.ref===b.src.ref))){ target = t; break; } } }
-      if(target){ if(!tp.data.days[target]) tp.data.days[target] = {blocks:[]}; tp.data.days[target].blocks.push(b); if(sp.done) b.done = true; }
-      else tp.deleted.add(b.id);
+      if(target){ if(!tp.data.days[target]) tp.data.days[target] = {blocks:[]}; tp.data.days[target].blocks.push(b); if(sp.done) b.done = true; st.moved++; }
+      else{ tp.deleted.add(b.id); st.removed++; }
     }
   });
-  // 2. fehlende Blöcke für den angezeigten Tag anlegen (heute und später)
-  const day = tp.day;
-  if(day>=today){
+  // 2. fehlende Blöcke für die angegebenen Tage anlegen (heute und später)
+  days.forEach(day=>{
+    if(day<today) return;
     const cur = (tp.data.days[day] && tp.data.days[day].blocks) || [], have = new Set(), links = new Set();
     cur.forEach(b=>{ if(!b.src) return; if(b.src.kind==="meta") have.add(b.src.ref); else links.add(b.src.ref); });
     tp.range = tpRangeFor(day);
     spans.forEach((c, ref)=>{
       if(!inSp(c, day) || have.has(ref)) return;
       if(c.link && c.link.ref && links.has(c.link.ref)) return;
-      const dur = 30, st = tpFree(day, dur, tp.range.from);      // ab Tagesbeginn an die erste freie Stelle, zum Feinjustieren
-      tpEnsureDay(day).push({id:uid(), title:c.title||"(ohne Titel)", start:st, end:st+dur, color:c.color||TP_COLORS[2], cs:"", ck:"", done:c.done, note:"", src:{kind:"meta", ref}, sd:""});
-      changed = true;
+      const dur = 30, t0 = tpFree(day, dur, tp.range.from);      // ab Tagesbeginn an die erste freie Stelle, zum Feinjustieren
+      tpEnsureDay(day).push({id:uid(), title:c.title||"(ohne Titel)", start:t0, end:t0+dur, color:c.color||TP_COLORS[2], cs:"", ck:"", done:c.done, note:"", src:{kind:"meta", ref}, sd:""});
+      st.added++;
     });
-  }
+  });
   // 3. Erledigt-Stand kommt aus den Metaprojekten (in beide Richtungen)
-  Object.keys(tp.data.days).forEach(d=>{ if(d<today) return; tp.data.days[d].blocks.forEach(b=>{ if(b.src && b.src.kind==="meta"){ const c = spans.get(b.src.ref); if(c && !!b.done!==!!c.done){ b.done = !!c.done; changed = true; } } }); });
-  if(changed) tpDirty();
-  return changed;
+  Object.keys(tp.data.days).forEach(d=>{ if(d<today) return; tp.data.days[d].blocks.forEach(b=>{ if(b.src && b.src.kind==="meta"){ const c = spans.get(b.src.ref); if(c && !!b.done!==!!c.done){ b.done = !!c.done; st.done++; } } }); });
+  if(st.added || st.moved || st.removed || st.done) tpDirty();
+  return st;
 }
-function tpJobRules(){
-  if(tp.mode!=="day" || !tp.data || !tp.day) return false;
-  const day = tp.day, today = todayKey(); let changed = false;
-  tp.range = tpRangeFor(day);
-  // Job-Blöcke gehen allen anderen Blöcken vor: offene Blöcke am angezeigten Tag, die eine Job-Stunde überdecken, rücken dahinter
-  if(day>=today && tpSchoolOn() && tp.data.days[day]){
+/* Job-Blöcke gehen allen anderen Blöcken vor: offene Blöcke, die eine Job-Stunde überdecken, rücken dahinter */
+function tpJobRules(days){
+  const st = tpSyncStat(); days = days || [tp.day];
+  if(!tp.data || !days[0] || !tpSchoolOn()) return st;
+  const today = todayKey();
+  days.forEach(day=>{
+    if(day<today || !tp.data.days[day]) return;
+    tp.range = tpRangeFor(day);
     const fixed = tpRepBlocks(day, true).concat(tpJobDayBlocks(day)).sort((a,b)=>a.start-b.start);
-    if(fixed.length) tp.data.days[day].blocks.filter(b=>!tpDn(b)).sort((a,b)=>a.start-b.start).forEach(b=>{
+    if(!fixed.length) return;
+    tp.data.days[day].blocks.filter(b=>!tpDn(b)).sort((a,b)=>a.start-b.start).forEach(b=>{
       const dur = b.end-b.start; let t = b.start;
       for(let k = 0; k<30; k++){ const hit = fixed.find(f=>f.start<t+dur && f.end>t); if(!hit) break; t = hit.end; }
       t = Math.min(t, 1440-dur);
-      if(t!==b.start){ b.start = t; b.end = t+dur; changed = true; fixed.push({start:t, end:t+dur}); fixed.sort((x,y)=>x.start-y.start); }
+      if(t!==b.start){ b.start = t; b.end = t+dur; st.job++; fixed.push({start:t, end:t+dur}); fixed.sort((x,y)=>x.start-y.start); }
     });
-  }
-  if(changed) tpDirty();
-  return changed;
+  });
+  if(st.job) tpDirty();
+  return st;
+}
+/* Knopf „Jetzt synchronisieren“ (Tag, Job, Metaprojekte): Dateien abgleichen, dann die nächsten 28 Tage mit Metaprojekten und Job abstimmen */
+let tpSyncing = false;
+async function tpSyncNow(){
+  if(tpSyncing) return; tpSyncing = true; setSync("busy");
+  const m0 = tp.mode, d0 = tp.day; let msg = "";
+  try{
+    if(tm.pending) await tmSave();
+    if(tp.pending) await tpSave();
+    const tm0 = tm.data, tp0 = tp.data;      // schlägt das Laden fehl, bleibt der bisherige Stand erhalten
+    if(!tm.loading) await tmLoad();
+    if(!tm.data && tm0){ tm.data = tm0; tm.err = ""; }
+    if(tp.fileId && !tp.loading) await tpLoad();
+    if(!tp.data && tp0){ tp.data = tp0; tp.err = ""; }
+    if(!tp.data){ msg = "Die Tagesstruktur konnte nicht geladen werden."; }
+    else{
+      tp.mode = "day"; tp.day = tp.day || todayKey();
+      const today = todayKey(), days = []; for(let n = 0; n<28; n++) days.push(tpDayAdd(today, n));
+      const a = tpMetaSync(days);
+      if(a.reason) msg = a.reason;
+      else{
+        const b = tpJobRules(days);
+        const parts = [];
+        if(a.added) parts.push(a.added+(a.added===1?" Block angelegt":" Blöcke angelegt"));
+        if(a.moved) parts.push(a.moved+(a.moved===1?" Block auf einen anderen Tag gelegt":" Blöcke auf einen anderen Tag gelegt"));
+        if(a.removed) parts.push(a.removed+(a.removed===1?" Block entfernt":" Blöcke entfernt"));
+        if(a.done) parts.push(a.done+" Erledigt-Stand angeglichen");
+        if(b.job) parts.push(b.job+(b.job===1?" Block hinter eine Job-Stunde gerückt":" Blöcke hinter Job-Stunden gerückt"));
+        msg = parts.length ? "Synchronisiert: "+parts.join(", ") : "Synchronisiert: alles war schon abgestimmt";
+      }
+      if(tp.pending) await tpSave();
+    }
+  }catch(e){ msg = "Synchronisieren fehlgeschlagen: "+String((e&&e.message)||e).slice(0,120); }
+  finally{ tp.mode = m0; tp.day = d0; tpSyncing = false; setSync("on"); }
+  render(); toast(msg);
 }
 function tpPoolItems(day){
   const used = new Set(tpDayBlocks(day).filter(b=>b.src).map(b=>b.src.kind+":"+b.src.ref));
@@ -4620,7 +4659,7 @@ function tpMount(m){
     if(!tp.loading) tpLoad().then(()=>{ if(view==="plan") render(); });
     return;
   }
-  tpMetaSync(); tpJobRules();
+  if(tp.mode==="day"){ tpMetaSync(); tpJobRules(); }
   const s = tpSettings();
   tp.range = tpRangeFor(tp.day); tp.ppm = s.pph/60;
   const prevScroll = document.getElementById("tp_scroll"); if(prevScroll) tp.scrollL = prevScroll.scrollLeft;
@@ -5113,7 +5152,7 @@ function tmPoolHtml(){
 }
 function tpModeBar(inWork){
   if(inWork) return "";
-  return `<div class="tp-bar"><span style="flex:1"></span><button class="tp-btn${tp.unlock?" pri":""}" data-tpunlock="1" title="${tp.unlock?"Bearbeiten ist an. Antippen zum Sperren":"Gesperrt: nur ansehen. Antippen zum Bearbeiten"}">${tp.unlock?"✏️ Bearbeiten":"🔒 Ansicht"}</button></div>`;
+  return `<div class="tp-bar"><span style="flex:1"></span><button class="tp-btn" data-tpsync="1" title="Tagesstruktur, Job und Metaprojekte jetzt abgleichen">🔄 Jetzt synchronisieren</button><button class="tp-btn${tp.unlock?" pri":""}" data-tpunlock="1" title="${tp.unlock?"Bearbeiten ist an. Antippen zum Sperren":"Gesperrt: nur ansehen. Antippen zum Bearbeiten"}">${tp.unlock?"✏️ Bearbeiten":"🔒 Ansicht"}</button></div>`;
 }
 function tmMount(m){
   if(tm.drag) return;
@@ -5630,6 +5669,7 @@ function tmChange(e){
       tm.scrollL = null; render(); e.stopPropagation(); return;
     }
     if(view!=="plan") return;
+    if(e.target.closest && e.target.closest("[data-tpsync]")){ tpSyncNow(); e.stopPropagation(); return; }
     if(e.target.closest && e.target.closest("[data-tpunlock]")){ tp.unlock = !tp.unlock; tp.more = false; tm.more = false; render(); toast(tp.unlock ? "Bearbeiten ist an" : "Gesperrt: nur Ansicht"); e.stopPropagation(); }
   }, true);
   main.addEventListener("pointerdown", tmDown);

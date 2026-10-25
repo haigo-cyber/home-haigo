@@ -3684,7 +3684,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v253";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v254";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -4924,8 +4924,7 @@ function tmLanes(blocks){
 const TM_KID_ROWS = 60, TM_KID_H = 16;
 function tmKidInfo(h, b){
   if(!h) return null;
-  const all = wsChildItems(h.doc, h.node), own = new Set(tm.data.blocks.filter(x=>x.src).map(x=>x.src.ref));   // Unterpunkte mit eigenem Balken nicht doppelt als Chip zeigen
-  const items = all.filter(k=>!(tm.hideDone && k.node.done) && !own.has(k.node.id));
+  const all = wsChildItems(h.doc, h.node), items = all.filter(k=>!(tm.hideDone && k.node.done));
   const dated = [], und = [];
   items.forEach(k=>{
     const n = k.node, sp = wsSpan(n), ld = (n.ld && wsIsDate(n.ld)) ? n.ld : "";
@@ -5025,7 +5024,10 @@ function tmMount(m){
   tm.ppd = tm.data.settings.ppd; tm.range = tmRange();
   const prev = document.getElementById("tm_scroll"); if(prev) tm.scrollL = prev.scrollLeft;
   const R = tm.range, days = R.to-R.from+1, W = days*tm.ppd, ppd = tm.ppd, metaMap = tmMetaMap();
-  const vis = tm.hideDone ? tm.data.blocks.filter(b=>!tmDn(b,metaMap)) : tm.data.blocks, L = tmLanes(vis), today = tmDN(todayKey());
+  /* Unterprojekte, deren Elternprojekt einen Balken hat, erscheinen nur als schmale Kästchen unter dem Elternbalken (nicht zusätzlich als eigener Balken) */
+  const vis0 = tm.hideDone ? tm.data.blocks.filter(b=>!tmDn(b,metaMap)) : tm.data.blocks, kidHide = new Set(), visRefs = new Set(vis0.filter(b=>b.src).map(b=>b.src.ref));
+  vis0.forEach(b=>{ const h = b.src ? metaMap.get(b.src.ref) : null; if(!h) return; try{ wsChildItems(h.doc, h.node).forEach(k=>{ if(visRefs.has(k.node.id)) kidHide.add(k.node.id); }); }catch(e){} });
+  const vis = vis0.filter(b=>!(b.src && kidHide.has(b.src.ref))), L = tmLanes(vis), today = tmDN(todayKey());
   const kidInfo = new Map(); vis.forEach(b=>{ const h = b.src ? metaMap.get(b.src.ref) : null; kidInfo.set(b.id, tmKidInfo(h, b)); });
   const laneRows = new Array(L.n).fill(0);
   if(tm.showKids) vis.forEach(b=>{ const ki = kidInfo.get(b.id), ln = L.lane.get(b.id); if(ki && ki.rows>laneRows[ln]) laneRows[ln] = ki.rows; });

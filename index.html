@@ -2969,8 +2969,9 @@ function render(){
   else if(view==="distractions"){
     let h=`<div class="section-title">🧹 Erlaubte Ablenkungen</div>`;
     h+=`<div class="muted" style="padding:0 4px 10px;font-size:13px">Dinge, die du tun darfst, wenn du gerade etwas Wichtiges vermeidest. Kein Datum, kein Zwang, einfach drücken wann immer du willst.</div>`;
+    if(distrLoadErr) h+=`<div class="card" style="display:block"><div class="body"><div class="title" style="color:#000">Die Ablenkungen konnten nicht geladen werden.</div><div class="sub" style="color:#555;margin-top:4px">Deine Liste in der Tabelle bleibt unverändert, es wird nichts überschrieben. Grund: ${esc(distrLoadErr)}</div><button class="mini" data-distr-reload="1" style="margin-top:8px">Neu laden</button></div></div>`;
     if(!distractions.length){
-      h+=empty("Noch nichts hier. Mit + eine Aktivität anlegen.");
+      h+=empty(distrLoadErr ? "Keine lokale Kopie vorhanden." : "Noch nichts hier. Mit + eine Aktivität anlegen.");
     } else {
       h+=distractions.map(d=>{
         const doneLogs=logs.filter(l=>l.itemId===d.id);
@@ -3684,7 +3685,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v255";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v256";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -5595,8 +5596,10 @@ async function loadNotes(){
   }
 }
 async function saveDistractions(){
+  if(distrLoadErr){ toast("Ablenkungen nicht gespeichert: Liste konnte nicht geladen werden. Bitte unter Ablenkungen „Neu laden“ tippen."); throw new Error("Ablenkungen nicht geladen"); }
   try{
     const json=JSON.stringify(distractions);
+    try{ localStorage.setItem("distrBak", json); }catch(_){}
     const url=`${SHEETS}/${spreadsheetId}/values/Distractions!A1?valueInputOption=RAW`;
     try{
       await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
@@ -5621,14 +5624,23 @@ async function saveDistractions(){
     throw e;
   }
 }
+let distrLoadErr = "";     // gesetzt, wenn das Laden scheiterte: dann wird nichts gespeichert, damit die Liste in der Tabelle nicht überschrieben wird
 async function loadDistractions(){
-  try{
-    const res=await api(`${SHEETS}/${spreadsheetId}/values/Distractions!A1`);
-    const cell=res.values?.[0]?.[0]||"[]";
-    distractions=JSON.parse(cell);
-  }catch(e){
-    distractions=[];
+  let lastErr = null;
+  for(let i = 0; i<3; i++){
+    try{
+      const res=await api(`${SHEETS}/${spreadsheetId}/values/Distractions!A1`);
+      const cell=res.values?.[0]?.[0]||"[]";
+      const arr=JSON.parse(cell); if(!Array.isArray(arr)) throw new Error("Inhalt ist keine Liste");
+      distractions=arr; distrLoadErr="";
+      try{ localStorage.setItem("distrBak", cell); }catch(_){}
+      return;
+    }catch(e){ lastErr = e; if(i<2) await new Promise(r=>setTimeout(r, 1500*(i+1))); }
   }
+  distrLoadErr = String((lastErr && lastErr.message) || lastErr || "unbekannter Fehler").slice(0,160);
+  console.warn("❌ loadDistractions FEHLER:", distrLoadErr);
+  let bak = []; try{ const x = JSON.parse(localStorage.getItem("distrBak")||"[]"); if(Array.isArray(x)) bak = x; }catch(_){}
+  distractions = bak;      // nur zur Anzeige, gespeichert wird in diesem Zustand nicht
 }
 async function addDistraction(data){
   setSync("busy");
@@ -11936,6 +11948,7 @@ main.addEventListener("click",e=>{
   const dl2=e.target.closest("[data-del-link]"); if(dl2){ deleteLink(dl2.dataset.delLink); return; }
   const dtg=e.target.closest("[data-tog-distraction]"); if(dtg){ toggleDistractionToday(dtg.dataset.togDistraction); return; }
   const mdi=e.target.closest("[data-md-import]"); if(mdi){ openMdImport(); return; }
+  const drl=e.target.closest("[data-distr-reload]"); if(drl){ setSync("busy"); loadDistractions().then(()=>{ setSync("on"); render(); toast(distrLoadErr?"Immer noch nicht ladbar":"Ablenkungen geladen ("+distractions.length+")"); }); return; }
   const dd=e.target.closest("[data-do-distraction]"); if(dd){ doDistraction(dd.dataset.doDistraction); return; }
   const edd=e.target.closest("[data-edit-distraction]"); if(edd){ const d=distractions.find(x=>x.id===edd.dataset.editDistraction); if(d) openDistractionForm(d); return; }
   const del=e.target.closest("[data-del-distraction]"); if(del){ deleteDistraction(del.dataset.delDistraction); return; }

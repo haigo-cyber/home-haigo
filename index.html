@@ -3685,7 +3685,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v256";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v258";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -3716,10 +3716,11 @@ function tpNorm(d){
       return {id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:st, end:en, color:String(b.color||TP_COLORS[0]).slice(0,20), cs:tpHex(b.cs), ck:tpHex(b.ck), done:!!b.done, note:String(b.note||"").slice(0,500),
         src:(b.src && b.src.kind && b.src.ref) ? {kind:String(b.src.kind), ref:String(b.src.ref)} : null,
         sd:/^\d{4}-\d{2}-\d{2}$/.test(String(b.sd||"")) ? String(b.sd) : ""};
-    }).filter(Boolean);
+    }).filter(Boolean).filter((b,i,arr)=>arr.findIndex(x=>x.id===b.id)===i);      // gleiche Block-Nummer am selben Tag nur einmal (Doppelte aus einem früheren Fehler beim Speichern)
     if(bl.length) dst[k] = {blocks:bl};
   });
   parse(d.days, o.days); parse(d.jdays, o.jdays);
+  o.metaOff = {}; Object.keys((d.metaOff && typeof d.metaOff==='object') ? d.metaOff : {}).slice(-3000).forEach(k=>{ if(/^.+\|\d{4}-\d{2}-\d{2}$/.test(k)) o.metaOff[k] = 1; });
   const dk = v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||"")) ? String(v) : "";
   o.items = (Array.isArray(d.items)?d.items:[]).map(x=>{
     if(!x || !x.title) return null;
@@ -3907,6 +3908,7 @@ function tpMerge(remote){
       });
     });
   });
+  tp.data.metaOff = tp.data.metaOff || {}; Object.keys(remote.metaOff||{}).forEach(k=>{ tp.data.metaOff[k] = 1; });
   (remote.breaks||[]).forEach(br=>{ if(!tp.deleted.has(br.id) && !tp.data.breaks.some(x=>x.id===br.id)) tp.data.breaks.push(br); });
   (remote.items||[]).forEach(it=>{
     if(tp.deleted.has(it.id)) return;
@@ -4497,6 +4499,42 @@ function tpDriftApply(move){
   });
   tpDirty(); return dr.length;
 }
+/* Metaprojekte: Was in der Ansicht Metaprojekte für einen Tag steht (Balken und Unterpunkte), erscheint für heute und später als Block in der Tag-Ansicht und lässt sich dort zeitlich feinjustieren. Gelöschte kommen für diesen Tag nicht wieder. */
+function tpMetaCands(day){
+  const out = new Map(); if(!tm.data || typeof wsLoaded==="undefined" || !wsLoaded) return out;
+  const dn = tmDN(day), mm = tmMetaMap();
+  tm.data.blocks.forEach(b=>{
+    if(!b.src) return; const h = tmNodeOf(b.src.ref, mm); if(!h) return;
+    if(tmDN(b.start)<=dn && dn<=tmDN(b.end)) out.set(b.src.ref, {ref:b.src.ref, title:(wsTitleOf(h.node)||b.title||"").slice(0,200), done:!!h.node.done, color:b.color, link:h.node.link||null});
+    if(!mm.get(b.src.ref)) return;
+    let kids = []; try{ kids = wsChildItems(h.doc, h.node); }catch(e){}
+    kids.forEach(k=>{
+      const n = k.node, sp = wsSpan(n), ld = wsIsDate(n.ld) ? n.ld : ""; if(!sp && !ld) return;
+      const st = sp ? (ld && ld<sp.start ? ld : sp.start) : ld, en = sp ? (ld && ld>sp.end ? ld : sp.end) : ld;
+      if(tmDN(st)<=dn && dn<=tmDN(en) && !out.has(n.id)) out.set(n.id, {ref:n.id, title:(wsTitleOf(n)||"").slice(0,200), done:!!n.done, color:b.color, link:n.link||null});
+    });
+  });
+  return out;
+}
+function tpMetaSync(){
+  if(tp.mode!=="day" || !tp.data || !tp.day || tp.day<todayKey()) return false;
+  if(!tm.data){ if(!tm.loading && typeof wsLoaded!=="undefined" && wsLoaded) tmLoad().then(()=>{ if(view==="plan" && tp.mode==="day") render(); }); return false; }
+  const day = tp.day, cands = tpMetaCands(day); if(!cands.size) return false;
+  const cur = (tp.data.days[day] && tp.data.days[day].blocks) || [], have = new Set(), links = new Set();
+  cur.forEach(b=>{ if(!b.src) return; if(b.src.kind==="meta") have.add(b.src.ref); else links.add(b.src.ref); });
+  tp.data.metaOff = tp.data.metaOff || {}; tp.range = tpRangeFor(day);
+  let changed = false;
+  cands.forEach(c=>{
+    if(have.has(c.ref) || tp.data.metaOff[c.ref+"|"+day]) return;
+    if(c.link && c.link.ref && links.has(c.link.ref)) return;
+    const dur = 30, st = tpFree(day, dur, tp.range.from);      // ab Tagesbeginn an die erste freie Stelle, zum Feinjustieren
+    tpEnsureDay(day).push({id:uid(), title:c.title||"(ohne Titel)", start:st, end:st+dur, color:c.color||TP_COLORS[2], cs:"", ck:"", done:c.done, note:"", src:{kind:"meta", ref:c.ref}, sd:""});
+    changed = true;
+  });
+  cur.forEach(b=>{ if(b.src && b.src.kind==="meta" && !b.done){ const c = cands.get(b.src.ref); if(c && c.done){ b.done = true; changed = true; } } });
+  if(changed) tpDirty();
+  return changed;
+}
 function tpPoolItems(day){
   const used = new Set(tpDayBlocks(day).filter(b=>b.src).map(b=>b.src.kind+":"+b.src.ref));
   const q = tp.q.trim().toLowerCase(), out = [];
@@ -4540,6 +4578,7 @@ function tpMount(m){
     if(!tp.loading) tpLoad().then(()=>{ if(view==="plan") render(); });
     return;
   }
+  tpMetaSync();
   const s = tpSettings();
   tp.range = tpRangeFor(tp.day); tp.ppm = s.pph/60;
   const prevScroll = document.getElementById("tp_scroll"); if(prevScroll) tp.scrollL = prevScroll.scrollLeft;
@@ -4618,7 +4657,8 @@ async function tpSetDone(b, val){
   b.done = !!val; tpDirty(); return true;
 }
 async function tpToggleDone(id){ const b = tpBlock(id); if(!b) return; await tpSetDone(b, !tpDn(b)); render(); }
-function tpDelete(id){ const arr = tpEnsureDay(tp.day), i = arr.findIndex(b=>b.id===id); if(i>=0){ tp.deleted.add(id); arr.splice(i,1); tpDirty(); } }
+function tpMetaOffMark(b, day){ if(b && b.src && b.src.kind==='meta'){ tp.data.metaOff = tp.data.metaOff || {}; tp.data.metaOff[b.src.ref+'|'+day] = 1; } }
+function tpDelete(id){ const arr = tpEnsureDay(tp.day), i = arr.findIndex(b=>b.id===id); if(i>=0){ tpMetaOffMark(arr[i], tp.day); tp.deleted.add(id); arr.splice(i,1); tpDirty(); } }
 function tpEdit(id, nb){
   if(document.getElementById("modalBg")) return;
   const b = nb || tpBlock(id); if(!b) return;
@@ -4630,7 +4670,7 @@ function tpEdit(id, nb){
       <div style="flex:1"><label>Bis</label><input type="time" id="tpe_e" value="${b.end>=1440?"00:00":tpHM(b.end)}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px"></div></div>
     <label>Farbe</label><div class="tp-col" id="tpe_c">${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.color?"on":""}"></button>`).join("")}</div>
     <label>Notiz</label><input type="text" id="tpe_n" maxlength="500" value="${esc(b.note||"")}" style="width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px">
-    <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="tpe_d"${tpDn(b)?" checked":""}> ${b.src?"Erledigt (hakt auch das übernommene "+(b.src.kind==="goal"?"Tagesziel":"ToDo")+" ab)":"Erledigt (gilt nur in der Tagesstruktur)"}</label>
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="tpe_d"${tpDn(b)?" checked":""}> ${(b.src && b.src.kind!=="meta")?"Erledigt (hakt auch das übernommene "+(b.src.kind==="goal"?"Tagesziel":"ToDo")+" ab)":"Erledigt (gilt nur in der Tagesstruktur)"}</label>
     <div class="modal-actions">${isNew?"":`<button class="btn-ghost" id="tpe_del" style="color:#ff8a8e">Löschen</button>`}<button class="btn-ghost" id="tpe_x">Abbrechen</button><button class="btn-primary" id="tpe_ok">Speichern</button></div></div></div>`);
   let color = b.color;
   $("tpe_c").onclick = e=>{ const c = e.target.closest("[data-c]"); if(!c) return; color = c.dataset.c; [...$("tpe_c").children].forEach(x=>x.classList.toggle("on", x===c)); };
@@ -4688,7 +4728,7 @@ function tpAct(a, el){
     if(!confirm(open.length+(open.length===1?" unerledigter Block":" unerledigte Blöcke")+" auf den nächsten Tag verschieben?")) return;
     const cur = tp.day; tpShift(1); const nxt = tp.day; tp.day = cur;
     const src = tpEnsureDay(cur), dst = tpEnsureDay(nxt);
-    open.forEach(b=>{ const i = src.indexOf(b); if(i>=0) src.splice(i,1); dst.push(b); });
+    open.forEach(b=>{ const i = src.indexOf(b); if(i>=0){ tpMetaOffMark(b, cur); src.splice(i,1); } dst.push(b); });
     tpDirty(); render(); toast(open.length+(open.length===1?" Block":" Blöcke")+" verschoben");
   }
 }

@@ -3684,7 +3684,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v249";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v251";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -3713,7 +3713,8 @@ function tpNorm(d){
       const st = tpInt(b&&b.start,0,1439,-1), en = tpInt(b&&b.end,1,1440,-1);
       if(!b || st<0 || en<=st) return null;
       return {id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:st, end:en, color:String(b.color||TP_COLORS[0]).slice(0,20), cs:tpHex(b.cs), ck:tpHex(b.ck), done:!!b.done, note:String(b.note||"").slice(0,500),
-        src:(b.src && b.src.kind && b.src.ref) ? {kind:String(b.src.kind), ref:String(b.src.ref)} : null};
+        src:(b.src && b.src.kind && b.src.ref) ? {kind:String(b.src.kind), ref:String(b.src.ref)} : null,
+        sd:/^\d{4}-\d{2}-\d{2}$/.test(String(b.sd||"")) ? String(b.sd) : ""};
     }).filter(Boolean);
     if(bl.length) dst[k] = {blocks:bl};
   });
@@ -4444,6 +4445,56 @@ function tpOccOpen(itemId, key){
   };
   main.addEventListener("pointerup", end); main.addEventListener("pointercancel", end);
 })();
+/* Nachziehen: Hat ein übernommenes ToDo oder Tagesziel inzwischen ein anderes Datum (z. B. durch Verschieben in den Metaprojekten), fragt die Tag-Ansicht nach, ob der Block mitziehen soll */
+const TP_ISO = /^\d{4}-\d{2}-\d{2}$/;
+function tpSrcDate(b){
+  if(!b || !b.src) return null;
+  if(b.src.kind==="todo"){
+    const t = tasks.find(x=>x.id===b.src.ref);
+    if(!t || t.archived || t.scheduleType!=="once" || isEverDone(t.id)) return null;
+    return TP_ISO.test(t.startDate||"") ? t.startDate : null;
+  }
+  if(b.src.kind==="goal"){
+    const g = (allOpenGoals||[]).find(x=>x.id===b.src.ref);
+    return (g && TP_ISO.test(g.due||"")) ? g.due : null;
+  }
+  return null;
+}
+function tpDrift(){
+  const out = [], today = todayKey(); if(!tp.data) return out;
+  Object.keys(tp.data.days).forEach(day=>{
+    (tp.data.days[day].blocks||[]).forEach(b=>{
+      if(!b.src || b.done) return;
+      const nd = tpSrcDate(b); if(!nd || nd===day) return;
+      if(b.sd ? nd===b.sd : day<today) return;       // bekannt und bewusst belassen, bzw. alter Block in der Vergangenheit
+      out.push({b, day, nd});
+    });
+  });
+  return out.sort((a,b)=>a.nd<b.nd?-1:a.nd>b.nd?1:0);
+}
+function tpDriftHtml(){
+  const dr = tpDrift(); if(!dr.length) return "";
+  const sh = k=>esc(wsShortDate(k));
+  return `<div class="tp-note" style="padding:8px 10px;margin:6px 0;border:1px solid rgba(255,255,255,.25);border-radius:8px">
+    📅 ${dr.length===1?"Ein Block hat":dr.length+" Blöcke haben"} in ToDo oder Tagesziel ein anderes Datum bekommen:<br>
+    ${dr.slice(0,6).map(x=>`${esc(x.b.title||"(ohne Titel)")}: ${sh(x.day)} → ${sh(x.nd)}`).join("<br>")}${dr.length>6?"<br>… und "+(dr.length-6)+" weitere":""}
+    <div style="margin-top:6px"><button class="tp-btn pri" data-tp="drift">Mitziehen</button> <button class="tp-btn" data-tp="driftno">Nicht mitziehen</button></div></div>`;
+}
+function tpDriftApply(move){
+  const dr = tpDrift(); if(!dr.length) return 0;
+  dr.forEach(x=>{
+    if(move){
+      const src = tp.data.days[x.day].blocks, i = src.indexOf(x.b); if(i<0) return;
+      src.splice(i,1);
+      const dur = x.b.end-x.b.start, st = tpFree(x.nd, dur, x.b.start);
+      x.b.start = st; x.b.end = st+dur;
+      if(!tp.data.days[x.nd]) tp.data.days[x.nd] = {blocks:[]};
+      tp.data.days[x.nd].blocks.push(x.b);
+    }
+    x.b.sd = x.nd;
+  });
+  tpDirty(); return dr.length;
+}
 function tpPoolItems(day){
   const used = new Set(tpDayBlocks(day).filter(b=>b.src).map(b=>b.src.kind+":"+b.src.ref));
   const q = tp.q.trim().toLowerCase(), out = [];
@@ -4504,6 +4555,7 @@ function tpMount(m){
       ${tp.mode==="day"?`<button class="tp-btn${tpSchoolOn()?" on":""}" data-tp="school" title="Unterrichtsstunden aus der Job-Struktur in dieser Ansicht anzeigen">🏫 Schule</button>`:""}${tp.mode==="job"?`<button class="tp-btn" data-tp="report" title="Bericht über einen Zeitraum, als PDF druckbar">📄 Bericht</button>`:""}${tp.unlock?`<button class="tp-btn pri" data-tp="add">+ Block</button>`:""}<button class="tp-btn${tp.more?" on":""}" data-tp="more" title="Weitere Knöpfe">⋯</button>
     </div>
     ${tp.more?`<div class="tp-bar tp-more">${tp.unlock?`<button class="tp-btn" data-tp="carry" title="Unerledigte Blöcke auf den nächsten Tag verschieben">Offenes → morgen</button>`:""}<button class="tp-btn${tp.hideDone?" on":""}" data-tp="hd" title="Abgehakte Blöcke ein- oder ausblenden">${tp.hideDone?"Erledigte einblenden":"Erledigte ausblenden"}</button><button class="tp-btn${tp.showSet?" on":""}" data-tp="set" title="Einstellungen">⚙ Einstellungen</button><button class="tp-btn" data-tp="hist" title="Frühere Version aus Drive ansehen und Fehlendes übernehmen">⟲ Frühere Version</button></div>`:""}
+    ${tp.mode==="day"?tpDriftHtml():""}
     ${tp.showSet?`<div class="tp-set">Beginn <select id="tp_from">${opt(rng(0,23), s.from, v=>tpPad(v)+":00")}</select> Ende <select id="tp_to">${opt(rng(1,24), s.to, v=>tpPad(v)+":00")}</select>
       Raster <select id="tp_snap">${opt([5,10,15,30], s.snap, v=>v+" min")}</select> Breite <select id="tp_pph">${opt([60,90,120,180,240], s.pph, v=>v+" px je Stunde")}</select></div>`:""}
     ${tp.mode==="job"&&tpDayBreaks(tp.day).length?`<div class="tp-note" style="padding:2px 2px 8px;font-size:14px">${tpDayBreaks(tp.day).map(b=>"🏖 "+esc(tpBreakText(b))).join(" · ")}. Wiederkehrende Stunden entfallen.</div>`:""}
@@ -4540,7 +4592,7 @@ function tpAddFromPool(kind, ref){
   const dur = 30, mm = /^(\d{1,2}):(\d{2})$/.exec(item.time||"");
   const pref = mm ? +mm[1]*60+ +mm[2] : null;
   const st = tpFree(tp.day, dur, pref);
-  tpAdd({id:uid(), title:item.title, start:st, end:st+dur, color:kind==="goal"?TP_COLORS[1]:TP_COLORS[0], done:false, note:"", src:{kind, ref}});
+  tpAdd({id:uid(), title:item.title, start:st, end:st+dur, color:kind==="goal"?TP_COLORS[1]:TP_COLORS[0], done:false, note:"", src:{kind, ref}, sd:/^\d{4}-\d{2}-\d{2}$/.test(item.date||"")?item.date:""});
   render(); toast("Zur Tagesstruktur hinzugefügt");
 }
 /* Abhaken eines Blocks: ist er aus einem ToDo oder Tagesziel übernommen, wird dieses mit abgehakt (mit Statistik und Protokoll wie in Heute) */
@@ -4624,6 +4676,10 @@ function tpAct(a, el){
   else if(a==="brknew"){ tpBreakEdit(""); }
   else if(a==="brkedit"){ tpBreakEdit(el.dataset.r); }
   else if(a==="bedit"){ tpItemEdit(el.dataset.r); }
+  else if(a==="drift" || a==="driftno"){
+    const n = tpDriftApply(a==="drift"); render();
+    toast(a==="drift" ? (n+(n===1?" Block":" Blöcke")+" mitgezogen") : "Blöcke bleiben, wo sie sind");
+  }
   else if(a==="carry"){
     const open = tpDayBlocks(tp.day).filter(b=>!b.done);
     if(!open.length){ toast("Nichts Offenes an diesem Tag"); return; }
@@ -4694,7 +4750,7 @@ function tpClick(e){
   }
   if(!tp.unlock){
     const a0 = e.target.closest && e.target.closest("[data-tp]");
-    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report","school","kcal","ksync"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
+    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report","school","kcal","ksync","drift","driftno"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
     else if(e.target.closest && e.target.closest(".tp-b,#tp_track,.tp-pool")) tpLockHint();
     return;
   }
@@ -5290,7 +5346,15 @@ async function tmCommitDrag(blk, d){
   const ns = tmKey(d.ns), ne = tmKey(d.ne);
   const h = (blk.src && typeof wsLoaded!=="undefined" && wsLoaded) ? tmMetaMap().get(blk.src.ref) : null;
   const plain = ()=>{ blk.start = ns; blk.end = ne; tmDirty(); render(); };
-  if(!h){ plain(); return; }
+  if(!h){
+    let why = "dieser Balken keinem Metaprojekt aus dem Arbeitsbereich zugeordnet ist";
+    if(blk.src){
+      if(typeof wsLoaded==="undefined" || !wsLoaded) why = "der Arbeitsbereich noch nicht geladen ist";
+      else{ const hh = tmNodeOf(blk.src.ref, tmMetaMap()); why = !hh ? "das Metaprojekt im Arbeitsbereich nicht mehr gefunden wurde (gelöscht)" : (hh.node.done ? "das Metaprojekt im Arbeitsbereich schon erledigt ist" : "das Metaprojekt im Arbeitsbereich nicht mehr als Metaprojekt markiert ist"); }
+    }
+    plain(); toast("Nur die Planung wurde verschoben, weil "+why+". Datum im ToDo oder Tagesziel blieb unverändert.");
+    return;
+  }
   const n = h.node, delta = d.ns - d.s0, days = d.ne-d.ns+1;
   try{
     if(d.mode==="m"){
@@ -5317,7 +5381,7 @@ async function tmCommitDrag(blk, d){
 async function tmCommitKid(d){
   const doc = wsGet(d.kid.doc), delta = d.ns - d.s0;
   const root = doc && (d.kid.kk==="head" ? wsBlock(doc, d.kid.id) : wsFindNode(doc, d.kid.id) && wsFindNode(doc, d.kid.id).node);
-  if(!root){ render(); return; }
+  if(!root){ toast("Der Unterpunkt wurde im Arbeitsbereich nicht gefunden, nichts verändert"); render(); return; }
   try{
     const items = [{node:root, kind:d.kid.kk==="head"?"head":"node"}].concat(wsChildItems(doc, root)).filter(c=>c===undefined?false:(c.node===root || (!c.node.done && tmHasDates(c.node))));
     const ups = items.filter(c=>tmHasDates(c.node)).map(c=>tmShiftUp(c, delta));

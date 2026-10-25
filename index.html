@@ -3684,7 +3684,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v252";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v253";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -4966,7 +4966,15 @@ function tmDn(b, metaMap){
   const h = b.src ? tmNodeOf(b.src.ref, metaMap) : null;
   return !!(h && h.node.done);
 }
+const tmKidCache = new WeakMap();
+function tmChildSet(metaMap){            // Metaprojekte, die selbst Unterpunkt eines anderen Metaprojekts sind
+  let st = tmKidCache.get(metaMap); if(st) return st;
+  st = new Set(); metaMap.forEach(h=>{ try{ wsChildItems(h.doc, h.node).forEach(k=>st.add(k.node.id)); }catch(e){} });
+  tmKidCache.set(metaMap, st); return st;
+}
 function tmBlockHtml(b, top, metaMap, ki){
+  const isKid = !!(b.src && tmChildSet(metaMap).has(b.src.ref)), hexOk = /^#[0-9a-f]{6}$/i.test(b.color||"");
+  const kidStyle = isKid ? (hexOk ? "background:"+b.color+"38;border:2px solid "+b.color+";box-sizing:border-box;" : "opacity:.7;border:2px dashed #fff;box-sizing:border-box;") : "background:"+esc(b.color)+";";
   const s = tmDN(b.start), e = tmDN(b.end), days = e-s+1;
   const left = (s-tm.range.from)*tm.ppd, w = days*tm.ppd;
   const h = b.src ? metaMap.get(b.src.ref) : null;
@@ -4976,9 +4984,9 @@ function tmBlockHtml(b, top, metaMap, ki){
     flag = `<i class="tm-dl" title="Deadline ${esc(tmShort(h.node.dl))} (aus dem Arbeitsbereich)" style="left:${(dn-tm.range.from)*tm.ppd}px;top:${top}px">⚑</i>`;
   }
   const kidTxt = ki && ki.total ? ` · ${ki.done}/${ki.total} ✓` : "";
-  return `<div class="tp-b tm-b${tmDn(b,metaMap)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})${ki&&ki.total?" · Unterpunkte: "+ki.done+" von "+ki.total+" erledigt":""}" style="left:${left}px;width:${w}px;top:${top}px;background:${esc(b.color)}">
+  return `<div class="tp-b tm-b${tmDn(b,metaMap)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})${ki&&ki.total?" · Unterpunkte: "+ki.done+" von "+ki.total+" erledigt":""}" style="left:${left}px;width:${w}px;top:${top}px;${kidStyle}">
     <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${tmDn(b,metaMap)?"✓":""}</span>
-    <div class="tp-t">${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${esc(tmShort(b.start))}–${esc(tmShort(b.end))} · ${days} T${kidTxt}</div><i class="tp-h r" data-h="r"></i></div>${flag}`;
+    <div class="tp-t">${isKid?"↳ ":""}${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${esc(tmShort(b.start))}–${esc(tmShort(b.end))} · ${days} T${kidTxt}</div><i class="tp-h r" data-h="r"></i></div>${flag}`;
 }
 function tmPoolItems(){
   if(!(typeof wsLoaded!=="undefined" && wsLoaded)) return null;

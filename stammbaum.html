@@ -459,6 +459,26 @@ body.rzing{user-select:none;cursor:col-resize}
 @media (max-width:860px){#rzS{display:none}}
 @media (max-width:700px){.tabrow .tabtools{flex:1 1 100%;flex-wrap:wrap;margin-left:0}.tabtools .btn{flex:1 1 auto}}
 
+/* ===== Baum/Liste, Zoom ===== */
+.seg{display:inline-flex;gap:0}
+.seg .btn{border-radius:0}.seg .btn:first-child{border-radius:6px 0 0 6px}.seg .btn:last-child{border-radius:0 6px 6px 0;margin-left:-1px}
+.zoomctl{display:inline-flex;gap:3px;align-items:center}
+.zoomctl .zlab{min-width:58px;font-variant-numeric:tabular-nums}
+.tz{position:relative}
+.tz .tstage{margin:18px;position:absolute;left:0;top:0}
+.tb .sp2{white-space:normal;line-height:14px}
+.tb .splk{cursor:pointer;text-decoration:underline dotted}
+.agen h3{font:600 16px var(--serif);margin:16px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--line2)}
+.alist{list-style:none;margin:0;padding:0}
+.arow{display:flex;gap:10px;align-items:flex-start;padding:6px 8px;border-bottom:1px solid var(--line2);border-radius:6px}
+.arow:hover{background:var(--accent-soft)}
+.arow .kn{flex:0 0 3.2em;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:13px;padding-top:1px}
+.arow .am{flex:1;min-width:0}
+.arow .al{display:block;font-size:12px;color:var(--muted);white-space:pre-wrap}
+.arow .lk{border:0;background:transparent;color:var(--accent);padding:0;cursor:pointer;font:600 15px var(--serif);text-align:left}
+.arow .lk:hover{text-decoration:underline}
+@media print{.zoomctl,.seg{display:none!important}.tz{width:auto!important;height:auto!important}.tz .tstage{position:relative;transform:none!important}}
+
 </style>
 </head>
 <body>
@@ -1520,7 +1540,7 @@ function pedKin(id) {
   const sibs = par ? GED.famInfo(S.db, par.fam).children : [];
   return { par, kids, sibs, sibIdx: sibs.indexOf(id) };
 }
-function renderPed() {
+function renderPedTree() {
   const db = S.db, N = S.gens;
   const anc = GED.ancestors(db, S.pid, N);
   if (!M.idx && (accessToken || LM.list.length) && !M.loading && !M.failed.has("idx")) {
@@ -1580,7 +1600,7 @@ function renderPed() {
   const rootKin = pedKin(S.pid);
   const opts = [3, 4, 5, 6, 7].map(n => `<option value="${n}"${n === N ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
-    <label>Generationen <select id="gensSel">${opts}</select></label>
+    <label>Generationen <select id="gensSel">${opts}</select></label>${modeSeg("ped", "tree")}${zoomCtl("ped")}
     <span class="parrows" role="group" aria-label="In der Generationenfolge navigieren">
       <button class="btn sm" data-act="t_pchild" ${rootKin.kids.length ? "" : "disabled"} title="Zum Kind (Pfeil links)">◀ Kind</button>
       <button class="btn sm" data-act="t_psib" data-d="-1" ${rootKin.sibIdx > 0 ? "" : "disabled"} title="Voriges Geschwister (Pfeil hoch)">▲ Geschwister</button>
@@ -1590,7 +1610,7 @@ function renderPed() {
     <button class="btn sm" data-act="back" ${S.hpos <= 0 ? "disabled" : ""}>‹ Zurück</button>
     <button class="btn sm" data-act="card" data-id="${S.pid}">Familienblatt</button>
     <span class="hint">Klick setzt eine Person in die Mitte, Doppelklick öffnet ihr Familienblatt.</span></div>
-    <div class="tscroll"><div class="tstage" style="width:${W}px;height:${H}px"><svg width="${W}" height="${H}" aria-hidden="true"><path d="${d}"/></svg>${boxes}</div></div>`;
+    ${zoomWrap("ped", W, H, `<svg width="${W}" height="${H}" aria-hidden="true"><path d="${d}"/></svg>${boxes}`)}`;
 }
 ACT.pedgo = (d) => go(d.id);
 ACT.t_pfather = () => { const k = pedKin(S.pid); if (k.par && k.par.father) go(k.par.father); };
@@ -1618,7 +1638,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ============ NACHKOMMEN ============ */
-function renderDesc() {
+function renderDescList() {
   const db = S.db;
   let count = 0; const MAX = 1500; let cut = false;
   function person(pid, depth, path) {
@@ -1653,7 +1673,7 @@ function renderDesc() {
   const opts = [2, 3, 4, 5, 6, 8].map(n => `<option value="${n}"${n === S.depth ? " selected" : ""}>${n}</option>`).join("");
   const body = `<ul class="desc root">${person(S.pid, 1, new Set())}</ul>`;
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
-    <label>Generationen <select id="depthSel">${opts}</select></label>
+    <label>Generationen <select id="depthSel">${opts}</select></label>${modeSeg("desc", "list")}
     <button class="btn sm" data-act="back" ${S.hpos <= 0 ? "disabled" : ""}>‹ Zurück</button>
     <button class="btn sm" data-act="card" data-id="${S.pid}">Familienblatt</button>
     ${cut ? '<span class="hint">Die Liste wurde nach etwa 1500 Personen gekürzt. Wähle weniger Generationen oder eine Person weiter unten.</span>' : ""}</div>
@@ -5483,6 +5503,149 @@ function renderInfo() {
   hydrateMedia();
 }
 
+/* ============ BAUM- ODER LISTENANSICHT, ZOOM (Vorfahren und Nachkommen) ============ */
+const VMODE = { ped: lsGet("st.pedMode", "tree"), desc: lsGet("st.descMode", "list") };
+const ZOOM = { ped: +lsGet("st.zoomP", 1) || 1, desc: +lsGet("st.zoomD", 1) || 1 };
+const ZMIN = 0.3, ZMAX = 2;
+function modeSeg(kind, cur) {
+  const m = VMODE[kind];
+  return `<span class="seg" role="group" aria-label="Darstellung"><button class="btn sm${m === "tree" ? " pri" : ""}" data-act="t_vmode" data-k="${kind}" data-m="tree" aria-pressed="${m === "tree"}">Baum</button><button class="btn sm${m === "list" ? " pri" : ""}" data-act="t_vmode" data-k="${kind}" data-m="list" aria-pressed="${m === "list"}">Liste</button></span>`;
+}
+function zoomCtl(kind) {
+  return `<span class="zoomctl" role="group" aria-label="Zoom"><button class="btn sm" data-act="t_zoom" data-k="${kind}" data-z="out" title="Verkleinern (Strg und Mausrad)" aria-label="Verkleinern">−</button><button class="btn sm zlab" data-act="t_zoom" data-k="${kind}" data-z="reset" title="Auf 100 % zurücksetzen" id="zlab_${kind}">${Math.round(ZOOM[kind] * 100)} %</button><button class="btn sm" data-act="t_zoom" data-k="${kind}" data-z="in" title="Vergrößern (Strg und Mausrad)" aria-label="Vergrößern">+</button><button class="btn sm" data-act="t_zoom" data-k="${kind}" data-z="fit" title="An die Fensterbreite anpassen">Einpassen</button></span>`;
+}
+function zoomWrap(kind, W, H, inner) {
+  const z = ZOOM[kind];
+  return `<div class="tscroll" data-zk="${kind}"><div class="tz" data-w="${W}" data-h="${H}" style="width:${Math.round(W * z) + 36}px;height:${Math.round(H * z) + 36}px"><div class="tstage" style="width:${W}px;height:${H}px;transform:scale(${z});transform-origin:0 0">${inner}</div></div></div>`;
+}
+function applyZoom(kind, keepCenter) {
+  const sc = document.querySelector(`.tscroll[data-zk="${kind}"]`); if (!sc) return;
+  const tz = sc.querySelector(".tz"), st = sc.querySelector(".tstage"), z = ZOOM[kind];
+  const W = +tz.dataset.w, H = +tz.dataset.h;
+  const cx = (sc.scrollLeft + sc.clientWidth / 2) / (tz.offsetWidth || 1), cy = (sc.scrollTop + sc.clientHeight / 2) / (tz.offsetHeight || 1);
+  tz.style.width = Math.round(W * z) + 36 + "px"; tz.style.height = Math.round(H * z) + 36 + "px";
+  st.style.transform = `scale(${z})`;
+  const l = $("zlab_" + kind); if (l) l.textContent = Math.round(z * 100) + " %";
+  if (keepCenter) { sc.scrollLeft = cx * tz.offsetWidth - sc.clientWidth / 2; sc.scrollTop = cy * tz.offsetHeight - sc.clientHeight / 2; }
+  lsSet(kind === "ped" ? "st.zoomP" : "st.zoomD", String(z));
+}
+function setZoom(kind, z, keep) { ZOOM[kind] = Math.max(ZMIN, Math.min(ZMAX, Math.round(z * 100) / 100)); applyZoom(kind, keep !== false); }
+ACT.t_zoom = (d) => {
+  const k = d.k, sc = document.querySelector(`.tscroll[data-zk="${k}"]`);
+  if (d.z === "in") setZoom(k, ZOOM[k] * 1.2);
+  else if (d.z === "out") setZoom(k, ZOOM[k] / 1.2);
+  else if (d.z === "reset") setZoom(k, 1);
+  else if (d.z === "fit" && sc) { const tz = sc.querySelector(".tz"); setZoom(k, Math.min(1, (sc.clientWidth - 40) / +tz.dataset.w), false); sc.scrollLeft = 0; sc.scrollTop = 0; }
+};
+document.addEventListener("wheel", (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const sc = e.target.closest && e.target.closest(".tscroll[data-zk]"); if (!sc) return;
+  e.preventDefault(); const k = sc.dataset.zk;
+  setZoom(k, ZOOM[k] * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+}, { passive: false });
+ACT.t_vmode = (d) => {
+  VMODE[d.k] = d.m; lsSet(d.k === "ped" ? "st.pedMode" : "st.descMode", d.m);
+  render();
+};
+
+/* ---------- Vorfahren ---------- */
+function renderPed() { return VMODE.ped === "list" ? renderPedList() : renderPedTree(); }
+const GEN_NAMES = ["Person", "Eltern", "Großeltern", "Urgroßeltern", "Ururgroßeltern"];
+function renderPedList() {
+  const db = S.db, N = S.gens, anc = GED.ancestors(db, S.pid, N);
+  const opts = [3, 4, 5, 6, 7, 8, 10].map(n => `<option value="${n}"${n === N ? " selected" : ""}>${n}</option>`).join("");
+  const rootKin = pedKin(S.pid);
+  const byGen = new Map();
+  anc.forEach((id, k) => { const g = Math.floor(Math.log2(k)); if (!byGen.has(g)) byGen.set(g, []); byGen.get(g).push([k, id]); });
+  let body = "";
+  [...byGen.keys()].sort((a, b) => a - b).forEach(g => {
+    const rows = byGen.get(g).sort((a, b) => a[0] - b[0]);
+    body += `<section class="agen"><h3>${g < GEN_NAMES.length ? GEN_NAMES[g] : g + ". Generation"} <span class="hint">(${rows.length}${g ? " von " + Math.pow(2, g) : ""})</span></h3><ul class="alist">`;
+    for (const [k, id] of rows) {
+      const p = GED.personInfo(db, id);
+      const bp = p.birt && p.birt.place ? shortPlace(p.birt.place) : "", dp = p.deat && p.deat.place ? shortPlace(p.deat.place) : "";
+      const role = g === 0 ? "" : k % 2 === 0 ? "Vater" : "Mutter";
+      body += `<li class="arow ${p.sex}" data-id="${id}"><span class="kn" title="Kekulé-Nummer">${k}</span><span class="am"><button class="lk" data-act="pedgo" data-id="${id}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${role && g === 1 ? ` <span class="hint">${role}</span>` : ""}<span class="al">${bp ? "* " + E(bp) : ""}${bp && dp ? "   " : ""}${dp ? "† " + E(dp) : ""}</span></span><button class="btn sm ghost" data-act="card" data-id="${id}" title="Familienblatt">Blatt</button></li>`;
+    }
+    body += `</ul></section>`;
+  });
+  return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
+    <label>Generationen <select id="gensSel">${opts}</select></label>${modeSeg("ped", "tree")}
+    <span class="parrows" role="group" aria-label="In der Generationenfolge navigieren">
+      <button class="btn sm" data-act="t_pchild" ${rootKin.kids.length ? "" : "disabled"}>◀ Kind</button>
+      <button class="btn sm" data-act="t_psib" data-d="-1" ${rootKin.sibIdx > 0 ? "" : "disabled"}>▲ Geschwister</button>
+      <button class="btn sm" data-act="t_psib" data-d="1" ${rootKin.sibIdx >= 0 && rootKin.sibIdx < rootKin.sibs.length - 1 ? "" : "disabled"}>▼ Geschwister</button>
+      <button class="btn sm" data-act="t_pfather" ${rootKin.par && rootKin.par.father ? "" : "disabled"}>Vater ▶</button>
+      <button class="btn sm" data-act="t_pmother" ${rootKin.par && rootKin.par.mother ? "" : "disabled"}>Mutter ▶</button></span>
+    <button class="btn sm" data-act="back" ${S.hpos <= 0 ? "disabled" : ""}>‹ Zurück</button>
+    <button class="btn sm" data-act="card" data-id="${S.pid}">Familienblatt</button>
+    <span class="hint">Ahnenliste nach Kekulé-Nummern, Klick auf einen Namen setzt die Person in die Mitte.</span></div>
+    <div class="tscroll" style="padding:6px 20px 30px">${body}</div>`;
+}
+
+/* ---------- Nachkommen ---------- */
+function renderDesc() { return VMODE.desc === "tree" ? renderDescTree() : renderDescList(); }
+function renderDescTree() {
+  const db = S.db, BW = 214, BH = 48, GX = 46, GY = 8, PH = 40, MAXN = 700;
+  let count = 0, cut = false, maxDepth = 0;
+  const build = (pid, depth, path) => {
+    count++; maxDepth = Math.max(maxDepth, depth);
+    const p = GED.personInfo(db, pid);
+    const node = { id: pid, p, depth, sp: [], kids: [], more: 0 };
+    const fams = p.fams.filter(f => !path.has(f));
+    for (const fid of fams) {
+      const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, pid);
+      node.sp.push(sp ? { id: sp, nm: nameOf(sp), yrs: GED.lifeSpan(db, sp) } : { id: null, nm: "unbekannt", yrs: "" });
+      if (!f.children.length) continue;
+      if (depth >= S.depth) { node.more += f.children.length; continue; }
+      const np = new Set(path); np.add(fid);
+      for (const c of f.children) { if (count >= MAXN) { cut = true; break; } node.kids.push(build(c, depth + 1, np)); }
+    }
+    return node;
+  };
+  const root = build(S.pid, 1, new Set());
+  /* Inhalt und Höhe je Kasten */
+  let maxH = BH;
+  const all = [];
+  (function walk(n) {
+    all.push(n);
+    n.hit = mainPhotoHit(n.p.rec); n.nm = GED.displayName(n.p.rec);
+    const tw = BW - 18 - 14 - (n.hit ? PH + 6 : 0);
+    const lines = Math.min(3, Math.max(1, Math.ceil(n.nm.length * 7.2 / tw)));
+    const sps = n.sp.map(s => Math.max(1, Math.ceil((s.nm.length + s.yrs.length + 3) * 6.4 / tw))).reduce((a, b) => a + b, 0);
+    n.h = Math.max(n.hit ? PH + 12 : 0, 9 + lines * 16 + 15 + sps * 14 + (n.more ? 0 : 0), BH);
+    if (n.h > maxH) maxH = n.h;
+    n.kids.forEach(walk);
+  })(root);
+  const pitch = maxH + GY; let leaf = 0;
+  (function place(n) {
+    if (!n.kids.length) { n.cy = (leaf + 0.5) * pitch; leaf++; return; }
+    n.kids.forEach(place);
+    n.cy = (n.kids[0].cy + n.kids[n.kids.length - 1].cy) / 2;
+  })(root);
+  const D = maxDepth, W = D * BW + (D - 1) * GX, H = Math.max(1, leaf) * pitch;
+  let boxes = "", dpath = "";
+  for (const n of all) {
+    const x = (n.depth - 1) * (BW + GX), top = Math.round(n.cy - n.h / 2);
+    const ph = n.hit ? `<span class="ph"><img data-mid="${n.hit.id}" alt=""></span>` : "";
+    const spl = n.sp.map(s => `<span class="pl sp2">⚭ ${s.id ? `<span class="splk" data-act="pedgo" data-id="${s.id}">${E(s.nm)}</span>` : E(s.nm)}${s.yrs ? " " + E(s.yrs) : ""}</span>`).join("");
+    const arR = n.more ? `<span class="ar r" data-act="dgo" data-id="${n.id}" title="${n.more} weitere Kinder: diese Person in die Mitte setzen">›</span>` : "";
+    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}" style="left:${x}px;top:${top}px;height:${n.h}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(GED.lifeSpan(db, n.id))}">${arR}${ph}<span class="tx"><span class="nm">${E(n.nm)}</span><span class="yr">${E(GED.lifeSpan(db, n.id))}</span>${spl}</span></button>`;
+    if (n.kids.length) {
+      const x1 = x + BW, xm = x1 + GX / 2;
+      dpath += `M${x1} ${n.cy}H${xm}`;
+      for (const c of n.kids) dpath += `M${xm} ${n.cy}V${c.cy}H${x + BW + GX}`;
+    }
+  }
+  const opts = [2, 3, 4, 5, 6, 8].map(n => `<option value="${n}"${n === S.depth ? " selected" : ""}>${n}</option>`).join("");
+  return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
+    <label>Generationen <select id="depthSel">${opts}</select></label>${modeSeg("desc", "list")}${zoomCtl("desc")}
+    <button class="btn sm" data-act="back" ${S.hpos <= 0 ? "disabled" : ""}>‹ Zurück</button>
+    <button class="btn sm" data-act="card" data-id="${S.pid}">Familienblatt</button>
+    <span class="hint">${cut ? "Gekürzt nach etwa " + MAXN + " Personen, wähle weniger Generationen. " : ""}Klick setzt eine Person in die Mitte, ein Pfeil rechts zeigt weitere Kinder.</span></div>
+    ${zoomWrap("desc", W, H, `<svg width="${W}" height="${H}" aria-hidden="true"><path d="${dpath}"/></svg>${boxes}`)}`;
+}
+
 /* ============ HAUPTANSICHT ============ */
 function welcomeHtml() {
   let last = null;
@@ -5930,8 +6093,8 @@ document.addEventListener("click", (e) => {
   if (!S.db || e.target.closest(".ovl")) return;
   const t = e.target;
   const area = t.closest("#content, #plist, #info");
-  const blocked = t.closest("input, textarea, select, label, .ar, .parrows, #info .ihead, .abc, .tabs, .top");
   const id = personIdOf(t);
+  const blocked = t.closest("input, textarea, select, label, .ar, .parrows, .treebar, #info .ihead, .abc, .tabs, .top") || (!id && t.closest("button, a, [data-act], summary"));
   const now = e.timeStamp;   // Zeitpunkt des Klicks selbst, nicht der Verarbeitung (ein langsamer Neuaufbau verzögert diese)
   const dbl = LASTCLK.t && now - LASTCLK.t < 600 && Math.abs(e.clientX - LASTCLK.x) < 10 && Math.abs(e.clientY - LASTCLK.y) < 10;
   if (dbl && area && !blocked && !S.viewer) {
@@ -5950,7 +6113,8 @@ document.addEventListener("click", (e) => {
 document.addEventListener("dblclick", (e) => {
   if (!S.db || S.viewer || document.querySelector(".ovl")) return;
   const t = e.target;
-  if (!t.closest("#content, #plist, #info") || t.closest("input, textarea, select, label, .ar, .parrows, #info .ihead, .abc, .tabs, .top")) return;
+  if (!t.closest("#content, #plist, #info") || t.closest("input, textarea, select, label, .ar, .parrows, .treebar, #info .ihead, .abc, .tabs, .top")) return;
+  if (!personIdOf(t) && t.closest("button, a, [data-act], summary")) return;
   const id = personIdOf(t) || LASTCLK.id || (t.closest("#content") ? S.pid : null);
   if (id && GED.personInfo(S.db, id)) editPerson(id);
 });

@@ -281,6 +281,20 @@ textarea.raw{font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;min-height:46vh
 .lbcap{color:#fff;font-size:14px}
 @media print{.mgrid{display:none}}
 
+.tbl{border-collapse:collapse;font-size:13px}
+.tbl th,.tbl td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line,#8884);vertical-align:top}
+.tbl th{font-weight:600}
+
+.gal{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:10px}
+.gal li{display:flex;gap:12px;align-items:flex-start;padding:8px;border:1px solid var(--line,#8884);border-radius:6px}
+.gth{flex:0 0 96px;width:96px;height:96px;display:flex;align-items:center;justify-content:center;background:#8882;border-radius:4px;overflow:hidden}
+.gth img{width:96px;height:96px;object-fit:cover}
+.nothumb{font-size:11px;color:var(--muted);text-align:center;padding:4px}
+.gmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.gmain .w{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.gtitle{width:100%}
+.gbtn{display:flex;gap:6px;flex-wrap:wrap}
+
 </style>
 </head>
 <body>
@@ -1252,7 +1266,7 @@ function personBlock(id, famId, ctx, fallbackRole) {
   const pcites = mark(ctx, GED.kidsOf(p.rec, "SOUR"));
   if (pcites) h += `<div class="ev"><span class="k">Quellen</span><span class="v">${pcites}</span></div>`;
   h += mediaHtml(p.rec);
-  h += `<div class="pbact"><button class="btn sm" data-act="editPerson" data-id="${id}">Person bearbeiten</button>`;
+  h += `<div class="pbact"><button class="btn sm" data-act="editPerson" data-id="${id}">Person bearbeiten</button><button class="btn sm" data-act="editMedia" data-id="${id}">Bilder bearbeiten</button>`;
   if (par) h += `<button class="btn sm" data-act="up" data-id="${id}">Eltern anzeigen</button>`;
   h += `</div>`;
   const others = p.fams.filter(f => f !== famId);
@@ -2381,6 +2395,682 @@ function openMediaDlg() {
 }
 ACT.media = () => openMediaDlg();
 
+
+/* ============ ABGLEICH MIT PDF: Textauszug und Anweisung für ein KI-Chatfenster ============ */
+const AB = { scope: "anc", gens: 3, task: "compare", hideLiving: true, note: "", pdfName: "" };
+
+function abIsLiving(db, id) {
+  const p = GED.personInfo(db, id);
+  if (!p) return false;
+  if (p.deat || p.buri) return false;
+  if (GED.kidsOf(p.rec, "DEAT").length) return false;
+  const y = (p.birt && p.birt.date.y) || (p.chr && p.chr.date.y);
+  return !!y && y > new Date().getFullYear() - 110;
+}
+function abPersonIds(db, pid) {
+  const out = new Set();
+  const add = (id) => { if (id && db.get(id)) out.add(id); };
+  add(pid);
+  if (AB.scope === "family") {
+    const p = GED.personInfo(db, pid);
+    const par = GED.parentsOf(db, pid);
+    if (par) { add(par.father); add(par.mother); GED.famInfo(db, par.fam).children.forEach(add); }
+    for (const f of p.fams) { const fi = GED.famInfo(db, f); add(fi.husb); add(fi.wife); fi.children.forEach(add); }
+  } else if (AB.scope === "anc") {
+    for (const id of GED.ancestors(db, pid, AB.gens + 1).values()) add(id);
+  } else if (AB.scope === "desc") {
+    (function walk(id, g) {
+      add(id);
+      if (g >= AB.gens) return;
+      for (const f of GED.personInfo(db, id).fams) {
+        const fi = GED.famInfo(db, f);
+        add(fi.husb); add(fi.wife);
+        fi.children.forEach(c => walk(c, g + 1));
+      }
+    })(pid, 0);
+  }
+  return [...out];
+}
+
+function abExtract(db, ids) {
+  const set = new Set(ids);
+  const hide = (id) => AB.hideLiving && abIsLiving(db, id);
+  const nm = (id) => hide(id) ? `lebende Person [${id.replace(/@/g, "")}]` : `${GED.displayName(db.get(id))} [${id.replace(/@/g, "")}]`;
+  const dt = (e) => GED.formatDate(e.date.raw);
+  const evLine = (e) => {
+    let s = e.label + ": ";
+    const bits = [];
+    if (e.val && e.val.trim() && e.val.trim() !== "Y") bits.push(e.val.trim().replace(/\s*\n\s*/g, " "));
+    if (dt(e) && dt(e).trim()) bits.push(dt(e).trim());
+    if (e.place && e.place.trim()) bits.push("in " + e.place.trim());
+    return bits.length ? s + bits.join(", ") : "";
+  };
+  const lines = [];
+  for (const id of ids) {
+    const p = GED.personInfo(db, id);
+    if (!p) continue;
+    if (hide(id)) { lines.push(`[${id.replace(/@/g, "")}] lebende Person, Angaben bewusst ausgelassen`, ""); continue; }
+    lines.push(`[${id.replace(/@/g, "")}] ${GED.displayName(p.rec)}${p.sex === "M" ? ", männlich" : p.sex === "F" ? ", weiblich" : ""}`);
+    for (const e of p.events) { const l = evLine(e); if (l) lines.push("  " + l); }
+    const par = GED.parentsOf(db, id);
+    if (par) lines.push("  Eltern: " + [par.father, par.mother].filter(Boolean).map(nm).join(" und "));
+    for (const f of p.fams) {
+      const fi = GED.famInfo(db, f);
+      const sp = GED.spouseIn(db, f, id);
+      let s = "  Ehe/Partnerschaft" + (sp ? " mit " + nm(sp) : "");
+      const parts = fi.events.map(evLine).filter(Boolean);
+      if (parts.length) s += "; " + parts.join("; ");
+      if (fi.children.length) s += "; Kinder: " + fi.children.map(c => { const cp = GED.personInfo(db, c); const y = cp.birt && cp.birt.date.y; return nm(c) + (!hide(c) && y ? " (* " + y + ")" : ""); }).join(", ");
+      lines.push(s);
+    }
+    const surn = [p.name.surn, p.name.given];
+    for (const n of GED.kidsOf(p.rec, "NOTE")) {
+      let t = GED.noteText(db, n).trim().replace(/\s*\n\s*/g, " ");
+      if (!t || autoNote(t, surn)) continue;
+      lines.push("  Notiz: " + (t.length > 500 ? t.slice(0, 500) + " …" : t));
+    }
+    const srcs = GED.kidsOf(p.rec, "SOUR").map(n => GED.isPtr(n.val) && db.get(n.val) ? srcTitle(n.val) : "").filter(Boolean);
+    if (srcs.length) lines.push("  Quellen im Stammbaum: " + [...new Set(srcs)].slice(0, 8).join("; "));
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
+
+function abPrompt(db, pid) {
+  const ids = abPersonIds(db, pid);
+  const extract = abExtract(db, ids);
+  const task = {
+    compare: "Gleiche die Angaben im Auszug mit dem angehängten PDF ab. Gehe Person für Person vor. Nenne bei jeder Person, die im PDF vorkommt: (a) Angaben, die übereinstimmen, (b) Angaben, die abweichen, mit beiden Werten, (c) Angaben, die nur im PDF stehen. Personen, die im PDF nicht vorkommen, nennst du am Ende in einer Zeile.",
+    new: "Suche im angehängten PDF nach Angaben zu den Personen im Auszug, die im Auszug noch fehlen (z. B. Daten, Orte, Berufe, Eltern, Ehen, Kinder, Quellenangaben). Nenne nur Neues, nicht das, was schon im Auszug steht.",
+    find: "Stelle fest, welche Personen aus dem Auszug im angehängten PDF vorkommen. Nenne zu jedem Treffer die Seite und die Textstelle und sage, wie sicher die Zuordnung ist (sicher, wahrscheinlich, unsicher) und woran du das festmachst, etwa Name, Datum, Ort, Eltern."
+  }[AB.task];
+  const note = AB.note.trim();
+  const out = [
+    "Du hilfst mir bei der Ahnenforschung. Unten steht ein Auszug aus meinem Stammbaum. Im Anhang liegt ein PDF" + (AB.pdfName.trim() ? " („" + AB.pdfName.trim() + "“)" : "") + ".",
+    "",
+    "Aufgabe:",
+    task,
+    note ? "\nZusätzlicher Hinweis von mir: " + note : "",
+    "",
+    "Regeln:",
+    "- Nenne nur, was wirklich im PDF steht. Rate nicht und fülle keine Lücken aus eigenem Wissen. Wenn du etwas nicht sicher lesen kannst oder nicht weißt, schreibe das ausdrücklich.",
+    "- Gib zu jeder Aussage die Seite im PDF und die Textstelle wörtlich in Anführungszeichen an, damit ich nachprüfen kann.",
+    "- Achte auf Schreibvarianten bei Namen und Orten (zum Beispiel Umlaute, ältere Schreibweisen, Vornamen in anderer Reihenfolge) und auf Datumsformate. Weise darauf hin, wenn du eine Gleichsetzung nur wegen einer solchen Variante annimmst.",
+    "- Unterscheide Personen mit gleichem Namen sorgfältig, etwa Vater und Sohn, und nenne den Grund für deine Zuordnung.",
+    "- Antworte auf Deutsch. Nenne Personen mit der Kennung in eckigen Klammern aus dem Auszug.",
+    "- Schließe mit einer Liste der vorgeschlagenen Änderungen im Stammbaum in der Form: Kennung | Feld | bisheriger Wert | neuer Wert | Seite im PDF. Ändere selbst nichts, ich entscheide.",
+    "",
+    "Auszug aus dem Stammbaum (" + ids.length + " Personen, Daten wie in meinem Programm gespeichert):",
+    "",
+    extract
+  ].filter((x, i, a) => !(x === "" && a[i - 1] === ""));
+  return { text: out.join("\n"), n: ids.length, capped: ids.length > 150, living: AB.hideLiving ? ids.filter(i => abIsLiving(db, i)).length : 0 };
+}
+
+function openAbgleich() {
+  if (!needDb()) return;
+  const pid = S.pid;
+  const d = openDlg({
+    title: "Abgleich mit PDF vorbereiten", wide: true, noFocus: true, data: {},
+    body: (dd) => {
+      const r = abPrompt(S.db, pid);
+      dd.data.last = r;
+      const sel = (v, cur) => v === cur ? " selected" : "";
+      return `<p style="margin-top:0">Das Tool stellt einen Textauszug aus deinem Stammbaum und eine fertige Anweisung zusammen. Beides kopierst du in ein KI-Chatfenster und hängst dort das PDF an. Das Tool selbst schickt nichts ab. Ausgangsperson: <b>${E(nameOf(pid))}</b>.</p>
+      <div class="frow">
+        <label class="fld"><span>Welche Personen</span><select id="ab_scope">
+          <option value="one"${sel("one", AB.scope)}>Nur diese Person</option>
+          <option value="family"${sel("family", AB.scope)}>Kernfamilie (Eltern, Geschwister, Ehepartner, Kinder)</option>
+          <option value="anc"${sel("anc", AB.scope)}>Vorfahren</option>
+          <option value="desc"${sel("desc", AB.scope)}>Nachkommen</option></select></label>
+        ${AB.scope === "anc" || AB.scope === "desc" ? `<label class="fld"><span>Generationen</span><select id="ab_gens">${[1, 2, 3, 4, 5, 6].map(g => `<option${g === AB.gens ? " selected" : ""}>${g}</option>`).join("")}</select></label>` : ""}
+        <label class="fld"><span>Aufgabe</span><select id="ab_task">
+          <option value="compare"${sel("compare", AB.task)}>Angaben mit dem PDF abgleichen</option>
+          <option value="new"${sel("new", AB.task)}>Neue Angaben im PDF finden</option>
+          <option value="find"${sel("find", AB.task)}>Personen im PDF wiederfinden</option></select></label>
+      </div>
+      <label class="fld"><span>Name des PDFs (optional, steht in der Anweisung)</span><input id="ab_pdf" value="${E(AB.pdfName)}"></label>
+      <label class="fld"><span>Zusätzlicher Hinweis (optional, z. B. „Das PDF ist ein Kirchenbuch von 1780 bis 1820, Schrift teils schlecht lesbar“)</span><textarea id="ab_note" rows="2">${E(AB.note)}</textarea></label>
+      <label class="fld"><span><input type="checkbox" id="ab_hide" ${AB.hideLiving ? "checked" : ""} style="width:auto"> Lebende Personen nicht weitergeben (Personen ohne Sterbedatum, die in den letzten 110 Jahren geboren wurden, erscheinen nur als „lebende Person“)</span></label>
+      <div class="hint">${r.n} Personen im Auszug${r.living ? `, davon ${r.living} als lebend ausgelassen` : ""}. Länge: ${r.text.length.toLocaleString("de-DE")} Zeichen.${r.capped ? " Das ist viel; wähle weniger Generationen, sonst werden Antworten ungenau." : ""} Die Erkennung „lebend“ ist eine Faustregel nach Geburtsjahr, prüfe den Text vor dem Weitergeben.</div>
+      <label class="fld"><span>Fertige Anweisung mit Auszug</span><textarea id="ab_out" rows="12" readonly style="font:12px/1.4 ui-monospace,monospace">${E(r.text)}</textarea></label>`;
+    },
+    buttons: () => [{ id: "copy", label: "In die Zwischenablage kopieren", cls: "pri" }, { id: "save", label: "Als Textdatei speichern" }, { id: "close", label: "Schließen" }],
+    onChange: (d, e) => {
+      const id = e.target.id;
+      if (id === "ab_scope") AB.scope = e.target.value;
+      else if (id === "ab_gens") AB.gens = +e.target.value;
+      else if (id === "ab_task") AB.task = e.target.value;
+      else if (id === "ab_hide") AB.hideLiving = e.target.checked;
+      else return;
+      d.paint();
+    },
+    onInput: (d, e) => {
+      if (e.target.id === "ab_pdf") AB.pdfName = e.target.value;
+      else if (e.target.id === "ab_note") AB.note = e.target.value;
+      else return;
+      const r = abPrompt(S.db, pid);
+      d.data.last = r;
+      d.q("#ab_out").value = r.text;
+    },
+    on: {
+      copy: async (d) => {
+        const t = d.data.last.text;
+        try { await navigator.clipboard.writeText(t); toast("Kopiert. Jetzt im Chatfenster einfügen und das PDF anhängen."); }
+        catch (e) { const ta = d.q("#ab_out"); ta.removeAttribute("readonly"); ta.select(); const ok = document.execCommand && document.execCommand("copy"); ta.setAttribute("readonly", ""); toast(ok ? "Kopiert" : "Kopieren nicht möglich, bitte den Text markieren und selbst kopieren"); }
+      },
+      save: (d) => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([d.data.last.text], { type: "text/plain;charset=utf-8" }));
+        a.download = "abgleich-" + (S.fileName || "stammbaum").replace(/\.ged$/i, "") + "-" + stamp() + ".txt";
+        document.body.appendChild(a); a.click(); a.remove();
+      }
+    }
+  });
+  return d;
+}
+
+
+/* ============ ABGLEICH MIT EINER ZWEITEN GEDCOM-DATEI ============ */
+const CMP = { db: null, name: "", pairs: null, onlyA: [], onlyB: [], filter: "diff", limit: 150, sel: null, err: "", busy: false };
+
+const cf = (s) => GED.fold(String(s || ""));
+const firstTok = (s) => cf(s).split(/[\s,.-]+/).filter(Boolean)[0] || "";
+function cpInfo(db, id) {
+  const p = GED.personInfo(db, id);
+  const par = GED.parentsOf(db, id);
+  const g = (x) => x && GED.personInfo(db, x) ? GED.personInfo(db, x) : null;
+  const f = par ? g(par.father) : null, m = par ? g(par.mother) : null;
+  const sp = p.fams.map(fi => GED.spouseIn(db, fi, id)).map(g).filter(Boolean);
+  return {
+    id, p,
+    surn: cf(p.name.surn), givenToks: cf(p.name.given).split(/[\s,.-]+/).filter(Boolean),
+    sex: p.sex || "",
+    by: (p.birt && p.birt.date.y) || null, dy: (p.deat && p.deat.date.y) || null,
+    bpl: p.birt ? firstTok(p.birt.place.split(",")[0]) : "",
+    fGiven: f ? firstTok(f.name.given) : "", mGiven: m ? firstTok(m.name.given) : "",
+    spouses: sp.map(s => firstTok(s.name.given) + "|" + cf(s.name.surn))
+  };
+}
+function cpScore(a, b) {
+  if (a.surn !== b.surn) return -1;
+  if (a.sex && b.sex && a.sex !== b.sex) return -1;
+  let s = 0;
+  if (a.givenToks.length && b.givenToks.length) {
+    const ov = a.givenToks.some(t => b.givenToks.includes(t));
+    const pre = a.givenToks.some(t => b.givenToks.some(u => t.length >= 2 && u.length >= 2 && (t.startsWith(u) || u.startsWith(t))));
+    const ini = a.givenToks[0][0] === b.givenToks[0][0];
+    if (ov) s += 3; else if (pre) s += 2; else if (ini) s += 1; else return -1;
+  }
+  if (a.by && b.by) { const d = Math.abs(a.by - b.by); s += d === 0 ? 4 : d <= 1 ? 2 : d <= 2 ? 0 : -4; }
+  if (a.dy && b.dy) { const d = Math.abs(a.dy - b.dy); s += d === 0 ? 3 : d <= 1 ? 1 : d <= 2 ? 0 : -3; }
+  if (a.bpl && b.bpl && a.bpl === b.bpl) s += 1;
+  if (a.fGiven && b.fGiven && a.fGiven === b.fGiven) s += 2;
+  if (a.mGiven && b.mGiven && a.mGiven === b.mGiven) s += 2;
+  if (a.spouses.some(x => b.spouses.includes(x))) s += 2;
+  return s;
+}
+
+/* Vergleich einzelner Angaben */
+const CP_EVENTS = [["BIRT", "Geburt"], ["CHR", "Taufe"], ["DEAT", "Tod"], ["BURI", "Bestattung"]];
+function cpEvNode(p, tag) {
+  const alt = tag === "CHR" ? ["CHR", "BAPM"] : tag === "BURI" ? ["BURI", "CREM"] : [tag];
+  return p.rec.kids.find(k => alt.includes(k.tag)) || null;
+}
+const cpDateSig = (raw) => { const d = GED.parseDate(raw); return d.y ? [d.y, d.m || 0, d.d || 0] : null; };
+function cpDateState(a, b) {            // gleich / anders / fehlt in A / fehlt in B / genauer in A / genauer in B
+  const x = cpDateSig(a), y = cpDateSig(b);
+  if (!x && !y) return (a || b) && cf(a) !== cf(b) ? "diff" : "same";
+  if (!x) return y ? "missA" : "same";
+  if (!y) return "missB";
+  if (x[0] !== y[0]) return "diff";
+  if (x[1] === y[1] && x[2] === y[2]) return "same";
+  if (!x[1] && y[1]) return "moreB";
+  if (!y[1] && x[1]) return "moreA";
+  if (x[1] === y[1] && !x[2] && y[2]) return "moreB";
+  if (x[1] === y[1] && !y[2] && x[2]) return "moreA";
+  return "diff";
+}
+function cpPlaceState(a, b) {
+  const x = cf(a.split(",")[0]), y = cf(b.split(",")[0]);
+  if (!x && !y) return "same";
+  if (!x) return "missA";
+  if (!y) return "missB";
+  return x === y ? "same" : "diff";
+}
+function cpFields(aId, bId) {
+  const A = GED.personInfo(S.db, aId), B = GED.personInfo(CMP.db, bId), rows = [];
+  rows.push({ key: "SEX", label: "Geschlecht", a: A.sex, b: B.sex, st: !A.sex && B.sex ? "missA" : A.sex && !B.sex ? "missB" : A.sex !== B.sex ? "diff" : "same", apply: true });
+  for (const [tag, lab] of CP_EVENTS) {
+    const an = cpEvNode(A, tag), bn = cpEvNode(B, tag);
+    const ad = an ? GED.kval(an, "DATE") : "", bd = bn ? GED.kval(bn, "DATE") : "";
+    const ap = an ? GED.unesc(GED.kval(an, "PLAC")) : "", bp = bn ? GED.unesc(GED.kval(bn, "PLAC")) : "";
+    if (ad || bd) rows.push({ key: tag + ":DATE", label: lab + ", Datum", a: GED.formatDate(ad), b: GED.formatDate(bd), rawB: bd, st: cpDateState(ad, bd), apply: !!bd });
+    if (ap || bp) rows.push({ key: tag + ":PLAC", label: lab + ", Ort", a: ap, b: bp, rawB: GED.kval(bn || { kids: [] }, "PLAC"), st: cpPlaceState(ap, bp), apply: !!bp });
+  }
+  const pa = GED.parentsOf(S.db, aId), pb = GED.parentsOf(CMP.db, bId);
+  const nm = (db, id) => id && db.get(id) ? GED.displayName(db.get(id)) : "";
+  for (const [lab, k] of [["Vater", "father"], ["Mutter", "mother"]]) {
+    const x = nm(S.db, pa && pa[k]), y = nm(CMP.db, pb && pb[k]);
+    if (x || y) rows.push({ key: "par:" + k, label: lab, a: x, b: y, st: !x ? "missA" : !y ? "missB" : cf(x) === cf(y) ? "same" : "diff", apply: false });
+  }
+  return rows;
+}
+const CP_ST = { same: "gleich", diff: "unterschiedlich", missA: "fehlt hier", missB: "fehlt in der Abgleichdatei", moreA: "hier genauer", moreB: "in der Abgleichdatei genauer" };
+
+function cpMatch() {
+  const ai = S.db.ofTag("INDI").map(r => cpInfo(S.db, r.xref));
+  const bi = CMP.db.ofTag("INDI").map(r => cpInfo(CMP.db, r.xref));
+  const bySurn = new Map();
+  const cnt = (arr, withBy) => { const m = new Map(); for (const x of arr) { const k = x.surn + "|" + (x.givenToks[0] || "") + (withBy ? "|" + (x.by || "") : ""); m.set(k, (m.get(k) || 0) + 1); } return m; };
+  const kk = (x, withBy) => x.surn + "|" + (x.givenToks[0] || "") + (withBy ? "|" + (x.by || "") : "");
+  const nA = cnt(ai, false), nB = cnt(bi, false), yA = cnt(ai, true), yB = cnt(bi, true);
+  const byId = new Map(); ai.forEach(x => byId.set("A" + x.id, x)); bi.forEach(x => byId.set("B" + x.id, x));
+  for (const b of bi) { (bySurn.get(b.surn) || bySurn.set(b.surn, []).get(b.surn)).push(b); }
+  const cand = [];
+  for (const a of ai) {
+    for (const b of bySurn.get(a.surn) || []) {
+      const sc = cpScore(a, b);
+      const uniqName = nA.get(kk(a, false)) === 1 && nB.get(kk(b, false)) === 1 && a.givenToks.length && b.givenToks.length && a.givenToks[0] === b.givenToks[0];
+      if (sc >= 5 || (sc >= 3 && uniqName)) cand.push({ a: a.id, b: b.id, sc, uniqYear: a.by && yA.get(kk(a, true)) === 1 && yB.get(kk(b, true)) === 1 });
+    }
+  }
+  cand.sort((x, y) => y.sc - x.sc);
+  const usedA = new Set(), usedB = new Set(), pairs = [];
+  for (const c of cand) {
+    if (usedA.has(c.a) || usedB.has(c.b)) continue;
+    usedA.add(c.a); usedB.add(c.b); pairs.push(c);
+  }
+  for (const p of pairs) {
+    p.level = p.sc >= 9 || (p.sc >= 7 && p.uniqYear) ? "sure" : "prob";
+    p.ndiff = cpFields(p.a, p.b).filter(r => r.st !== "same").length;
+  }
+  CMP.pairs = pairs;
+  CMP.onlyA = ai.filter(x => !usedA.has(x.id)).map(x => x.id);
+  CMP.onlyB = bi.filter(x => !usedB.has(x.id)).map(x => x.id);
+}
+
+async function cpLoad(buf, name) {
+  const dec = GED.decode(buf);
+  const db = GED.parseGedcom(dec.text, { bom: dec.bom });
+  if (!db.ofTag("INDI").length) throw new Error("In der Abgleichdatei wurden keine Personen gefunden.");
+  CMP.db = db; CMP.name = name; CMP.sel = null; CMP.limit = 150; CMP.filter = "diff";
+  cpMatch();
+}
+
+function openCompare() {
+  if (!needDb()) return;
+  const d = openDlg({
+    title: "Abgleich mit einer zweiten Datei", wide: true, noFocus: true, data: { files: null },
+    body: (dd) => {
+      if (CMP.busy) return `<div class="hint">Vergleiche …</div>`;
+      if (!CMP.db) {
+        let h = `<p style="margin-top:0">Wähle eine zweite GEDCOM-Datei, zum Beispiel einen Export aus MyHeritage oder von einer Verwandten. Das Tool ordnet Personen über Name, Geburts- und Sterbejahr, Geburtsort, Eltern und Ehepartner zu und zeigt dir Unterschiede. Die zweite Datei wird nur gelesen und nie verändert. Übernehmen kannst du einzelne Angaben in die geöffnete Datei <b>${E(S.fileName)}</b>.</p>
+          <button class="btn pri" data-d="pickLocal">Datei vom Gerät wählen</button>`;
+        if (accessToken) {
+          h += ` <button class="btn" data-d="pickDrive">Aus Google Drive</button>`;
+          if (dd.data.files) h += `<div class="panel"><h4>Dateien in Drive</h4><ul class="cites">${dd.data.files.filter(f => !isBackup(f.name) && f.id !== (S.driveFile && S.driveFile.id)).map(f => `<li><button data-d="loadDrive" data-id="${f.id}" data-name="${E(f.name)}"><b>${E(f.name)}</b></button></li>`).join("") || "<li>keine weitere Datei</li>"}</ul></div>`;
+        }
+        return h + (CMP.err ? `<div class="err">${E(CMP.err)}</div>` : "");
+      }
+      if (CMP.sel) return cpDetailHtml();
+      const sure = CMP.pairs.filter(p => p.level === "sure").length, prob = CMP.pairs.length - sure;
+      const list = cpList();
+      const sel = (v, t) => `<option value="${v}"${CMP.filter === v ? " selected" : ""}>${t}</option>`;
+      let h = `<div class="hint" style="margin:0 0 8px">Abgleichdatei: <b>${E(CMP.name)}</b> (${CMP.db.ofTag("INDI").length} Personen). ${sure} sichere und ${prob} wahrscheinliche Zuordnungen, ${CMP.onlyA.length} Personen nur hier, ${CMP.onlyB.length} nur in der Abgleichdatei. „Wahrscheinlich“ heißt: bitte selbst prüfen, ob es dieselbe Person ist.</div>
+        <label class="fld"><span>Anzeigen</span><select id="cp_filter">${sel("diff", "Zuordnungen mit Unterschieden")}${sel("prob", "Nur wahrscheinliche Zuordnungen (zu prüfen)")}${sel("all", "Alle Zuordnungen")}${sel("onlyA", "Personen nur in dieser Datei")}${sel("onlyB", "Personen nur in der Abgleichdatei")}</select></label>
+        <div class="hint">${list.total} Einträge${list.total > CMP.limit ? `, die ersten ${CMP.limit} werden angezeigt` : ""}.</div>
+        <ul class="cites" style="max-height:48vh;overflow:auto">${list.html}</ul>`;
+      if (list.total > CMP.limit) h += `<button class="btn" data-d="more">Mehr anzeigen</button>`;
+      return h;
+    },
+    buttons: () => CMP.db ? (CMP.sel ? [{ id: "back", label: "Zurück zur Liste" }, { id: "close", label: "Schließen" }] : [{ id: "other", label: "Andere Datei wählen" }, { id: "close", label: "Schließen" }]) : [{ id: "close", label: "Schließen" }],
+    onChange: (dd, e) => { if (e.target.id === "cp_filter") { CMP.filter = e.target.value; CMP.limit = 150; dd.paint(); } },
+    on: {
+      pickLocal: async (dd) => {
+        const f = (await pickOne(".ged,.GED,.txt"));
+        if (!f) return;
+        await run(dd, () => f.arrayBuffer(), f.name);
+      },
+      pickDrive: async (dd) => { try { dd.data.files = await driveList(); } catch (e) { CMP.err = e.message; } dd.paint(); },
+      loadDrive: async (dd, t) => {
+        await run(dd, async () => {
+          const r = await fetch(`${DRIVE}/files/${encodeURIComponent(t.dataset.id)}?alt=media`, { headers: { Authorization: "Bearer " + accessToken } });
+          if (!r.ok) throw new Error("Drive " + r.status);
+          return r.arrayBuffer();
+        }, t.dataset.name);
+      },
+      other: (dd) => { CMP.db = null; CMP.pairs = null; CMP.sel = null; dd.paint(); },
+      back: (dd) => { CMP.sel = null; dd.paint(); },
+      more: (dd) => { CMP.limit += 150; dd.paint(); },
+      open: (dd, t) => { CMP.sel = { a: t.dataset.a || null, b: t.dataset.b || null }; dd.paint(); },
+      jump: (dd, t) => { dd.close(); go(t.dataset.a); },
+      apply: (dd, t) => { cpApply(t.dataset.key, CMP.sel.a, CMP.sel.b); dd.paint(); }
+    }
+  });
+  async function run(dd, getBuf, name) {
+    CMP.busy = true; CMP.err = ""; dd.paint();
+    try { await cpLoad(await getBuf(), name); } catch (e) { CMP.err = e.message || String(e); CMP.db = null; }
+    CMP.busy = false; dd.paint();
+  }
+  return d;
+}
+function pickOne(accept) {
+  return new Promise(res => {
+    const inp = document.createElement("input");
+    inp.type = "file"; inp.accept = accept; inp.style.display = "none";
+    inp.onchange = () => { res(inp.files[0] || null); inp.remove(); };
+    inp.oncancel = () => { res(null); inp.remove(); };
+    document.body.appendChild(inp); inp.click();
+  });
+}
+
+function cpPerson(db, id) {
+  const p = GED.personInfo(db, id);
+  return `${E(GED.displayName(p.rec))} <span class="w">${E(GED.lifeSpan(db, id))}</span>`;
+}
+function cpList() {
+  const f = CMP.filter;
+  let rows;
+  if (f === "onlyA") rows = CMP.onlyA.map(id => ({ a: id }));
+  else if (f === "onlyB") rows = CMP.onlyB.map(id => ({ b: id }));
+  else rows = CMP.pairs.filter(p => f === "all" || (f === "prob" ? p.level === "prob" : p.ndiff > 0));
+  if (rows.length && (f === "onlyA" || f === "onlyB")) {
+    const db = f === "onlyA" ? S.db : CMP.db;
+    rows.sort((x, y) => (GED.personInfo(db, x.a || x.b).name.surn || "￿").localeCompare(GED.personInfo(db, y.a || y.b).name.surn || "￿", "de"));
+  } else rows.sort((x, y) => (x.level === y.level ? 0 : x.level === "prob" ? -1 : 1) || y.ndiff - x.ndiff);
+  const html = rows.slice(0, CMP.limit).map(r => {
+    if (r.a && !r.b) return `<li><button data-d="open" data-a="${r.a}">${cpPerson(S.db, r.a)}</button></li>`;
+    if (r.b && !r.a) return `<li><button data-d="open" data-b="${r.b}">${cpPerson(CMP.db, r.b)}</button></li>`;
+    return `<li><button data-d="open" data-a="${r.a}" data-b="${r.b}">${cpPerson(S.db, r.a)}</button> <span class="w">${r.level === "prob" ? "wahrscheinlich" : "sicher"}, ${r.ndiff ? r.ndiff + " Unterschied" + (r.ndiff === 1 ? "" : "e") : "keine Unterschiede"}</span></li>`;
+  }).join("");
+  return { html: html || "<li>Nichts zu zeigen.</li>", total: rows.length };
+}
+function cpDetailHtml() {
+  const { a, b } = CMP.sel;
+  if (a && !b) return `<h3 style="margin-top:0">${cpPerson(S.db, a)}</h3><p>Diese Person hat in der Abgleichdatei keine Entsprechung.</p><button class="btn" data-d="jump" data-a="${a}">In dieser Datei anzeigen</button>`;
+  if (b && !a) return `<h3 style="margin-top:0">${cpPerson(CMP.db, b)}</h3><p>Diese Person aus der Abgleichdatei hat in der geöffneten Datei keine Entsprechung. Anlegen kann das Tool sie nicht automatisch, weil dabei die Verknüpfungen zu Eltern und Ehepartnern fehlen würden.</p>${cpFieldsOnly(b)}`;
+  const pair = CMP.pairs.find(p => p.a === a && p.b === b);
+  const rows = cpFields(a, b);
+  return `<h3 style="margin-top:0">${E(GED.displayName(S.db.get(a)))} <span class="w">${E(GED.lifeSpan(S.db, a))}</span></h3>
+    <div class="hint" style="margin-bottom:8px">Abgleichdatei: ${cpPerson(CMP.db, b)}. Zuordnung: ${pair && pair.level === "prob" ? "wahrscheinlich, bitte selbst prüfen" : "sicher"}. <button class="btn sm" data-d="jump" data-a="${a}">In dieser Datei anzeigen</button></div>
+    <table class="tbl" style="width:100%"><thead><tr><th>Angabe</th><th>Diese Datei</th><th>Abgleichdatei</th><th>Stand</th><th></th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${E(r.label)}</td><td>${E(r.a || "—")}</td><td>${E(r.b || "—")}</td><td class="w">${CP_ST[r.st]}</td><td>${r.st !== "same" && r.apply ? `<button class="btn sm" data-d="apply" data-key="${r.key}">${r.st === "missA" ? "Übernehmen" : "Durch diesen Wert ersetzen"}</button>` : ""}</td></tr>`).join("")}
+    </tbody></table><div class="hint" style="margin-top:8px">Übernommen wird der Wert aus der Abgleichdatei. Jede Übernahme lässt sich mit Rückgängig zurücknehmen. Eltern und Ehen werden nur angezeigt, nicht übernommen.</div>`;
+}
+function cpFieldsOnly(b) {
+  const B = GED.personInfo(CMP.db, b);
+  const li = [];
+  for (const e of B.events) { const bits = [GED.formatDate(e.date.raw), e.place, e.val && e.val !== "Y" ? e.val : ""].filter(Boolean); if (bits.length) li.push(`<li>${E(e.label)}: ${E(bits.join(", "))}</li>`); }
+  return `<ul class="cites">${li.join("")}</ul>`;
+}
+
+function cpApply(key, aId, bId) {
+  const rec = S.db.get(aId), B = GED.personInfo(CMP.db, bId);
+  const label = "Abgleich: " + key;
+  if (key === "SEX") {
+    GED.run(S.db, label, tx => { tx.touch(rec); putKid(rec, "SEX", B.sex); });
+  } else {
+    const [tag, part] = key.split(":");
+    const bn = cpEvNode(B, tag);
+    if (!bn) return;
+    const raw = GED.kval(bn, part);
+    GED.run(S.db, label, tx => {
+      tx.touch(rec);
+      let ev = cpEvNode(GED.personInfo(S.db, aId), tag);
+      if (!ev) {
+        ev = { tag: bn.tag, val: "", kids: [] };
+        const at = rec.kids.findIndex(k => ["FAMC", "FAMS", "NOTE", "SOUR", "OBJE", "CHAN"].includes(k.tag));
+        if (at < 0) rec.kids.push(ev); else rec.kids.splice(at, 0, ev);
+      }
+      putKid(ev, part, raw);
+    });
+  }
+  afterEdit("Übernommen: " + key.replace(":", " "));
+}
+
+
+/* ============ BILDER BEARBEITEN (Personen) UND ORTSBILDER ============ */
+const PATHSEG = (s) => pathSegs(s);
+
+/* Auswahl eines Bildes aus dem Drive-Ordner Medien */
+function mediaPicker(onPick, title) {
+  const MAXN = 30;
+  const d = openDlg({
+    title: title || "Bild aus Drive wählen", wide: true, noFocus: false, data: { q: "" },
+    body: (dd) => {
+      if (!accessToken) return `<p style="margin-top:0">Melde dich zuerst bei Google Drive an (Menü Mehr, Fotos und Dokumente).</p>`;
+      if (!M.idx) return `<div class="hint">Lade Fotoliste …</div>`;
+      return `<label class="fld"><span>Dateiname oder Ordner enthält</span><input id="mp_q" value="${E(dd.data.q)}" autocomplete="off"></label><div id="mp_grid"></div>`;
+    },
+    buttons: () => [{ id: "close", label: "Abbrechen" }],
+    after: (dd) => { if (M.idx && dd.q("#mp_grid")) fill(dd); },
+    onInput: (dd, e) => { if (e.target.id === "mp_q") { dd.data.q = e.target.value; fill(dd); } },
+    on: { pick: (dd, t) => { const f = M.idx.find(x => x.id === t.dataset.mid); dd.close(); if (f) onPick(f); } }
+  });
+  function fill(dd) {
+    const q = cf(dd.data.q);
+    const list = M.idx.filter(f => IMG_RE.test(f.name) && (!q || cf(f.rel.join("/")).includes(q))).slice(0, MAXN + 1);
+    dd.q("#mp_grid").innerHTML = `<div class="mgrid">${list.slice(0, MAXN).map(f => `<button class="mth" data-d="pick" data-mid="${f.id}" title="${E(f.rel.join("/"))}"><img data-mid="${f.id}" alt=""><span>${E(f.name)}</span></button>`).join("")}</div>` + (list.length > MAXN ? `<div class="hint">Es gibt mehr Treffer. Grenze die Suche weiter ein.</div>` : list.length ? "" : `<div class="hint">Kein passendes Bild.</div>`);
+    hydrateMedia();
+  }
+  if (accessToken && !M.idx) loadMediaIdx().then(() => { if (document.body.contains(d.el)) d.paint(); }).catch(() => {});
+  return d;
+}
+
+/* ---- Pfad, der beim Anlegen in die .ged geschrieben wird (damit Reunion das Bild findet) ---- */
+function guessMediaBase() {
+  const cnt = new Map();
+  for (const r of S.db.ofTag("INDI")) for (const o of GED.kidsOf(r, "OBJE")) {
+    const f = GED.kval(o, "FILE").replace(/\\/g, "/");
+    const i = f.indexOf("/Reunion-Bilder/");
+    const base = i >= 0 ? f.slice(0, i + "/Reunion-Bilder".length) : f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : "";
+    if (base) cnt.set(base, (cnt.get(base) || 0) + 1);
+  }
+  let best = "", n = 0;
+  for (const [k, v] of cnt) if (v > n) { best = k; n = v; }
+  return best;
+}
+function newFilePath(base, hit) {
+  const segs = hit.rel.slice();
+  const last = pathSegs(base).pop();
+  if (last && segs.length > 1 && cf(segs[0]) === cf(last)) segs.shift();
+  return (base ? base.replace(/\/+$/, "") + "/" : "") + segs.join("/");
+}
+
+/* ---- Person: Galerie bearbeiten ---- */
+function openGallery(pid) {
+  const rec = S.db.get(pid);
+  if (!rec) return;
+  const nodes = rec.kids.filter(k => k.tag === "OBJE" && GED.kid(k, "FILE"));
+  const model = nodes.map(n => ({ node: n, file: GED.kval(n, "FILE"), title: GED.unesc(GED.kval(n, "TITL")), prim: /^y/i.test(GED.kval(n, "_PRIM") || ""), t0: GED.kval(n, "TITL"), p0: GED.kval(n, "_PRIM") }));
+  const d0 = model.map(m => [m.title, m.prim]);
+  let base = lsGet("st.mediaBase", "") || guessMediaBase();
+  if (!accessToken || M.idx) {} else loadMediaIdx().then(() => { if (document.body.contains(d.el)) d.paint(); }).catch(() => {});
+  const d = openDlg({
+    title: "Bilder von " + GED.displayName(rec), wide: true, noFocus: true, data: {},
+    body: () => {
+      let h = `<p style="margin-top:0">Hauptfoto ist das Bild, das in Reunion und hier zuerst erscheint. Neue Bilder holst du aus dem Drive-Ordner Medien (Menü Mehr, Fotos und Dokumente zum Hochladen).</p>`;
+      h += model.length ? `<ul class="gal">${model.map((m, i) => {
+        const hit = M.idx ? findMedia(m.file) : null;
+        const th = hit && IMG_RE.test(hit.name) ? `<img data-mid="${hit.id}" alt="">` : `<span class="nothumb">${hit ? "Dokument" : M.idx ? "nicht in Drive" : "keine Vorschau"}</span>`;
+        return `<li><div class="gth">${th}</div><div class="gmain">
+          <input data-i="${i}" class="gtitle" value="${E(m.title)}" placeholder="Titel" aria-label="Titel">
+          <div class="w">${E(m.file)}${m.node ? "" : " (neu)"}</div>
+          <label><input type="radio" name="gprim" data-i="${i}" ${m.prim ? "checked" : ""}> Hauptfoto</label>
+          <span class="gbtn"><button class="btn sm" data-d="up" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="Nach oben">↑</button><button class="btn sm" data-d="down" data-i="${i}" ${i === model.length - 1 ? "disabled" : ""} aria-label="Nach unten">↓</button><button class="btn sm dng" data-d="del" data-i="${i}">Entfernen</button></span></div></li>`;
+      }).join("")}</ul>` : `<div class="hint">Noch keine Bilder.</div>`;
+      h += `<div class="panel"><h4>Bild hinzufügen</h4><button class="btn" data-d="add">Aus Drive wählen</button>
+        <label class="fld" style="margin-top:8px"><span>Ordner in der .ged-Datei für neue Bilder (so schreibt das Tool den Pfad, damit Reunion das Bild findet)</span><input id="g_base" value="${E(base)}"></label></div>`;
+      return h;
+    },
+    after: () => hydrateMedia(),
+    buttons: () => [{ id: "ok", label: "Übernehmen", cls: "pri" }, { id: "close", label: "Abbrechen" }],
+    onInput: (dd, e) => {
+      if (e.target.classList.contains("gtitle")) model[+e.target.dataset.i].title = e.target.value;
+      else if (e.target.id === "g_base") { base = e.target.value; lsSet("st.mediaBase", base); }
+    },
+    onChange: (dd, e) => { if (e.target.name === "gprim") model.forEach((m, i) => m.prim = i === +e.target.dataset.i); },
+    on: {
+      up: (dd, t) => { const i = +t.dataset.i; [model[i - 1], model[i]] = [model[i], model[i - 1]]; dd.paint(); },
+      down: (dd, t) => { const i = +t.dataset.i; [model[i + 1], model[i]] = [model[i], model[i + 1]]; dd.paint(); },
+      del: (dd, t) => { const [m] = model.splice(+t.dataset.i, 1); if (m.prim && model.length) { /* kein Hauptfoto mehr */ } dd.paint(); },
+      add: () => {
+        mediaPicker((hit) => {
+          const file = newFilePath(base, hit);
+          model.push({ node: null, file, title: hit.name.replace(/\.[^.]+$/, ""), prim: !model.some(m => m.prim), t0: "", p0: "", hit });
+          d.paint();
+        });
+      },
+      ok: (dd) => {
+        const before = JSON.stringify(d0), after = JSON.stringify(model.map(m => [m.title, m.prim]));
+        const sameOrder = model.length === nodes.length && model.every((m, i) => m.node === nodes[i]);
+        if (sameOrder && before === after) { dd.close(); toast("Keine Änderung"); return; }
+        GED.run(S.db, "Bilder bearbeiten", tx => {
+          tx.touch(rec);
+          const at0 = rec.kids.indexOf(nodes[0]);
+          for (const n of nodes) rec.kids.splice(rec.kids.indexOf(n), 1);
+          const out = model.map(m => {
+            let n = m.node;
+            if (!n) {
+              const ext = (m.file.split(".").pop() || "").toLowerCase().replace("jpeg", "jpg");
+              n = { tag: "OBJE", val: "", kids: [{ tag: "FORM", val: ext, kids: [] }, { tag: "FILE", val: m.file, kids: [] }, { tag: "_TYPE", val: "PHOTO", kids: [] }] };
+              if (m.title) n.kids.splice(2, 0, { tag: "TITL", val: GED.esc(m.title), kids: [] });
+              n.kids.push({ tag: "_PRIM", val: m.prim ? "Y" : "N", kids: [] });
+            } else {
+              if (GED.unesc(m.t0) !== m.title) putKid(n, "TITL", m.title ? GED.esc(m.title) : "");
+              const want = m.prim ? "Y" : (m.p0 || model.some(x => x.prim) ? "N" : "");
+              if ((m.p0 || "") !== want && want) putKid(n, "_PRIM", want);
+              else if ((m.p0 || "") !== want && !want) putKid(n, "_PRIM", "");
+            }
+            return n;
+          });
+          let at = at0 >= 0 ? at0 : rec.kids.findIndex(k => ["FAMC", "FAMS", "NOTE", "SOUR", "CHAN"].includes(k.tag));
+          if (at < 0) at = rec.kids.length;
+          rec.kids.splice(at, 0, ...out);
+        });
+        dd.close();
+        afterEdit("Bilder geändert");
+      }
+    }
+  });
+  return d;
+}
+ACT.editMedia = (ds) => openGallery(ds.id);
+
+/* ---- Orte mit Bildern: Zusatzdatei orte-bilder.json im Drive-Ordner ---- */
+const PLACE_FILE = "orte-bilder.json";
+const PL = { id: null, data: null, err: "" };
+async function plLoad() {
+  await ensureDrive();
+  const main = await driveFolder();
+  const q = encodeURIComponent(`name='${PLACE_FILE}' and '${main}' in parents and trashed=false`);
+  const res = await api(`${DRIVE}/files?q=${q}&spaces=drive&fields=files(id)`);
+  const f = res && res.files && res.files[0];
+  PL.id = f ? f.id : null;
+  PL.data = { v: 1, places: {} };
+  if (f) {
+    const r = await fetch(`${DRIVE}/files/${encodeURIComponent(f.id)}?alt=media`, { headers: { Authorization: "Bearer " + accessToken } });
+    if (!r.ok) throw new Error("Drive " + r.status);
+    try { const j = await r.json(); if (j && j.places) PL.data = j; } catch (e) { throw new Error("Die Datei " + PLACE_FILE + " in Drive ist nicht lesbar."); }
+  }
+}
+async function plSave() {
+  const body = JSON.stringify(PL.data);
+  if (PL.id) {
+    await api(`${UPLOAD}/files/${encodeURIComponent(PL.id)}?uploadType=media&fields=id`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body });
+  } else {
+    const main = await driveFolder();
+    const boundary = "stp" + Math.random().toString(36).slice(2);
+    const b = new Blob([`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: PLACE_FILE, parents: [main] })}\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`, body, `\r\n--${boundary}--`]);
+    const r = await api(`${UPLOAD}/files?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": "multipart/related; boundary=" + boundary }, body: b });
+    PL.id = r.id;
+  }
+}
+function plAggregate(db) {
+  const m = new Map();
+  const bump = (pl) => { pl = GED.unesc(pl).trim(); if (pl) m.set(pl, (m.get(pl) || 0) + 1); };
+  for (const r of db.records) {
+    if (r.tag !== "INDI" && r.tag !== "FAM") continue;
+    for (const k of r.kids) { const p = GED.kid(k, "PLAC"); if (p) bump(p.val); }
+  }
+  return m;
+}
+function plGeo(db, name) {
+  const r = db.records.find(x => x.tag === "_PLAC" && GED.unesc(x.val).trim() === name);
+  if (!r) return null;
+  const map = GED.kid(r, "MAP");
+  return { lat: map && GED.kval(map, "LATI"), lon: map && GED.kval(map, "LONG"), note: GED.kidsOf(r, "NOTE").map(n => GED.noteText(db, n).trim()).filter(Boolean) };
+}
+
+function openPlaces() {
+  if (!needDb()) return;
+  let places = null, cur = null, filter = "";
+  const d = openDlg({
+    title: "Orte und Bilder", wide: true, noFocus: true, data: {},
+    body: () => {
+      if (!accessToken) return `<p style="margin-top:0">Die Ortsbilder liegen in Google Drive (Datei ${E(PLACE_FILE)} im Ordner „${E(DRIVE_FOLDER)}“) und sind unabhängig von deiner .ged-Datei. Melde dich dazu an.</p>${location.protocol === "file:" ? `<div class="err">${E(FILE_MSG)}</div>` : ""}${PL.err ? `<div class="err">${E(PL.err)}</div>` : ""}`;
+      if (!PL.data || !M.idx) return `<div class="hint">Lade …</div>${PL.err ? `<div class="err">${E(PL.err)}</div>` : ""}`;
+      if (cur != null) return detail();
+      return `<label class="fld"><span>Ort suchen</span><input id="pl_q" value="${E(filter)}" autocomplete="off"></label><div class="hint" id="pl_cnt"></div><ul class="cites" id="pl_list" style="max-height:52vh;overflow:auto"></ul>${PL.err ? `<div class="err">${E(PL.err)}</div>` : ""}`;
+    },
+    after: (dd) => { if (dd.q("#pl_list")) list(dd); hydrateMedia(); },
+    buttons: () => accessToken ? (cur != null ? [{ id: "back", label: "Zurück zur Ortsliste" }, { id: "close", label: "Schließen" }] : [{ id: "close", label: "Schließen" }]) : [{ id: "login", label: "Mit Google anmelden", cls: "pri" }],
+    onInput: (dd, e) => {
+      if (e.target.id === "pl_q") { filter = e.target.value; list(dd); }
+      else if (e.target.classList.contains("gtitle")) { const it = items()[+e.target.dataset.i]; if (it) { it.title = e.target.value; saveSoon(); } }
+    },
+    on: {
+      login: async (dd) => { try { PL.err = ""; await ensureDrive(); await init(dd); } catch (e) { PL.err = e.message || String(e.type || e); dd.paint(); } },
+      back: (dd) => { cur = null; dd.paint(); },
+      open: (dd, t) => { cur = t.dataset.p; dd.paint(); },
+      add: (dd) => mediaPicker((hit) => {
+        const arr = PL.data.places[cur] || (PL.data.places[cur] = []);
+        arr.push({ name: hit.name, rel: hit.rel.join("/"), title: hit.name.replace(/\.[^.]+$/, "") });
+        persist(dd); dd.paint();
+      }),
+      del: (dd, t) => { const arr = PL.data.places[cur]; arr.splice(+t.dataset.i, 1); if (!arr.length) delete PL.data.places[cur]; persist(dd); dd.paint(); },
+      up: (dd, t) => { const a = PL.data.places[cur], i = +t.dataset.i; [a[i - 1], a[i]] = [a[i], a[i - 1]]; persist(dd); dd.paint(); },
+      down: (dd, t) => { const a = PL.data.places[cur], i = +t.dataset.i; [a[i + 1], a[i]] = [a[i], a[i + 1]]; persist(dd); dd.paint(); }
+    }
+  });
+  const items = () => PL.data && PL.data.places[cur] || [];
+  let timer = null;
+  function saveSoon() { clearTimeout(timer); timer = setTimeout(() => persist(d), 800); }
+  async function persist(dd) {
+    try { PL.err = ""; await plSave(); } catch (e) { PL.err = "Speichern in Drive fehlgeschlagen: " + (e.message || e); toast(PL.err, 5000); }
+  }
+  function list(dd) {
+    const q = cf(filter);
+    const rows = [...places.entries()].filter(([n]) => !q || cf(n).includes(q)).sort((a, b) => (PL.data.places[b[0]] ? 1 : 0) - (PL.data.places[a[0]] ? 1 : 0) || b[1] - a[1] || a[0].localeCompare(b[0], "de"));
+    dd.q("#pl_cnt").textContent = `${rows.length} Orte${rows.length > 200 ? ", die ersten 200 werden angezeigt" : ""}. Orte mit Bildern stehen oben.`;
+    dd.q("#pl_list").innerHTML = rows.slice(0, 200).map(([n, c]) => { const k = (PL.data.places[n] || []).length; return `<li><button data-d="open" data-p="${E(n)}">${E(n)}</button> <span class="w">${c} Ereignis${c === 1 ? "" : "se"}${k ? ", " + k + " Bild" + (k === 1 ? "" : "er") : ""}</span></li>`; }).join("") || "<li>Kein Ort gefunden.</li>";
+  }
+  function detail() {
+    const g = plGeo(S.db, cur), it = items();
+    let h = `<h3 style="margin-top:0">${E(cur)}</h3><div class="hint" style="margin-bottom:8px">${places.get(cur) || 0} Ereignis${(places.get(cur) || 0) === 1 ? "" : "se"} in dieser Datei.`;
+    if (g && g.lat) h += ` Koordinaten aus der Datei: ${E(g.lat)}, ${E(g.lon)}.`;
+    h += `</div>`;
+    if (g && g.note.length) h += `<div class="hint">${g.note.map(E).join(" ")}</div>`;
+    h += it.length ? `<ul class="gal">${it.map((m, i) => {
+      const hit = findMedia(m.rel);
+      return `<li><div class="gth">${hit ? `<img data-mid="${hit.id}" alt="">` : `<span class="nothumb">nicht in Drive</span>`}</div><div class="gmain"><input data-i="${i}" class="gtitle" value="${E(m.title)}" placeholder="Titel" aria-label="Titel"><div class="w">${E(m.rel)}</div><span class="gbtn"><button class="btn sm" data-d="up" data-i="${i}" ${i === 0 ? "disabled" : ""}>↑</button><button class="btn sm" data-d="down" data-i="${i}" ${i === it.length - 1 ? "disabled" : ""}>↓</button><button class="btn sm dng" data-d="del" data-i="${i}">Entfernen</button></span></div></li>`;
+    }).join("")}</ul>` : `<div class="hint">Noch kein Bild für diesen Ort.</div>`;
+    return h + `<button class="btn pri" data-d="add">Bild aus Drive hinzufügen</button><div class="hint" style="margin-top:8px">Die Zuordnung steht nur in Drive (${E(PLACE_FILE)}), nicht in der .ged-Datei. Reunion bekommt sie nicht.</div>${PL.err ? `<div class="err">${E(PL.err)}</div>` : ""}`;
+  }
+  async function init(dd) {
+    try {
+      places = plAggregate(S.db);
+      await Promise.all([plLoad(), loadMediaIdx()]);
+    } catch (e) { PL.err = e.message || String(e); PL.data = PL.data || null; }
+    if (document.body.contains(dd.el)) dd.paint();
+  }
+  places = plAggregate(S.db);
+  if (accessToken) init(d);
+  return d;
+}
+ACT.places = () => openPlaces();
+
 /* ============ HAUPTANSICHT ============ */
 function welcomeHtml() {
   let last = null;
@@ -2718,13 +3408,13 @@ function openMenu() {
   if ($("menu")) { $("menu").remove(); return; }
   const m = document.createElement("div");
   m.className = "menu"; m.id = "menu";
-  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="settings">Einstellungen</button>`;
+  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="settings">Einstellungen</button>`;
   document.body.appendChild(m);
   $("btnMenu").setAttribute("aria-expanded", "true");
   m.addEventListener("click", (e) => {
     const b = e.target.closest("[data-m]"); if (!b) return;
     m.remove(); $("btnMenu").setAttribute("aria-expanded", "false");
-    ({ export: exportDownload, media: openMediaDlg, check: openCheck, info: openInfo, settings: openSettings })[b.dataset.m]();
+    ({ export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, places: openPlaces, check: openCheck, info: openInfo, settings: openSettings })[b.dataset.m]();
   });
 }
 document.addEventListener("click", (e) => { const m = $("menu"); if (m && !e.target.closest("#menu") && e.target.id !== "btnMenu") { m.remove(); $("btnMenu").setAttribute("aria-expanded", "false"); } });

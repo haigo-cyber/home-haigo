@@ -631,6 +631,12 @@ body.twdrag #splL .pb{position:relative}
 .twolist{flex:0 0 auto;min-height:96px}
 .twodet{flex:0 0 auto}
 
+.qb.qa{cursor:pointer}.qb.qa:hover{background:var(--accent);color:#fff}
+sup.fns a{padding:2px 4px;margin:-2px -1px;display:inline-block;border-radius:4px}sup.fns a:hover{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.fnl li{display:list-item}.fnedit{margin-left:6px;padding:1px 7px;font-size:11px}
+.qdl .qg{margin:0 0 10px}.qdl .qg h4{margin:0 0 4px;font-size:13px;color:var(--muted)}
+.qdl .qr{display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line2)}.qdl .qr .qt{flex:1;min-width:0;overflow-wrap:anywhere}
+
 </style>
 </head>
 <body>
@@ -1680,7 +1686,7 @@ function renderCard() {
   if (ctx.list.length) {
     h += `<div class="panel"><h4>Quellen</h4><ol class="fnl">` + ctx.list.map(id => {
       const s = db.get(id), ty = GED.unesc(GED.kval(s, "TYPE"));
-      return `<li><a href="#" data-act="src" data-id="${id}">${E(srcTitle(id))}</a>${ty ? ` <span class="hint">(${E(ty)})</span>` : ""}</li>`;
+      return `<li><a href="#" data-act="src" data-id="${id}">${E(srcTitle(id))}</a>${ty ? ` <span class="hint">(${E(ty)})</span>` : ""}${S.viewer ? "" : ` <button class="btn sm ghost fnedit" data-act="srcEdit" data-id="${id}" title="Quelle bearbeiten">Bearbeiten</button>`}</li>`;
     }).join("") + `</ol></div>`;
   }
   return h + `</div>`;
@@ -1745,11 +1751,11 @@ function baseData(db, id) {
   });
 }
 const qbTip = (db, label, ids) => label + ": " + ids.map(s => srcTitleIn(db, s)).join("; ");
-const qBadge = (db, label, ids) => ids.length ? `<span class="qb" title="${E(qbTip(db, label, ids))}">Q${ids.length}</span>` : "";
+const qBadge = (db, label, ids) => ids.length ? `<span class="qb qa" data-act="qsrc" data-lab="${E(label)}" data-ids="${ids.join(" ")}" title="${E(qbTip(db, label, ids) + " (anklicken zum Öffnen oder Bearbeiten)")}">Q${ids.length}</span>` : "";
 function qTotal(db, id) {
   const ps = personSrc(db, id);
   const tip = ps.all.length ? ps.parts.map(x => qbTip(db, x.label, x.ids)).join("\n") : "Keine Quelle verknüpft";
-  return `<span class="qb qt${ps.all.length ? "" : " q0"}" title="${E(tip)}">Q${ps.all.length}</span>`;
+  return ps.all.length ? `<span class="qb qt qa" data-act="qsrc" data-pid="${id}" title="${E(tip + "\n(anklicken zum Öffnen oder Bearbeiten)")}">Q${ps.all.length}</span>` : `<span class="qb qt q0" title="${E(tip)}">Q0</span>`;
 }
 /* eine Zeile: * 12. März 1901, Köln [Q2] */
 function bdLine(db, id, which, o) {
@@ -7529,6 +7535,30 @@ function fileBackupHint() {
   if (!LM.dirs.length) return `Noch kein Medienordner verbunden. Beim ersten Verknüpfen wirst du danach gefragt.`;
   return c.media ? `Die Dateien liegen auf deinem Rechner. Die Google-Sicherung überträgt den Medienordner mit (eingeschaltet).` : `Die Dateien liegen auf deinem Rechner. Die Sicherung des Medienordners nach Google Drive ist ausgeschaltet. Einschalten unter Mehr, Lokale Dateien und Sicherung.`;
 }
+
+/* ---- Quellen überall anklickbar: Q-Zeichen öffnen eine Liste, jede Quelle lässt sich öffnen und bearbeiten ---- */
+VIEW_OK.add("qsrc");
+ACT.srcEdit = (d) => { if (S.viewer || !d.id || !S.db.get(d.id)) return; editSrc(d.id); };
+ACT.qsrc = (d, e) => {
+  e && e.stopPropagation && e.stopPropagation();
+  let groups;
+  if (d.pid) groups = personSrc(S.db, d.pid).parts.map(x => ({ label: x.label, ids: x.ids }));
+  else groups = [{ label: d.lab || "Quellen", ids: (d.ids || "").split(/\s+/).filter(Boolean) }];
+  groups = groups.map(g => ({ label: g.label, ids: g.ids.filter(i => S.db.get(i)) })).filter(g => g.ids.length);
+  const flat = [...new Set(groups.flatMap(g => g.ids))];
+  if (!flat.length) return;
+  if (flat.length === 1 && !S.viewer) { editSrc(flat[0]); return; }
+  const who = d.pid ? nameOf(d.pid) : "";
+  const dlg = openDlg({
+    title: who ? "Quellen von " + who : "Quellen", noFocus: true,
+    body: () => `<div class="qdl">` + groups.map(g => `<div class="qg"><h4>${E(g.label)}</h4>` + g.ids.map(i => `<div class="qr"><span class="qt">${E(srcTitle(i))}</span><button class="btn sm" data-d="show" data-id="${i}">Anzeigen</button>${S.viewer ? "" : `<button class="btn sm pri" data-d="edit" data-id="${i}">Bearbeiten</button>`}</div>`).join("") + `</div>`).join("") + `</div>`,
+    buttons: () => [{ id: "close", label: "Schließen" }],
+    on: {
+      show: (dd, t) => { dd.close(); ACT.src({ id: t.dataset.id }); },
+      edit: (dd, t) => { const id = t.dataset.id; dd.close(); editSrc(id); }
+    }
+  });
+};
 
 </script>
 </body>

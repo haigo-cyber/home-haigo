@@ -596,6 +596,41 @@ body.hm .top,body.hm .fstat,body.hm .tabrow,body.hm .treebar,body.hm .splbar{dis
 body.hm .hmfab{background:var(--accent);color:#fff;border-color:var(--accent)}
 @media print{.hmfab{display:none!important}}
 
+/* ===== Zwei Dateien: geführter Ablauf ===== */
+.twbar{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;justify-content:space-between;padding:8px 14px}
+.twsteps{display:flex;flex-wrap:wrap;gap:6px 14px}
+.twsteps .st{display:inline-flex;gap:6px;align-items:baseline;font-size:13px;color:var(--muted)}
+.twsteps .st b:first-child{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px}
+.twtarget{font-size:13px}
+.twrow{display:flex;gap:8px;align-items:baseline;width:100%;box-sizing:border-box}
+.twrow .grip{color:var(--muted);letter-spacing:-2px;font-size:12px;opacity:.7;cursor:grab}
+.twrow .nm{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.twrow .w{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.twrel .twrow{width:auto;display:inline-flex}
+.twhead .twrow{width:auto;flex:1}
+.twli{border-bottom:1px solid var(--line2)}
+.twfilter{display:flex;gap:6px;flex-wrap:wrap;padding:6px 8px;border-bottom:1px solid var(--line2);position:sticky;top:0;background:var(--panel);z-index:1}
+.twchip{margin-left:auto;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;border:1px solid var(--line)}
+.twchip.new{color:#2d5f8f;background:color-mix(in srgb,#2d5f8f 12%,transparent);border-color:color-mix(in srgb,#2d5f8f 35%,transparent)}
+.twchip.warn{color:#9a3b1f;background:color-mix(in srgb,#c4572b 14%,transparent);border-color:color-mix(in srgb,#c4572b 40%,transparent)}
+.twchip.warn2{color:#8a6414;background:color-mix(in srgb,#d9a21b 16%,transparent);border-color:color-mix(in srgb,#d9a21b 45%,transparent)}
+.twchip.ok{color:#2c7a3f;background:color-mix(in srgb,#2c7a3f 13%,transparent);border-color:color-mix(in srgb,#2c7a3f 40%,transparent)}
+.twolist{max-height:34vh}
+.twact{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+.twwarn{border:1px solid color-mix(in srgb,#c4572b 45%,transparent);background:color-mix(in srgb,#c4572b 7%,transparent);border-radius:8px;padding:8px 10px}
+.twsug{border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft);border-radius:8px;padding:8px 10px}
+.twsugrow{display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.twnew{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.twbtns{display:flex;flex-wrap:wrap;gap:6px}
+.twok{color:#2c7a3f}
+.twhelp{padding:6px 4px}
+.twhelp ol{margin:6px 0 0;padding-left:20px;line-height:1.6}
+body.twdrag #splL .pb{outline:2px dashed color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:-3px}
+body.twdrag #splL .pb::after{content:"Hier ablegen";position:absolute;right:10px;top:8px;font-size:11px;color:var(--accent);font-weight:600}
+body.twdrag #splL .pb{position:relative}
+.twolist{flex:0 0 auto;min-height:96px}
+.twodet{flex:0 0 auto}
+
 </style>
 </head>
 <body>
@@ -1876,14 +1911,14 @@ function renderSrc() {
       <button class="btn sm" data-act="editSrc" data-id="${S.srcSel}">Bearbeiten</button>
       <button class="btn sm dng" data-act="delSrc" data-id="${S.srcSel}">Löschen</button></div>
       <dl class="kv">${dl}<dt>Kennung</dt><dd>${E(S.srcSel)}</dd></dl>
-      <div class="panel"><h4>Dateien zur Quelle</h4>${GED.kidsOf(r, "OBJE").length ? mediaHtml(r) : `<div class="hint">Noch keine Datei verknüpft.</div>`}<div style="margin-top:8px"><button class="btn sm" data-act="editMedia" data-id="${S.srcSel}">Dateien verknüpfen</button></div></div>
+      <div class="panel"><h4>Dateien zur Quelle</h4>${GED.kidsOf(r, "OBJE").length ? mediaHtml(r) : `<div class="hint">Noch keine Datei verknüpft.</div>`}<div style="margin-top:8px"><button class="btn sm" data-act="editMedia" data-id="${S.srcSel}">Dateien verknüpfen</button><button class="btn sm pri" data-act="srcFileLocal" data-id="${S.srcSel}" style="margin-left:6px">Datei vom Rechner verknüpfen</button></div></div>
       <div class="panel"><h4>Zitiert von ${cites.length} Stellen</h4>${cites.length ? `<ul class="cites">${shown.map(c => {
         const l = citeLabel(c); if (!l) return "";
         return `<li>${l.go ? `<button ${l.go}>${E(l.text)}</button>` : E(l.text)}${l.w ? `<span class="w">${E(l.w)}</span>` : ""}</li>`;
       }).join("")}</ul>${cites.length > 200 ? `<div class="hint">Gezeigt werden die ersten 200.</div>` : ""}` : `<div class="hint">Diese Quelle wird von keiner Stelle zitiert.</div>`}</div></div>`;
   }
   const items = list.slice(0, 600).map(s => `<button class="sitem${s.id === S.srcSel ? " on" : ""}" data-act="srcsel" data-id="${s.id}"><span class="t">${E(s.t)}</span><span class="m">${E(s.ty)}${s.ty ? " · " : ""}${(GED.citationIndex(db).get(s.id) || []).length === 1 ? "1 Zitat" : (GED.citationIndex(db).get(s.id) || []).length + " Zitate"}</span></button>`).join("");
-  return `<div class="split"><div class="slist"><div class="sbtop"><input id="sq" type="search" placeholder="Quellen durchsuchen" value="${E(S.srcQuery)}" aria-label="Quellen durchsuchen"><button class="btn sm" data-act="newSrc">Neue Quelle</button></div>
+  return `<div class="split"><div class="slist"><div class="sbtop"><input id="sq" type="search" placeholder="Quellen durchsuchen" value="${E(S.srcQuery)}" aria-label="Quellen durchsuchen"><button class="btn sm" data-act="newSrc">Neue Quelle</button><button class="btn sm" data-act="newSrcFile" title="Datei vom Rechner wählen und daraus eine Quelle anlegen">Quelle aus Datei</button></div>
     <div class="items">${items || '<div class="empty" style="padding:12px">Keine Treffer.</div>'}${list.length > 600 ? `<div class="hint" style="padding:8px 12px">Weitere Treffer: Suche verfeinern.</div>` : ""}</div>
     <div class="count">${list.length} von ${all.length} Quellen</div></div><div class="sdetail">${detail}</div></div>`;
 }
@@ -1986,7 +2021,7 @@ function pickSource(o) {
   return openDlg({
     title: "Quelle wählen",
     body: () => `<input id="pk" type="search" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)" placeholder="Quelle suchen" autocomplete="off"><div class="pickres" id="pkres"></div>`,
-    buttons: () => [{ id: "new", label: "Neue Quelle anlegen" }],
+    buttons: () => [{ id: "newfile", label: "Neue Quelle aus Datei vom Rechner" }, { id: "new", label: "Neue Quelle anlegen" }],
     after: (d) => {
       const fill = () => {
         const qs = GED.fold(d.q("#pk").value).split(/\s+/).filter(Boolean);
@@ -1997,6 +2032,7 @@ function pickSource(o) {
     },
     on: {
       pick: (d, t) => { d.close(); o.onPick(t.dataset.id); },
+      newfile: async (d) => { const id = await newSourceFromFile(); if (!id) return; d.close(); afterEdit(); o.onPick(id); },
       new: (d) => {
         const title = prompt("Titel der neuen Quelle:");
         if (!title || !title.trim()) return;
@@ -2646,7 +2682,7 @@ function rawEdit(id) {
 /* ============ FOTOS UND DOKUMENTE (liegen in Drive im Unterordner „Medien“) ============ */
 const MEDIA_FOLDER = "Medien";
 const M = { idx: null, loading: null, urls: new Map(), failed: new Set(), queue: [], running: 0 };
-const IMG_RE = /\.(jpe?g|png|gif|webp|bmp)$/i, DOC_RE = /\.(pdf|txt)$/i;
+const IMG_RE = /\.(jpe?g|png|gif|webp|bmp)$/i, DOC_RE = /\.(pdf|txt|docx?|odt|rtf|tiff?)$/i;
 const nfc = (s) => String(s || "").normalize("NFC");
 const pathSegs = (p) => nfc(p).replace(/\\/g, "/").split("/").filter(s => s && s !== "~" && s !== ".");
 const baseName = (p) => { const s = pathSegs(p); return s.length ? s[s.length - 1] : ""; };
@@ -2818,7 +2854,7 @@ async function uploadOne(folder, name, relSegs, blob, mime) {
   const body = new Blob([`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaJson}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`, blob, `\r\n--${boundary}--`]);
   return api(`${UPLOAD}/files?uploadType=multipart&fields=id,name,mimeType,size,appProperties`, { method: "POST", headers: { "Content-Type": "multipart/related; boundary=" + boundary }, body });
 }
-const guessMime = (n) => ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", bmp: "image/bmp", pdf: "application/pdf", txt: "text/plain" })[n.split(".").pop().toLowerCase()] || "application/octet-stream";
+const guessMime = (n) => ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", bmp: "image/bmp", pdf: "application/pdf", txt: "text/plain", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", odt: "application/vnd.oasis.opendocument.text", rtf: "application/rtf", tif: "image/tiff", tiff: "image/tiff" })[n.split(".").pop().toLowerCase()] || "application/octet-stream";
 
 async function uploadMedia(files, opts, onProgress) {
   const idx = await loadMediaIdx();
@@ -3440,11 +3476,12 @@ function openGallery(pid) {
         const th = hit && IMG_RE.test(hit.name) ? `<img data-mid="${hit.id}" alt="">` : `<span class="nothumb">${hit ? "Dokument" : M.idx ? "nicht in Drive" : "keine Vorschau"}</span>`;
         return `<li><div class="gth">${th}</div><div class="gmain">
           <input data-i="${i}" class="gtitle" value="${E(m.title)}" placeholder="Titel" aria-label="Titel">
-          <div class="w">${E(m.file)}${m.node ? "" : " (neu)"}</div>
+          <div class="w">${E(m.file)}${m.node ? "" : " (neu)"}${M.idx ? (hit ? (hit.local ? " · auf diesem Rechner gefunden" : " · in Drive gefunden") : " · nicht gefunden") : ""}</div>
           ${isSrc ? "" : `<label><input type="radio" name="gprim" data-i="${i}" ${m.prim ? "checked" : ""}> Hauptfoto</label>`}
           <span class="gbtn"><button class="btn sm" data-d="up" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="Nach oben">↑</button><button class="btn sm" data-d="down" data-i="${i}" ${i === model.length - 1 ? "disabled" : ""} aria-label="Nach unten">↓</button><button class="btn sm dng" data-d="del" data-i="${i}">Entfernen</button></span></div></li>`;
       }).join("")}</ul>` : `<div class="hint">Noch keine Bilder.</div>`;
-      h += `<div class="panel"><h4>Bild hinzufügen</h4><button class="btn" data-d="add">Aus Drive wählen</button>
+      h += `<div class="panel"><h4>${isSrc ? "Datei hinzufügen" : "Bild hinzufügen"}</h4><button class="btn pri" data-d="local">Datei vom Rechner wählen …</button> <button class="btn" data-d="add">Aus Medienordner oder Drive wählen</button>
+        <div class="hint" style="margin-top:6px">${E(fileBackupHint())}</div>
         <label class="fld" style="margin-top:8px"><span>Ordner in der .ged-Datei für neue Bilder (so schreibt das Tool den Pfad, damit Reunion das Bild findet)</span><input id="g_base" value="${E(base)}"></label></div>`;
       return h;
     },
@@ -3459,6 +3496,17 @@ function openGallery(pid) {
       up: (dd, t) => { const i = +t.dataset.i; [model[i - 1], model[i]] = [model[i], model[i - 1]]; dd.paint(); },
       down: (dd, t) => { const i = +t.dataset.i; [model[i + 1], model[i]] = [model[i], model[i + 1]]; dd.paint(); },
       del: (dd, t) => { const [m] = model.splice(+t.dataset.i, 1); if (m.prim && model.length) { /* kein Hauptfoto mehr */ } dd.paint(); },
+      local: async () => {
+        const hits = await localFilesToMedia({ multiple: true, sub: isSrc ? "Quellen" : "Bilder" });
+        let n = 0;
+        for (const hit of hits) {
+          const file = newFilePath(base, hit);
+          if (model.some(m => m.file.toLowerCase() === file.toLowerCase())) continue;
+          model.push({ node: null, file, title: fileTitle(hit.name), prim: !isSrc && !model.some(m => m.prim), t0: "", p0: "", hit }); n++;
+        }
+        if (document.body.contains(d.el)) d.paint();
+        if (n) toast(n === 1 ? "Datei hinzugefügt. Mit „Übernehmen“ wird sie verknüpft." : n + " Dateien hinzugefügt. Mit „Übernehmen“ werden sie verknüpft.", 4500);
+      },
       add: () => {
         mediaPicker((hit) => {
           const file = newFilePath(base, hit);
@@ -4297,10 +4345,10 @@ async function lmScan() {
     await zusFromDir();
   } finally { LM.busy = false; }
 }
-async function lmPick() {
+async function lmPick(mode) {
   if (!FS.dirOk) { toast("Dieser Browser kann keinen Ordner dauerhaft verbinden. Nutze Chrome oder Edge."); return false; }
   let dir;
-  try { dir = await window.showDirectoryPicker({ mode: "read", id: "stammbaum-medien" }); } catch (e) { return false; }
+  try { dir = await window.showDirectoryPicker({ mode: mode || "read", id: "stammbaum-medien" }); } catch (e) { return false; }
   for (const x of LM.dirs) { try { if (await x.isSameEntry(dir)) { toast("Dieser Ordner ist schon verbunden."); return false; } } catch (e) {} }
   LM.dirs.push(dir); lmSync();
   await lmSave();
@@ -6129,7 +6177,7 @@ document.addEventListener("keydown", (e) => {
    Links die Hauptdatei (wird bearbeitet), rechts die zweite Datei (nur lesend). Übernommen wird immer genau eine Person
    mit ihren eigenen Angaben, Quellen, Notizen und Medienverweisen, nie ihre Familie. Wohin sie gehört (Kind, Elternteil,
    Partner), legt man beim Ablegen fest. Die zweite Datei teilt sich den Zustand mit dem Abgleich (CMP). */
-const TWO = { sel: null, q: "", limit: 80, src: "", drag: null, done: new Map() };
+const TWO = { sel: null, q: "", limit: 80, src: "", drag: null, done: new Map(), stat: new Map(), filter: "all", more: false };
 const TW_SKIP = new Set(["FAMC", "FAMS", "CHAN", "REFN", "_UID", "RIN", "AFN", "ASSO", "_MTTAG"]);       // wird nicht mitkopiert
 const TW_NONEVENT = new Set(["NAME", "SEX", "FAMC", "FAMS", "SOUR", "NOTE", "OBJE", "CHAN", "REFN", "RIN", "RFN", "AFN", "_UID", "ASSO", "SUBM", "ALIA", "ANCI", "DESI", "RESN", "_MTTAG"]);
 const twIsRef = (v) => /^@[^@\s]+@$/.test(v || "");
@@ -6225,18 +6273,69 @@ function twAttach(tx, rec, rel, targetId, famId) {
 const TW_REL = { none: "als neue Person angelegt", child: "als Kind angehängt", parent: "als Elternteil angehängt", spouse: "als Partner angehängt" };
 
 /* ---------- Dubletten ---------- */
+let _twIdx = { n: -1, db: null, map: null };
+function twSurnIndex() {
+  if (_twIdx.db === S.db && _twIdx.n === S.db.changeCount && _twIdx.map) return _twIdx.map;
+  const m = new Map();
+  for (const r of S.db.ofTag("INDI")) { const k = cf(GED.personInfo(S.db, r.xref).name.surn); (m.get(k) || m.set(k, []).get(k)).push(r.xref); }
+  _twIdx = { n: S.db.changeCount, db: S.db, map: m };
+  return m;
+}
 function twCandidates(bId) {
   const b = cpInfo(CMP.db, bId), out = [];
-  for (const r of S.db.ofTag("INDI")) {
-    const p = GED.personInfo(S.db, r.xref);
-    if (cf(p.name.surn) !== b.surn) continue;
-    const sc = cpScore(cpInfo(S.db, r.xref), b);
-    if (sc >= 3) out.push({ id: r.xref, sc });
+  for (const id of twSurnIndex().get(b.surn) || []) {
+    const sc = cpScore(cpInfo(S.db, id), b);
+    if (sc >= 3) out.push({ id, sc });
   }
   out.sort((x, y) => y.sc - x.sc);
   return out.slice(0, 6);
 }
 const twCount = (n, tag) => n.kids.reduce((s, k) => s + (k.tag === tag ? 1 : 0) + twCount(k, tag), 0);
+
+/* Gemeinsame Ausführung (Dialog und Schnellknöpfe) */
+function twDoTake(D) {
+  const title = D.srcOn ? String(D.srcTitle || "").trim() : "";
+  let newId, name;
+  GED.run(S.db, "Aus zweiter Datei übernommen", tx => {
+    const rec = twClonePerson(tx, D.b, title);
+    newId = rec.xref; name = GED.displayName(rec);
+    twAttach(tx, rec, D.rel, D.target, D.fam);
+  });
+  if (D.srcOn) TWO.src = title;
+  TWO.done.set(D.b, newId); TWO.stat.clear();
+  if (D.rel === "none" || !D.target) { S.pid = newId; S.fid = setFamFor(newId); }
+  return { newId, name, msg: name + " " + TW_REL[D.rel] + (D.rel !== "none" ? " an " + GED.displayName(S.db.get(D.target)) : "") + ". Mit Rückgängig lässt sich das zurücknehmen." };
+}
+/* Status einer Person der zweiten Datei: done, same (wohl schon vorhanden), similar, new */
+function twStatus(bId) {
+  if (TWO.done.has(bId) && S.db.get(TWO.done.get(bId))) return { kind: "done", cands: [] };
+  let st = TWO.stat.get(bId);
+  if (!st) {
+    const cands = twCandidates(bId), top = cands[0];
+    st = { kind: !top ? "new" : top.sc >= 7 ? "same" : "similar", cands };
+    TWO.stat.set(bId, st);
+  }
+  return st;
+}
+/* Vorschläge, wohin die Person gehört: Angehörige in der zweiten Datei, die es in der Hauptdatei schon gibt */
+function twSuggest(bId) {
+  const db = CMP.db, out = [], seen = new Set();
+  const B = GED.personInfo(db, bId), par = GED.parentsOf(db, bId);
+  const best = (id) => { if (!id || !db.get(id)) return null; const c = twCandidates(id).filter(x => x.sc >= 6); return c.length && (c.length === 1 || c[0].sc - c[1].sc >= 2) ? c[0] : null; };
+  const add = (rel, rId, why) => {
+    const m = best(rId); if (!m) return;
+    const key = rel + m.id; if (seen.has(key)) return;
+    if (rel === "parent" && !twParentSlot(m.id, B.sex).ok) return;
+    seen.add(key); out.push({ rel, target: m.id, why: why + " „" + GED.displayName(db.get(rId)) + "“ gibt es schon als „" + GED.displayName(S.db.get(m.id)) + "“." });
+  };
+  if (par) { add("child", par.father, "Der Vater"); add("child", par.mother, "Die Mutter"); }
+  for (const f of B.fams) {
+    const fi = GED.famInfo(db, f), sp = GED.spouseIn(db, f, bId);
+    if (sp) add("spouse", sp, "Der Partner / die Partnerin");
+    for (const c of fi.children.slice(0, 12)) add("parent", c, "Das Kind");
+  }
+  return out.slice(0, 4);
+}
 
 /* ---------- Dialog „Person übernehmen“ ---------- */
 function openTakeDlg(bId, o) {
@@ -6296,20 +6395,10 @@ function openTakeDlg(bId, o) {
         D.srcTitle = (d.q("#twsrct") ? d.q("#twsrct").value : D.srcTitle);
         if (cands.length && !D.ack) { D.err = "Bitte bestätige zuerst, dass es keine Dublette ist."; d.paint(); return; }
         if (D.rel !== "none" && !(D.target && S.db.get(D.target))) { D.err = "Bitte eine Zielperson wählen."; d.paint(); return; }
-        const title = D.srcOn ? D.srcTitle.trim() : "";
-        let newId, name;
-        try {
-          GED.run(S.db, "Aus zweiter Datei übernommen", tx => {
-            const rec = twClonePerson(tx, D.b, title);
-            newId = rec.xref; name = GED.displayName(rec);
-            twAttach(tx, rec, D.rel, D.target, D.fam);
-          });
-        } catch (e) { D.err = e.message || String(e); d.paint(); return; }
-        TWO.src = D.srcOn ? title : TWO.src;
-        TWO.done.set(D.b, newId);
+        let r;
+        try { r = twDoTake(D); } catch (e) { D.err = e.message || String(e); d.paint(); return; }
         d.close();
-        if (D.rel === "none" || !D.target) { S.pid = newId; S.fid = setFamFor(newId); }
-        afterEdit(name + " " + TW_REL[D.rel] + (D.rel !== "none" ? " an " + GED.displayName(S.db.get(D.target)) : "") + ". Mit Rückgängig lässt sich das zurücknehmen.");
+        afterEdit(r.msg);
         twPaintR();
       }
     }
@@ -6317,26 +6406,66 @@ function openTakeDlg(bId, o) {
 }
 
 /* ---------- Ansicht ---------- */
-function twRow(id) {
+const TW_CHIP = { done: ["✓ übernommen", "ok"], same: ["wohl schon vorhanden", "warn"], similar: ["ähnlich vorhanden", "warn2"], new: ["neu", "new"] };
+const twChip = (id) => { const st = twStatus(id), c = TW_CHIP[st.kind]; return `<span class="twchip ${c[1]}" title="${st.kind === "new" ? "Keine ähnliche Person in deiner Hauptdatei gefunden" : st.kind === "done" ? "Schon in die Hauptdatei übernommen" : "Ähnliche Person(en) in deiner Hauptdatei gefunden"}">${c[0]}</span>`; };
+function twRow(id, o) {
+  o = o || {};
   const db = CMP.db, p = GED.personInfo(db, id);
-  const done = TWO.done.get(id);
-  return `<span class="twrow${TWO.sel === id ? " sel" : ""}" draggable="true" data-two="${id}" data-act="twoSel" data-b="${id}" title="Anklicken zum Ansehen, auf eine Person links ziehen zum Übernehmen"><span class="sx">${sexSym(p.sex)}</span> ${E(GED.displayName(p.rec))} <span class="w">${E(bdShort(db, id) || GED.lifeSpan(db, id))}</span>${done && S.db.get(done) ? ` <span class="twdone" title="Schon übernommen">✓</span>` : ""}</span>`;
+  return `<span class="twrow${TWO.sel === id ? " sel" : ""}" draggable="true" data-two="${id}" data-act="twoSel" data-b="${id}" title="Anklicken zum Prüfen. Zum Übernehmen: Person auswählen und unten einen Knopf drücken, oder mit der Maus auf eine Person links ziehen."><span class="grip" aria-hidden="true">⋮⋮</span><span class="sx">${sexSym(p.sex)}</span><span class="nm">${E(GED.displayName(p.rec))}</span><span class="w">${E(bdShort(db, id) || GED.lifeSpan(db, id))}</span>${o.noChip ? "" : twChip(id)}</span>`;
+}
+function twFiltered() {
+  let rows = GED.searchPersons(CMP.db, TWO.q, 100000);
+  if (TWO.filter !== "all") rows = rows.filter(r => { const k = twStatus(r.id).kind; return TWO.filter === "new" ? k === "new" : TWO.filter === "found" ? (k === "same" || k === "similar") : k === "done"; });
+  return rows;
 }
 function twListHtml() {
-  const rows = GED.searchPersons(CMP.db, TWO.q, TWO.limit + 1);
+  let rows;
+  if (TWO.filter === "all") { rows = GED.searchPersons(CMP.db, TWO.q, TWO.limit + 1); }
+  else rows = twFiltered();
   const more = rows.length > TWO.limit;
-  return (rows.slice(0, TWO.limit).map(r => `<div>${twRow(r.id)}</div>`).join("") || `<div class="hint" style="padding:8px">Nichts gefunden.</div>`) + (more ? `<div style="padding:6px"><button class="btn sm" data-act="twoMore">Mehr anzeigen</button></div>` : "");
+  const chips = [["all", "Alle"], ["new", "Neu"], ["found", "Gibt es schon"], ["done", "Übernommen"]].map(([k, t]) => `<button class="chipb${TWO.filter === k ? " on" : ""}" data-act="twoFilter" data-f="${k}" aria-pressed="${TWO.filter === k}">${t}</button>`).join("");
+  return `<div class="twfilter">${chips}</div>` + (rows.slice(0, TWO.limit).map(r => `<div class="twli">${twRow(r.id)}</div>`).join("") || `<div class="hint" style="padding:8px">Nichts gefunden.</div>`) + (more ? `<div style="padding:6px"><button class="btn sm" data-act="twoMore">Mehr anzeigen</button></div>` : "");
+}
+function twTargetInfo() {
+  const T = S.pid && S.db.get(S.pid) ? GED.personInfo(S.db, S.pid) : null;
+  return T ? `<b>${E(GED.displayName(T.rec))}</b> <span class="w">${E(GED.lifeSpan(S.db, T.id))}</span>` : "";
 }
 function twDetHtml() {
   const db = CMP.db;
-  if (!TWO.sel || !db.get(TWO.sel)) return `<div class="hint" style="padding:8px">Wähle eine Person aus der Liste. Dann siehst du hier ihre Angaben und ihre Angehörigen.</div>`;
-  const id = TWO.sel, B = GED.personInfo(db, id), par = GED.parentsOf(db, id);
+  if (!TWO.sel || !db.get(TWO.sel)) return `<div class="twhelp"><b>So übernimmst du eine Person</b><ol><li>Wähle in der Liste oben eine Person aus der zweiten Datei.</li><li>Hier siehst du ihre Angaben und ob es sie bei dir schon gibt.</li><li>Dann drückst du einen Knopf: zum Beispiel „Als Kind von ${twTargetInfo() || "…"} übernehmen“. Ohne Knopf geht es auch per Ziehen: Person von rechts auf eine Person links ziehen.</li></ol></div>`;
+  const id = TWO.sel, B = GED.personInfo(db, id), par = GED.parentsOf(db, id), st = twStatus(id);
   const rel = (label, ids) => ids.length ? `<div class="twrel"><b>${label}</b> ${ids.map(x => twRow(x)).join(" ")}</div>` : "";
   const parents = par ? [par.father, par.mother].filter(x => x && db.get(x)) : [];
-  let h = `<div class="twhead"><span class="twrow big" draggable="true" data-two="${id}" title="Auf eine Person links ziehen"><span class="sx">${sexSym(B.sex)}</span> <b>${E(GED.displayName(B.rec))}</b> <span class="w">${E(GED.lifeSpan(db, id))}</span></span>
-    <button class="btn sm pri" data-act="twoTake" data-b="${id}">Übernehmen …</button></div>`;
+  let h = `<div class="twhead"><span class="twrow big" draggable="true" data-two="${id}" title="Mit der Maus auf eine Person links ziehen"><span class="grip" aria-hidden="true">⋮⋮</span><span class="sx">${sexSym(B.sex)}</span><b>${E(GED.displayName(B.rec))}</b><span class="w">${E(GED.lifeSpan(db, id))}</span></span>${twChip(id)}</div>`;
   h += bdBlock(db, id, true);
   h += cpFieldsOnly(id);
+  h += `<div class="twact">`;
+  if (st.kind === "done") {
+    const nid = TWO.done.get(id);
+    h += `<div class="twok">Diese Person ist schon in deiner Hauptdatei: <button class="lk" data-act="twoSee" data-a="${nid}">${E(GED.displayName(S.db.get(nid)))} anzeigen</button>. Zurücknehmen geht mit „Rückgängig“ oben.</div>`;
+  } else {
+    if (st.cands.length) {
+      h += `<div class="twwarn"><b>${st.kind === "same" ? "Diese Person gibt es wahrscheinlich schon in deiner Hauptdatei:" : "Ähnliche Personen in deiner Hauptdatei:"}</b><ul class="cites">${st.cands.slice(0, 4).map(c => `<li>${cpPerson(S.db, c.id)} <button class="btn sm" data-act="twoSame" data-a="${c.id}" data-b="${id}">Angaben vergleichen und ergänzen</button> <button class="btn sm ghost" data-act="twoSee" data-a="${c.id}">Anzeigen</button></li>`).join("")}</ul>
+        <div class="hint">Ist es dieselbe Person, vergleiche die Angaben und ergänze nur, was fehlt. Nur wenn es eine andere Person ist, legst du sie unten neu an.</div></div>`;
+    }
+    const sug = st.kind === "same" ? [] : twSuggest(id);
+    if (sug.length) {
+      h += `<div class="twsug"><b>Vorschlag: Wo gehört sie hin?</b>${sug.map(x => `<div class="twsugrow"><button class="btn pri" data-act="twoDo" data-b="${id}" data-rel="${x.rel}" data-target="${x.target}">${x.rel === "child" ? "Als Kind von" : x.rel === "spouse" ? "Als Partner von" : "Als Elternteil von"} ${E(GED.displayName(S.db.get(x.target)))} übernehmen</button><span class="hint">${E(x.why)}</span></div>`).join("")}</div>`;
+    }
+    const T = S.pid && S.db.get(S.pid) ? GED.personInfo(S.db, S.pid) : null;
+    h += `<div class="twnew"><b>${st.cands.length ? "Es ist eine andere Person? Neu anlegen:" : "In deine Hauptdatei übernehmen:"}</b>`;
+    if (T) {
+      const par2 = twParentSlot(T.id, B.sex);
+      h += `<div class="hint" style="margin:2px 0 6px">Zielperson links: ${twTargetInfo()}. Klicke links auf eine andere Person, um das Ziel zu ändern.</div>
+        <div class="twbtns"><button class="btn${sug.length ? "" : " pri"}" data-act="twoDo" data-b="${id}" data-rel="child" data-target="${T.id}">Als Kind von ${E(GED.displayName(T.rec))}</button>
+        <button class="btn" data-act="twoDo" data-b="${id}" data-rel="spouse" data-target="${T.id}">Als Partner von ${E(GED.displayName(T.rec))}</button>
+        <button class="btn" data-act="twoDo" data-b="${id}" data-rel="parent" data-target="${T.id}"${par2.ok ? "" : ` disabled title="${E(par2.text)}"`}>Als Elternteil von ${E(GED.displayName(T.rec))}</button>
+        <button class="btn" data-act="twoDo" data-b="${id}" data-rel="none">Ohne Verbindung anlegen</button></div>`;
+    } else h += `<div class="twbtns"><button class="btn pri" data-act="twoDo" data-b="${id}" data-rel="none">Ohne Verbindung anlegen</button></div><div class="hint">Wähle links eine Person als Ziel, um sie als Kind, Partner oder Elternteil anzuhängen.</div>`;
+    h += `<div class="hint" style="margin-top:6px">${TWO.src.trim() ? `Als Quelle wird „${E(TWO.src.trim())}“ an die übernommenen Angaben gehängt.` : "Es wird keine Quelle angehängt (Feld Quelle oben leer)."} <button class="lk" data-act="twoTake" data-b="${id}">Weitere Optionen …</button></div></div>`;
+  }
+  h += `</div>`;
+  h += `<div class="hint" style="margin-top:10px">Angehörige in der zweiten Datei. Anklicken zeigt sie hier, um sie ebenfalls zu übernehmen:</div>`;
   h += rel("Eltern", parents);
   for (const f of B.fams) {
     const fi = GED.famInfo(db, f), sp = GED.spouseIn(db, f, id);
@@ -6350,14 +6479,15 @@ function twPaintR() {
   const sc = l.scrollTop;
   l.innerHTML = twListHtml(); l.scrollTop = sc;
   d.innerHTML = twDetHtml();
+  const t = $("twTarget"); if (t) t.innerHTML = twTargetInfo();
 }
 function renderTwoR() {
   if (CMP.busy) return `<div class="spscroll"><div class="hint">Die zweite Datei wird gelesen und mit der Hauptdatei abgeglichen …</div></div>`;
   if (!CMP.db) return `<div class="spscroll"><h3 style="margin-top:0">Zweite Datei</h3>
-    <p>Lade hier eine zweite GEDCOM-Datei, zum Beispiel einen Export aus MyHeritage oder eine aus einem PDF erzeugte Datei. Sie wird nur gelesen und nie verändert. Aus ihr ziehst du einzelne Personen in deine Hauptdatei.</p>
+    <p>Lade hier eine zweite GEDCOM-Datei, zum Beispiel einen Export aus MyHeritage oder eine aus einem PDF erzeugte Datei. Sie wird nur gelesen und nie verändert. Aus ihr übernimmst du einzelne Personen in deine Hauptdatei.</p>
     <button class="btn pri" data-act="twoLoad">Zweite Datei wählen</button>${CMP.err ? `<div class="err" style="margin-top:8px">${E(CMP.err)}</div>` : ""}</div>`;
   return `<div class="spscroll twoR"><div class="twotop"><span><b>${E(CMP.name)}</b> <span class="w">${CMP.db.ofTag("INDI").length} Personen, nur lesend</span></span>
-      <span class="grp"><button class="btn sm" data-act="twoCmp">Gegenüberstellung</button><button class="btn sm" data-act="twoLoad">Andere Datei</button></span></div>
+      <span class="grp"><button class="btn sm" data-act="twoCmp">Alle Dubletten ansehen</button><button class="btn sm" data-act="twoLoad">Andere Datei</button></span></div>
     <label class="fld"><span>Quelle für übernommene Angaben (leer = keine)</span><input id="twoSrc" value="${E(TWO.src)}" placeholder="zum Beispiel der Name der PDF-Datei"></label>
     <input id="twoQ" type="search" class="fld" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)" placeholder="Person in der zweiten Datei suchen" autocomplete="off" value="${E(TWO.q)}">
     <div class="twolist" id="twoList">${twListHtml()}</div><div class="twodet" id="twoDet">${twDetHtml()}</div></div>`;
@@ -6365,7 +6495,8 @@ function renderTwoR() {
 function renderTwo() {
   if (S.viewer) return `<div class="empty">In der Nur-Lesen-Ansicht ist das Übernehmen nicht möglich.</div>`;
   treeMediaIdx();
-  const h = `<div class="splbar"><span class="hint">Links die Hauptdatei <b>${E(S.fileName)}</b>, rechts die zweite Datei. Eine Person von rechts auf eine Person links ziehen: Sie wird als Kind angehängt, andere Beziehungen wählst du im Dialog. Auf freie Fläche links ziehen legt sie ohne Verbindung an. Ohne Maus: rechts „Übernehmen …“.</span></div>`;
+  const h = `<div class="splbar twbar"><span class="twsteps"><span class="st"><b>1</b> Rechts eine Person aus <b>${E(CMP.db ? CMP.name : "der zweiten Datei")}</b> wählen</span><span class="st"><b>2</b> Prüfen: Gibt es sie schon?</span><span class="st"><b>3</b> Knopf drücken, oder auf eine Person links ziehen</span></span>
+    <span class="twtarget">Zielperson links: <span id="twTarget">${twTargetInfo()}</span></span></div>`;
   const w = SPL.w ? ` style="--spw:${SPL.w}px"` : "";
   return h + `<div class="split2 both"${w}><section class="spane" id="splL" aria-label="Hauptdatei"><div class="spscroll" id="twoLeft">${renderCard()}</div></section><div class="rz" id="rzP" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Breite der beiden Bereiche" title="Ziehen ändert die Breite, Doppelklick stellt sie zurück"></div><section class="spane" id="splR" aria-label="Zweite Datei">${renderTwoR()}</section></div>`;
 }
@@ -6377,13 +6508,27 @@ ACT.twoLoad = async () => {
   await new Promise(r => setTimeout(r, 40));
   try {
     await cpLoad(await f.arrayBuffer(), f.name);
-    TWO.sel = null; TWO.q = ""; TWO.limit = 80; TWO.done = new Map();
+    TWO.sel = null; TWO.q = ""; TWO.limit = 80; TWO.done = new Map(); TWO.stat = new Map(); TWO.filter = "all";
     TWO.src = CMP.db.ofTag("SOUR").length ? "" : twBase(f.name);
   } catch (e) { CMP.err = e.message || String(e); CMP.db = null; }
   CMP.busy = false;
   render();
 };
-ACT.twoSel = (d) => { TWO.sel = d.b; twPaintR(); };
+ACT.twoSel = (d) => { TWO.sel = d.b; twPaintR(); const el = $("twoDet"); if (el && el.scrollIntoView && window.innerWidth < 900) el.scrollIntoView({ block: "nearest" }); };
+ACT.twoFilter = (d) => { TWO.filter = d.f; TWO.limit = 80; twPaintR(); };
+ACT.twoSee = (d) => { S.view = "card"; go(d.a); };
+ACT.twoSame = (d) => { CMP.sel = { a: d.a, b: d.b }; openCompare(); };
+ACT.twoDo = async (d) => {
+  const st = twStatus(d.b);
+  if (st.cands.length && !(await confirmDlg({ title: "Trotzdem neu anlegen?", text: st.kind === "same" ? "Diese Person gibt es wahrscheinlich schon in deiner Hauptdatei. Neu anlegen erzeugt eine Dublette. Besser: Angaben vergleichen und ergänzen." : "Es gibt ähnliche Personen in deiner Hauptdatei. Ist das eine andere Person, lege sie jetzt neu an.", ok: "Ja, neu anlegen", cls: "dng" }))) return;
+  const T = d.target && S.db.get(d.target) ? GED.personInfo(S.db, d.target) : null;
+  if (d.rel === "child" && T && T.fams.length > 1) { openTakeDlg(d.b, { rel: "child", target: d.target }); return; }
+  let r;
+  try { r = twDoTake({ b: d.b, rel: d.rel, target: d.target || null, fam: "", srcOn: !!TWO.src.trim(), srcTitle: TWO.src }); }
+  catch (e) { alert("Übernehmen nicht möglich: " + (e.message || e)); return; }
+  afterEdit(r.msg);
+  twPaintR();
+};
 ACT.twoMore = () => { TWO.limit += 80; twPaintR(); };
 ACT.twoCmp = () => { CMP.sel = null; openCompare(); };
 ACT.twoTake = (d) => openTakeDlg(d.b || TWO.sel, { rel: "child" });
@@ -6408,10 +6553,10 @@ const twClear = () => document.querySelectorAll(".dropt,.dropall").forEach(x => 
 document.addEventListener("dragstart", (e) => {
   const s = e.target.closest && e.target.closest("[data-two]");
   if (!s || S.view !== "two") return;
-  TWO.drag = s.dataset.two;
+  TWO.drag = s.dataset.two; document.body.classList.add("twdrag");
   e.dataTransfer.setData("text/plain", "stammbaum-two:" + TWO.drag); e.dataTransfer.effectAllowed = "copy";
 });
-document.addEventListener("dragend", () => { TWO.drag = null; twClear(); });
+document.addEventListener("dragend", () => { TWO.drag = null; twClear(); document.body.classList.remove("twdrag"); });
 document.addEventListener("dragover", (e) => {
   if (!TWO.drag || S.view !== "two") return;
   const L = e.target.closest && e.target.closest("#splL");
@@ -6427,7 +6572,7 @@ document.addEventListener("drop", (e) => {
   if (!L) return;
   e.preventDefault();
   const b = TWO.drag, t = twTarget(e.target);
-  TWO.drag = null; twClear();
+  TWO.drag = null; twClear(); document.body.classList.remove("twdrag");
   openTakeDlg(b, t ? { target: t.id, rel: "child" } : { rel: "none", target: null });
 });
 
@@ -7237,6 +7382,153 @@ ACT.asDrop = async (d) => {
   AS.drafts.splice(+d.i, 1); await asStoreDrafts(); render();
 };
 asLoadDrafts();
+
+/* ============ DATEIEN VOM RECHNER MIT QUELLEN UND PERSONEN VERKNÜPFEN ============
+   Eine Datei wird mit dem Betriebssystem-Dialog gewählt. Liegt sie in einem verbundenen Medienordner, wird sie dort gefunden.
+   Liegt sie woanders, kann eine Kopie in den Medienordner gelegt werden. So landet sie auch in der Sicherung nach Google Drive. */
+const nfcS = (s) => (s || "").normalize("NFC");
+async function lmFindEntry(rel) {
+  const key = rel.join("/").toLowerCase();
+  let e = LM.list.find(x => x.rel.join("/").toLowerCase() === key);
+  if (!e) { await lmScan(); e = LM.list.find(x => x.rel.join("/").toLowerCase() === key); }
+  if (e) { M.idx = null; await loadMediaIdx(true); e = (M.idx || []).find(x => x.local && x.rel.join("/").toLowerCase() === key) || e; }
+  return e || null;
+}
+async function lmLocate(fh) {
+  for (const dir of LM.dirs) {
+    let r = null; try { r = await dir.resolve(fh); } catch (e) {}
+    if (r && r.length) return lmFindEntry([nfcS(dir.name)].concat(r.map(nfcS)));
+  }
+  return null;
+}
+async function lmUniqueName(sub, name) {
+  const dot = name.lastIndexOf("."), base = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : "";
+  for (let i = 1; i < 200; i++) {
+    const nm = i === 1 ? name : `${base} (${i})${ext}`;
+    try { await sub.getFileHandle(nm); } catch (e) { return nm; }
+  }
+  return base + "-" + Date.now() + ext;
+}
+async function lmCopyIn(fh, subName) {
+  const f = await fh.getFile();
+  let dir = null;
+  if (!LM.dirs.length) {
+    const c = await choiceDlg({
+      title: "Medienordner verbinden",
+      text: `„${f.name}“ liegt noch in keinem verbundenen Ordner. Wähle den Ordner, in dem deine Quellen und Bilder liegen sollen, zum Beispiel den Reunion-Bilderordner. Die Datei wird dorthin kopiert (Unterordner „${subName}“). Das Original bleibt unverändert. Dieser Ordner wird auch nach Google Drive gesichert.`,
+      choices: [{ id: "cancel", label: "Abbrechen" }, { id: "pick", label: "Ordner wählen und kopieren", cls: "pri" }]
+    });
+    if (c !== "pick") return null;
+    if (!FS.dirOk) { toast("Dieser Browser kann keinen Ordner dauerhaft verbinden. Nutze Chrome oder Edge."); return null; }
+    if (!(await lmPick("readwrite"))) return null;
+  }
+  if (LM.dirs.length > 1) {
+    const c = await choiceDlg({
+      title: "In welchen Ordner kopieren?",
+      text: `„${f.name}“ liegt in keinem der verbundenen Ordner. Eine Kopie kommt in den Unterordner „${subName}“ des gewählten Ordners. Das Original bleibt unverändert.`,
+      choices: [{ id: "cancel", label: "Abbrechen" }].concat(LM.dirs.slice(0, 4).map((d, i) => ({ id: "d" + i, label: d.name, cls: i === 0 ? "pri" : "" })))
+    });
+    if (!c || c === "cancel") return null;
+    dir = LM.dirs[+c.slice(1)];
+  } else if (LM.dirs.length === 1) {
+    dir = LM.dirs[0];
+    if (dir) {
+      const c = await choiceDlg({
+        title: "Datei in den Medienordner kopieren?",
+        text: `„${f.name}“ liegt außerhalb des verbundenen Ordners „${dir.name}“. Damit sie mit der Sicherung nach Google Drive mitgeht und dein Stammbaum sie überall findet, wird eine Kopie in den Unterordner „${subName}“ gelegt. Das Original bleibt unverändert.`,
+        choices: [{ id: "cancel", label: "Abbrechen" }, { id: "copy", label: "Kopie anlegen", cls: "pri" }]
+      });
+      if (c !== "copy") return null;
+    }
+  }
+  if (!dir) dir = LM.dirs[0];
+  try {
+    let perm = await dir.queryPermission({ mode: "readwrite" });
+    if (perm !== "granted") perm = await dir.requestPermission({ mode: "readwrite" });
+    if (perm !== "granted") { toast("Der Browser hat das Schreiben in den Ordner nicht erlaubt. Die Datei wurde nicht kopiert.", 6000); return null; }
+    const sub = await dir.getDirectoryHandle(subName, { create: true });
+    const name = await lmUniqueName(sub, f.name);
+    const nh = await sub.getFileHandle(name, { create: true });
+    const w = await nh.createWritable(); await w.write(f); await w.close();
+    const e = await lmFindEntry([nfcS(dir.name), nfcS(subName), nfcS(name)]);
+    if (!e) { toast("Die Kopie wurde angelegt, aber nicht erkannt (Dateityp?).", 6000); return null; }
+    toast(`Kopie angelegt: ${dir.name}/${subName}/${name}`, 5000);
+    return e;
+  } catch (err) { toast("Kopieren nicht möglich: " + (err.message || err), 7000); return null; }
+}
+/* Wählt Dateien vom Rechner und liefert Einträge des Medienindex */
+async function localFilesToMedia(opts) {
+  opts = opts || {};
+  if (typeof window.showOpenFilePicker !== "function") { toast("Dieser Browser kann keine Dateien direkt vom Rechner wählen. Nutze Chrome oder Edge, oder wähle die Datei aus einem verbundenen Ordner."); return []; }
+  let hs;
+  try {
+    const o = { multiple: !!opts.multiple, id: "stammbaum-dateien" };
+    if (LM.dirs[0]) o.startIn = LM.dirs[0];
+    hs = await window.showOpenFilePicker(o);
+  } catch (e) { return []; }
+  const out = [];
+  for (const fh of hs) {
+    const hit = (await lmLocate(fh)) || (await lmCopyIn(fh, opts.sub || "Quellen"));
+    if (hit) out.push(hit);
+  }
+  return out;
+}
+const fileTitle = (name) => name.replace(/\.[^.]+$/, "");
+function objeNode(file, title, isSrc) {
+  const ext = (file.split(".").pop() || "").toLowerCase().replace("jpeg", "jpg");
+  const typ = ext === "pdf" ? "PDF" : (isSrc ? "PHOTO DOCUMENT" : "PHOTO");
+  const n = { tag: "OBJE", val: "", kids: [{ tag: "FORM", val: ext, kids: [] }, { tag: "FILE", val: file, kids: [] }, { tag: "_TYPE", val: typ, kids: [] }] };
+  if (title) n.kids.splice(2, 0, { tag: "TITL", val: GED.esc(title), kids: [] });
+  if (!isSrc) n.kids.push({ tag: "_PRIM", val: "N", kids: [] });
+  return n;
+}
+function mediaBaseFor(tag) { return lsGet("st.mediaBase." + tag, "") || guessMediaBase(tag); }
+function insertObjes(rec, nodes) {
+  let at = rec.kids.reduce((a, k, i) => k.tag === "OBJE" ? i + 1 : a, -1);
+  if (at < 0) at = rec.kids.findIndex(k => ["FAMC", "FAMS", "NOTE", "SOUR", "CHAN"].includes(k.tag));
+  if (at < 0) at = rec.kids.length;
+  rec.kids.splice(at, 0, ...nodes);
+}
+/* Quelle in der Quellenansicht: Datei(en) direkt verknüpfen */
+ACT.srcFileLocal = async (d) => {
+  const rec = S.db.get(d.id); if (!rec) return;
+  const hits = await localFilesToMedia({ multiple: true, sub: "Quellen" });
+  if (!hits.length) return;
+  const base = mediaBaseFor("SOUR");
+  const have = new Set(GED.kidsOf(rec, "OBJE").map(o => (GED.kval(o, "FILE") || "").toLowerCase()));
+  const nodes = [];
+  for (const h of hits) { const f = newFilePath(base, h); if (!have.has(f.toLowerCase())) nodes.push(objeNode(f, fileTitle(h.name), true)); }
+  if (!nodes.length) { toast("Diese Datei ist schon mit der Quelle verknüpft."); return; }
+  GED.run(S.db, "Quelldatei verknüpfen", tx => { tx.touch(rec); insertObjes(rec, nodes); });
+  afterEdit(nodes.length === 1 ? "Datei mit der Quelle verknüpft" : nodes.length + " Dateien mit der Quelle verknüpft");
+};
+/* Neue Quelle direkt aus einer Datei vom Rechner anlegen; liefert die neue Kennung */
+async function newSourceFromFile() {
+  const hits = await localFilesToMedia({ multiple: false, sub: "Quellen" });
+  if (!hits.length) return null;
+  const h = hits[0];
+  const title = prompt("Titel der neuen Quelle:", fileTitle(h.name));
+  if (!title || !title.trim()) return null;
+  let id;
+  const f = newFilePath(mediaBaseFor("SOUR"), h);
+  GED.run(S.db, "Quelle aus Datei anlegen", tx => {
+    const r = tx.create("SOUR", "S");
+    r.kids.push({ tag: "TITL", val: GED.esc(title.trim()), kids: [] });
+    r.kids.push(objeNode(f, fileTitle(h.name), true));
+    id = r.xref;
+  });
+  return id;
+}
+ACT.newSrcFile = async () => {
+  const id = await newSourceFromFile(); if (!id) return;
+  S.srcSel = id; S.srcQuery = ""; afterEdit("Quelle mit Datei angelegt");
+};
+/* Hinweis zur Sicherung */
+function fileBackupHint() {
+  const c = typeof bkCfg === "function" ? bkCfg() : {};
+  if (!LM.dirs.length) return `Noch kein Medienordner verbunden. Beim ersten Verknüpfen wirst du danach gefragt.`;
+  return c.media ? `Die Dateien liegen auf deinem Rechner. Die Google-Sicherung überträgt den Medienordner mit (eingeschaltet).` : `Die Dateien liegen auf deinem Rechner. Die Sicherung des Medienordners nach Google Drive ist ausgeschaltet. Einschalten unter Mehr, Lokale Dateien und Sicherung.`;
+}
 
 </script>
 </body>

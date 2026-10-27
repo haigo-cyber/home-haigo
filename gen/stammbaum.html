@@ -566,6 +566,36 @@ body.carop{overflow:hidden}
 @media (max-width:700px){.carhint{display:none}.carctl{padding-bottom:18px}}
 @media print{.carov{display:none!important}}
 
+/* ===== Basisdaten und Quellen-Markierungen ===== */
+.qb{display:inline-block;font:600 10px/1 var(--sans);padding:2px 4px;border-radius:8px;margin-left:5px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);vertical-align:middle;white-space:nowrap;cursor:help}
+.qb.q0,.bsrc.q0{opacity:.5;background:transparent;border:1px dashed var(--line2);color:var(--muted);font-weight:400}
+.bl{display:inline-block;margin-right:10px;font-size:12px;color:var(--muted)}
+.bdb{display:block;margin-top:2px}
+.bdb .bl{display:block;margin:0}
+.bsrc{display:block;font-size:11.5px;color:var(--muted);line-height:1.4;margin-top:2px}
+.bsrc.q0{border:0}
+.bsrc a,.bsrc i{color:var(--accent);font-style:normal}
+.prow{height:52px;align-items:center}
+.prow .pcol{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;justify-content:center}
+.prow .pr1{display:flex;align-items:baseline;gap:8px;min-width:0}
+.prow .pr2{display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .pr2 .bl{display:inline;margin-right:8px;font-size:11.5px}
+.tb .qt{position:absolute;right:4px;bottom:3px;margin:0}
+.tb .bl{display:block;margin:0;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow .tb2{grid-column:2/-1;display:flex;flex-wrap:wrap;gap:2px 12px;font-size:12px;color:var(--muted)}
+.trow .tb2 .bl{margin:0}
+.arow .bdb,.dd .bdb{font-size:12px}
+.dd .qb{margin-left:6px}
+.twhead+.bdb{padding:4px 8px}
+#info .ihead .bdb{margin:6px 0 2px}
+
+/* ===== Menü ausblenden ===== */
+.hmfab{position:fixed;right:10px;bottom:12px;z-index:25;display:none;opacity:.88;box-shadow:0 2px 10px rgba(0,0,0,.28);border-radius:20px;padding:7px 14px;background:var(--panel)}
+@media (max-width:900px),(pointer:coarse){.hmfab:not([hidden]){display:block}}
+body.hm .top,body.hm .fstat,body.hm .tabrow,body.hm .treebar,body.hm .splbar{display:none}
+body.hm .hmfab{background:var(--accent);color:#fff;border-color:var(--accent)}
+@media print{.hmfab{display:none!important}}
+
 </style>
 </head>
 <body>
@@ -613,6 +643,7 @@ body.carop{overflow:hidden}
     <aside id="info" aria-label="Bilder, Quellen und Orte der Person"></aside>
   </div>
 </div>
+<button class="btn hmfab" id="btnHm" data-act="hmToggle" hidden>Leisten ausblenden</button>
 <div id="toast" hidden role="status"></div>
 <input type="file" id="fileIn" accept=".ged,.gedcom,.txt,text/plain" hidden>
 <script src="https://accounts.google.com/gsi/client" async></script>
@@ -1414,7 +1445,7 @@ function evHtml(ev, ctx, surnames) {
   if (ev.date.text) bits.push(E(ev.date.text));
   let txt = bits.join(", ");
   if (ev.place) txt += (txt ? " in " : "") + `<span title="${E(ev.place)}">${E(shortPlace(ev.place))}</span>`;
-  const marks = mark(ctx, ev.sources);
+  const marks = mark(ctx, srcCollect(db, ev.node, []).map(v => ({ val: v })));
   let noteList = notes;
   if (!txt) {
     if (notes.length === 1 && notes[0].length <= 140 && !/\n/.test(notes[0])) { txt = E(notes[0]); noteList = []; }
@@ -1477,7 +1508,7 @@ ACT.up = (d) => {
 ACT.card = (d) => { S.view = "card"; go(d.id); };
 
 /* ---------- Seitenleiste mit Suche (nur sichtbare Zeilen werden gezeichnet) ---------- */
-const ROW_H = 36;
+const ROW_H = 52;
 function renderList(keepScroll) {
   if (!S.db) return;
   const q = $("q").value;
@@ -1502,7 +1533,7 @@ function paintRows() {
     const r = S.listRows[i];
     const p = GED.personInfo(S.db, r.id);
     const yrs = (r.by || r.dy) ? (r.by || "") + "–" + (r.dy || "") : "";
-    html += `<button class="prow${r.id === S.pid ? " on" : ""}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pn">${E(r.label)}</span><span class="py">${E(yrs)}</span></button>`;
+    html += `<button class="prow${r.id === S.pid ? " on" : ""}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pcol"><span class="pr1"><span class="pn">${E(r.label)}</span><span class="py">${E(yrs)}</span>${qTotal(S.db, r.id)}</span><span class="pr2">${bdLine(S.db, r.id, "b", { noBadge: true, cls: "bl" })}${bdLine(S.db, r.id, "d", { noBadge: true, cls: "bl" })}</span></span></button>`;
   }
   vs.innerHTML = html;
 }
@@ -1536,7 +1567,7 @@ function personBlock(id, famId, ctx, fallbackRole) {
   const evs = sortedEvents(p.events);
   let h = `<section class="pb ${p.sex === "F" ? "fem" : p.sex === "M" ? "mas" : ""}${id === S.pid ? " focus" : ""}">`;
   h += `<h3><button data-act="go" data-id="${id}"${famId ? ` data-fam="${famId}"` : ""}>${E(GED.displayName(p.rec))}</button>${mark(ctx, GED.kid(p.rec, "NAME") ? GED.kidsOf(GED.kid(p.rec, "NAME"), "SOUR") : [])}</h3>`;
-  h += `<div class="sub"><span>${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
+  h += `<div class="sub"><span>${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${qTotal(db, id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
   if (par) {
     h += `<div class="par">Eltern: ${par.father ? nameBtn(par.father, par.fam) : "unbekannt"} und ${par.mother ? nameBtn(par.mother, par.fam) : "unbekannt"}</div>`;
   } else {
@@ -1620,6 +1651,103 @@ function renderCard() {
 ACT.print = () => window.print();
 ACT.ped = (d) => { S.view = "ped"; S.pid = d.id; render(); };
 
+/* ============ BASISDATEN UND VERKNÜPFTE QUELLEN (für alle Ansichten) ============ */
+/* Alle Quellenverweise unter einem Knoten, auch tief verschachtelt (Datum, Ort, Notiz) und in Notizsätzen */
+function srcCollect(db, node, out, inNote) {
+  for (const k of (node && node.kids) || []) {
+    if (k.tag === "SOUR") { if (GED.isPtr(k.val) && db.get(k.val) && !out.includes(k.val)) out.push(k.val); continue; }
+    if (k.tag === "NOTE" && GED.isPtr(k.val)) { if (!inNote) { const r = db.get(k.val); if (r) srcCollect(db, r, out, true); } continue; }
+    srcCollect(db, k, out, inNote);
+  }
+  return out;
+}
+const srcTitleIn = (db, id) => {
+  const s = db.get(id); if (!s) return id;
+  const t = GED.kval(s, "TITL") || GED.kval(s, "ABBR") || GED.kval(s, "REGI");
+  return GED.unesc(t).replace(/\s*\n\s*/g, " ").trim() || ("Quelle " + id);
+};
+const bdMemo = (db, key, fn) => { if (db !== S.db) return fn(); const m = db._memo; const k = key + "#" + db.changeCount; if (m[k] === undefined) m[k] = fn(); return m[k]; };
+const evLabel = (n) => { if ((n.tag === "EVEN" || n.tag === "FACT") && GED.kval(n, "TYPE")) return GED.unesc(GED.kval(n, "TYPE")); return GED.INDI_EVENTS[n.tag] || GED.FAM_EVENTS[n.tag] || (n.tag === "NAME" ? "Name" : n.tag === "NOTE" ? "Notiz" : n.tag.replace(/^_/, "")); };
+/* Quellen einer Person gegliedert: Person, Name, jedes Ereignis, Ehen */
+function personSrc(db, id) {
+  return bdMemo(db, "ps:" + id, () => {
+    const p = GED.personInfo(db, id), parts = [], all = [];
+    if (!p) return { parts, all };
+    const add = (label, ids) => {
+      if (!ids.length) return;
+      let e = parts.find(x => x.label === label);
+      if (!e) parts.push(e = { label, ids: [] });
+      ids.forEach(s => { if (!e.ids.includes(s)) e.ids.push(s); if (!all.includes(s)) all.push(s); });
+    };
+    for (const k of p.rec.kids) {
+      if (k.tag === "SOUR") add("Person", GED.isPtr(k.val) && db.get(k.val) ? [k.val] : []);
+      else if (["FAMC", "FAMS", "CHAN", "_UID", "SEX", "REFN"].includes(k.tag)) continue;
+      else add(evLabel(k), srcCollect(db, k, []));
+    }
+    for (const fid of p.fams) {
+      const f = GED.famInfo(db, fid);
+      for (const k of f.rec.kids) {
+        if (k.tag === "SOUR") add("Familie", GED.isPtr(k.val) && db.get(k.val) ? [k.val] : []);
+        else if (GED.FAM_EVENTS[k.tag]) add(evLabel(k), srcCollect(db, k, []));
+      }
+    }
+    return { parts, all };
+  });
+}
+/* Geburt/Taufe und Tod/Begräbnis mit Datum, Ort und eigenen Quellen */
+function baseData(db, id) {
+  return bdMemo(db, "bd:" + id, () => {
+    const p = GED.personInfo(db, id); if (!p) return null;
+    const mk = (ev, alt, altLab) => {
+      const e = ev || alt; if (!e) return null;
+      const ids = srcCollect(db, e.node, []), date = e.date.text || "", place = e.place || "";
+      if (!date && !place && !ids.length) return null;
+      return { date, place, ids, lab: ev ? "" : altLab };
+    };
+    return { b: mk(p.birt, p.chr, "get."), d: mk(p.deat, p.buri, "begr.") };
+  });
+}
+const qbTip = (db, label, ids) => label + ": " + ids.map(s => srcTitleIn(db, s)).join("; ");
+const qBadge = (db, label, ids) => ids.length ? `<span class="qb" title="${E(qbTip(db, label, ids))}">Q${ids.length}</span>` : "";
+function qTotal(db, id) {
+  const ps = personSrc(db, id);
+  const tip = ps.all.length ? ps.parts.map(x => qbTip(db, x.label, x.ids)).join("\n") : "Keine Quelle verknüpft";
+  return `<span class="qb qt${ps.all.length ? "" : " q0"}" title="${E(tip)}">Q${ps.all.length}</span>`;
+}
+/* eine Zeile: * 12. März 1901, Köln [Q2] */
+function bdLine(db, id, which, o) {
+  o = o || {};
+  const x = baseData(db, id); const e = x && x[which]; if (!e) return "";
+  const sym = which === "b" ? "*" : "†";
+  const pre = e.lab ? e.lab + " " : "";
+  const pl = e.place ? (o.fullPlace ? e.place : (GED.unesc(e.place).split(",").map(s => s.trim()).slice(0, S.placeFull ? 99 : 2).join(", "))) : "";
+  const txt = [e.date, pl].filter(Boolean).join(", ") || "—";
+  const cls = o.cls || "pl bl";
+  return `<span class="${cls}" title="${E((which === "b" ? "Geboren" : "Gestorben") + (e.lab ? " (" + e.lab + ")" : "") + ": " + [e.date, e.place].filter(Boolean).join(", "))}">${sym} ${E(pre + txt)}${o.noBadge ? "" : qBadge(db, which === "b" ? "Quellen Geburt" : "Quellen Tod", e.ids)}</span>`;
+}
+/* reine Textform (Tooltips) */
+function bdText(db, id) {
+  const x = baseData(db, id); if (!x) return "";
+  const f = (e, s) => e ? s + " " + [e.lab, e.date, e.place].filter(Boolean).join(" ") + (e.ids.length ? " (Quellen: " + e.ids.length + ")" : "") : "";
+  const ps = personSrc(db, id);
+  return [f(x.b, "*"), f(x.d, "†"), "Quellen gesamt: " + ps.all.length].filter(Boolean).join("\n");
+}
+/* kompakt für Partner: * 12. März 1901 † 5. Juli 1980 */
+function bdShort(db, id) {
+  const x = baseData(db, id); if (!x) return "";
+  return [x.b && (x.b.date || x.b.place) ? "* " + (x.b.date || shortPlace(x.b.place)) : "", x.d && (x.d.date || x.d.place) ? "† " + (x.d.date || shortPlace(x.d.place)) : ""].filter(Boolean).join(" ");
+}
+const bdCount = (db, id) => { const x = baseData(db, id); return x ? (x.b ? 1 : 0) + (x.d ? 1 : 0) : 0; };
+/* Block für Listen: Daten mit vollem Ort, darunter die verknüpften Quellen nach Ereignis */
+function bdBlock(db, id, noLink) {
+  const ps = personSrc(db, id);
+  const lines = bdLine(db, id, "b", { fullPlace: true, cls: "bl" }) + bdLine(db, id, "d", { fullPlace: true, cls: "bl" });
+  const src = ps.all.length
+    ? `<span class="bsrc"><b>Quellen (${ps.all.length}):</b> ${ps.parts.map(x => `${E(x.label)}: ${x.ids.map(s => noLink ? `<i>${E(srcTitleIn(db, s))}</i>` : `<a href="#" data-act="src" data-id="${s}">${E(srcTitleIn(db, s))}</a>`).join(", ")}`).join(" · ")}</span>`
+    : `<span class="bsrc q0">Keine Quelle verknüpft</span>`;
+  return `<span class="bdb">${lines}${src}</span>`;
+}
+
 /* ============ STAMMBAUM (VORFAHREN) ============ */
 function mainPhotoHit(rec) {
   const o = mediaObjs(rec).find(x => x.prim && IMG_RE.test(baseName(x.file)));
@@ -1653,14 +1781,15 @@ function renderDescList() {
   function person(pid, depth, path) {
     const p = GED.personInfo(db, pid);
     const yrs = GED.lifeSpan(db, pid);
-    const nm = `<button class="lk" data-act="dgo" data-id="${pid}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(yrs)}</span>`;
+    const nm = `<button class="lk" data-act="dgo" data-id="${pid}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(yrs)}</span>${qTotal(db, pid)}`;
+    const bd = bdBlock(db, pid);
     count++;
     const fams = p.fams.filter(f => !path.has(f));
-    if (!fams.length) return `<li class="leaf"><span class="dn">${nm}</span></li>`;
+    if (!fams.length) return `<li class="leaf"><span class="dn">${nm}</span>${bd}</li>`;
     const famLine = (fid) => {
       const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, pid);
       const m = f.marr && f.marr.date.text ? ` <span class="sp">(${E(f.marr.date.text)})</span>` : "";
-      return `<span class="sp">⚭</span> ${sp ? `<button class="lk" data-act="dgo" data-id="${sp}">${E(nameOf(sp))}</button> <span class="sp">${E(GED.lifeSpan(db, sp))}</span>` : '<span class="sp">unbekannt</span>'}${m}`;
+      return `<span class="sp">⚭</span> ${sp ? `<button class="lk" data-act="dgo" data-id="${sp}">${E(nameOf(sp))}</button> <span class="sp">${E(GED.lifeSpan(db, sp))}</span>${qTotal(db, sp)} <span class="sp">${E(bdShort(db, sp))}</span>` : '<span class="sp">unbekannt</span>'}${m}`;
     };
     const kidsOf = (fid) => {
       const f = GED.famInfo(db, fid);
@@ -1672,9 +1801,9 @@ function renderDescList() {
     };
     let h;
     if (fams.length === 1) {
-      h = `<li><details class="dd" open><summary><span class="dn">${nm} ${famLine(fams[0])}</span></summary>${kidsOf(fams[0])}</details></li>`;
+      h = `<li><details class="dd" open><summary><span class="dn">${nm} ${famLine(fams[0])}</span>${bd}</summary>${kidsOf(fams[0])}</details></li>`;
     } else {
-      h = `<li><details class="dd" open><summary><span class="dn">${nm}</span></summary><ul class="desc">` +
+      h = `<li><details class="dd" open><summary><span class="dn">${nm}</span>${bd}</summary><ul class="desc">` +
         fams.map(fid => `<li><details class="dd" open><summary><span class="dn">${famLine(fid)}</span></summary>${kidsOf(fid)}</details></li>`).join("") + `</ul></details></li>`;
     }
     return h;
@@ -4664,7 +4793,7 @@ const memo = (key, fn) => { const m = S.db._memo; const k = key + "#" + S.db.cha
 function prow(id, extra) {
   const p = pinf(id);
   if (!p) return "";
-  return `<button class="trow" data-act="card" data-id="${id}"><span class="tsx ${p.sex === "M" ? "m" : p.sex === "F" ? "f" : ""}">${sexSym(p.sex)}</span><span class="tn">${E(GED.displayName(p.rec, "list"))}</span><span class="ty">${E(GED.lifeSpan(S.db, id))}</span><span class="tp">${E(shortPlace(p.birt && p.birt.place))}</span>${extra ? `<span class="tx">${extra}</span>` : ""}</button>`;
+  return `<button class="trow" data-act="card" data-id="${id}"><span class="tsx ${p.sex === "M" ? "m" : p.sex === "F" ? "f" : ""}">${sexSym(p.sex)}</span><span class="tn">${E(GED.displayName(p.rec, "list"))}</span><span class="ty">${E(GED.lifeSpan(S.db, id))}</span><span class="tp">${E(shortPlace(p.birt && p.birt.place))}</span>${extra ? `<span class="tx">${extra}</span>` : ""}<span class="tb2">${bdLine(S.db, id, "b")}${bdLine(S.db, id, "d")}${qTotal(S.db, id)}</span></button>`;
 }
 const tHead = (t, sub) => `<div class="thead"><h2>${E(t)}</h2>${sub ? `<div class="hint">${sub}</div>` : ""}</div>`;
 function tngRender(v) {
@@ -5485,6 +5614,11 @@ function sizerSetup() {
 }
 ACT.t_plgo = (d) => { TG.plSel = d.p; TG.plMap = false; S.view = "places"; render(); };
 function infoSources(p) {
+  const ps = personSrc(S.db, p.id), out = new Map();
+  for (const x of ps.parts) for (const s of x.ids) { const a = out.get(s) || []; if (!a.includes(x.label)) a.push(x.label); out.set(s, a); }
+  return out;
+}
+function infoSourcesOld(p) {
   const out = new Map();
   const add = (ptr, ctx) => { if (!GED.isPtr(ptr) || !S.db.get(ptr)) return; const a = out.get(ptr) || []; if (ctx && !a.includes(ctx)) a.push(ctx); out.set(ptr, a); };
   for (const k of p.rec.kids) {
@@ -5509,7 +5643,7 @@ function renderInfo() {
   const id = S.pid, p = pinf(id), rw = !S.viewer;
   if (!M.idx && (accessToken || LM.list.length) && !M.loading && !M.failed.has("idx")) loadMediaIdx().then(() => { if (S.db && infoVisible()) renderInfo(); }).catch(() => M.failed.add("idx"));
   const keep = el.scrollTop;
-  let h = `<div class="ihead"><b>${E(GED.displayName(p.rec))}</b><div class="hint">${E(GED.lifeSpan(S.db, id))}</div>
+  let h = `<div class="ihead"><b>${E(GED.displayName(p.rec))}</b><div class="hint">${E(GED.lifeSpan(S.db, id))}</div>${bdBlock(S.db, id)}
     <div class="iact"><button class="btn sm" data-act="card" data-id="${id}">Familienblatt</button>${rw ? `<button class="btn sm pri" data-act="t_editp">Bearbeiten</button>` : ""}<button class="btn sm ghost" data-act="t_idock" title="Leiste auf die andere Seite des Inhalts legen">${SIDE.dockl ? "Nach rechts ▷" : "◁ Nach links"}</button><button class="btn sm ghost" data-act="t_info" title="Leiste schließen" aria-label="Leiste schließen">✕</button></div>
     <div class="isecs" role="group" aria-label="Angezeigte Abschnitte">${INFO_SEC.map(([k, t]) => `<button class="chipb${SIDE.sec[k] ? " on" : ""}" data-act="t_isec" data-s="${k}" aria-pressed="${SIDE.sec[k] ? "true" : "false"}">${t}</button>`).join("")}</div></div>`;
   const head = (k, title, n, addSect) => `<div class="sh"><button class="fold" data-act="t_ifold" data-s="${k}" aria-expanded="${SIDE.fold[k] ? "false" : "true"}"><span class="car">${SIDE.fold[k] ? "▸" : "▾"}</span> ${title}${n ? ` <span class="hint">(${n})</span>` : ""}</button>${rw && addSect ? `<button class="btn sm ghost" data-act="t_iedit" data-s="${addSect}" title="Hinzufügen oder ändern">+</button>` : ""}</div>`;
@@ -5622,7 +5756,7 @@ function renderPedList() {
       const p = GED.personInfo(db, id);
       const bp = p.birt && p.birt.place ? shortPlace(p.birt.place) : "", dp = p.deat && p.deat.place ? shortPlace(p.deat.place) : "";
       const role = g === 0 ? "" : k % 2 === 0 ? "Vater" : "Mutter";
-      body += `<li class="arow ${p.sex}" data-id="${id}"><span class="kn" title="Kekulé-Nummer">${k}</span><span class="am"><button class="lk" data-act="pedgo" data-id="${id}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${role && g === 1 ? ` <span class="hint">${role}</span>` : ""}<span class="al">${bp ? "* " + E(bp) : ""}${bp && dp ? "   " : ""}${dp ? "† " + E(dp) : ""}</span></span><button class="btn sm ghost" data-act="card" data-id="${id}" title="Familienblatt">Blatt</button></li>`;
+      body += `<li class="arow ${p.sex}" data-id="${id}"><span class="kn" title="Kekulé-Nummer">${k}</span><span class="am"><button class="lk" data-act="pedgo" data-id="${id}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${role && g === 1 ? ` <span class="hint">${role}</span>` : ""}${bdBlock(db, id)}</span><button class="btn sm ghost" data-act="card" data-id="${id}" title="Familienblatt">Blatt</button></li>`;
     }
     body += `</ul></section>`;
   });
@@ -5724,9 +5858,9 @@ function renderPedTree() {
     if (placeholders.has(k)) { info.set(k, { h: BH }); items.push({ key: k, g, c, h: BH }); return; }
     const id = anc.get(k), pi = GED.personInfo(db, id), hit = mainPhotoHit(pi.rec), nm = GED.displayName(pi.rec);
     const lines = boxLines(nm, hit, BW, PH);
-    const bp = pi.birt && pi.birt.place ? shortPlace(pi.birt.place).split(",")[0] : "", dp = pi.deat && pi.deat.place ? shortPlace(pi.deat.place).split(",")[0] : "";
-    const h = Math.max(hit ? PH + 12 : 0, 9 + lines * 16 + 15 + (bp ? 14 : 0) + (dp ? 14 : 0), BH);
-    info.set(k, { h, hit, nm, bp, dp, id, pi }); items.push({ key: k, g, c, h });
+    const bl = bdLine(db, id, "b"), dl = bdLine(db, id, "d");
+    const h = Math.max(hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (bl ? 14 : 0) + (dl ? 14 : 0) + 15, BH);
+    info.set(k, { h, hit, nm, bl, dl, id, pi }); items.push({ key: k, g, c, h });
     if (all.has(2 * k)) edges.push([k, 2 * k]); if (all.has(2 * k + 1)) edges.push([k, 2 * k + 1]);
   });
   const L = layoutTree(items, edges, ori, slots), maxG = N - 1;
@@ -5737,8 +5871,8 @@ function renderPedTree() {
     const ph = f.hit ? `<span class="ph"><img data-mid="${f.hit.id}" alt=""></span>` : "", kin = pedKin(f.id);
     const arL = k === 1 && kin.kids.length ? `<span class="ar" data-act="t_pchild" title="Zum Kind">${ARROW[ori][1]}</span>` : "";
     const arR = Math.floor(Math.log2(k)) === maxG && kin.par && (kin.par.father || kin.par.mother) ? `<span class="ar" data-act="pedgo" data-id="${f.id}" title="Diese Person in die Mitte setzen und weitere Vorfahren zeigen">${ARROW[ori][0]}</span>` : "";
-    boxes += `<button class="tb ${f.pi.sex}${k === 1 ? " root" : ""}" style="${st}" data-act="pedgo" data-id="${f.id}" title="${E(f.nm)}\n${E(GED.lifeSpan(db, f.id))}\nKekulé-Nummer ${k}">
-      <span class="kk">${k}</span>${arL}${arR}${ph}<span class="tx"><span class="nm">${E(f.nm)}</span><span class="yr">${E(GED.lifeSpan(db, f.id))}</span>${f.bp ? `<span class="pl">* ${E(f.bp)}</span>` : ""}${f.dp ? `<span class="pl">† ${E(f.dp)}</span>` : ""}</span></button>`;
+    boxes += `<button class="tb ${f.pi.sex}${k === 1 ? " root" : ""}" style="${st}" data-act="pedgo" data-id="${f.id}" title="${E(f.nm)}\n${E(bdText(db, f.id))}\nKekulé-Nummer ${k}">
+      <span class="kk">${k}</span>${arL}${arR}${ph}<span class="tx"><span class="nm">${E(f.nm)}</span>${f.bl}${f.dl}</span>${qTotal(db, f.id)}</button>`;
   });
   const opts = [3, 4, 5, 6, 7].map(n => `<option value="${n}"${n === N ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
@@ -5757,7 +5891,7 @@ function descNodes(maxDepth, MAXN) {
     const p = GED.personInfo(db, pid), node = { id: pid, p, depth, sp: [], kids: [], more: 0 };
     for (const fid of p.fams.filter(f => !path.has(f))) {
       const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, pid);
-      node.sp.push(sp ? { id: sp, nm: nameOf(sp), yrs: GED.lifeSpan(db, sp) } : { id: null, nm: "unbekannt", yrs: "" });
+      node.sp.push(sp ? { id: sp, nm: nameOf(sp), yrs: bdShort(db, sp) || GED.lifeSpan(db, sp) } : { id: null, nm: "unbekannt", yrs: "" });
       if (!f.children.length) continue;
       if (depth >= maxDepth) { node.more += f.children.length; continue; }
       const np = new Set(path); np.add(fid);
@@ -5777,7 +5911,8 @@ function renderDescTree() {
     n.hit = mainPhotoHit(n.p.rec); n.nm = GED.displayName(n.p.rec);
     const tw = BW - 18 - 14 - (n.hit ? PH + 6 : 0), lines = boxLines(n.nm, n.hit, BW, PH);
     const sps = n.sp.map(s => Math.max(1, Math.ceil((s.nm.length + s.yrs.length + 3) * 6.4 / tw))).reduce((a, b) => a + b, 0);
-    n.h = Math.max(n.hit ? PH + 12 : 0, 9 + lines * 16 + 15 + sps * 14, BH);
+    n.bl = bdLine(db, n.id, "b"); n.dl = bdLine(db, n.id, "d");
+    n.h = Math.max(n.hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (n.bl ? 14 : 0) + (n.dl ? 14 : 0) + 15 + sps * 14, BH);
     n.kids.forEach(walk);
   })(root);
   let leaf = 0;
@@ -5791,7 +5926,7 @@ function renderDescTree() {
     const ph = n.hit ? `<span class="ph"><img data-mid="${n.hit.id}" alt=""></span>` : "";
     const spl = n.sp.map(s => `<span class="pl sp2">⚭ ${s.id ? `<span class="splk" data-act="pedgo" data-id="${s.id}">${E(s.nm)}</span>` : E(s.nm)}${s.yrs ? " " + E(s.yrs) : ""}</span>`).join("");
     const arR = n.more ? `<span class="ar" data-act="dgo" data-id="${n.id}" title="${n.more} weitere Kinder: diese Person in die Mitte setzen">${ARROW[ori][0]}</span>` : "";
-    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(GED.lifeSpan(db, n.id))}">${arR}${ph}<span class="tx"><span class="nm">${E(n.nm)}</span><span class="yr">${E(GED.lifeSpan(db, n.id))}</span>${spl}</span></button>`;
+    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}">${arR}${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${spl}</span>${qTotal(db, n.id)}</button>`;
   }
   const opts = [2, 3, 4, 5, 6, 8].map(n => `<option value="${n}"${n === S.depth ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
@@ -5831,7 +5966,7 @@ function ringsSvg(secs, root, o) {
   for (const s of secs) {
     const r0 = r0c + (s.g - 1) * RW, r1 = r0 + RW;
     if (s.empty) { body += `<path class="fsec empty" d="${sector(r0, r1, s.a0, s.a1)}"/>`; continue; }
-    body += `<path class="fsec ${s.sex || "U"}${s.more ? " more" : ""}" d="${sector(r0, r1, s.a0, s.a1)}" data-act="${o.act}" data-id="${s.id}"><title>${E(s.nm)}${s.yrs ? "\n" + E(s.yrs) : ""}${s.extra ? "\n" + E(s.extra) : ""}</title></path>`;
+    body += `<path class="fsec ${s.sex || "U"}${s.more ? " more" : ""}" d="${sector(r0, r1, s.a0, s.a1)}" data-act="${o.act}" data-id="${s.id}"><title>${E(s.nm)}${s.yrs ? "\n" + E(s.yrs) : ""}${s.extra ? "\n" + E(s.extra) : ""}${s.id ? "\n" + E(bdText(S.db, s.id)) : ""}</title></path>`;
     const am = (s.a0 + s.a1) / 2, rm = (r0 + r1) / 2, span = s.a1 - s.a0, arc = rm * span * RAD;
     const tangential = arc >= RW * 1.1 && s.g <= 3;
     if (tangential) {
@@ -5852,7 +5987,7 @@ function ringsSvg(secs, root, o) {
   }
   /* Mitte */
   const nmw = shortNm(root.nm, 24).split(/\s+/); const l1 = [], l2 = []; nmw.forEach((w, i) => (i < Math.ceil(nmw.length / 2) ? l1 : l2).push(w));
-  body += `<circle class="fsec fc ${root.sex || "U"}" cx="0" cy="0" r="${r0c}" data-act="${o.act}" data-id="${root.id}"><title>${E(root.nm)}\n${E(root.yrs)}</title></circle>`;
+  body += `<circle class="fsec fc ${root.sex || "U"}" cx="0" cy="0" r="${r0c}" data-act="${o.act}" data-id="${root.id}"><title>${E(root.nm)}\n${E(root.yrs)}${root.id ? "\n" + E(bdText(S.db, root.id)) : ""}</title></circle>`;
   body += `<text class="fn" text-anchor="middle" font-size="12.5" y="${l2.length ? -9 : -3}">${E(l1.join(" "))}</text>${l2.length ? `<text class="fn" text-anchor="middle" font-size="12.5" y="4">${E(l2.join(" "))}</text>` : ""}<text class="fy" text-anchor="middle" font-size="10.5" y="${l2.length ? 18 : 12}">${E(root.yrs)}</text>`;
   return { W, H, svg: `<svg class="ringsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${E(o.label)}"><defs>${defs}</defs><g transform="translate(${f(ox)} ${f(oy)})">${body}</g></svg>` };
 }
@@ -6183,7 +6318,7 @@ function openTakeDlg(bId, o) {
 function twRow(id) {
   const db = CMP.db, p = GED.personInfo(db, id);
   const done = TWO.done.get(id);
-  return `<span class="twrow${TWO.sel === id ? " sel" : ""}" draggable="true" data-two="${id}" data-act="twoSel" data-b="${id}" title="Anklicken zum Ansehen, auf eine Person links ziehen zum Übernehmen"><span class="sx">${sexSym(p.sex)}</span> ${E(GED.displayName(p.rec))} <span class="w">${E(GED.lifeSpan(db, id))}</span>${done && S.db.get(done) ? ` <span class="twdone" title="Schon übernommen">✓</span>` : ""}</span>`;
+  return `<span class="twrow${TWO.sel === id ? " sel" : ""}" draggable="true" data-two="${id}" data-act="twoSel" data-b="${id}" title="Anklicken zum Ansehen, auf eine Person links ziehen zum Übernehmen"><span class="sx">${sexSym(p.sex)}</span> ${E(GED.displayName(p.rec))} <span class="w">${E(bdShort(db, id) || GED.lifeSpan(db, id))}</span>${done && S.db.get(done) ? ` <span class="twdone" title="Schon übernommen">✓</span>` : ""}</span>`;
 }
 function twListHtml() {
   const rows = GED.searchPersons(CMP.db, TWO.q, TWO.limit + 1);
@@ -6198,6 +6333,7 @@ function twDetHtml() {
   const parents = par ? [par.father, par.mother].filter(x => x && db.get(x)) : [];
   let h = `<div class="twhead"><span class="twrow big" draggable="true" data-two="${id}" title="Auf eine Person links ziehen"><span class="sx">${sexSym(B.sex)}</span> <b>${E(GED.displayName(B.rec))}</b> <span class="w">${E(GED.lifeSpan(db, id))}</span></span>
     <button class="btn sm pri" data-act="twoTake" data-b="${id}">Übernehmen …</button></div>`;
+  h += bdBlock(db, id, true);
   h += cpFieldsOnly(id);
   h += rel("Eltern", parents);
   for (const f of B.fams) {
@@ -6904,7 +7040,8 @@ document.addEventListener("click", (e) => {
    Eigene Erkennung über Zeit und Ort zweier Klicks, weil die Ansichten beim ersten Klick neu aufgebaut werden
    und der Browser dann kein dblclick-Ereignis mehr meldet. */
 const LASTCLK = { id: null, t: 0, x: 0, y: 0 };
-const personIdOf = (el) => { const x = el && el.closest && el.closest("[data-id]"); const id = x && x.dataset.id; const r = id && S.db && S.db.get(id); return r && r.tag === "INDI" ? id : null; };
+const personIdOf = (el) => { const x = el && el.closest && el.closest("[data-id]"); const id = x && x.dataset.id; const r = id && S.db && S.db.get(id); return r && (r.tag === "INDI" || (r.tag === "SOUR" && !x.closest(".twoR"))) ? id : null; };
+const editRec = (id) => { const r = S.db.get(id); if (!r) return false; if (r.tag === "SOUR") { editSrc(id); return true; } if (GED.personInfo(S.db, id)) { editPerson(id); return true; } return false; };
 document.addEventListener("click", (e) => {
   if (!S.db || e.target.closest(".ovl")) return;
   const t = e.target;
@@ -6916,10 +7053,10 @@ document.addEventListener("click", (e) => {
   if (dbl && area && !blocked && !S.viewer) {
     const target = LASTCLK.id || id || (t.closest("#content") ? S.pid : null);
     LASTCLK.t = 0;
-    if (target && GED.personInfo(S.db, target)) {
+    if (target && S.db.get(target) && (S.db.get(target).tag === "SOUR" || GED.personInfo(S.db, target))) {
       e.stopPropagation(); e.preventDefault();
       const sel = window.getSelection && window.getSelection(); if (sel && sel.removeAllRanges) sel.removeAllRanges();
-      editPerson(target);
+      editRec(target);
       return;
     }
   }
@@ -6932,7 +7069,7 @@ document.addEventListener("dblclick", (e) => {
   if (!t.closest("#content, #plist, #info") || t.closest("input, textarea, select, label, .ar, .parrows, .treebar, .splbar, .rz, #info .ihead, .abc, .tabs, .top")) return;
   if (!personIdOf(t) && t.closest("button, a, [data-act], summary")) return;
   const id = personIdOf(t) || LASTCLK.id || (t.closest("#content") ? S.pid : null);
-  if (id && GED.personInfo(S.db, id)) editPerson(id);
+  if (id) editRec(id);
 });
 document.addEventListener("change", (e) => {
   if (e.target.id === "gensSel") { S.gens = +e.target.value; lsSet("st.gens", S.gens); render(); }
@@ -6973,6 +7110,23 @@ window.__S = S; window.GED = GED;
   if (window.google && google.accounts && google.accounts.oauth2) { try { initTokenClient(); } catch (e) {} }
   else setTimeout(waitGIS, 250);
 })();
+
+/* ============ MENÜ AUSBLENDEN (vor allem fürs Handy): mehr Platz für die eigentliche Ansicht ============ */
+const HM = { on: lsGet("st.hm", "0") === "1" };
+function hmApply() {
+  const b = $("btnHm"); if (!b) return;
+  const show = !!S.db;
+  b.hidden = !show;
+  const on = show && HM.on;
+  document.body.classList.toggle("hm", on);
+  b.textContent = on ? "Leisten einblenden" : "Leisten ausblenden";
+  b.setAttribute("aria-pressed", on ? "true" : "false");
+  b.setAttribute("aria-label", on ? "Leisten oben wieder einblenden" : "Menü und Werkzeugleisten oben ausblenden, damit die Ansicht mehr Platz hat");
+}
+function hmSet(on) { HM.on = !!on; lsSet("st.hm", HM.on ? "1" : "0"); hmApply(); }
+ACT.hmToggle = () => hmSet(!HM.on);
+{ const _r = render; render = function () { const r = _r.apply(this, arguments); hmApply(); return r; }; }
+hmApply();
 
 </script>
 </body>

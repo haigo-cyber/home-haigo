@@ -1367,6 +1367,8 @@ const E = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&a
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+/* Zustand des automatischen Speicherns (Logik in app_t.js) */
+const AS = { on: lsGet("st.autosave", "1") === "1", lastCount: -1, lastChange: 0, busy: false, paused: "", verAt: 0, draftCount: -1, draftOf: null, drafts: [], ok: 0, failAt: 0 };
 const ACT = {};          // Klick-Aktionen (data-act)
 
 const S = {
@@ -3671,11 +3673,11 @@ function renderStatus() {
   else if (S.fileHandle) src = `Hauptdatei: <b>lokale Datei</b> ${E(S.fileName)}. „Speichern“ schreibt direkt in diese Datei auf deinem Rechner.`;
   else src = `Quelle: <b>lokale Datei</b> ${E(S.fileName)}. Sie wird nie verändert; „Als .ged speichern“ lädt eine neue Datei mit Zeitstempel herunter.`;
   let st;
-  if (isDirty()) st = `<span class="stwarn"><span class="sdot"></span>${n} ${n === 1 ? "Datensatz" : "Datensätze"} geändert, noch nicht gespeichert</span>`;
+  if (isDirty()) st = `<span class="stwarn"><span class="sdot"></span>${n} ${n === 1 ? "Datensatz" : "Datensätze"} geändert, ${S.fileHandle && AS.on && !AS.paused ? "wird gleich automatisch gespeichert" : "noch nicht gespeichert"}</span>`;
   else if (S.lastSave) st = `<span class="stok">Gespeichert um ${E(fmtClock(S.lastSave.at))} (${S.lastSave.target === "drive" ? "Drive" : S.lastSave.target === "local" ? "lokale Datei" : "Download"}${S.lastSave.verified ? ", Inhalt geprüft" : ""})</span>`;
   else st = `<span class="stok">Unverändert seit dem Laden</span>`;
   if (S.viewer) { el.innerHTML = `<span class="fsrc">${src}</span>`; return; }
-  el.innerHTML = `<span class="fsrc">${src}</span> <span class="fst">${st}</span> <span class="fst">${bkStatusHtml()}</span> <button class="btn sm" data-act="fileStatus">Details</button>`;
+  el.innerHTML = `<span class="fsrc">${src}</span> <span class="fst">${st}</span> <span class="fst">${bkStatusHtml()}</span> <button class="btn sm" data-act="asToggle" title="Änderungen automatisch speichern">${asState()}</button> <button class="btn sm" data-act="fileStatus">Details</button>${asNote()}`;
 }
 
 async function driveRead(id) {
@@ -6588,7 +6590,7 @@ window.addEventListener("resize", () => {
 
 /* ============ HAUPTANSICHT ============ */
 function welcomeHtml() {
-  return `<div class="welcome"><h1>Stammbaum öffnen</h1>
+  return `<div class="welcome"><h1>Stammbaum öffnen</h1>${typeof asWelcomeHtml === "function" ? asWelcomeHtml() : ""}
     <p>Lies eine GEDCOM-Datei aus Reunion ein, sieh dir Familienblätter, Vorfahren und Quellen an, bearbeite Angaben und gib die Datei wieder aus. Alles läuft in deinem Browser. Nichts wird an einen anderen Server geschickt, Google Drive dient nur als Sicherung: Die Seite legt dort Kopien ab, bearbeitet aber nie eine Datei in Drive.</p>
     <div class="drop" id="drop"><p style="margin-top:0">.ged-Datei hierher ziehen oder auswählen</p>
       <button class="btn pri" data-act="openFile">${FS.ok ? "Datei öffnen (direkt speichern)" : "Datei öffnen"}</button>
@@ -7127,6 +7129,114 @@ function hmSet(on) { HM.on = !!on; lsSet("st.hm", HM.on ? "1" : "0"); hmApply();
 ACT.hmToggle = () => hmSet(!HM.on);
 { const _r = render; render = function () { const r = _r.apply(this, arguments); hmApply(); return r; }; }
 hmApply();
+
+/* ============ AUTOMATISCHES SPEICHERN ============
+   Stufe 1: Hängt die Hauptdatei direkt an einer lokalen Datei (Dateizugriff), wird sie nach kurzer Ruhe still überschrieben,
+            mit Rücklesekontrolle. Der Stand von der Platte wird als Vorversion aufbewahrt (zu Beginn und danach höchstens alle 30 Minuten).
+   Stufe 2: Immer wird zusätzlich ein Entwurf im Browser abgelegt. Er erscheint beim nächsten Start zur Wiederherstellung, solange nichts gespeichert ist. */
+const AS_IDLE = 3500, AS_VER_EVERY = 30 * 60000;
+async function asLoadDrafts() { const d = await IDB.get("drafts"); AS.drafts = Array.isArray(d) ? d : []; if (!S.db && !S.viewer && !document.getElementById("vdata") && AS.drafts.length) render(); }
+async function asStoreDrafts() { await IDB.set("drafts", AS.drafts); }
+async function asWriteDraft() {
+  const c = S.db.changeCount, text = exportBlobText();
+  AS.drafts = AS.drafts.filter(x => x.name !== S.fileName);
+  AS.drafts.unshift({ name: S.fileName, at: Date.now(), text, n: S.db.ofTag("INDI").length });
+  AS.drafts = AS.drafts.slice(0, 3);
+  await asStoreDrafts();
+  AS.draftCount = c; AS.draftOf = S.fileName;
+}
+async function asClearDraft(name) {
+  if (!AS.drafts.some(x => x.name === name)) return;
+  AS.drafts = AS.drafts.filter(x => x.name !== name);
+  await asStoreDrafts();
+  AS.draftCount = -1;
+}
+function asPause(msg) { if (AS.paused !== msg) { AS.paused = msg; if (S.db) updateTop(); } }
+async function asSaveFile() {
+  const h = S.fileHandle;
+  let perm = "denied"; try { perm = await h.queryPermission({ mode: "readwrite" }); } catch (e) {}
+  if (perm !== "granted") return asPause("Der Browser hat den Schreibzugriff nicht mehr erlaubt. Klicke einmal auf „In Datei speichern“.");
+  const cur = await h.getFile();
+  if (cur.lastModified !== S.localMod || cur.size !== S.localSize) return asPause("Die Datei wurde außerhalb geändert. Automatisch wird nichts überschrieben. Klicke auf „In Datei speichern“ und entscheide.");
+  const sum = changeSummary();
+  if (sum.o.indi && (sum.o.indi - sum.indi) / sum.o.indi > 0.05) return asPause("Es sind deutlich weniger Personen als beim Laden. Automatisch wird nicht überschrieben. Prüfe unter Details und speichere dann von Hand.");
+  const count = S.db.changeCount, n = sum.changed.length + sum.added.length + sum.deleted.length;
+  if (!AS.verAt || Date.now() - AS.verAt > AS_VER_EVERY) { await verPush(cur.name, new Uint8Array(await cur.arrayBuffer()), cur.lastModified); AS.verAt = Date.now(); }
+  const blob = new Blob([exportBlobText()], { type: "text/plain;charset=utf-8" });
+  const w = await h.createWritable(); await w.write(blob); await w.close();
+  const after = await h.getFile();
+  const sent = new Uint8Array(await blob.arrayBuffer()), back = new Uint8Array(await after.arrayBuffer());
+  if (back.length !== sent.length || !sent.every((v, i) => v === back[i])) throw new Error("Die gespeicherte Datei weicht von dem ab, was geschrieben werden sollte. Die Vorversion ist unter „Mehr“, „Lokale Dateien und Sicherung“ abrufbar.");
+  S.localMod = after.lastModified; S.localSize = after.size;
+  S.savedMark = count;
+  S.lastSave = { at: Date.now(), target: "local", name: after.name, size: blob.size, verified: true, n, auto: true };
+  AS.paused = ""; AS.ok++;
+  await asClearDraft(S.fileName);
+  updateTop();
+  if (typeof bkDue === "function" && bkDue() && accessToken) runBackup().then(backupToast);
+}
+async function asTick(force) {
+  if (!S.db || S.viewer || AS.busy) return;
+  const c = S.db.changeCount;
+  if (c !== AS.lastCount) { AS.lastCount = c; AS.lastChange = Date.now(); }
+  if (!isDirty()) return;
+  if (!force && Date.now() - AS.lastChange < AS_IDLE) return;
+  if (_lsaving || (typeof _saving !== "undefined" && _saving)) return;
+  AS.busy = true;
+  try {
+    if (AS.draftCount !== c || AS.draftOf !== S.fileName) await asWriteDraft();
+    if (AS.on && S.fileHandle) {
+      try { await asSaveFile(); AS.failAt = 0; }
+      catch (e) {
+        asPause("Automatisches Speichern ist fehlgeschlagen: " + (e && e.message || e) + " Dein Stand liegt als Entwurf im Browser.");
+        if (Date.now() - AS.failAt > 120000) { AS.failAt = Date.now(); toast("Automatisches Speichern in die Datei ist fehlgeschlagen. Details in der Statuszeile.", 6000); }
+      }
+    }
+  } catch (e) { asPause("Der Entwurf im Browser konnte nicht abgelegt werden: " + (e && e.message || e)); }
+  finally { AS.busy = false; }
+}
+setInterval(() => { asTick(false); }, 1500);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") asTick(true); });
+window.addEventListener("pagehide", () => { asTick(true); });
+/* wurde zwischenzeitlich anders gespeichert (Download oder von Hand), ist der Entwurf überflüssig */
+setInterval(() => { if (S.db && !isDirty() && AS.draftOf === S.fileName && AS.drafts.some(x => x.name === S.fileName)) asClearDraft(S.fileName); }, 4000);
+/* Hinweis für die Statuszeile */
+function asNote() {
+  if (!S.db || S.viewer) return "";
+  if (AS.paused) return `<span class="stwarn" style="display:block;margin-top:3px">${E(AS.paused)}</span>`;
+  return "";
+}
+function asState() {
+  if (S.fileHandle) return AS.on ? "Automatisch speichern: an" : "Automatisch speichern: aus";
+  return "Entwurf im Browser: an";
+}
+ACT.asToggle = () => {
+  if (!S.fileHandle) { toast("Ohne direkt verbundene Datei wird alles als Entwurf im Browser gehalten. Zum Sichern: Mehr, Lokale Dateien und Sicherung, Speichern unter …", 7000); return; }
+  AS.on = !AS.on; lsSet("st.autosave", AS.on ? "1" : "0"); AS.paused = "";
+  toast(AS.on ? "Automatisches Speichern ist an." : "Automatisches Speichern ist aus. Speichere mit „In Datei speichern“.", 4000);
+  updateTop(); if (AS.on) asTick(true);
+};
+/* Wiederherstellung auf der Startseite */
+function asWelcomeHtml() {
+  if (!AS.drafts.length) return "";
+  return `<div class="panel" style="margin-top:14px"><h4 style="margin-top:0">Nicht gespeicherte Änderungen gefunden</h4>
+    <div class="hint">Beim letzten Mal wurde nicht alles in die Datei gespeichert. Diese Entwürfe liegen noch in diesem Browser:</div>
+    ${AS.drafts.map((d, i) => `<div style="margin-top:8px"><b>${E(d.name)}</b> vom ${E(new Date(d.at).toLocaleString("de-DE"))} (${d.n} Personen) <button class="btn sm pri" data-act="asRestore" data-i="${i}">Wiederherstellen</button> <button class="btn sm ghost" data-act="asDrop" data-i="${i}">Verwerfen</button></div>`).join("")}</div>`;
+}
+ACT.asRestore = async (d) => {
+  const x = AS.drafts[+d.i]; if (!x) return;
+  const bytes = new TextEncoder().encode(x.text);
+  if (await loadBuffer(bytes.buffer, x.name, "local", null)) {
+    S.savedMark = -1; AS.draftCount = -1; AS.draftOf = null; updateTop();
+    toast("Entwurf wiederhergestellt. Speichere jetzt mit „Als .ged speichern“, oder über Mehr, Lokale Dateien und Sicherung, Speichern unter …, um wieder direkt in eine Datei zu schreiben.", 9000);
+  }
+};
+ACT.asDrop = async (d) => {
+  const x = AS.drafts[+d.i]; if (!x) return;
+  if (!(await confirmDlg({ title: "Entwurf verwerfen?", text: `Der Entwurf „${x.name}“ vom ${new Date(x.at).toLocaleString("de-DE")} wird gelöscht. Das lässt sich nicht rückgängig machen.`, ok: "Verwerfen", cls: "dng" }))) return;
+  AS.drafts.splice(+d.i, 1); await asStoreDrafts(); render();
+};
+asLoadDrafts();
 
 </script>
 </body>

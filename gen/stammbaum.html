@@ -2009,7 +2009,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "28.10.2026 19:30"; /* BUILD_ID=28.10.2026 19:30 */
+const BUILD = "28.10.2026 19:42"; /* BUILD_ID=28.10.2026 19:42 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -6084,7 +6084,7 @@ function pedKeys(ori) {
   const m = { LR: ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"], RL: ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"], TB: ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"], BT: ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"] }[ori] || [];
   return { anc: m[0], kid: m[1], prev: m[2], next: m[3] };
 }
-const pedMode = () => (S.view === "split" && SPL.rkind === "ped") || S.view === "ped";
+const pedMode = () => (S.view === "split" && SPL.rkind === "ped") || S.view === "ped" || (S.view === "two" && TWL.kind === "ped");
 document.addEventListener("keydown", (e) => {
   if (!S.db || !pedMode() || document.querySelector(".ovl") || e.ctrlKey || e.metaKey || e.altKey) return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName || "") || (e.target.isContentEditable)) return;
@@ -6350,7 +6350,7 @@ function afterTrees() {
 /* ============ GETEILTE ANSICHT: links Familienblatt oder Bearbeiten, rechts Vorfahren oder Nachkommen ============ */
 const SPL = {
   left: lsGet("st.spL", "1") !== "0", right: lsGet("st.spR", "1") !== "0",
-  lmode: lsGet("st.spLm", "card") === "edit" ? "edit" : "card", rkind: lsGet("st.spRk", "ped") === "desc" ? "desc" : "ped",
+  lmode: lsGet("st.spLm", "card") === "edit" ? "edit" : "card", rkind: ["desc", "pdf"].includes(lsGet("st.spRk", "ped")) ? lsGet("st.spRk", "ped") : "ped",
   w: +lsGet("st.spW", 0) || 0, dlg: null, host: null, scroll: 0
 };
 const splitWantsInline = () => S.view === "split" && SPL.left && SPL.lmode === "edit" && !S.viewer && !!S.db;
@@ -6393,10 +6393,10 @@ function renderSplit() {
   const seg = (kind, cur, defs) => `<span class="seg" role="group">${defs.map(([v, t]) => `<button class="btn sm${cur === v ? " pri" : ""}" data-act="${kind}" data-m="${v}" aria-pressed="${cur === v}">${t}</button>`).join("")}</span>`;
   let h = `<div class="splbar">
     <span class="grp"><button class="btn sm${SPL.left ? " pri" : ""}" data-act="t_spl" data-s="left" aria-pressed="${SPL.left}" title="Linken Bereich ein- oder ausschalten">Links</button>${SPL.left && rw ? seg("t_splm", SPL.lmode, [["card", "Familienblatt"], ["edit", "Bearbeiten"]]) : SPL.left ? `<span class="hint">Familienblatt</span>` : ""}</span>
-    <span class="grp"><button class="btn sm${SPL.right ? " pri" : ""}" data-act="t_spl" data-s="right" aria-pressed="${SPL.right}" title="Rechten Bereich ein- oder ausschalten">Rechts</button>${SPL.right ? seg("t_splk", SPL.rkind, [["ped", "Vorfahren"], ["desc", "Nachkommen"]]) : ""}</span>
+    <span class="grp"><button class="btn sm${SPL.right ? " pri" : ""}" data-act="t_spl" data-s="right" aria-pressed="${SPL.right}" title="Rechten Bereich ein- oder ausschalten">Rechts</button>${SPL.right ? seg("t_splk", SPL.rkind, [["ped", "Vorfahren"], ["desc", "Nachkommen"], ["pdf", "PDF"]]) : ""}</span>
     <span class="hint">${SPL.left || SPL.right ? "Klick auf eine Person in der Grafik wählt sie auch links." : "Beide Bereiche sind ausgeschaltet."}</span></div>`;
   const left = !SPL.left ? "" : mode === "edit" ? `<div id="splEditSlot"></div>` : `<div class="spscroll">${renderCard()}</div>`;
-  const right = !SPL.right ? "" : SPL.rkind === "ped" ? renderPed() : renderDesc();
+  const right = !SPL.right ? "" : SPL.rkind === "pdf" ? pdfPaneHtml() : SPL.rkind === "ped" ? renderPed() : renderDesc();
   h += `<div class="split2${both ? " both" : ""}"${SPL.w ? ` style="--spw:${SPL.w}px"` : ""}>${SPL.left ? `<section class="spane" id="splL" aria-label="Person">${left}</section>` : ""}${both ? `<div class="rz" id="rzP" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Breite der beiden Bereiche" title="Ziehen ändert die Breite, Doppelklick stellt sie zurück"></div>` : ""}${SPL.right ? `<section class="spane" id="splR" aria-label="${SPL.rkind === "ped" ? "Vorfahren" : "Nachkommen"}">${right}</section>` : ""}</div>`;
   return h;
 }
@@ -6429,6 +6429,7 @@ document.addEventListener("keydown", (e) => {
    Links die Hauptdatei (wird bearbeitet), rechts die zweite Datei (nur lesend). Übernommen wird immer genau eine Person
    mit ihren eigenen Angaben, Quellen, Notizen und Medienverweisen, nie ihre Familie. Wohin sie gehört (Kind, Elternteil,
    Partner), legt man beim Ablegen fest. Die zweite Datei teilt sich den Zustand mit dem Abgleich (CMP). */
+const TWL = { kind: ["ped", "desc"].includes(lsGet("st.twL", "card")) ? lsGet("st.twL", "card") : "card" };
 const PDFV = { url: "", name: "", mode: "ged" };
 const TWO = { sel: null, q: "", limit: 80, src: "", drag: null, done: new Map(), stat: new Map(), filter: "all", more: false };
 const TW_SKIP = new Set(["FAMC", "FAMS", "CHAN", "REFN", "_UID", "RIN", "AFN", "ASSO", "_MTTAG"]);       // wird nicht mitkopiert
@@ -6754,9 +6755,10 @@ function renderTwo() {
   if (S.viewer) return `<div class="empty">In der Nur-Lesen-Ansicht ist das Übernehmen nicht möglich.</div>`;
   treeMediaIdx();
   const h = `<div class="splbar twbar"><span class="twsteps"><span class="st"><b>1</b> Rechts eine Person aus <b>${E(CMP.db ? CMP.name : "der zweiten Datei")}</b> wählen</span><span class="st"><b>2</b> Prüfen: Gibt es sie schon?</span><span class="st"><b>3</b> Knopf drücken, oder auf eine Person links ziehen</span></span>
+    <span class="seg" role="group" aria-label="Ansicht links">${[["card", "Familienblatt"], ["ped", "Vorfahren"], ["desc", "Nachkommen"]].map(([v, t]) => `<button class="btn sm${TWL.kind === v ? " pri" : ""}" data-act="twLeft" data-m="${v}" aria-pressed="${TWL.kind === v}">${t}</button>`).join("")}</span>
     <span class="twtarget">Zielperson links: <span id="twTarget">${twTargetInfo()}</span></span></div>`;
   const w = SPL.w ? ` style="--spw:${SPL.w}px"` : "";
-  return h + `<div class="split2 both"${w}><section class="spane" id="splL" aria-label="Hauptdatei"><div class="spscroll" id="twoLeft">${renderCard()}</div></section><div class="rz" id="rzP" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Breite der beiden Bereiche" title="Ziehen ändert die Breite, Doppelklick stellt sie zurück"></div><section class="spane" id="splR" aria-label="Zweite Datei">${renderTwoR()}</section></div>`;
+  return h + `<div class="split2 both"${w}><section class="spane" id="splL" aria-label="Hauptdatei">${TWL.kind === "ped" ? renderPed() : TWL.kind === "desc" ? renderDesc() : `<div class="spscroll" id="twoLeft">${renderCard()}</div>`}</section><div class="rz" id="rzP" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Breite der beiden Bereiche" title="Ziehen ändert die Breite, Doppelklick stellt sie zurück"></div><section class="spane" id="splR" aria-label="Zweite Datei">${renderTwoR()}</section></div>`;
 }
 
 ACT.twoLoad = async () => {
@@ -7367,7 +7369,7 @@ function openMenu() {
   if ($("menu")) { $("menu").remove(); return; }
   const m = document.createElement("div");
   m.className = "menu"; m.id = "menu";
-  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><button data-m="md">Personen per Markdown anlegen</button><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
+  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="pdf">PDF neben dem Stammbaum lesen</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><button data-m="md">Personen per Markdown anlegen</button><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
   if (S.viewer) m.querySelectorAll("button[data-m]").forEach(x => { if (!["info"].includes(x.dataset.m)) x.remove(); });
   m.querySelectorAll("hr").forEach(x => { if (S.viewer) x.remove(); });
   document.body.appendChild(m);
@@ -7375,7 +7377,7 @@ function openMenu() {
   m.addEventListener("click", (e) => {
     const b = e.target.closest("[data-m]"); if (!b) return;
     m.remove(); $("btnMenu").setAttribute("aria-expanded", "false");
-    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), ahnen: () => ACT.ahnen() })[b.dataset.m]();
+    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, pdf: () => ACT.pdfMenu(), places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), ahnen: () => ACT.ahnen() })[b.dataset.m]();
   });
 }
 document.addEventListener("click", (e) => { const m = $("menu"); if (m && !e.target.closest("#menu") && e.target.id !== "btnMenu") { m.remove(); $("btnMenu").setAttribute("aria-expanded", "false"); } });
@@ -8203,6 +8205,8 @@ function pdfOpen(f) {
   if (PDFV.url) { try { URL.revokeObjectURL(PDFV.url); } catch (e) {} }
   PDFV.url = URL.createObjectURL(f.type === "application/pdf" ? f : new Blob([f], { type: "application/pdf" }));
   PDFV.name = f.name; PDFV.mode = "pdf";
+  if (S.view !== "two" && S.view !== "split") S.view = "split";
+  if (S.view === "split") { SPL.right = true; SPL.rkind = "pdf"; splSave(); }
   if (!TWO.src.trim() && !(CMP.db && CMP.db.ofTag("SOUR").length)) TWO.src = twBase(f.name).replace(/\.pdf$/i, "");
   const h = document.getElementById("pdfhost"); if (h) { h.innerHTML = ""; delete h.dataset.url; }
   render();
@@ -8220,13 +8224,14 @@ ACT.pdfLoad = async () => { const f = await pickOne(".pdf,application/pdf"); if 
 ACT.pdfClose = () => {
   if (PDFV.url) { try { URL.revokeObjectURL(PDFV.url); } catch (e) {} }
   PDFV.url = ""; PDFV.name = ""; PDFV.mode = "ged";
+  if (SPL.rkind === "pdf") { SPL.rkind = "ped"; splSave(); }
   const h = document.getElementById("pdfhost"); if (h) { h.innerHTML = ""; delete h.dataset.url; h.hidden = true; }
   render();
 };
 ACT.twoMode = (d) => { PDFV.mode = d.m === "pdf" ? "pdf" : "ged"; render(); };
 function pdfSync() {
   let h = document.getElementById("pdfhost");
-  const ph = S.view === "two" && PDFV.mode === "pdf" && PDFV.url ? document.getElementById("pdfph") : null;
+  const ph = PDFV.url ? document.getElementById("pdfph") : null;
   if (!ph) { if (h && !h.hidden) h.hidden = true; return; }
   if (!h) { h = document.createElement("div"); h.id = "pdfhost"; h.hidden = true; document.body.appendChild(h); }
   if (h.dataset.url !== PDFV.url) { h.innerHTML = ""; const fr = document.createElement("iframe"); fr.title = "PDF: " + PDFV.name; fr.src = PDFV.url + "#view=FitH"; h.appendChild(fr); h.dataset.url = PDFV.url; }
@@ -8243,6 +8248,13 @@ setInterval(pdfSync, 100); window.addEventListener("resize", pdfSync);
 /* Beim Ziehen der Trennlinie darf der Rahmen keine Mausereignisse schlucken */
 document.addEventListener("pointerdown", (e) => { if (e.target.closest && e.target.closest(".rz")) { const h = document.getElementById("pdfhost"); if (h) h.style.pointerEvents = "none"; } }, true);
 ["pointerup", "pointercancel"].forEach(t => document.addEventListener(t, () => { const h = document.getElementById("pdfhost"); if (h) h.style.pointerEvents = ""; }, true));
+
+ACT.pdfMenu = async () => { if (!S.db) { toast("Öffne zuerst eine Datei"); return; } const f = await pickOne(".pdf,application/pdf"); if (f) pdfOpen(f); };
+/* Linke Seite in Zwei Dateien: Familienblatt, Vorfahren oder Nachkommen */
+ACT.twLeft = (d) => { TWL.kind = ["ped", "desc"].includes(d.m) ? d.m : "card"; lsSet("st.twL", TWL.kind); render(); };
+{ const _c = ACT.card, _p = ACT.ped;
+  ACT.card = (d, e) => { if (S.view !== "two") return _c(d, e); TWL.kind = "card"; lsSet("st.twL", "card"); go(d.id); };
+  ACT.ped = (d, e) => { if (S.view !== "two") return _p(d, e); TWL.kind = "ped"; lsSet("st.twL", "ped"); go(d.id); }; }
 
 </script>
 </body>

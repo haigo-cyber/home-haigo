@@ -637,6 +637,28 @@ sup.fns a{padding:2px 4px;margin:-2px -1px;display:inline-block;border-radius:4p
 .qdl .qg{margin:0 0 10px}.qdl .qg h4{margin:0 0 4px;font-size:13px;color:var(--muted)}
 .qdl .qr{display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line2)}.qdl .qr .qt{flex:1;min-width:0;overflow-wrap:anywhere}
 
+.rel{display:inline-block;font:500 11px/1.2 var(--sans);padding:1px 6px;border-radius:8px;margin-left:6px;color:#6b4a14;background:color-mix(in srgb,#d9a441 24%,transparent);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+.rel.main{color:#fff;background:#b07a12;font-weight:600}
+.rel.bx{display:block;margin:2px 0 0;width:max-content}
+.prow .rel{margin-left:4px;font-size:10px;padding:0 5px}
+.mainset{align-self:center;color:#b07a12;font-weight:600}
+@media (prefers-color-scheme:dark){.rel{color:#f1d9a2}}
+.pb .sub .rel{flex:none;width:max-content;margin-left:0}
+.prow .pn{flex:1 0 52%}.prow .pr1 .rel{flex:0 1 auto;min-width:0}
+
+.prow{height:64px}.prow .pn{flex:1}
+.prow .rel.pr3{display:block;margin:0;padding:0;background:none;font-size:11.5px;color:#9a6a10;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:0}
+.prow .rel.main.pr3{color:#b07a12;background:none}
+
+.mdtx{width:100%;min-height:170px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);resize:vertical;tab-size:4}
+.mdtools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}.mdsrc{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted);flex:1;min-width:220px}.mdsrc input{flex:1;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.mdhelp{margin:6px 0}.mdhelp summary{cursor:pointer;color:var(--accent)}.mdhelp code{background:var(--accent-soft);padding:0 4px;border-radius:4px}
+.mdprev{margin-top:8px;border-top:1px solid var(--line2);padding-top:8px}.mdsum{margin-bottom:6px}
+.mdrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid var(--line2)}.mdrow .mdn{min-width:150px}.mdrow .mdinfo{flex:1;min-width:120px}.mdrow select{max-width:260px;font-size:12px}
+
+.ahtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.ahrow{padding:5px 0;border-bottom:1px solid var(--line2);display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+.ahrow .rel{margin-left:0}.ahrow .bl{font-size:12px;color:var(--muted)}
+
 </style>
 </head>
 <body>
@@ -1052,7 +1074,25 @@ sup.fns a{padding:2px 4px;margin:-2px -1px;display:inline-block;border-radius:4p
     if (!b && !d) return "";
     return bp + "–" + (d || "");
   }
+  /* Hauptperson: ausdrücklich festgelegt (HEAD _HOME) oder als Hinweis der Anwendung (db.mainHint) */
+  function mainPerson(db) {
+    const head = db.records.find(r => r.tag === "HEAD");
+    for (const h of [head && kval(head, "_HOME"), db.mainHint]) { const r = h && db.get(h); if (r && r.tag === "INDI") return h; }
+    return null;
+  }
+  function setMainPerson(db, id) {
+    const head = db.records.find(r => r.tag === "HEAD");
+    if (!head) { db.mainHint = id; return false; }
+    if (kval(head, "_HOME") === id) return false;
+    run(db, "Hauptperson festlegen", tx => {
+      tx.touch(head);
+      const n = kid(head, "_HOME");
+      if (n) n.val = id; else head.kids.push({ tag: "_HOME", val: id, kids: [] });
+    });
+    return true;
+  }
   function startPerson(db) {
+    const mp = mainPerson(db); if (mp) return mp;
     for (const r of db.ofTag("INDI")) {
       if (r.kids.some(k => k.tag === "FACT" && /^0*1\s*,.*Kekul/i.test(k.val))) return r.xref;
     }
@@ -1392,7 +1432,7 @@ sup.fns a{padding:2px 4px;margin:-2px -1px;display:inline-block;border-radius:4p
     MON, MON_DE, MON_LONG_DE, INDI_EVENTS, FAM_EVENTS, ORDER_INDI,
     fold, isPtr, esc, unesc, todayGed, decode, detectEol, parseGedcom, parseRecordText, serializeRecord, recordText, exportText,
     kid, kidsOf, kval, parseName, buildName, nameParts, displayName, parseDate, formatDate,
-    personInfo, famInfo, parentsOf, spouseIn, lifeSpan, startPerson, personIndex, searchPersons, ancestors, citationIndex, noteText,
+    personInfo, famInfo, parentsOf, spouseIn, lifeSpan, startPerson, mainPerson, setMainPerson, personIndex, searchPersons, ancestors, citationIndex, noteText,
     begin, commit, rollback, run, undo, redo, setKid, addPerson, addFamily, addChild, removeChild, setSpouse, linkPtr, unlinkPtr,
     deleteRecord, countRefs, check
   };
@@ -1551,7 +1591,7 @@ ACT.up = (d) => {
 ACT.card = (d) => { S.view = "card"; go(d.id); };
 
 /* ---------- Seitenleiste mit Suche (nur sichtbare Zeilen werden gezeichnet) ---------- */
-const ROW_H = 52;
+const ROW_H = 64;
 function renderList(keepScroll) {
   if (!S.db) return;
   const q = $("q").value;
@@ -1576,7 +1616,7 @@ function paintRows() {
     const r = S.listRows[i];
     const p = GED.personInfo(S.db, r.id);
     const yrs = (r.by || r.dy) ? (r.by || "") + "–" + (r.dy || "") : "";
-    html += `<button class="prow${r.id === S.pid ? " on" : ""}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pcol"><span class="pr1"><span class="pn">${E(r.label)}</span><span class="py">${E(yrs)}</span>${qTotal(S.db, r.id)}</span><span class="pr2">${bdLine(S.db, r.id, "b", { noBadge: true, cls: "bl" })}${bdLine(S.db, r.id, "d", { noBadge: true, cls: "bl" })}</span></span></button>`;
+    html += `<button class="prow${r.id === S.pid ? " on" : ""}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pcol"><span class="pr1"><span class="pn">${E(r.label)}</span><span class="py">${E(yrs)}</span>${qTotal(S.db, r.id)}</span><span class="pr2">${bdLine(S.db, r.id, "b", { noBadge: true, cls: "bl" })}${bdLine(S.db, r.id, "d", { noBadge: true, cls: "bl" })}</span>${relTag(r.id, "pr3")}</span></button>`;
   }
   vs.innerHTML = html;
 }
@@ -1610,7 +1650,7 @@ function personBlock(id, famId, ctx, fallbackRole) {
   const evs = sortedEvents(p.events);
   let h = `<section class="pb ${p.sex === "F" ? "fem" : p.sex === "M" ? "mas" : ""}${id === S.pid ? " focus" : ""}">`;
   h += `<h3><button data-act="go" data-id="${id}"${famId ? ` data-fam="${famId}"` : ""}>${E(GED.displayName(p.rec))}</button>${mark(ctx, GED.kid(p.rec, "NAME") ? GED.kidsOf(GED.kid(p.rec, "NAME"), "SOUR") : [])}</h3>`;
-  h += `<div class="sub"><span>${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${qTotal(db, id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
+  h += `<div class="sub"><span>${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${qTotal(db, id)}${relTag(id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
   if (par) {
     h += `<div class="par">Eltern: ${par.father ? nameBtn(par.father, par.fam) : "unbekannt"} und ${par.mother ? nameBtn(par.mother, par.fam) : "unbekannt"}</div>`;
   } else {
@@ -1630,6 +1670,7 @@ function personBlock(id, famId, ctx, fallbackRole) {
   if (pcites) h += `<div class="ev"><span class="k">Quellen</span><span class="v">${pcites}</span></div>`;
   h += mainPhotoHtml(p.rec);
   h += `<div class="pbact"><button class="btn sm" data-act="editPerson" data-id="${id}">Person bearbeiten</button><button class="btn sm" data-act="editMedia" data-id="${id}">Bilder bearbeiten</button>`;
+  if (!S.viewer) h += GED.mainPerson(db) === id ? `<span class="hint mainset">★ Hauptperson</span>` : `<button class="btn sm ghost" data-act="setMain" data-id="${id}" title="Diese Person zur Hauptperson des Stammbaums machen: Der Stammbaum startet immer mit ihr, und die Verwandtschaft wird von ihr aus angezeigt">Zur Hauptperson machen</button>`;
   if (par) h += `<button class="btn sm" data-act="up" data-id="${id}">Eltern anzeigen</button>`;
   h += `</div>`;
   const others = p.fams.filter(f => f !== famId);
@@ -1651,7 +1692,7 @@ function renderCard() {
   let h = `<div class="card"><div class="nav">
     <button class="btn sm" data-act="back" ${S.hpos <= 0 ? "disabled" : ""} aria-label="Zurück">‹ Zurück</button>
     <button class="btn sm" data-act="fwd" ${S.hpos >= S.hist.length - 1 ? "disabled" : ""} aria-label="Vor">Vor ›</button>
-    <button class="btn sm" data-act="home">Startperson</button>
+    <button class="btn sm" data-act="home" title="Zur Hauptperson">Hauptperson</button>
     <span class="spacer"></span>
     <button class="btn sm" data-act="ped" data-id="${S.pid}">Vorfahren zeigen</button>
     <button class="btn sm" data-act="print">Drucken</button></div>`;
@@ -1791,6 +1832,103 @@ function bdBlock(db, id, noLink) {
   return `<span class="bdb">${lines}${src}</span>`;
 }
 
+/* ============ HAUPTPERSON UND VERWANDTSCHAFT ============ */
+const mainId = () => (S.db ? GED.startPerson(S.db) : null);
+const relUps = (db, id) => {
+  const p = GED.personInfo(db, id), out = []; if (!p) return out;
+  for (const fid of p.famc) { const f = GED.famInfo(db, fid); if (f) { if (f.husb) out.push(f.husb); if (f.wife) out.push(f.wife); } }
+  return out;
+};
+/* alle Vorfahren (und die Person selbst) mit kürzester Schrittzahl */
+function relAnc(db, id, max) {
+  const m = new Map([[id, 0]]); let cur = [id];
+  for (let g = 1; g <= (max || 14) && cur.length; g++) {
+    const nx = [];
+    for (const x of cur) for (const u of relUps(db, x)) if (!m.has(u)) { m.set(u, g); nx.push(u); }
+    cur = nx;
+  }
+  return m;
+}
+const relSex = (db, id) => { const p = GED.personInfo(db, id); return p ? p.sex : ""; };
+const gend = (sex, m, f, n) => sex === "M" ? m : sex === "F" ? f : (n || m + "/" + f);
+const UR = ["", "Groß", "Urgroß", "Ururgroß", "Urururgroß"];
+/* Blutsverwandtschaft von a aus gesehen: Wie heißt b für a? */
+function relBlood(db, a, b) {
+  if (a === b) return null;
+  const A = bdMemo(db, "rel:anc:" + a, () => relAnc(db, a)), B = relAnc(db, b);
+  let best = null, cnt = 0;
+  for (const [x, da] of A) { const dbb = B.get(x); if (dbb == null) continue; const sum = da + dbb;
+    if (!best || sum < best.sum || (sum === best.sum && Math.abs(da - dbb) < Math.abs(best.da - best.db))) { best = { da, db: dbb, sum }; cnt = 1; }
+    else if (sum === best.sum && da === best.da && dbb === best.db) cnt++; }
+  if (!best) return null;
+  const { da, db: n } = best, sx = relSex(db, b);
+  if (da === 0) {   // b ist Nachkomme von a
+    if (n === 1) return gend(sx, "Sohn", "Tochter", "Kind");
+    if (n === 2) return gend(sx, "Enkel", "Enkelin", "Enkelkind");
+    if (n <= 5) { const u = "Ur".repeat(n - 2); return gend(sx, u + "enkel", u + "enkelin", u + "enkelkind"); }
+    return gend(sx, "Nachfahre", "Nachfahrin", "Nachfahre") + " in " + n + ". Generation";
+  }
+  if (n === 0) {    // b ist Vorfahre von a
+    if (da === 1) return gend(sx, "Vater", "Mutter", "Elternteil");
+    if (da <= 5) { const u = UR[da - 1]; return gend(sx, u + "vater", u + "mutter", u + "elternteil"); }
+    return gend(sx, "Vorfahre", "Vorfahrin", "Vorfahre") + " in " + da + ". Generation";
+  }
+  if (da === 1 && n === 1) { const h = cnt === 1 ? "Halb" : ""; return gend(sx, h + (h ? "bruder" : "Bruder"), h + (h ? "schwester" : "Schwester"), h + (h ? "geschwister" : "Geschwister")); }
+  if (da === 1) { const u = n - 2 <= 3 ? UR[n - 2] : null; return u === null ? gend(sx, "Neffe", "Nichte") + " (" + (n - 1) + ". Grades)" : gend(sx, u + (u ? "neffe" : "Neffe"), u + (u ? "nichte" : "Nichte")); }
+  if (n === 1) { const u = da - 2 <= 3 ? UR[da - 2] : null; return u === null ? gend(sx, "Onkel", "Tante") + " (" + (da - 1) + ". Grades)" : gend(sx, u + (u ? "onkel" : "Onkel"), u + (u ? "tante" : "Tante")); }
+  const k = Math.min(da, n) - 1, r = Math.abs(da - n), c = gend(sx, "Cousin", "Cousine", "Cousin/Cousine");
+  return c + " " + k + ". Grades" + (r ? ", " + r + " Generation" + (r > 1 ? "en" : "") + (n > da ? " jünger" : " älter") : "");
+}
+/* vollständige Bezeichnung von b für die Hauptperson a */
+function relCalcM(db, a, b) {
+  if (!a || !b) return "";
+  if (a === b) return "Hauptperson";
+  const sx = relSex(db, b), pa = GED.personInfo(db, a), pb = GED.personInfo(db, b); if (!pa || !pb) return "";
+  const bl = relBlood(db, a, b); if (bl) return bl;
+  const spouseOf = (p) => p.fams.map(f => GED.spouseIn(db, f, p.rec.xref)).filter(x => x && x !== p.rec.xref);
+  if (spouseOf(pa).includes(b)) return gend(sx, "Ehemann", "Ehefrau", "Ehepartner");
+  // Partner einer Blutsverwandten
+  let best = null;
+  for (const s of spouseOf(pb)) { const r = relBlood(db, a, s); if (!r) continue; if (!best || r.length < best.r.length) best = { s, r }; }
+  if (best) {
+    const r = best.r;
+    if (/^(Bruder|Schwester|Halbbruder|Halbschwester|Geschwister|Halbgeschwister)$/.test(r)) return gend(sx, "Schwager", "Schwägerin", "Schwager/Schwägerin");
+    if (/^(Sohn|Tochter|Kind)$/.test(r)) return gend(sx, "Schwiegersohn", "Schwiegertochter", "Schwiegerkind");
+    if (/^(Vater|Mutter|Elternteil)$/.test(r)) return gend(sx, "Stiefvater", "Stiefmutter", "Stiefelternteil");
+    return "angeheiratet: " + gend(sx, "Ehemann", "Ehefrau", "Partner") + " von " + r;
+  }
+  // Blutsverwandte der Ehepartner
+  for (const s of spouseOf(pa)) {
+    const r = relBlood(db, s, b); if (!r) continue;
+    if (/^(Vater|Mutter|Elternteil)$/.test(r)) return gend(sx, "Schwiegervater", "Schwiegermutter", "Schwiegerelternteil");
+    if (/^(Sohn|Tochter|Kind)$/.test(r)) return gend(sx, "Stiefsohn", "Stieftochter", "Stiefkind");
+    if (/^(Bruder|Schwester|Halbbruder|Halbschwester|Geschwister|Halbgeschwister)$/.test(r)) return gend(sx, "Schwager", "Schwägerin", "Schwager/Schwägerin");
+    return r + " des Ehepartners";
+  }
+  return "";
+}
+const relOf = (id) => {
+  const db = S.db; if (!db || !id) return "";
+  const a = mainId();
+  return bdMemo(db, "rel:" + a + ":" + id, () => { try { return relCalcM(db, a, id); } catch (e) { return ""; } });
+};
+function relTag(id, cls) {
+  const r = relOf(id); if (!r) return "";
+  const nm = nameOf(mainId());
+  if (r === "Hauptperson") return `<span class="rel main ${cls || ""}" title="Hauptperson des Stammbaums">★ Hauptperson</span>`;
+  return `<span class="rel ${cls || ""}" title="${E(r + " von " + nm + " (Hauptperson)")}">${E(r)}</span>`;
+}
+/* Hauptperson festlegen */
+function setMain(id) {
+  if (!S.db || S.viewer || !GED.personInfo(S.db, id)) return;
+  const had = GED.setMainPerson(S.db, id);
+  lsSet("st.main." + S.fileName, id);
+  S.db.mainHint = S.db.mainHint || null;
+  afterEdit("Hauptperson: " + nameOf(id));
+}
+ACT.setMain = (d) => setMain(d.id || S.pid);
+ACT.pickMain = () => pickPerson({ title: "Hauptperson wählen", onPick: setMain });
+
 /* ============ STAMMBAUM (VORFAHREN) ============ */
 function mainPhotoHit(rec) {
   const o = mediaObjs(rec).find(x => x.prim && IMG_RE.test(baseName(x.file)));
@@ -1824,7 +1962,7 @@ function renderDescList() {
   function person(pid, depth, path) {
     const p = GED.personInfo(db, pid);
     const yrs = GED.lifeSpan(db, pid);
-    const nm = `<button class="lk" data-act="dgo" data-id="${pid}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(yrs)}</span>${qTotal(db, pid)}`;
+    const nm = `<button class="lk" data-act="dgo" data-id="${pid}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(yrs)}</span>${relTag(pid)}${qTotal(db, pid)}`;
     const bd = bdBlock(db, pid);
     count++;
     const fams = p.fams.filter(f => !path.has(f));
@@ -5699,7 +5837,7 @@ function renderInfo() {
   const id = S.pid, p = pinf(id), rw = !S.viewer;
   if (!M.idx && (accessToken || LM.list.length) && !M.loading && !M.failed.has("idx")) loadMediaIdx().then(() => { if (S.db && infoVisible()) renderInfo(); }).catch(() => M.failed.add("idx"));
   const keep = el.scrollTop;
-  let h = `<div class="ihead"><b>${E(GED.displayName(p.rec))}</b><div class="hint">${E(GED.lifeSpan(S.db, id))}</div>${bdBlock(S.db, id)}
+  let h = `<div class="ihead"><b>${E(GED.displayName(p.rec))}</b><div class="hint">${E(GED.lifeSpan(S.db, id))} ${relTag(id)}</div>${bdBlock(S.db, id)}
     <div class="iact"><button class="btn sm" data-act="card" data-id="${id}">Familienblatt</button>${rw ? `<button class="btn sm pri" data-act="t_editp">Bearbeiten</button>` : ""}<button class="btn sm ghost" data-act="t_idock" title="Leiste auf die andere Seite des Inhalts legen">${SIDE.dockl ? "Nach rechts ▷" : "◁ Nach links"}</button><button class="btn sm ghost" data-act="t_info" title="Leiste schließen" aria-label="Leiste schließen">✕</button></div>
     <div class="isecs" role="group" aria-label="Angezeigte Abschnitte">${INFO_SEC.map(([k, t]) => `<button class="chipb${SIDE.sec[k] ? " on" : ""}" data-act="t_isec" data-s="${k}" aria-pressed="${SIDE.sec[k] ? "true" : "false"}">${t}</button>`).join("")}</div></div>`;
   const head = (k, title, n, addSect) => `<div class="sh"><button class="fold" data-act="t_ifold" data-s="${k}" aria-expanded="${SIDE.fold[k] ? "false" : "true"}"><span class="car">${SIDE.fold[k] ? "▸" : "▾"}</span> ${title}${n ? ` <span class="hint">(${n})</span>` : ""}</button>${rw && addSect ? `<button class="btn sm ghost" data-act="t_iedit" data-s="${addSect}" title="Hinzufügen oder ändern">+</button>` : ""}</div>`;
@@ -5812,7 +5950,7 @@ function renderPedList() {
       const p = GED.personInfo(db, id);
       const bp = p.birt && p.birt.place ? shortPlace(p.birt.place) : "", dp = p.deat && p.deat.place ? shortPlace(p.deat.place) : "";
       const role = g === 0 ? "" : k % 2 === 0 ? "Vater" : "Mutter";
-      body += `<li class="arow ${p.sex}" data-id="${id}"><span class="kn" title="Kekulé-Nummer">${k}</span><span class="am"><button class="lk" data-act="pedgo" data-id="${id}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${role && g === 1 ? ` <span class="hint">${role}</span>` : ""}${bdBlock(db, id)}</span><button class="btn sm ghost" data-act="card" data-id="${id}" title="Familienblatt">Blatt</button></li>`;
+      body += `<li class="arow ${p.sex}" data-id="${id}"><span class="kn" title="Kekulé-Nummer">${k}</span><span class="am"><button class="lk" data-act="pedgo" data-id="${id}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${role && g === 1 ? ` <span class="hint">${role}</span>` : ""}${relTag(id)}${bdBlock(db, id)}</span><button class="btn sm ghost" data-act="card" data-id="${id}" title="Familienblatt">Blatt</button></li>`;
     }
     body += `</ul></section>`;
   });
@@ -5865,8 +6003,15 @@ function pedNav() {
     <button class="btn sm" data-act="t_pmother" ${rk.par && rk.par.mother ? "" : "disabled"} title="Zur Mutter (Umschalt und ${kn(t.anc)})">Mutter</button></span>`;
 }
 /* ---------- gemeinsames Layout für Kästen (vier Richtungen) ---------- */
+/* Abstand der Kästen im Baum: Stufe 0 (sehr dicht) bis 4 (sehr weit), Standard 2 */
+const DENS = { v: Math.min(4, Math.max(0, +lsGet("st.dens", 2) || 0)) };
+const DENS_T = [{ n: "Sehr dicht", GX: 16, GY: 2, VG: 14, HG: 2 }, { n: "Dicht", GX: 30, GY: 4, VG: 28, HG: 6 }, { n: "Normal", GX: 46, GY: 8, VG: 44, HG: 12 }, { n: "Weit", GX: 84, GY: 22, VG: 84, HG: 30 }, { n: "Sehr weit", GX: 130, GY: 44, VG: 130, HG: 60 }];
+function densCtl() {
+  return `<label title="Wie dicht die Kästen beieinander stehen">Abstand <select id="densSel">${DENS_T.map((d, i) => `<option value="${i}"${i === DENS.v ? " selected" : ""}>${d.n}</option>`).join("")}</select></label>`;
+}
+document.addEventListener("change", (e) => { if (e.target.id !== "densSel") return; DENS.v = +e.target.value; lsSet("st.dens", DENS.v); render(); });
 function layoutTree(items, edges, ori, slots) {
-  const BW = 214, GX = 46, GY = 8, BH = 48, VG = 44, vert = ori === "TB" || ori === "BT";
+  const DT = DENS_T[DENS.v], BW = 214, GX = DT.GX, GY = DT.GY, BH = 48, VG = DT.VG, vert = ori === "TB" || ori === "BT";
   const G = items.reduce((m, i) => Math.max(m, i.g), 0) + 1, lvlH = new Array(G).fill(BH), gOf = new Map();
   let maxH = BH;
   for (const it of items) { gOf.set(it.key, it.g); if (it.h > maxH) maxH = it.h; if (it.h > lvlH[it.g]) lvlH[it.g] = it.h; }
@@ -5875,7 +6020,7 @@ function layoutTree(items, edges, ori, slots) {
     const pitch = maxH + GY; W = G * BW + (G - 1) * GX; H = Math.max(1, slots) * pitch;
     for (const it of items) pos.set(it.key, { left: ori === "LR" ? it.g * (BW + GX) : W - BW - it.g * (BW + GX), top: Math.round(it.c * pitch - it.h / 2), h: it.h });
   } else {
-    const pitch = BW + 12; let y = 0;
+    const pitch = BW + DT.HG; let y = 0;
     for (let g = 0; g < G; g++) { tops.push(y); y += lvlH[g] + VG; }
     W = Math.max(1, slots) * pitch; H = y - VG;
     for (const it of items) {
@@ -5915,8 +6060,8 @@ function renderPedTree() {
     const id = anc.get(k), pi = GED.personInfo(db, id), hit = mainPhotoHit(pi.rec), nm = GED.displayName(pi.rec);
     const lines = boxLines(nm, hit, BW, PH);
     const bl = bdLine(db, id, "b"), dl = bdLine(db, id, "d");
-    const h = Math.max(hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (bl ? 14 : 0) + (dl ? 14 : 0) + 15, BH);
-    info.set(k, { h, hit, nm, bl, dl, id, pi }); items.push({ key: k, g, c, h });
+    const rl = relTag(id, "bx"), h = Math.max(hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (bl ? 14 : 0) + (dl ? 14 : 0) + (rl ? 14 : 0) + 15, BH);
+    info.set(k, { h, hit, nm, bl, dl, rl, id, pi }); items.push({ key: k, g, c, h });
     if (all.has(2 * k)) edges.push([k, 2 * k]); if (all.has(2 * k + 1)) edges.push([k, 2 * k + 1]);
   });
   const L = layoutTree(items, edges, ori, slots), maxG = N - 1;
@@ -5928,11 +6073,11 @@ function renderPedTree() {
     const arL = k === 1 && kin.kids.length ? `<span class="ar" data-act="t_pchild" title="Zum Kind">${ARROW[ori][1]}</span>` : "";
     const arR = Math.floor(Math.log2(k)) === maxG && kin.par && (kin.par.father || kin.par.mother) ? `<span class="ar" data-act="pedgo" data-id="${f.id}" title="Diese Person in die Mitte setzen und weitere Vorfahren zeigen">${ARROW[ori][0]}</span>` : "";
     boxes += `<button class="tb ${f.pi.sex}${k === 1 ? " root" : ""}" style="${st}" data-act="pedgo" data-id="${f.id}" title="${E(f.nm)}\n${E(bdText(db, f.id))}\nKekulé-Nummer ${k}">
-      <span class="kk">${k}</span>${arL}${arR}${ph}<span class="tx"><span class="nm">${E(f.nm)}</span>${f.bl}${f.dl}</span>${qTotal(db, f.id)}</button>`;
+      <span class="kk">${k}</span>${arL}${arR}${ph}<span class="tx"><span class="nm">${E(f.nm)}</span>${f.bl}${f.dl}${f.rl}</span>${qTotal(db, f.id)}</button>`;
   });
   const opts = [3, 4, 5, 6, 7].map(n => `<option value="${n}"${n === N ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
-    <label>Generationen <select id="gensSel">${opts}</select></label>${modeSeg("ped")}${oriSeg("ped")}${zoomCtl("ped")}${pedNav()}
+    <label>Generationen <select id="gensSel">${opts}</select></label>${modeSeg("ped")}${oriSeg("ped")}${densCtl()}${zoomCtl("ped")}${pedNav()}
     <button class="btn sm" data-act="back" ${S.hpos <= 0 ? "disabled" : ""}>‹ Zurück</button>
     <button class="btn sm" data-act="card" data-id="${S.pid}">Familienblatt</button>
     <span class="hint">Klick setzt eine Person in die Mitte, Doppelklick bearbeitet sie.</span></div>
@@ -5967,8 +6112,8 @@ function renderDescTree() {
     n.hit = mainPhotoHit(n.p.rec); n.nm = GED.displayName(n.p.rec);
     const tw = BW - 18 - 14 - (n.hit ? PH + 6 : 0), lines = boxLines(n.nm, n.hit, BW, PH);
     const sps = n.sp.map(s => Math.max(1, Math.ceil((s.nm.length + s.yrs.length + 3) * 6.4 / tw))).reduce((a, b) => a + b, 0);
-    n.bl = bdLine(db, n.id, "b"); n.dl = bdLine(db, n.id, "d");
-    n.h = Math.max(n.hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (n.bl ? 14 : 0) + (n.dl ? 14 : 0) + 15 + sps * 14, BH);
+    n.bl = bdLine(db, n.id, "b"); n.dl = bdLine(db, n.id, "d"); n.rl = relTag(n.id, "bx");
+    n.h = Math.max(n.hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (n.bl ? 14 : 0) + (n.dl ? 14 : 0) + (n.rl ? 14 : 0) + 15 + sps * 14, BH);
     n.kids.forEach(walk);
   })(root);
   let leaf = 0;
@@ -5982,11 +6127,11 @@ function renderDescTree() {
     const ph = n.hit ? `<span class="ph"><img data-mid="${n.hit.id}" alt=""></span>` : "";
     const spl = n.sp.map(s => `<span class="pl sp2">⚭ ${s.id ? `<span class="splk" data-act="pedgo" data-id="${s.id}">${E(s.nm)}</span>` : E(s.nm)}${s.yrs ? " " + E(s.yrs) : ""}</span>`).join("");
     const arR = n.more ? `<span class="ar" data-act="dgo" data-id="${n.id}" title="${n.more} weitere Kinder: diese Person in die Mitte setzen">${ARROW[ori][0]}</span>` : "";
-    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}">${arR}${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${spl}</span>${qTotal(db, n.id)}</button>`;
+    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}">${arR}${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${n.rl}${spl}</span>${qTotal(db, n.id)}</button>`;
   }
   const opts = [2, 3, 4, 5, 6, 8].map(n => `<option value="${n}"${n === S.depth ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
-    <label>Generationen <select id="depthSel">${opts}</select></label>${modeSeg("desc")}${oriSeg("desc")}${zoomCtl("desc")}
+    <label>Generationen <select id="depthSel">${opts}</select></label>${modeSeg("desc")}${oriSeg("desc")}${densCtl()}${zoomCtl("desc")}
     <button class="btn sm" data-act="back" ${S.hpos <= 0 ? "disabled" : ""}>‹ Zurück</button>
     <button class="btn sm" data-act="card" data-id="${S.pid}">Familienblatt</button>
     <span class="hint">${cut ? "Gekürzt nach etwa " + MAXN + " Personen, wähle weniger Generationen. " : ""}Klick setzt eine Person in die Mitte, ein Pfeil am Kasten zeigt weitere Kinder.</span></div>
@@ -6817,8 +6962,9 @@ async function loadBuffer(buf, name, source, driveMeta) {
   S.db = db; S.fileName = name; S.source = source; S.driveFile = driveMeta || null; S.fileHandle = null; S.localMod = 0; S.localSize = 0;
   snapshotOrig(db, name, buf.byteLength);
   S.savedMark = 0; S.hist = []; S.hpos = -1; S.srcSel = null; S.srcQuery = ""; S.view = "card";
+  const hint = lsGet("st.main." + name, ""); if (hint) db.mainHint = hint;   // Rückfall, falls die Datei keinen Kopfsatz hat
   const last = lsGet("st.last." + name, "");
-  const start = last && db.get(last) && db.get(last).tag === "INDI" ? last : GED.startPerson(db);
+  const start = GED.mainPerson(db) || (last && db.get(last) && db.get(last).tag === "INDI" ? last : GED.startPerson(db));
   $("q").value = ""; $("abc").dataset.done = "";
   renderList();
   go(start);
@@ -7113,7 +7259,7 @@ function openMenu() {
   if ($("menu")) { $("menu").remove(); return; }
   const m = document.createElement("div");
   m.className = "menu"; m.id = "menu";
-  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="settings">Einstellungen</button>`;
+  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><button data-m="md">Personen per Markdown anlegen</button><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
   if (S.viewer) m.querySelectorAll("button[data-m]").forEach(x => { if (!["info"].includes(x.dataset.m)) x.remove(); });
   m.querySelectorAll("hr").forEach(x => { if (S.viewer) x.remove(); });
   document.body.appendChild(m);
@@ -7121,7 +7267,7 @@ function openMenu() {
   m.addEventListener("click", (e) => {
     const b = e.target.closest("[data-m]"); if (!b) return;
     m.remove(); $("btnMenu").setAttribute("aria-expanded", "false");
-    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings })[b.dataset.m]();
+    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), ahnen: () => ACT.ahnen() })[b.dataset.m]();
   });
 }
 document.addEventListener("click", (e) => { const m = $("menu"); if (m && !e.target.closest("#menu") && e.target.id !== "btnMenu") { m.remove(); $("btnMenu").setAttribute("aria-expanded", "false"); } });
@@ -7556,6 +7702,322 @@ ACT.qsrc = (d, e) => {
     on: {
       show: (dd, t) => { dd.close(); ACT.src({ id: t.dataset.id }); },
       edit: (dd, t) => { const id = t.dataset.id; dd.close(); editSrc(id); }
+    }
+  });
+};
+
+/* ============ PERSONEN UND FAMILIEN PER MARKDOWN ANLEGEN ============ */
+const MD_MON = { jan: 1, januar: 1, feb: 2, februar: 2, mrz: 3, mär: 3, märz: 3, maerz: 3, mar: 3, apr: 4, april: 4, mai: 5, jun: 6, juni: 6, jul: 7, juli: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, okt: 10, oktober: 10, nov: 11, november: 11, dez: 12, dezember: 12 };
+const MD_EXAMPLE = `- Hans Müller * 12.3.1901 Köln † 5.7.1980 Bonn; Beruf: Schreiner; Quelle: Kirchenbuch Köln
+  - ⚭ Anna Schmidt * 1903 Bonn (1925 Köln)
+    - Karl * 1926 Köln
+    - Berta ♀ * 14.2.1928; Beruf: Lehrerin
+      - ⚭ Fritz Weber * 1925
+        - Peter * 1953`;
+const mdFold = (s) => GED.fold(s || "");
+/* Datum am Anfang eines Textes: liefert { ged, rest } */
+function mdDate(t) {
+  t = (t || "").trim();
+  let q = "", m = /^(um|ca\.?|circa|vor|nach|ab|bis)\s+/i.exec(t);
+  if (m) { const w = m[1].toLowerCase().replace(".", ""); q = w === "um" || w === "ca" || w === "circa" ? "ABT " : w === "vor" || w === "bis" ? "BEF " : "AFT "; t = t.slice(m[0].length); }
+  const M = GED.MON, done = (g, rest) => ({ ged: q + g, rest: rest.replace(/^[\s,;]*(in|zu|bei|aus)?\s+/i, " ").replace(/^[\s,]+/, "").trim() });
+  if ((m = /^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{3,4})(?!\d)/.exec(t)) && +m[2] >= 1 && +m[2] <= 12) return done(+m[1] + " " + M[+m[2] - 1] + " " + m[3], t.slice(m[0].length));
+  if ((m = /^(\d{4})-(\d{2})-(\d{2})(?!\d)/.exec(t)) && +m[2] >= 1 && +m[2] <= 12) return done(+m[3] + " " + M[+m[2] - 1] + " " + m[1], t.slice(m[0].length));
+  if ((m = /^(\d{1,2})\.\s*([A-Za-zäöüÄÖÜ]{3,9})\.?\s+(\d{3,4})(?!\d)/.exec(t)) && MD_MON[m[2].toLowerCase()]) return done(+m[1] + " " + M[MD_MON[m[2].toLowerCase()] - 1] + " " + m[3], t.slice(m[0].length));
+  if ((m = /^([A-Za-zäöüÄÖÜ]{3,9})\.?\s+(\d{3,4})(?!\d)/.exec(t)) && MD_MON[m[1].toLowerCase()]) return done(M[MD_MON[m[1].toLowerCase()] - 1] + " " + m[2], t.slice(m[0].length));
+  if ((m = /^(\d{1,2})\.\s*(\d{3,4})(?!\d)/.exec(t)) && +m[1] >= 1 && +m[1] <= 12) return done(M[+m[1] - 1] + " " + m[2], t.slice(m[0].length));
+  if ((m = /^(\d{3,4})(?!\d)/.exec(t))) return done(m[1], t.slice(m[0].length));
+  return { ged: "", rest: t.replace(/^(in|zu|bei|aus)\s+/i, "").replace(/^[\s,]+/, "").trim(), nodate: true };
+}
+/* Name zerlegen: "Anna Müller geb. Schmidt", "Müller, Hans", "Karl von der Heide" */
+function mdName(s, inherit) {
+  s = s.replace(/\s+/g, " ").trim();
+  let given = "", surn = "", inh = false, m;
+  if ((m = /^(.*?)\s+geb\.\s+(.+)$/i.exec(s))) { const w1 = m[1].split(" "); given = w1.length > 1 ? w1.slice(0, -1).join(" ") : m[1]; surn = m[2]; }
+  else if (s.includes(",")) { const a = s.split(","); surn = a[0].trim(); given = a.slice(1).join(" ").trim(); }
+  else {
+    const w = s.split(" ").filter(Boolean);
+    if (w.length === 1) { given = w[0]; if (inherit) { surn = inherit; inh = true; } }
+    else { let i = w.length - 1; while (i > 1 && /^(von|van|de|der|den|zu|zur|zum|vom|ten|ter|du|la|le|di|da)$/.test(w[i - 1].toLowerCase())) i--; surn = w.slice(i).join(" "); given = w.slice(0, i).join(" "); }
+  }
+  return { given, surn, inh };
+}
+const MD_ATTR = { beruf: "OCCU", berufe: "OCCU", wohnort: "RESI", wohnt: "RESI", religion: "RELI", konfession: "RELI", quelle: "SOUR", quellen: "SOUR", notiz: "NOTE", anmerkung: "NOTE", heirat: "MARR", hochzeit: "MARR", geburt: "BIRT", taufe: "CHR", tod: "DEAT", gestorben: "DEAT", bestattung: "BURI", beerdigung: "BURI", geschlecht: "SEX", sex: "SEX" };
+const MD_MARK = { "*": "BIRT", "geb.": "BIRT", "geboren": "BIRT", "~": "CHR", "get.": "CHR", "getauft": "CHR", "†": "DEAT", "+": "DEAT", "gest.": "DEAT", "gestorben": "DEAT", "⚰": "BURI", "begr.": "BURI", "beerdigt": "BURI" };
+/* eine Zeile (ohne Aufzählungszeichen) zerlegen */
+function mdParseLine(body, ctx) {
+  let partner = false, m;
+  if ((m = /^(⚭|∞|oo|&|verh\.?|verheiratet mit|Partner(?:in)?:|Ehepartner(?:in)?:|Ehefrau:|Ehemann:)(\s+|$)/i.exec(body))) { partner = true; body = body.slice(m[0].length); }
+  const segs = body.split(";"), main = segs.shift().trim();
+  const P = { given: "", surn: "", sex: "", ref: "", ev: {}, occ: [], resi: [], reli: [], notes: [], srcs: [], inh: false }, marr = {}, warn = [];
+  let work = main;
+  if ((m = /@[A-Za-z0-9_]+@/.exec(work))) { P.ref = m[0]; work = work.replace(m[0], " "); }
+  work = work.replace(/[♂]|\((?:m|männlich)\)|\[(?:m|männlich)\]/gi, () => { P.sex = "M"; return " "; }).replace(/[♀]|\((?:w|f|weiblich)\)|\[(?:w|f|weiblich)\]/gi, () => { P.sex = "F"; return " "; });
+  let paren = ""; if ((m = /\(([^()]*)\)\s*$/.exec(work))) { paren = m[1].trim(); work = work.slice(0, m.index); }
+  // Marker suchen
+  const words = work.replace(/([*~†⚰])(?=\S)/g, "$1 ").split(/\s+/).filter(Boolean);
+  const isDateStart = (w) => /^(\d|um$|ca\.?$|circa$|vor$|nach$)/i.test(w) || !!MD_MON[(w || "").toLowerCase().replace(".", "")];
+  let mode = "name", buf = { name: [] }, order = ["name"];
+  words.forEach((w, i) => {
+    const lw = w.toLowerCase(); let k = null;
+    if (MD_MARK[lw] && (w === "*" || w === "~" || w === "†" || w === "⚰" || w === "+" || (lw === "geb." ? isDateStart(words[i + 1]) : true)) && !(w === "+" && i === 0)) k = MD_MARK[lw];
+    if (k && (i > 0 || mode !== "name")) { mode = k; if (!buf[k]) { buf[k] = []; order.push(k); } return; }
+    (buf[mode] = buf[mode] || []).push(w);
+  });
+  P.name = buf.name.join(" ");
+  for (const k of ["BIRT", "CHR", "DEAT", "BURI"]) if (buf[k]) { const d = mdDate(buf[k].join(" ")); P.ev[k] = { date: d.ged, place: d.rest }; }
+  if (paren) { if (partner) { const d = mdDate(paren.replace(/^(⚭|oo|∞|verh\.?)\s*/i, "")); marr.date = d.ged; marr.place = d.rest; } else P.notes.push(paren); }
+  for (let s of segs) {
+    s = s.trim(); if (!s) continue;
+    const c = s.indexOf(":"); if (c < 0) { warn.push("Angabe ohne Doppelpunkt: " + s); continue; }
+    const key = MD_ATTR[s.slice(0, c).trim().toLowerCase()], val = s.slice(c + 1).trim();
+    if (!key) { warn.push("Unbekannte Angabe: " + s.slice(0, c)); continue; }
+    if (key === "OCCU") P.occ.push(val); else if (key === "RESI") P.resi.push(val); else if (key === "RELI") P.reli.push(val); else if (key === "SOUR") P.srcs.push(val); else if (key === "NOTE") P.notes.push(val);
+    else if (key === "SEX") P.sex = /^(m|männlich)/i.test(val) ? "M" : /^(w|f|weiblich)/i.test(val) ? "F" : P.sex;
+    else if (key === "MARR") { const d = mdDate(val); marr.date = d.ged; marr.place = d.rest; }
+    else { const d = mdDate(val); P.ev[key] = { date: d.ged, place: d.rest }; }
+  }
+  const nm = mdName(P.name, ctx && ctx.inherit); P.given = nm.given; P.surn = nm.surn; P.inh = nm.inh;
+  if (!P.given && !P.surn && !P.ref) warn.push("Kein Name erkannt");
+  return { partner, P, marr, warn };
+}
+/* ganzen Text in einen Baum überführen */
+function mdParse(text) {
+  const roots = [], warns = [], stack = [];   // stack: {indent, node}
+  const lines = text.replace(/\r/g, "").split("\n");
+  lines.forEach((raw, ln) => {
+    if (!raw.trim() || /^\s*#/.test(raw) || /^\s*(---|\*\*\*)\s*$/.test(raw)) return;
+    const mm = /^(\s*)(?:([-+*]|\d+[.)])\s+)?(.*)$/.exec(raw.replace(/\t/g, "    "));
+    const indent = mm[1].length; let body = mm[3].trim(); if (!body) return;
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    const parent = stack.length ? stack[stack.length - 1].node : null;
+    let inherit = "";
+    if (parent && parent.kind === "partner") { const pp = parent.parentPerson; inherit = (pp.P.sex === "F" && parent.P.sex !== "F" ? parent.P.surn : pp.P.surn) || parent.P.surn || ""; }
+    else if (parent && parent.kind === "person") inherit = parent.P.surn || "";
+    const r = mdParseLine(body, { inherit });
+    const node = { ln: ln + 1, kind: r.partner ? "partner" : "person", P: r.P, marr: r.marr, kids: [], partners: [], warn: r.warn, src: body };
+    r.warn.forEach(w => warns.push("Zeile " + (ln + 1) + ": " + w));
+    if (r.partner) {
+      if (!parent || parent.kind !== "person") { warns.push("Zeile " + (ln + 1) + ": Partner ohne Person darüber, als eigene Person gelesen"); node.kind = "person"; roots.push(node); }
+      else { node.parentPerson = parent; parent.partners.push(node); }
+    } else if (!parent) roots.push(node);
+    else if (parent.kind === "partner") parent.kids.push(node);
+    else parent.kids.push(node);   // Kind ohne bekannten Partner
+    stack.push({ indent, node });
+  });
+  return { roots, warns };
+}
+function mdWalk(roots, fn) {
+  const go = (n, depth, role) => { fn(n, depth, role); n.partners.forEach(p => go(p, depth + 1, "partner")); n.kids.forEach(c => go(c, depth + 1, "child")); };
+  roots.forEach(r => go(r, 0, "root"));
+}
+/* Kandidaten in der Datei */
+let MD_IDX = null;
+function mdIndex() {
+  const db = S.db; if (MD_IDX && MD_IDX.cc === db.changeCount && MD_IDX.db === db) return MD_IDX;
+  const by = new Map();
+  for (const r of GED.personIndex(db)) { const p = GED.personInfo(db, r.id); const k = mdFold(p.name.surn); if (!by.has(k)) by.set(k, []); by.get(k).push({ id: r.id, given: mdFold(p.name.given).split(/\s+/).filter(Boolean), by: r.by, dy: r.dy, label: r.label, sex: p.sex }); }
+  return (MD_IDX = { cc: db.changeCount, db, by });
+}
+function mdCands(P) {
+  if (P.ref) return [];
+  const ix = mdIndex(), list = ix.by.get(mdFold(P.surn)) || [], gt = mdFold(P.given).split(/\s+/).filter(Boolean), y = P.ev.BIRT && /\d{3,4}/.test(P.ev.BIRT.date) ? +/\d{3,4}/.exec(P.ev.BIRT.date)[0] : null;
+  const out = [];
+  for (const c of list) {
+    if (P.sex && c.sex && P.sex !== c.sex) continue;
+    let s = 0;
+    if (gt.length && c.given.length) { if (gt.some(t => c.given.includes(t))) s += 3; else if (gt.some(t => c.given.some(u => t.length >= 2 && u.length >= 2 && (t.startsWith(u) || u.startsWith(t))))) s += 2; else continue; }
+    else if (!gt.length) s += 0; else continue;
+    if (y && c.by) { const d = Math.abs(y - c.by); if (d > 2) continue; s += d === 0 ? 4 : d === 1 ? 2 : 0; }
+    out.push({ ...c, score: s });
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, 4);
+}
+const mdD = (e) => [GED.formatDate(e.date), e.place].filter(Boolean).join(" in ");
+const mdEvText = (P) => [P.ev.BIRT && "* " + mdD(P.ev.BIRT), P.ev.CHR && "~ " + mdD(P.ev.CHR), P.ev.DEAT && "† " + mdD(P.ev.DEAT), P.ev.BURI && "begr. " + mdD(P.ev.BURI), ...P.occ.map(x => "Beruf " + x), ...P.resi.map(x => "wohnt " + x)].filter(Boolean).join(" · ");
+/* Vorschau */
+function mdPlan(text, choice) {
+  const { roots, warns } = mdParse(text), rows = []; let nNew = 0, nOld = 0, nFam = 0, key = 0;
+  mdWalk(roots, (n, depth, role) => {
+    n.key = ++key;
+    let sel = choice[n.key];
+    n.cands = mdCands(n.P);
+    if (n.P.ref) { n.exist = S.db.get(n.P.ref) && S.db.get(n.P.ref).tag === "INDI" ? n.P.ref : null; if (!n.exist) warns.push("Zeile " + n.ln + ": " + n.P.ref + " gibt es nicht in der Datei"); }
+    else if (sel === undefined) { const b = n.cands[0]; sel = b && b.score >= 7 ? b.id : "new"; n.auto = sel !== "new"; }
+    if (!n.P.ref) n.exist = sel && sel !== "new" ? sel : null;
+    n.choice = n.P.ref ? n.P.ref : sel || "new";
+    if (n.exist) nOld++; else nNew++;
+    if (role === "partner") nFam++;
+    rows.push({ n, depth, role });
+  });
+  mdWalk(roots, (n) => { if (n.kids.length && n.kind !== "partner") nFam++; });
+  return { roots, warns, rows, nNew, nOld, nFam };
+}
+function mdPreviewHtml(plan) {
+  if (!plan.rows.length) return `<div class="hint">Noch nichts eingegeben.</div>`;
+  const nm = (n) => E([n.P.given, n.P.surn].filter(Boolean).join(" ") || n.P.ref || "?");
+  let h = `<div class="mdsum"><b>${plan.nNew}</b> neue Person${plan.nNew === 1 ? "" : "en"}, <b>${plan.nOld}</b> vorhandene, <b>${plan.nFam}</b> neue Familie${plan.nFam === 1 ? "" : "n"} (Ehen und Kinder ohne Partner)</div>`;
+  h += plan.rows.map(({ n, depth, role }) => {
+    const opts = n.P.ref ? "" : `<select data-k="${n.key}" title="Neue Person anlegen oder eine vorhandene verwenden"><option value="new"${n.choice === "new" ? " selected" : ""}>Neu anlegen</option>${n.cands.map(c => `<option value="${c.id}"${n.choice === c.id ? " selected" : ""}>Vorhanden: ${E(c.label)}${c.by || c.dy ? " (" + (c.by || "") + "–" + (c.dy || "") + ")" : ""}</option>`).join("")}</select>`;
+    const chip = n.exist ? `<span class="twchip ok">vorhanden</span>` : n.cands.length ? `<span class="twchip warn">mögliche Dublette</span>` : `<span class="twchip new">neu</span>`;
+    const lab = role === "partner" ? "⚭ " + (n.marr.date || n.marr.place ? `<span class="hint">(${E(mdD(n.marr))})</span> ` : "") : role === "child" ? "↳ " : "";
+    return `<div class="mdrow" style="margin-left:${depth * 18}px"><span class="mdn">${lab}<b>${nm(n)}</b>${n.P.sex ? " " + (n.P.sex === "M" ? "♂" : "♀") : ""}${n.P.inh ? ` <span class="hint">(Nachname übernommen)</span>` : ""}</span><span class="hint mdinfo">${E(mdEvText(n.P))}${n.P.srcs.length ? " · Quelle: " + E(n.P.srcs.join(", ")) : ""}</span>${chip}${opts}</div>`;
+  }).join("");
+  if (plan.warns.length) h += `<div class="twwarn">${plan.warns.map(w => E(w)).join("<br>")}</div>`;
+  return h;
+}
+/* Anlegen */
+function mdSource(tx, title) {
+  const key = mdFold(title);
+  let s = S.db.ofTag("SOUR").find(r => mdFold(GED.unesc(GED.kval(r, "TITL") || "")) === key) || [...tx.created].find(r => r.tag === "SOUR" && mdFold(GED.unesc(GED.kval(r, "TITL") || "")) === key);
+  if (!s) { s = tx.create("SOUR", "S"); s.kids.push({ tag: "TITL", val: GED.esc(title), kids: [] }); }
+  return s.xref;
+}
+function mdBuildPerson(tx, n, allSrc) {
+  const P = n.P, rec = GED.addPerson(tx, { given: P.given, surn: P.surn });
+  if (P.sex) rec.kids.push({ tag: "SEX", val: P.sex, kids: [] });
+  const srcs = [...P.srcs, ...(allSrc ? [allSrc] : [])].filter((v, i, a) => v && a.indexOf(v) === i).map(t => mdSource(tx, t));
+  const cite = () => srcs.map(s => ({ tag: "SOUR", val: s, kids: [] }));
+  const ev = (tag, e) => rec.kids.push({ tag, val: "", kids: [...(e.date ? [{ tag: "DATE", val: e.date, kids: [] }] : []), ...(e.place ? [{ tag: "PLAC", val: GED.esc(e.place), kids: [] }] : []), ...cite()] });
+  for (const k of ["BIRT", "CHR", "DEAT", "BURI"]) if (P.ev[k] && (P.ev[k].date || P.ev[k].place)) ev(k, P.ev[k]);
+  for (const o of P.occ) rec.kids.push({ tag: "OCCU", val: GED.esc(o), kids: cite() });
+  for (const r of P.resi) rec.kids.push({ tag: "RESI", val: "", kids: [{ tag: "PLAC", val: GED.esc(r), kids: [] }, ...cite()] });
+  for (const r of P.reli) rec.kids.push({ tag: "RELI", val: GED.esc(r), kids: [] });
+  for (const t of P.notes) rec.kids.push({ tag: "NOTE", val: GED.esc(t), kids: [] });
+  srcs.forEach(s => rec.kids.push({ tag: "SOUR", val: s, kids: [] }));
+  return rec.xref;
+}
+function mdImport(plan, allSrc) {
+  const ids = new Map(), created = []; let nFam = 0;
+  GED.run(S.db, "Per Markdown angelegt", tx => {
+    mdWalk(plan.roots, (n) => { if (n.exist) ids.set(n, n.exist); else { const id = mdBuildPerson(tx, n, allSrc); ids.set(n, id); created.push(id); } });
+    const sexOf = (id) => { const r = tx.db.get(id); return r ? GED.kval(r, "SEX") : ""; };
+    const famFor = (a, b, marr) => {   // a, b: Personen-IDs (b kann leer sein)
+      const sa = sexOf(a), sb = b ? sexOf(b) : "";
+      let h = a, w = b || null;
+      if (sa === "F" || sb === "M") { h = b || null; w = a; }
+      if (b && h && w) { const ex = tx.db.ofTag("FAM").find(f => GED.kval(f, "HUSB") === h && GED.kval(f, "WIFE") === w); if (ex) return ex; }
+      if (!b) { const ex = tx.db.ofTag("FAM").find(f => (GED.kval(f, "HUSB") === a && !GED.kval(f, "WIFE")) || (GED.kval(f, "WIFE") === a && !GED.kval(f, "HUSB"))); if (ex) return ex; }
+      const f = GED.addFamily(tx, h, w); nFam++;
+      if (marr && (marr.date || marr.place)) f.kids.push({ tag: "MARR", val: "", kids: [...(marr.date ? [{ tag: "DATE", val: marr.date, kids: [] }] : []), ...(marr.place ? [{ tag: "PLAC", val: GED.esc(marr.place), kids: [] }] : [])] });
+      return f;
+    };
+    mdWalk(plan.roots, (n) => {
+      const me = ids.get(n);
+      for (const p of n.partners) { const f = famFor(me, ids.get(p), p.marr); if (!f.kids.some(k => k.tag === "MARR") && (p.marr.date || p.marr.place)) { tx.touch(f); f.kids.push({ tag: "MARR", val: "", kids: [...(p.marr.date ? [{ tag: "DATE", val: p.marr.date, kids: [] }] : []), ...(p.marr.place ? [{ tag: "PLAC", val: GED.esc(p.marr.place), kids: [] }] : [])] }); }
+        for (const c of p.kids) { const cid = ids.get(c); if (cid && !tx.db.get(cid).kids.some(k => k.tag === "FAMC")) GED.addChild(tx, f.xref, cid); } }
+      if (n.kids.length && n.kind !== "partner") { const f = famFor(me, null); for (const c of n.kids) { const cid = ids.get(c); if (cid && !tx.db.get(cid).kids.some(k => k.tag === "FAMC")) GED.addChild(tx, f.xref, cid); } }
+    });
+  });
+  return { created, nFam };
+}
+/* Dialog */
+ACT.mdImport = () => {
+  if (S.viewer || !S.db) return;
+  let timer = 0;
+  openDlg({
+    title: "Personen und Familien per Markdown anlegen", wide: true, data: { choice: {}, plan: null },
+    body: (d) => `<p class="hint" style="margin-top:0">Schreibe oder füge eine eingerückte Liste ein. Jede Zeile ist eine Person, eine eingerückte Zeile darunter ist ihr Kind. Mit ⚭ beginnt ein Partner, dessen Kinder wieder darunter stehen.</p>
+      <textarea id="mdtx" class="mdtx" rows="10" spellcheck="false" placeholder="- Hans Müller * 12.3.1901 Köln † 5.7.1980 Bonn&#10;  - ⚭ Anna Schmidt * 1903 (1925 Köln)&#10;    - Karl * 1926"></textarea>
+      <div class="mdtools"><button class="btn sm" data-d="example">Beispiel einfügen</button><button class="btn sm" data-d="exist">Vorhandene Person einfügen …</button><label class="mdsrc">Quelle für alle neuen Personen <input id="mdsrc" type="text" placeholder="z. B. Familienbibel (optional)"></label></div>
+      <details class="mdhelp"><summary>Schreibweise</summary><div class="hint">
+        <p>Geburt <code>*</code>, Taufe <code>~</code>, Tod <code>†</code>, Beerdigung <code>begr.</code>, danach Datum und Ort: <code>* 12.3.1901 Köln</code>. Datum als <code>12.3.1901</code>, <code>3.1901</code>, <code>1901</code>, <code>12. März 1901</code>, mit <code>um</code>, <code>vor</code>, <code>nach</code>.</p>
+        <p>Weitere Angaben nach Semikolon: <code>; Beruf: Schreiner</code>, <code>Wohnort</code>, <code>Religion</code>, <code>Quelle</code>, <code>Notiz</code>, <code>Geschlecht: w</code>. Geschlecht geht auch mit ♂ oder ♀ oder (m) und (w).</p>
+        <p>Partner: <code>⚭ Anna Müller geb. Schmidt</code>, die Heirat in Klammern am Ende: <code>(1925 Köln)</code>. Ein Kind nur mit Vornamen bekommt den Nachnamen des Vaters.</p>
+        <p>Ist das Geschlecht nicht angegeben, gilt die Person über dem ⚭ als Mann. Bei einer Tochter mit Partner schreibst du deshalb ♀ oder (w) dazu.</p>
+        <p>Eine Person, die es schon gibt, trägst du mit „Vorhandene Person einfügen“ ein. Sie bekommt dann die neuen Kinder oder Partner, ihre Daten bleiben unverändert. Dubletten werden in der Vorschau erkannt.</p></div></details>
+      <div id="mdprev" class="mdprev"></div>`,
+    buttons: () => [{ id: "go", label: "Anlegen", cls: "pri" }, { id: "close", label: "Abbrechen" }],
+    after: (d) => {
+      if (d._init) return; d._init = true;
+      const ta = d.q("#mdtx"), upd = () => { d.data.plan = mdPlan(ta.value, d.data.choice); d.q("#mdprev").innerHTML = mdPreviewHtml(d.data.plan); const go = d.el.querySelector('[data-d=go]'); if (go) go.disabled = !d.data.plan.rows.length; };
+      d.upd = upd; ta.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(upd, 150); }); upd(); ta.focus();
+    },
+    onChange: (d, e) => { const k = e.target.dataset && e.target.dataset.k; if (k) { d.data.choice[k] = e.target.value; d.upd(); } },
+    on: {
+      example: (d) => { const ta = d.q("#mdtx"); ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/, "\n") : "") + MD_EXAMPLE; d.data.choice = {}; d.upd(); },
+      exist: (d) => pickPerson({ title: "Vorhandene Person einfügen", onPick: (id) => { const ta = d.q("#mdtx"), p = GED.personInfo(S.db, id); const s = ta.selectionStart || ta.value.length; const ins = "- " + id + " " + GED.displayName(p.rec); ta.value = ta.value.slice(0, s) + (ta.value && !/\n$/.test(ta.value.slice(0, s)) ? "\n" : "") + ins + ta.value.slice(s); d.data.choice = {}; d.upd(); ta.focus(); } }),
+      go: (d) => {
+        const plan = d.data.plan; if (!plan || !plan.rows.length) return;
+        if (plan.nNew === 0 && plan.nFam === 0) { toast("Es gibt nichts Neues anzulegen"); return; }
+        let r; try { r = mdImport(plan, (d.q("#mdsrc").value || "").trim()); } catch (e) { toast("Fehler: " + e.message); return; }
+        d.close();
+        if (r.created.length) { S.pid = r.created[0]; S.fid = null; S.view = "card"; }
+        afterEdit(`${r.created.length} Person${r.created.length === 1 ? "" : "en"} und ${r.nFam} Familie${r.nFam === 1 ? "" : "n"} angelegt`);
+        renderList(true); scrollListTo(S.pid);
+      }
+    }
+  });
+};
+
+/* ============ AHNENSPITZEN UND UNVERBUNDENE EINTRÄGE ============ */
+/* Ahnenspitzen: Vorfahren einer Person, deren Eltern nicht bekannt sind */
+function ahnenspitzen(base) {
+  const db = S.db, gen = new Map([[base, 0]]); let cur = [base];
+  while (cur.length) {
+    const nx = [];
+    for (const x of cur) for (const u of relUps(db, x)) if (!gen.has(u)) { gen.set(u, gen.get(x) + 1); nx.push(u); }
+    cur = nx;
+  }
+  const tips = [];
+  for (const [id, g] of gen) if (!relUps(db, id).length) tips.push({ id, g });
+  return { tips, total: gen.size };
+}
+/* Zusammenhangskomponenten über alle Familien (Eltern, Kinder, Partner) */
+function komponenten() {
+  return bdMemo(S.db, "komp", () => {
+    const db = S.db, par = new Map();
+    const find = (x) => { while (par.get(x) !== x) { par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
+    for (const r of db.ofTag("INDI")) par.set(r.xref, r.xref);
+    const uni = (a, b) => { if (!par.has(a) || !par.has(b)) return; const x = find(a), y = find(b); if (x !== y) par.set(x, y); };
+    for (const f of db.ofTag("FAM")) {
+      const m = [GED.kval(f, "HUSB"), GED.kval(f, "WIFE"), ...GED.kidsOf(f, "CHIL").map(k => k.val)].filter(Boolean);
+      for (let i = 1; i < m.length; i++) uni(m[0], m[i]);
+    }
+    /* auch Verweise von der Person aus (FAMC, FAMS) zählen, wie in den übrigen Ansichten */
+    for (const r of db.ofTag("INDI")) for (const k of r.kids) if ((k.tag === "FAMC" || k.tag === "FAMS") && db.get(k.val) && db.get(k.val).tag === "FAM") {
+      const f = db.get(k.val); for (const x of [GED.kval(f, "HUSB"), GED.kval(f, "WIFE"), ...GED.kidsOf(f, "CHIL").map(c => c.val)]) if (x) uni(r.xref, x);
+    }
+    const comp = new Map();
+    for (const id of par.keys()) { const r = find(id); if (!comp.has(r)) comp.set(r, []); comp.get(r).push(id); }
+    return { comp, of: (id) => find(id) };
+  });
+}
+function ahnenRows(list, withGen) {
+  const db = S.db;
+  return list.map(x => { const id = x.id; return `<div class="ahrow"><button class="lk" data-d="go" data-id="${id}">${E(nameOf(id))}</button> <span class="hint">${E(GED.lifeSpan(db, id))}</span>${withGen ? ` <span class="hint">· ${x.g}. Generation vor der Startperson</span>` : ""}${relTag(id)}${bdLine(db, id, "b", { noBadge: true, cls: "bl" })}</div>`; }).join("");
+}
+function ahnenHtml(d) {
+  const db = S.db, tab = d.data.tab, K = komponenten(), main = mainId();
+  const baseId = d.data.base === "sel" ? S.pid : main;
+  const mainC = K.of(main), others = [...K.comp.entries()].filter(([r]) => r !== mainC);
+  const single = others.filter(([, m]) => m.length === 1).map(([, m]) => m[0]);
+  const trees = others.filter(([, m]) => m.length > 1).sort((a, b) => b[1].length - a[1].length);
+  let h = `<div class="ahtabs">` + [["tips", "Ahnenspitzen"], ["trees", "Getrennte Teilbäume (" + trees.length + ")"], ["single", "Einzelne ohne Verbindung (" + single.length + ")"]].map(([k, t]) => `<button class="btn sm${tab === k ? " pri" : ""}" data-d="tab" data-k="${k}">${t}</button>`).join("") + `</div>`;
+  if (tab === "tips") {
+    const A = ahnenspitzen(baseId);
+    A.tips.sort((a, b) => b.g - a.g || nameOf(a.id).localeCompare(nameOf(b.id), "de"));
+    h += `<p class="hint">Ahnenspitzen sind Vorfahren von <select id="ahbase"><option value="main"${d.data.base !== "sel" ? " selected" : ""}>${E(nameOf(main))} (Hauptperson)</option>${S.pid !== main ? `<option value="sel"${d.data.base === "sel" ? " selected" : ""}>${E(nameOf(S.pid))} (gewählte Person)</option>` : ""}</select>, deren Eltern nicht bekannt sind. Dort endet die Linie. Hier kannst du weiterforschen.</p>`;
+    h += `<div class="mdsum"><b>${A.tips.length}</b> Ahnenspitze${A.tips.length === 1 ? "" : "n"} unter ${A.total} Vorfahren (einschließlich der Person selbst)</div>` + ahnenRows(A.tips.slice(0, 600), true) + (A.tips.length > 600 ? `<div class="hint">Nur die ersten 600 gezeigt.</div>` : "");
+  } else if (tab === "trees") {
+    h += `<p class="hint">Gruppen von Personen, die über keine Familie mit der Hauptperson ${E(nameOf(main))} verbunden sind. Die größte steht oben. Mit „Anzeigen“ springst du zu einer Person der Gruppe.</p>`;
+    h += trees.length ? trees.slice(0, 300).map(([, m]) => { const ms = m.map(id => ({ id, y: (GED.personInfo(db, id).birt || {}).date ? GED.personInfo(db, id).birt.date.y : null })).sort((a, b) => (a.y || 9999) - (b.y || 9999)); return `<div class="ahrow"><b>${m.length} Personen</b> <button class="lk" data-d="go" data-id="${ms[0].id}">${E(nameOf(ms[0].id))}</button> <span class="hint">${E(GED.lifeSpan(db, ms[0].id))}</span> <span class="hint">${E(ms.slice(1, 4).map(x => nameOf(x.id)).join(", "))}${m.length > 4 ? " …" : ""}</span></div>`; }).join("") : `<div class="hint">Alle Personen sind mit der Hauptperson verbunden.</div>`;
+  } else {
+    h += `<p class="hint">Personen, die in keiner Familie vorkommen: weder Eltern noch Partner noch Kinder.</p>`;
+    h += single.length ? ahnenRows(single.map(id => ({ id })).sort((a, b) => nameOf(a.id).localeCompare(nameOf(b.id), "de")).slice(0, 600), false) + (single.length > 600 ? `<div class="hint">Nur die ersten 600 gezeigt.</div>` : "") : `<div class="hint">Es gibt keine einzelnen Personen ohne Verbindung.</div>`;
+  }
+  return h;
+}
+ACT.ahnen = () => {
+  if (!S.db) return;
+  openDlg({
+    title: "Ahnenspitzen und unverbundene Einträge", wide: true, noFocus: true, data: { tab: "tips", base: "main" },
+    body: (d) => `<div class="ahwrap">${ahnenHtml(d)}</div>`,
+    buttons: () => [{ id: "close", label: "Schließen" }],
+    onChange: (d, e) => { if (e.target.id === "ahbase") { d.data.base = e.target.value; d.paint(); } },
+    on: {
+      tab: (d, t) => { d.data.tab = t.dataset.k; d.paint(); },
+      go: (d, t) => { const id = t.dataset.id; d.close(); S.view = "card"; go(id); }
     }
   });
 };

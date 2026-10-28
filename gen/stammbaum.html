@@ -668,6 +668,9 @@ body.dimside .dn.side{opacity:.35}
 .fchip{display:inline-block;font:500 11.5px/1.3 var(--sans);padding:1px 7px;margin:1px 2px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--accent);cursor:pointer;vertical-align:baseline;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
 .fchip:hover{background:var(--accent-soft)}.fchip.miss{color:var(--muted);cursor:default;border-style:dashed;background:transparent}
 .mdaitx{margin-top:8px;font-size:12px;min-height:220px}.mdai summary{font-weight:600}
+.chip .chipt{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;text-align:left;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chip .chipt:hover{text-decoration:underline;color:var(--accent)}
+.chip button.chipt{width:auto;height:auto;border-radius:0;line-height:1.3}.chip button.fchip{width:auto;height:auto;border-radius:10px;line-height:1.3;border:1px solid var(--line)}
+.bstamp{font-size:11px;color:var(--muted);margin-left:8px;white-space:nowrap}.newver{position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#8a5a00;color:#fff;padding:10px 14px;text-align:center;font-size:14px}.newver .btn{margin-left:10px}
 
 </style>
 </head>
@@ -1992,6 +1995,28 @@ function srcFilesHtml(sid, compact) {
 }
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
+/* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
+const BUILD = "28.10.2026 18:32"; /* BUILD_ID=28.10.2026 18:32 */
+async function checkFresh() {
+  if (!/^https?:$/.test(location.protocol)) return false;
+  try {
+    const r = await fetch(location.href.split("#")[0] + (location.search ? "&" : "?") + "_=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return false;
+    const m = /BUILD_ID=(\d\d\.\d\d\.\d{4} \d\d:\d\d)/.exec(await r.text());
+    if (m && m[1] !== BUILD) {
+      if (!document.getElementById("newver")) {
+        const d = document.createElement("div"); d.id = "newver"; d.className = "newver";
+        d.innerHTML = `Es gibt eine neuere Fassung des Programms (${m[1]}). Du verwendest noch ${BUILD}. <button class="btn sm pri" id="newverGo">Jetzt neu laden</button>`;
+        document.body.appendChild(d);
+        d.querySelector("#newverGo").onclick = () => { location.reload(); };
+      }
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+setTimeout(() => { checkFresh(); const f = document.getElementById("fname"); if (f && !document.getElementById("bstamp")) { const s = document.createElement("span"); s.id = "bstamp"; s.className = "bstamp"; s.textContent = "Stand " + BUILD; s.title = "Programmstand dieser Fassung"; f.after(s); } }, 2500);
+
 /* ============ STAMMBAUM (VORFAHREN) ============ */
 function mainPhotoHit(rec) {
   const o = mediaObjs(rec).find(x => x.prim && IMG_RE.test(baseName(x.file)));
@@ -2148,7 +2173,7 @@ function openDlg(opts) {
   const ovl = inline ? opts.host : document.createElement("div");
   const dlgHtml = `<div class="dlg${opts.wide ? " wide" : ""}${inline ? " inline" : ""}" role="${inline ? "form" : "dialog"}"${inline ? "" : ' aria-modal="true"'} aria-label="${E(opts.title)}"><header><h2>${E(opts.title)}</h2><button class="x" data-d="close" aria-label="Schließen">×</button></header><div class="dbody"></div><footer></footer></div>`;
   if (inline) ovl.innerHTML = dlgHtml;
-  else { ovl.className = "ovl"; ovl.style.zIndex = ++_dlgZ; ovl.innerHTML = dlgHtml; document.body.appendChild(ovl); }
+  else { ovl.className = "ovl"; _dlgZ = Math.max(_dlgZ, ...[...document.querySelectorAll(".ovl")].map(o => +o.style.zIndex || 0)) + 1; ovl.style.zIndex = _dlgZ; ovl.innerHTML = dlgHtml; document.body.appendChild(ovl); }
   const d = {
     el: ovl, body: ovl.querySelector(".dbody"), foot: ovl.querySelector("footer"), opts, data: opts.data || {}, inline,
     q(sel) { return d.body.querySelector(sel); },
@@ -2332,7 +2357,7 @@ function evEditorHtml(w, types, labels) {
 }
 function srcChips(list, scope, i) {
   return `<div class="chips" style="margin-top:4px"><span class="hint" style="margin-right:4px">Quellen:</span>` +
-    list.map((p, j) => `<span class="chip"><span title="${E(srcTitle(p))}">${E(srcTitle(p))}</span>${srcFilesHtml(p, true)}<button data-d="srcdel" data-scope="${scope}" data-i="${i}" data-j="${j}" aria-label="Quelle entfernen">×</button></span>`).join("") +
+    list.map((p, j) => `<span class="chip"><button type="button" class="chipt" data-act="srcEdit" data-id="${p}" title="${E(srcTitle(p))} (anklicken: Quelle öffnen und bearbeiten)">${E(srcTitle(p))}</button>${srcFilesHtml(p, true)}<button data-d="srcdel" data-scope="${scope}" data-i="${i}" data-j="${j}" aria-label="Quelle entfernen">×</button></span>`).join("") +
     `<button class="btn sm ghost" data-d="srcadd" data-scope="${scope}" data-i="${i}">Quelle hinzufügen</button></div>`;
 }
 function notesEditorHtml(w) {
@@ -7359,6 +7384,7 @@ function openInfo() {
   openDlg({
     title: "Dateiinfo", noFocus: true,
     body: () => `<dl class="kv"><dt>Datei</dt><dd>${E(S.fileName)}</dd>
+      <dt>Programmstand</dt><dd>${E(BUILD)}</dd>
       <dt>Erzeugt mit</dt><dd>${E([hv(["SOUR"]), hv(["SOUR", "VERS"])].filter(Boolean).join(" "))} ${E(hv(["DATE"]))}</dd>
       <dt>GEDCOM-Version</dt><dd>${E(hv(["GEDC", "VERS"]))} (${E(hv(["GEDC", "FORM"]))})</dd>
       <dt>Zeichensatz</dt><dd>${E(db.charset || "nicht angegeben")}</dd>
@@ -7748,7 +7774,11 @@ function fileBackupHint() {
 
 /* ---- Quellen überall anklickbar: Q-Zeichen öffnen eine Liste, jede Quelle lässt sich öffnen und bearbeiten ---- */
 VIEW_OK.add("qsrc");
-ACT.srcEdit = (d) => { if (S.viewer || !d.id || !S.db.get(d.id)) return; editSrc(d.id); };
+ACT.srcEdit = (d) => {
+  if (S.viewer) return;
+  if (!d.id || !S.db.get(d.id)) { toast("Diese Quelle gibt es in der Datei nicht (" + (d.id || "ohne Kennung") + ")"); return; }
+  try { editSrc(d.id); } catch (e) { toast("Quelle konnte nicht geöffnet werden: " + (e && e.message || e)); console.error(e); }
+};
 ACT.qsrc = (d, e) => {
   e && e.stopPropagation && e.stopPropagation();
   let groups;

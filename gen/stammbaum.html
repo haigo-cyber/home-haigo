@@ -688,6 +688,26 @@ body.dimside .dn.side{opacity:.35}
 /* Auswertungsansichten (Statistik, Orte, Namen ...) scrollen im Inhaltsbereich mit Rollbalken am Rand */
 #content.tngc{padding:0;overflow:auto}
 
+/* Kleine Kästen im Baum (Abstand-Stufen Kompakt bis Mikro) */
+.tb.tc{padding:1px 5px;gap:0;align-items:center;border-radius:4px}
+.tb.tc .tx{display:block;padding-right:0;overflow:hidden;white-space:nowrap}
+.tb.tc .nm{display:inline;-webkit-line-clamp:unset;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;font:600 12px var(--serif);line-height:15px}
+.tb.tc .yr{font-size:11px;line-height:14px;color:var(--muted)}
+.tb.tc1 .nm,.tb.tc1 .yr{display:block}
+.tb.tc2 .nm{font-size:11.5px;line-height:17px}.tb.tc2 .yr{font-size:10.5px;line-height:17px}
+.tb.tc3{padding:0 4px}.tb.tc3 .nm{font-size:10.5px;line-height:14px}
+.tb.tc4{padding:0 2px;border-radius:2px}.tb.tc4 .nm{font-size:8.5px;line-height:10px}
+.tb.tc .ar{font-size:14px;line-height:14px;width:10px}
+.tb.tc3 .ar,.tb.tc4 .ar{font-size:10px;line-height:10px;width:8px}
+.tb.tc.empty{font-size:9px}
+/* Auswahllisten und Eingabefelder folgen dem hellen oder dunklen Thema (kein weisser Text auf weissem Grund) */
+:root{color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark}}
+:root[data-theme="dark"]{color-scheme:dark}
+select{background-color:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+select option,select optgroup{background-color:var(--panel);color:var(--ink)}
+input,textarea{color:var(--ink)}
+
 </style>
 </head>
 <body>
@@ -2012,7 +2032,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "28.10.2026 22:46"; /* BUILD_ID=28.10.2026 22:46 */
+const BUILD = "28.10.2026 23:43"; /* BUILD_ID=28.10.2026 23:43 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -6108,14 +6128,28 @@ function pedNav() {
 }
 /* ---------- gemeinsames Layout für Kästen (vier Richtungen) ---------- */
 /* Abstand der Kästen im Baum: Stufe 0 (sehr dicht) bis 4 (sehr weit), Standard 2 */
-const DENS = { v: Math.min(4, Math.max(0, +lsGet("st.dens", 2) || 0)) };
-const DENS_T = [{ n: "Sehr dicht", GX: 16, GY: 2, VG: 14, HG: 2 }, { n: "Dicht", GX: 30, GY: 4, VG: 28, HG: 6 }, { n: "Normal", GX: 46, GY: 8, VG: 44, HG: 12 }, { n: "Weit", GX: 84, GY: 22, VG: 84, HG: 30 }, { n: "Sehr weit", GX: 130, GY: 44, VG: 130, HG: 60 }];
-function densCtl() {
-  return `<label title="Wie dicht die Kästen beieinander stehen">Abstand <select id="densSel">${DENS_T.map((d, i) => `<option value="${i}"${i === DENS.v ? " selected" : ""}>${d.n}</option>`).join("")}</select></label>`;
+const DENS_T = [
+  { id: "mic", n: "Mikro (nur Kurzname)", c: 4, bw: 92, bh: 12, GX: 6, GY: 0, VG: 6, HG: 1 },
+  { id: "min", n: "Minimal (nur Name)", c: 3, bw: 138, bh: 16, GX: 8, GY: 0, VG: 8, HG: 1 },
+  { id: "svk", n: "Sehr kompakt (Name und Jahre)", c: 2, bw: 196, bh: 20, GX: 10, GY: 1, VG: 10, HG: 1 },
+  { id: "kom", n: "Kompakt (zwei Zeilen)", c: 1, bw: 168, bh: 34, GX: 12, GY: 1, VG: 12, HG: 1 },
+  { id: "vd", n: "Sehr dicht", GX: 16, GY: 2, VG: 14, HG: 2 }, { id: "d", n: "Dicht", GX: 30, GY: 4, VG: 28, HG: 6 }, { id: "n", n: "Normal", GX: 46, GY: 8, VG: 44, HG: 12 }, { id: "w", n: "Weit", GX: 84, GY: 22, VG: 84, HG: 30 }, { id: "sw", n: "Sehr weit", GX: 130, GY: 44, VG: 130, HG: 60 }];
+const DENS = { v: (() => { let id = lsGet("st.dens2", ""); if (!id) id = ["vd", "d", "n", "w", "sw"][Math.min(4, Math.max(0, +lsGet("st.dens", 2) || 0))]; const i = DENS_T.findIndex(x => x.id === id); return i >= 0 ? i : DENS_T.findIndex(x => x.id === "n"); })() };
+/* Kastenmaße je nach Stufe: c = 0 normale Kästen, 1 bis 4 immer kleinere Kästen mit weniger Angaben */
+const boxGeo = () => { const D = DENS_T[DENS.v]; return { c: D.c || 0, BW: D.bw || 214, BH: D.bh || 48 }; };
+/* Inhalt eines kleinen Kastens */
+function tcInner(c, nm, id) {
+  if (c === 1) return `<span class="tx"><span class="nm">${E(nm)}</span><span class="yr">${E(GED.lifeSpan(S.db, id))}</span></span>`;
+  if (c === 2) return `<span class="tx"><span class="nm">${E(nm)}</span> <span class="yr">${E(GED.lifeSpan(S.db, id))}</span></span>`;
+  if (c === 3) return `<span class="tx"><span class="nm">${E(nm)}</span></span>`;
+  return `<span class="tx"><span class="nm">${E(shortNm(nm, 14))}</span></span>`;
 }
-document.addEventListener("change", (e) => { if (e.target.id !== "densSel") return; DENS.v = +e.target.value; lsSet("st.dens", DENS.v); render(); });
+function densCtl() {
+  return `<label title="Wie dicht die Kästen beieinander stehen. Die ersten vier Stufen verkleinern auch die Kästen, für sehr große Stammbäume.">Abstand <select id="densSel">${DENS_T.map((d, i) => `<option value="${i}"${i === DENS.v ? " selected" : ""}>${d.n}</option>`).join("")}</select></label>`;
+}
+document.addEventListener("change", (e) => { if (e.target.id !== "densSel") return; DENS.v = +e.target.value; lsSet("st.dens2", DENS_T[DENS.v].id); render(); });
 function layoutTree(items, edges, ori, slots) {
-  const DT = DENS_T[DENS.v], BW = 214, GX = DT.GX, GY = DT.GY, BH = 48, VG = DT.VG, vert = ori === "TB" || ori === "BT";
+  const DT = DENS_T[DENS.v], BW = DT.bw || 214, GX = DT.GX, GY = DT.GY, BH = DT.bh || 48, VG = DT.VG, vert = ori === "TB" || ori === "BT";
   const G = items.reduce((m, i) => Math.max(m, i.g), 0) + 1, lvlH = new Array(G).fill(BH), gOf = new Map();
   let maxH = BH;
   for (const it of items) { gOf.set(it.key, it.g); if (it.h > maxH) maxH = it.h; if (it.h > lvlH[it.g]) lvlH[it.g] = it.h; }
@@ -6155,7 +6189,7 @@ function renderPedTree() {
   const db = S.db, N = S.gens, ori = ORI.ped;
   const anc = GED.ancestors(db, S.pid, N);
   treeMediaIdx();
-  const BW = 214, BH = 48, PH = 40, placeholders = new Set();
+  const GEO = boxGeo(), BW = GEO.BW, BH = GEO.BH, PH = 40, placeholders = new Set();
   anc.forEach((id, k) => { const g = Math.floor(Math.log2(k)); if (g < N - 1 && (anc.has(2 * k) !== anc.has(2 * k + 1))) placeholders.add(anc.has(2 * k) ? 2 * k + 1 : 2 * k); });
   const all = new Set([...anc.keys(), ...placeholders]), info = new Map(), slots = Math.pow(2, N - 1), items = [], edges = [];
   all.forEach(k => {
@@ -6164,7 +6198,7 @@ function renderPedTree() {
     const id = anc.get(k), pi = GED.personInfo(db, id), hit = mainPhotoHit(pi.rec), nm = GED.displayName(pi.rec);
     const lines = boxLines(nm, hit, BW, PH);
     const bl = bdLine(db, id, "b"), dl = bdLine(db, id, "d");
-    const rl = relTag(id, "bx"), h = Math.max(hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (bl ? 14 : 0) + (dl ? 14 : 0) + (rl ? 14 : 0) + 15, BH);
+    const rl = relTag(id, "bx"), h = GEO.c ? BH : Math.max(hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (bl ? 14 : 0) + (dl ? 14 : 0) + (rl ? 14 : 0) + 15, BH);
     info.set(k, { h, hit, nm, bl, dl, rl, id, pi }); items.push({ key: k, g, c, h });
     if (all.has(2 * k)) edges.push([k, 2 * k]); if (all.has(2 * k + 1)) edges.push([k, 2 * k + 1]);
   });
@@ -6172,12 +6206,12 @@ function renderPedTree() {
   let boxes = "";
   all.forEach(k => {
     const p = L.pos.get(k), f = info.get(k), st = `left:${p.left}px;top:${p.top}px;height:${p.h}px`;
-    if (placeholders.has(k)) { boxes += `<div class="tb empty" style="${st}">unbekannt</div>`; return; }
+    if (placeholders.has(k)) { boxes += `<div class="tb empty${GEO.c ? " tc tc" + GEO.c : ""}" style="${st};width:${BW}px">${GEO.c > 2 ? "?" : "unbekannt"}</div>`; return; }
     const ph = f.hit ? `<span class="ph"><img data-mid="${f.hit.id}" alt=""></span>` : "", kin = pedKin(f.id);
     const arL = k === 1 && kin.kids.length ? `<span class="ar" data-act="t_pchild" title="Zum Kind">${ARROW[ori][1]}</span>` : "";
     const arR = Math.floor(Math.log2(k)) === maxG && kin.par && (kin.par.father || kin.par.mother) ? `<span class="ar" data-act="pedgo" data-id="${f.id}" title="Diese Person in die Mitte setzen und weitere Vorfahren zeigen">${ARROW[ori][0]}</span>` : "";
-    boxes += `<button class="tb ${f.pi.sex}${k === 1 ? " root" : ""}${sideCls(f.id)}" style="${st}" data-act="pedgo" data-id="${f.id}" title="${E(f.nm)}\n${E(bdText(db, f.id))}\nKekulé-Nummer ${k}">
-      <span class="kk">${k}</span>${arL}${arR}${ph}<span class="tx"><span class="nm">${E(f.nm)}</span>${f.bl}${f.dl}${f.rl}</span>${qTotal(db, f.id)}</button>`;
+    boxes += `<button class="tb ${f.pi.sex}${k === 1 ? " root" : ""}${sideCls(f.id)}${GEO.c ? " tc tc" + GEO.c : ""}" style="${st};width:${BW}px" data-act="pedgo" data-id="${f.id}" title="${E(f.nm)}\n${E(bdText(db, f.id))}\nKekulé-Nummer ${k}">
+      ${GEO.c ? `${arL}${arR}${tcInner(GEO.c, f.nm, f.id)}` : `<span class="kk">${k}</span>${arL}${arR}${ph}<span class="tx"><span class="nm">${E(f.nm)}</span>${f.bl}${f.dl}${f.rl}</span>${qTotal(db, f.id)}`}</button>`;
   });
   const opts = [3, 4, 5, 6, 7].map(n => `<option value="${n}"${n === N ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
@@ -6208,7 +6242,7 @@ function descNodes(maxDepth, MAXN) {
   return { root, cut, deepest };
 }
 function renderDescTree() {
-  const db = S.db, BW = 214, BH = 48, PH = 40, MAXN = 700, ori = ORI.desc;
+  const db = S.db, GEO = boxGeo(), BW = GEO.BW, BH = GEO.BH, PH = 40, MAXN = 700, ori = ORI.desc;
   treeMediaIdx();
   const { root, cut, deepest } = descNodes(S.depth, MAXN), all = [];
   (function walk(n) {
@@ -6217,7 +6251,7 @@ function renderDescTree() {
     const tw = BW - 18 - 14 - (n.hit ? PH + 6 : 0), lines = boxLines(n.nm, n.hit, BW, PH);
     const sps = n.sp.map(s => Math.max(1, Math.ceil((s.nm.length + s.yrs.length + 3) * 6.4 / tw))).reduce((a, b) => a + b, 0);
     n.bl = bdLine(db, n.id, "b"); n.dl = bdLine(db, n.id, "d"); n.rl = relTag(n.id, "bx");
-    n.h = Math.max(n.hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (n.bl ? 14 : 0) + (n.dl ? 14 : 0) + (n.rl ? 14 : 0) + 15 + sps * 14, BH);
+    n.h = GEO.c ? BH : Math.max(n.hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (n.bl ? 14 : 0) + (n.dl ? 14 : 0) + (n.rl ? 14 : 0) + 15 + sps * 14, BH);
     n.kids.forEach(walk);
   })(root);
   let leaf = 0;
@@ -6231,7 +6265,7 @@ function renderDescTree() {
     const ph = n.hit ? `<span class="ph"><img data-mid="${n.hit.id}" alt=""></span>` : "";
     const spl = n.sp.map(s => `<span class="pl sp2">⚭ ${s.id ? `<span class="splk" data-act="pedgo" data-id="${s.id}">${E(s.nm)}</span>` : E(s.nm)}${s.yrs ? " " + E(s.yrs) : ""}</span>`).join("");
     const arR = n.more ? `<span class="ar" data-act="dgo" data-id="${n.id}" title="${n.more} weitere Kinder: diese Person in die Mitte setzen">${ARROW[ori][0]}</span>` : "";
-    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}${sideCls(n.id)}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}">${arR}${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${n.rl}${spl}</span>${qTotal(db, n.id)}</button>`;
+    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}${sideCls(n.id)}${GEO.c ? " tc tc" + GEO.c : ""}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px;width:${BW}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}${GEO.c && n.sp.length ? "\n⚭ " + E(n.sp.map(s => s.nm).join(", ")) : ""}">${arR}${GEO.c ? tcInner(GEO.c, n.nm, n.id) : `${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${n.rl}${spl}</span>${qTotal(db, n.id)}`}</button>`;
   }
   const opts = [2, 3, 4, 5, 6, 8].map(n => `<option value="${n}"${n === S.depth ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>

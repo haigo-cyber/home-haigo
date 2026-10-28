@@ -672,6 +672,19 @@ body.dimside .dn.side{opacity:.35}
 .chip button.chipt{width:auto;height:auto;border-radius:0;line-height:1.3}.chip button.fchip{width:auto;height:auto;border-radius:10px;line-height:1.3;border:1px solid var(--line)}
 .bstamp{font-size:11px;color:var(--muted);margin-left:8px;white-space:nowrap}.newver{position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#8a5a00;color:#fff;padding:10px 14px;text-align:center;font-size:14px}.newver .btn{margin-left:10px}
 
+/* Kinderauswahl: nur Personen der direkten Linie deutlich, Nebenlinien abgeblendet (unabhaengig vom Schalter) */
+.tlist .trow.offline{opacity:.35;transition:opacity .15s}
+.tlist .trow.offline:hover,.tlist .trow.offline:focus-visible{opacity:.9}
+.tlist .trow.dir{font-weight:600;background:var(--accent-soft)}
+.tlist .trow.dir .rel{margin-left:6px}
+/* PDF in der Ansicht Zwei Dateien */
+.twtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.spscroll.pdfpane{overflow:hidden;padding-bottom:12px}
+.pdfpane .pdfph{flex:1;min-height:240px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.pdfpane .pdfhint{margin:0}
+#pdfhost{position:fixed;z-index:20;background:#fff;border-radius:8px;overflow:hidden}
+#pdfhost iframe{width:100%;height:100%;border:0;display:block}
+
 </style>
 </head>
 <body>
@@ -1996,7 +2009,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "28.10.2026 18:32"; /* BUILD_ID=28.10.2026 18:32 */
+const BUILD = "28.10.2026 19:30"; /* BUILD_ID=28.10.2026 19:30 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -2038,7 +2051,7 @@ ACT.t_pchild = () => {
   if (!k.kids.length) return;
   openDlg({
     title: "Zu welchem Kind?", noFocus: true,
-    body: () => `<div class="tlist">${k.kids.map(id => { const p = GED.personInfo(S.db, id); return `<button class="trow" data-d="pick" data-id="${id}"><span class="tsx">${sexSym(p.sex)}</span><span class="tn">${E(GED.displayName(p.rec))}</span><span class="ty">${E(GED.lifeSpan(S.db, id))}</span></button>`; }).join("")}</div>`,
+    body: () => `<div class="tlist">${k.kids.map(id => { const p = GED.personInfo(S.db, id); const dir = isDirect(id); return `<button class="trow ${dir ? "dir" : "offline"}" data-d="pick" data-id="${id}"><span class="tsx">${sexSym(p.sex)}</span><span class="tn">${E(GED.displayName(p.rec))}</span><span class="ty">${E(GED.lifeSpan(S.db, id))}</span>${dir ? relTag(id, "pr3") : ""}</button>`; }).join("")}</div>`,
     buttons: () => [{ id: "close", label: "Abbrechen" }],
     on: { pick: (dd, t) => { dd.close(); go(t.dataset.id); } }
   });
@@ -6416,6 +6429,7 @@ document.addEventListener("keydown", (e) => {
    Links die Hauptdatei (wird bearbeitet), rechts die zweite Datei (nur lesend). Übernommen wird immer genau eine Person
    mit ihren eigenen Angaben, Quellen, Notizen und Medienverweisen, nie ihre Familie. Wohin sie gehört (Kind, Elternteil,
    Partner), legt man beim Ablegen fest. Die zweite Datei teilt sich den Zustand mit dem Abgleich (CMP). */
+const PDFV = { url: "", name: "", mode: "ged" };
 const TWO = { sel: null, q: "", limit: 80, src: "", drag: null, done: new Map(), stat: new Map(), filter: "all", more: false };
 const TW_SKIP = new Set(["FAMC", "FAMS", "CHAN", "REFN", "_UID", "RIN", "AFN", "ASSO", "_MTTAG"]);       // wird nicht mitkopiert
 const TW_NONEVENT = new Set(["NAME", "SEX", "FAMC", "FAMS", "SOUR", "NOTE", "OBJE", "CHAN", "REFN", "RIN", "RFN", "AFN", "_UID", "ASSO", "SUBM", "ALIA", "ANCI", "DESI", "RESN", "_MTTAG"]);
@@ -6721,10 +6735,15 @@ function twPaintR() {
   const t = $("twTarget"); if (t) t.innerHTML = twTargetInfo();
 }
 function renderTwoR() {
+  const tabs = `<div class="twtabs" role="tablist"><button class="chipb${PDFV.mode === "pdf" ? "" : " on"}" role="tab" data-act="twoMode" data-m="ged">Personen (GEDCOM)</button><button class="chipb${PDFV.mode === "pdf" ? " on" : ""}" role="tab" data-act="twoMode" data-m="pdf">PDF${PDFV.name ? ": " + E(shortFile(PDFV.name)) : ""}</button></div>`;
+  const g = PDFV.mode === "pdf" ? pdfPaneHtml() : renderTwoG();
+  return g.replace(/^(<div class="spscroll[^>]*>)/, "$1" + tabs);
+}
+function renderTwoG() {
   if (CMP.busy) return `<div class="spscroll"><div class="hint">Die zweite Datei wird gelesen und mit der Hauptdatei abgeglichen …</div></div>`;
   if (!CMP.db) return `<div class="spscroll"><h3 style="margin-top:0">Zweite Datei</h3>
     <p>Lade hier eine zweite GEDCOM-Datei, zum Beispiel einen Export aus MyHeritage oder eine aus einem PDF erzeugte Datei. Sie wird nur gelesen und nie verändert. Aus ihr übernimmst du einzelne Personen in deine Hauptdatei.</p>
-    <button class="btn pri" data-act="twoLoad">Zweite Datei wählen</button>${CMP.err ? `<div class="err" style="margin-top:8px">${E(CMP.err)}</div>` : ""}</div>`;
+    <button class="btn pri" data-act="twoLoad">Zweite Datei wählen</button> <button class="btn" data-act="pdfLoad">PDF zum Lesen öffnen</button>${CMP.err ? `<div class="err" style="margin-top:8px">${E(CMP.err)}</div>` : ""}</div>`;
   return `<div class="spscroll twoR"><div class="twotop"><span><b>${E(CMP.name)}</b> <span class="w">${CMP.db.ofTag("INDI").length} Personen, nur lesend</span></span>
       <span class="grp"><button class="btn sm" data-act="twoCmp">Alle Dubletten ansehen</button><button class="btn sm" data-act="twoLoad">Andere Datei</button></span></div>
     <label class="fld"><span>Quelle für übernommene Angaben (leer = keine)</span><input id="twoSrc" value="${E(TWO.src)}" placeholder="zum Beispiel der Name der PDF-Datei"></label>
@@ -6741,8 +6760,9 @@ function renderTwo() {
 }
 
 ACT.twoLoad = async () => {
-  const f = await pickOne(".ged,.GED,.gedcom,.txt");
+  const f = await pickOne(".ged,.GED,.gedcom,.txt,.pdf,application/pdf");
   if (!f) return;
+  if (/\.pdf$/i.test(f.name) || f.type === "application/pdf") { pdfOpen(f); return; }
   CMP.busy = true; CMP.err = ""; render();
   await new Promise(r => setTimeout(r, 40));
   try {
@@ -8173,6 +8193,56 @@ ACT.ahnen = () => {
     }
   });
 };
+
+/* ============ ZWEI DATEIEN: PDF als zweite Datei neben dem Stammbaum lesen ============ */
+/* Das PDF liegt in einem festen Rahmen ausserhalb des Inhaltsbereichs, damit Seite, Zoom und Suche
+   erhalten bleiben, wenn der Stammbaum neu gezeichnet wird. */
+function pdfOpen(f) {
+  if (!f) return;
+  if (!(/\.pdf$/i.test(f.name) || f.type === "application/pdf")) { toast("Das ist keine PDF-Datei"); return; }
+  if (PDFV.url) { try { URL.revokeObjectURL(PDFV.url); } catch (e) {} }
+  PDFV.url = URL.createObjectURL(f.type === "application/pdf" ? f : new Blob([f], { type: "application/pdf" }));
+  PDFV.name = f.name; PDFV.mode = "pdf";
+  if (!TWO.src.trim() && !(CMP.db && CMP.db.ofTag("SOUR").length)) TWO.src = twBase(f.name).replace(/\.pdf$/i, "");
+  const h = document.getElementById("pdfhost"); if (h) { h.innerHTML = ""; delete h.dataset.url; }
+  render();
+}
+function pdfPaneHtml() {
+  if (!PDFV.url) return `<div class="spscroll twoR"><h3 style="margin-top:0">PDF lesen</h3>
+    <p>Öffne hier ein PDF, zum Beispiel einen Aufsatz, ein Kirchenbuch oder eine Ahnenliste, und lies es neben deinem Stammbaum. Das PDF bleibt auf deinem Gerät und wird nicht verändert. Namen und Daten aus dem PDF trägst du wie gewohnt in der Hauptdatei links ein.</p>
+    <button class="btn pri" data-act="pdfLoad">PDF wählen</button></div>`;
+  return `<div class="spscroll twoR pdfpane"><div class="twotop"><span><b>${E(PDFV.name)}</b></span>
+    <span class="grp"><a class="btn sm" href="${PDFV.url}" target="_blank" rel="noopener">In neuem Tab öffnen</a><button class="btn sm" data-act="pdfLoad">Anderes PDF</button><button class="btn sm" data-act="pdfClose">PDF schließen</button></span></div>
+    <div class="pdfph" id="pdfph"></div>
+    <div class="hint pdfhint">Suchen im PDF mit Strg+F. Zeigt dein Gerät das PDF hier nicht an (manche Handys), nutze „In neuem Tab öffnen“.</div></div>`;
+}
+ACT.pdfLoad = async () => { const f = await pickOne(".pdf,application/pdf"); if (f) pdfOpen(f); };
+ACT.pdfClose = () => {
+  if (PDFV.url) { try { URL.revokeObjectURL(PDFV.url); } catch (e) {} }
+  PDFV.url = ""; PDFV.name = ""; PDFV.mode = "ged";
+  const h = document.getElementById("pdfhost"); if (h) { h.innerHTML = ""; delete h.dataset.url; h.hidden = true; }
+  render();
+};
+ACT.twoMode = (d) => { PDFV.mode = d.m === "pdf" ? "pdf" : "ged"; render(); };
+function pdfSync() {
+  let h = document.getElementById("pdfhost");
+  const ph = S.view === "two" && PDFV.mode === "pdf" && PDFV.url ? document.getElementById("pdfph") : null;
+  if (!ph) { if (h && !h.hidden) h.hidden = true; return; }
+  if (!h) { h = document.createElement("div"); h.id = "pdfhost"; h.hidden = true; document.body.appendChild(h); }
+  if (h.dataset.url !== PDFV.url) { h.innerHTML = ""; const fr = document.createElement("iframe"); fr.title = "PDF: " + PDFV.name; fr.src = PDFV.url + "#view=FitH"; h.appendChild(fr); h.dataset.url = PDFV.url; }
+  const r = ph.getBoundingClientRect(), c = (ph.closest(".split2") || document.body).getBoundingClientRect();
+  const L = Math.max(r.left, c.left), T = Math.max(r.top, c.top), R = Math.min(r.right, c.right), B = Math.min(r.bottom, c.bottom);
+  if (R - L < 4 || B - T < 4) { h.hidden = true; return; }
+  const key = [r.left, r.top, r.width, r.height, L, T, R, B].map(Math.round).join(",");
+  if (h.hidden) h.hidden = false;
+  if (h._k === key) return; h._k = key;
+  h.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;clip-path:inset(${T - r.top}px ${r.right - R}px ${r.bottom - B}px ${L - r.left}px)`;
+}
+{ const _r = render; render = function () { const r = _r.apply(this, arguments); pdfSync(); return r; }; }
+setInterval(pdfSync, 100); window.addEventListener("resize", pdfSync);
+/* Beim Ziehen der Trennlinie darf der Rahmen keine Mausereignisse schlucken */
+document.addEventListener("pointerdown", (e) => { if (e.target.closest && e.target.closest(".rz")) { const h = document.getElementById("pdfhost"); if (h) h.style.pointerEvents = "none"; } }, true);
+["pointerup", "pointercancel"].forEach(t => document.addEventListener(t, () => { const h = document.getElementById("pdfhost"); if (h) h.style.pointerEvents = ""; }, true));
 
 </script>
 </body>

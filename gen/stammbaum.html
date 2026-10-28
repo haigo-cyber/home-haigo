@@ -685,6 +685,9 @@ body.dimside .dn.side{opacity:.35}
 #pdfhost{position:fixed;z-index:20;background:#fff;border-radius:8px;overflow:hidden}
 #pdfhost iframe{width:100%;height:100%;border:0;display:block}
 
+/* Auswertungsansichten (Statistik, Orte, Namen ...) scrollen im Inhaltsbereich mit Rollbalken am Rand */
+#content.tngc{padding:0;overflow:auto}
+
 </style>
 </head>
 <body>
@@ -2009,7 +2012,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "28.10.2026 19:42"; /* BUILD_ID=28.10.2026 19:42 */
+const BUILD = "28.10.2026 22:46"; /* BUILD_ID=28.10.2026 22:46 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -7011,7 +7014,9 @@ function render() {
   document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.view === S.view && has)));
   $("tabs").parentNode.style.visibility = has ? "visible" : "hidden";
   const c = $("content");
-  c.classList.toggle("pad0", has && S.view !== "card");
+  const tngv = has && TNG_VIEWS.includes(S.view);
+  c.classList.toggle("pad0", has && S.view !== "card" && !tngv);
+  c.classList.toggle("tngc", tngv);
   document.querySelectorAll(".tab").forEach(t => { t.hidden = false; });
   if (!has) { c.innerHTML = welcomeHtml(); updateTop(); renderInfo(); return; }
   if (!GED.personInfo(S.db, S.pid)) { S.pid = GED.startPerson(S.db); S.fid = setFamFor(S.pid); }

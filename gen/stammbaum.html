@@ -659,6 +659,16 @@ sup.fns a{padding:2px 4px;margin:-2px -1px;display:inline-block;border-radius:4p
 .ahtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.ahrow{padding:5px 0;border-bottom:1px solid var(--line2);display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
 .ahrow .rel{margin-left:0}.ahrow .bl{font-size:12px;color:var(--muted)}
 
+body.dimside .side{opacity:.32;transition:opacity .15s}
+body.dimside .side:hover,body.dimside .side:focus-within{opacity:.9}
+body.dimside .prow.on.side,body.dimside .pb.focus.side,body.dimside .tb.root.side{opacity:.85}
+body.dimside .fsec.side{opacity:.32}
+body.dimside .dn.side{opacity:.35}
+
+.fchip{display:inline-block;font:500 11.5px/1.3 var(--sans);padding:1px 7px;margin:1px 2px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--accent);cursor:pointer;vertical-align:baseline;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.fchip:hover{background:var(--accent-soft)}.fchip.miss{color:var(--muted);cursor:default;border-style:dashed;background:transparent}
+.mdaitx{margin-top:8px;font-size:12px;min-height:220px}.mdai summary{font-weight:600}
+
 </style>
 </head>
 <body>
@@ -692,7 +702,7 @@ sup.fns a{padding:2px 4px;margin:-2px -1px;display:inline-block;border-radius:4p
     <button class="tab" role="tab" data-view="stats">Statistik</button>
     <button class="tab" role="tab" data-view="media">Medien</button>
     
-  </div><span class="tabtools"><button class="btn sm" id="btnCar" data-act="carOpen" title="Alle Ansichten als drehbaren Kartenring">Ansichten</button><button class="btn sm" id="btnEditP" data-act="t_editp" title="Die gewählte Person bearbeiten (geht auch per Doppelklick)">Person bearbeiten</button><button class="btn sm" id="btnSideL" data-act="t_side" aria-pressed="false" title="Personenliste links ein- oder ausblenden">Personenliste</button><button class="btn sm" id="btnInfo" data-act="t_info" aria-pressed="false" title="Seitenleiste rechts mit Bildern, Quellen und Orten der Person ein- oder ausblenden">Info-Leiste</button><button class="btn sm" id="btnFs" data-act="t_fs" title="Vollbild ein- oder ausschalten">Vollbild</button></span></div>
+  </div><span class="tabtools"><button class="btn sm" id="btnCar" data-act="carOpen" title="Alle Ansichten als drehbaren Kartenring">Ansichten</button><button class="btn sm" id="btnEditP" data-act="t_editp" title="Die gewählte Person bearbeiten (geht auch per Doppelklick)">Person bearbeiten</button><button class="btn sm" id="btnSideL" data-act="t_side" aria-pressed="false" title="Personenliste links ein- oder ausblenden">Personenliste</button><button class="btn sm" id="btnInfo" data-act="t_info" aria-pressed="false" title="Seitenleiste rechts mit Bildern, Quellen und Orten der Person ein- oder ausblenden">Info-Leiste</button><button class="btn sm" id="btnDim" data-act="t_dim" aria-pressed="false" title="Nebenlinien halbtransparent zeigen: nur die direkte Linie der Hauptperson (Vorfahren, Nachkommen, Partner) bleibt deutlich">Nebenlinien abblenden</button><button class="btn sm" id="btnFs" data-act="t_fs" title="Vollbild ein- oder ausschalten">Vollbild</button></span></div>
   <div class="main" id="mainbox">
     <aside id="side">
       <div class="sbtop">
@@ -1616,7 +1626,7 @@ function paintRows() {
     const r = S.listRows[i];
     const p = GED.personInfo(S.db, r.id);
     const yrs = (r.by || r.dy) ? (r.by || "") + "–" + (r.dy || "") : "";
-    html += `<button class="prow${r.id === S.pid ? " on" : ""}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pcol"><span class="pr1"><span class="pn">${E(r.label)}</span><span class="py">${E(yrs)}</span>${qTotal(S.db, r.id)}</span><span class="pr2">${bdLine(S.db, r.id, "b", { noBadge: true, cls: "bl" })}${bdLine(S.db, r.id, "d", { noBadge: true, cls: "bl" })}</span>${relTag(r.id, "pr3")}</span></button>`;
+    html += `<button class="prow${r.id === S.pid ? " on" : ""}${sideCls(r.id)}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pcol"><span class="pr1"><span class="pn">${E(r.label)}</span><span class="py">${E(yrs)}</span>${qTotal(S.db, r.id)}</span><span class="pr2">${bdLine(S.db, r.id, "b", { noBadge: true, cls: "bl" })}${bdLine(S.db, r.id, "d", { noBadge: true, cls: "bl" })}</span>${relTag(r.id, "pr3")}</span></button>`;
   }
   vs.innerHTML = html;
 }
@@ -1648,7 +1658,7 @@ function personBlock(id, famId, ctx, fallbackRole) {
   const par = GED.parentsOf(db, id);
   const surn = [p.name.surn, p.name.given];
   const evs = sortedEvents(p.events);
-  let h = `<section class="pb ${p.sex === "F" ? "fem" : p.sex === "M" ? "mas" : ""}${id === S.pid ? " focus" : ""}">`;
+  let h = `<section class="pb ${p.sex === "F" ? "fem" : p.sex === "M" ? "mas" : ""}${id === S.pid ? " focus" : ""}${sideCls(id)}">`;
   h += `<h3><button data-act="go" data-id="${id}"${famId ? ` data-fam="${famId}"` : ""}>${E(GED.displayName(p.rec))}</button>${mark(ctx, GED.kid(p.rec, "NAME") ? GED.kidsOf(GED.kid(p.rec, "NAME"), "SOUR") : [])}</h3>`;
   h += `<div class="sub"><span>${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${qTotal(db, id)}${relTag(id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
   if (par) {
@@ -1716,7 +1726,7 @@ function renderCard() {
         const c = GED.personInfo(db, cid);
         const bd = c.birt ? c.birt.date.text : (c.chr ? "get. " + c.chr.date.text : "");
         const dd = c.deat ? c.deat.date.text : "";
-        h += `<tr><td class="n">${i + 1}</td><td><span class="sx">${sexSym(c.sex)}</span> <button class="lk" data-act="go" data-id="${cid}">${E(GED.displayName(c.rec))}</button></td><td>${E(bd)}</td><td>${E(dd)}</td><td>${c.fams.length ? '<span title="hat eigene Familie">⚭</span>' : ""}</td></tr>`;
+        h += `<tr class="${sideCls(cid).trim()}"><td class="n">${i + 1}</td><td><span class="sx">${sexSym(c.sex)}</span> <button class="lk" data-act="go" data-id="${cid}">${E(GED.displayName(c.rec))}</button></td><td>${E(bd)}</td><td>${E(dd)}</td><td>${c.fams.length ? '<span title="hat eigene Familie">⚭</span>' : ""}</td></tr>`;
       });
       h += `</tbody></table>`;
     }
@@ -1727,7 +1737,7 @@ function renderCard() {
   if (ctx.list.length) {
     h += `<div class="panel"><h4>Quellen</h4><ol class="fnl">` + ctx.list.map(id => {
       const s = db.get(id), ty = GED.unesc(GED.kval(s, "TYPE"));
-      return `<li><a href="#" data-act="src" data-id="${id}">${E(srcTitle(id))}</a>${ty ? ` <span class="hint">(${E(ty)})</span>` : ""}${S.viewer ? "" : ` <button class="btn sm ghost fnedit" data-act="srcEdit" data-id="${id}" title="Quelle bearbeiten">Bearbeiten</button>`}</li>`;
+      return `<li><a href="#" data-act="src" data-id="${id}">${E(srcTitle(id))}</a> ${srcFilesHtml(id)}${ty ? ` <span class="hint">(${E(ty)})</span>` : ""}${S.viewer ? "" : ` <button class="btn sm ghost fnedit" data-act="srcEdit" data-id="${id}" title="Quelle bearbeiten">Bearbeiten</button>`}</li>`;
     }).join("") + `</ol></div>`;
   }
   return h + `</div>`;
@@ -1827,7 +1837,7 @@ function bdBlock(db, id, noLink) {
   const ps = personSrc(db, id);
   const lines = bdLine(db, id, "b", { fullPlace: true, cls: "bl" }) + bdLine(db, id, "d", { fullPlace: true, cls: "bl" });
   const src = ps.all.length
-    ? `<span class="bsrc"><b>Quellen (${ps.all.length}):</b> ${ps.parts.map(x => `${E(x.label)}: ${x.ids.map(s => noLink ? `<i>${E(srcTitleIn(db, s))}</i>` : `<a href="#" data-act="src" data-id="${s}">${E(srcTitleIn(db, s))}</a>`).join(", ")}`).join(" · ")}</span>`
+    ? `<span class="bsrc"><b>Quellen (${ps.all.length}):</b> ${ps.parts.map(x => `${E(x.label)}: ${x.ids.map(s => noLink ? `<i>${E(srcTitleIn(db, s))}</i>` : `<a href="#" data-act="src" data-id="${s}">${E(srcTitleIn(db, s))}</a>${srcFilesHtml(s, true)}`).join(", ")}`).join(" · ")}</span>`
     : `<span class="bsrc q0">Keine Quelle verknüpft</span>`;
   return `<span class="bdb">${lines}${src}</span>`;
 }
@@ -1929,6 +1939,59 @@ function setMain(id) {
 ACT.setMain = (d) => setMain(d.id || S.pid);
 ACT.pickMain = () => pickPerson({ title: "Hauptperson wählen", onPick: setMain });
 
+/* ---- Nebenlinien abblenden: direkte Linie = Hauptperson, Vorfahren, Nachkommen und Partner der Hauptperson ---- */
+const DIM = { on: lsGet("st.dim", "0") === "1" };
+function directSet() {
+  const db = S.db, main = mainId();
+  return bdMemo(db, "direct:" + main, () => {
+    const set = new Set(relAnc(db, main, 60).keys()), seen = new Set([main]);
+    let cur = [main];
+    while (cur.length) {
+      const nx = [];
+      for (const x of cur) { const p = GED.personInfo(db, x); if (!p) continue;
+        for (const fid of p.fams) { const f = GED.famInfo(db, fid); if (!f) continue;
+          if (x === main) { const sp = GED.spouseIn(db, fid, x); if (sp && sp !== x) set.add(sp); }
+          for (const c of f.children) if (!seen.has(c)) { seen.add(c); set.add(c); nx.push(c); } }
+      }
+      cur = nx;
+    }
+    return set;
+  });
+}
+const isDirect = (id) => !S.db || directSet().has(id);
+const sideCls = (id) => id && S.db && !isDirect(id) ? " side" : "";
+function applyDim() {
+  document.body.classList.toggle("dimside", DIM.on);
+  const b = document.getElementById("btnDim"); if (b) { b.setAttribute("aria-pressed", DIM.on ? "true" : "false"); b.classList.toggle("pri", DIM.on); }
+}
+ACT.t_dim = () => { DIM.on = !DIM.on; lsSet("st.dim", DIM.on ? "1" : "0"); applyDim(); toast(DIM.on ? "Nebenlinien abgeblendet" : "Nebenlinien normal"); };
+document.addEventListener("DOMContentLoaded", applyDim); applyDim();
+
+/* ---- Originaldateien einer Quelle überall anklickbar ---- */
+function srcFileList(sid) {
+  const r = S.db && S.db.get(sid); if (!r || r.tag !== "SOUR") return [];
+  const out = [];
+  for (const o of GED.kidsOf(r, "OBJE")) {
+    let node = o;
+    if (GED.isPtr(o.val)) { const t = S.db.get(o.val); if (!t) continue; node = t; }
+    const files = GED.kidsOf(node, "FILE"); const ttl = GED.unesc(GED.kval(node, "TITL") || "");
+    for (const f of files) { const p = GED.unesc(f.val || ""); if (p && isMediaName(baseName(p))) out.push({ file: p, title: ttl, name: baseName(p) }); }
+  }
+  return out;
+}
+function srcFilesHtml(sid, compact) {
+  const list = srcFileList(sid); if (!list.length) return "";
+  if (!M.idx && (accessToken || LM.list.length) && !M.loading && !M.failed.has("idx")) loadMediaIdx().then(() => { if (S.db) { render._same = true; render(); } }).catch(() => M.failed.add("idx"));
+  if (M._fmIdx !== M.idx) { M._fmIdx = M.idx; M._fm = new Map(); }
+  return list.map(f => {
+    let hit = M._fm.get(f.file); if (hit === undefined) { hit = findMedia(f.file) || null; M._fm.set(f.file, hit); }
+    const label = f.title || f.name;
+    if (hit) return `<button class="fchip" data-act="mview" data-mid="${hit.id}" title="${E(label)} (Datei öffnen)">📎 ${E(compact ? shortFile(f.name) : label)}</button>`;
+    return `<span class="fchip miss" title="${E(M.idx ? "Datei nicht gefunden: " + f.file : "Dateiliste noch nicht geladen. Medienordner verbinden oder bei Google Drive anmelden.")}">📎 ${E(compact ? shortFile(f.name) : label)}${M.idx ? " (nicht gefunden)" : ""}</span>`;
+  }).join(" ");
+}
+const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
+
 /* ============ STAMMBAUM (VORFAHREN) ============ */
 function mainPhotoHit(rec) {
   const o = mediaObjs(rec).find(x => x.prim && IMG_RE.test(baseName(x.file)));
@@ -1966,7 +2029,7 @@ function renderDescList() {
     const bd = bdBlock(db, pid);
     count++;
     const fams = p.fams.filter(f => !path.has(f));
-    if (!fams.length) return `<li class="leaf"><span class="dn">${nm}</span>${bd}</li>`;
+    if (!fams.length) return `<li class="leaf"><span class="dn${sideCls(pid)}">${nm}</span>${bd}</li>`;
     const famLine = (fid) => {
       const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, pid);
       const m = f.marr && f.marr.date.text ? ` <span class="sp">(${E(f.marr.date.text)})</span>` : "";
@@ -1982,9 +2045,9 @@ function renderDescList() {
     };
     let h;
     if (fams.length === 1) {
-      h = `<li><details class="dd" open><summary><span class="dn">${nm} ${famLine(fams[0])}</span>${bd}</summary>${kidsOf(fams[0])}</details></li>`;
+      h = `<li><details class="dd" open><summary><span class="dn${sideCls(pid)}">${nm} ${famLine(fams[0])}</span>${bd}</summary>${kidsOf(fams[0])}</details></li>`;
     } else {
-      h = `<li><details class="dd" open><summary><span class="dn">${nm}</span>${bd}</summary><ul class="desc">` +
+      h = `<li><details class="dd" open><summary><span class="dn${sideCls(pid)}">${nm}</span>${bd}</summary><ul class="desc">` +
         fams.map(fid => `<li><details class="dd" open><summary><span class="dn">${famLine(fid)}</span></summary>${kidsOf(fid)}</details></li>`).join("") + `</ul></details></li>`;
     }
     return h;
@@ -2269,7 +2332,7 @@ function evEditorHtml(w, types, labels) {
 }
 function srcChips(list, scope, i) {
   return `<div class="chips" style="margin-top:4px"><span class="hint" style="margin-right:4px">Quellen:</span>` +
-    list.map((p, j) => `<span class="chip"><span title="${E(srcTitle(p))}">${E(srcTitle(p))}</span><button data-d="srcdel" data-scope="${scope}" data-i="${i}" data-j="${j}" aria-label="Quelle entfernen">×</button></span>`).join("") +
+    list.map((p, j) => `<span class="chip"><span title="${E(srcTitle(p))}">${E(srcTitle(p))}</span>${srcFilesHtml(p, true)}<button data-d="srcdel" data-scope="${scope}" data-i="${i}" data-j="${j}" aria-label="Quelle entfernen">×</button></span>`).join("") +
     `<button class="btn sm ghost" data-d="srcadd" data-scope="${scope}" data-i="${i}">Quelle hinzufügen</button></div>`;
 }
 function notesEditorHtml(w) {
@@ -2741,7 +2804,7 @@ function editSrc(id) {
   SRC_FIELDS.forEach(([tag]) => { w[tag] = GED.unesc(GED.kval(rec, tag)); });
   openDlg({
     title: "Quelle bearbeiten", wide: true, data: { w },
-    body: (d) => `<p class="hint" style="margin-top:0">Kennung ${E(id)}. Medien (Bilddateien) und weitere Felder bleiben unverändert erhalten.</p>` + SRC_FIELDS.map(([tag, label]) =>
+    body: (d) => `<p class="hint" style="margin-top:0">Kennung ${E(id)}. Medien (Bilddateien) und weitere Felder bleiben unverändert erhalten.</p>` + (srcFileList(id).length ? `<div class="srcfiles"><span class="hint">Dateien:</span> ${srcFilesHtml(id)}</div>` : "") + SRC_FIELDS.map(([tag, label]) =>
       `<label class="fld"><span>${E(label)}</span>${MULTI.has(tag) ? `<textarea data-w="${tag}" style="min-height:${tag === "TEXT" ? 120 : 52}px">${E(d.data.w[tag])}</textarea>` : `<input data-w="${tag}" value="${E(d.data.w[tag])}">`}</label>`).join(""),
     buttons: () => [{ id: "raw", label: "GEDCOM-Text" }, { id: "cancel", label: "Abbrechen" }, { id: "save", label: "Speichern", cls: "pri" }],
     onInput: dlgInput,
@@ -5876,7 +5939,7 @@ function renderInfo() {
   h += sec("bilder", "Bilder", real.length, "Bilder", mb);
   /* Quellen */
   const src = infoSources(p);
-  h += sec("quellen", "Quellen", src.size, "Quellen der Person", src.size ? `<ul class="plain">${[...src.entries()].map(([sid, ctx]) => `<li><button class="lk" data-act="src" data-id="${sid}">${E(srcTitle(sid))}</button>${ctx.length ? ` <span class="hint">${E(ctx.join(", "))}</span>` : ""}</li>`).join("")}</ul>` : `<div class="hint">Keine Quellen angegeben.</div>`);
+  h += sec("quellen", "Quellen", src.size, "Quellen der Person", src.size ? `<ul class="plain">${[...src.entries()].map(([sid, ctx]) => `<li><button class="lk" data-act="src" data-id="${sid}">${E(srcTitle(sid))}</button> ${srcFilesHtml(sid, true)}${ctx.length ? ` <span class="hint">${E(ctx.join(", "))}</span>` : ""}</li>`).join("")}</ul>` : `<div class="hint">Keine Quellen angegeben.</div>`);
   /* Orte */
   const pls = new Map();
   const addp = (place, lab, date) => { place = GED.unesc(place || "").trim(); if (!place) return; const a = pls.get(place) || []; a.push(lab + (date && date.y ? " " + date.y : "")); pls.set(place, a); };
@@ -5950,7 +6013,7 @@ function renderPedList() {
       const p = GED.personInfo(db, id);
       const bp = p.birt && p.birt.place ? shortPlace(p.birt.place) : "", dp = p.deat && p.deat.place ? shortPlace(p.deat.place) : "";
       const role = g === 0 ? "" : k % 2 === 0 ? "Vater" : "Mutter";
-      body += `<li class="arow ${p.sex}" data-id="${id}"><span class="kn" title="Kekulé-Nummer">${k}</span><span class="am"><button class="lk" data-act="pedgo" data-id="${id}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${role && g === 1 ? ` <span class="hint">${role}</span>` : ""}${relTag(id)}${bdBlock(db, id)}</span><button class="btn sm ghost" data-act="card" data-id="${id}" title="Familienblatt">Blatt</button></li>`;
+      body += `<li class="arow ${p.sex}${sideCls(id)}" data-id="${id}"><span class="kn" title="Kekulé-Nummer">${k}</span><span class="am"><button class="lk" data-act="pedgo" data-id="${id}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${role && g === 1 ? ` <span class="hint">${role}</span>` : ""}${relTag(id)}${bdBlock(db, id)}</span><button class="btn sm ghost" data-act="card" data-id="${id}" title="Familienblatt">Blatt</button></li>`;
     }
     body += `</ul></section>`;
   });
@@ -6072,7 +6135,7 @@ function renderPedTree() {
     const ph = f.hit ? `<span class="ph"><img data-mid="${f.hit.id}" alt=""></span>` : "", kin = pedKin(f.id);
     const arL = k === 1 && kin.kids.length ? `<span class="ar" data-act="t_pchild" title="Zum Kind">${ARROW[ori][1]}</span>` : "";
     const arR = Math.floor(Math.log2(k)) === maxG && kin.par && (kin.par.father || kin.par.mother) ? `<span class="ar" data-act="pedgo" data-id="${f.id}" title="Diese Person in die Mitte setzen und weitere Vorfahren zeigen">${ARROW[ori][0]}</span>` : "";
-    boxes += `<button class="tb ${f.pi.sex}${k === 1 ? " root" : ""}" style="${st}" data-act="pedgo" data-id="${f.id}" title="${E(f.nm)}\n${E(bdText(db, f.id))}\nKekulé-Nummer ${k}">
+    boxes += `<button class="tb ${f.pi.sex}${k === 1 ? " root" : ""}${sideCls(f.id)}" style="${st}" data-act="pedgo" data-id="${f.id}" title="${E(f.nm)}\n${E(bdText(db, f.id))}\nKekulé-Nummer ${k}">
       <span class="kk">${k}</span>${arL}${arR}${ph}<span class="tx"><span class="nm">${E(f.nm)}</span>${f.bl}${f.dl}${f.rl}</span>${qTotal(db, f.id)}</button>`;
   });
   const opts = [3, 4, 5, 6, 7].map(n => `<option value="${n}"${n === N ? " selected" : ""}>${n}</option>`).join("");
@@ -6127,7 +6190,7 @@ function renderDescTree() {
     const ph = n.hit ? `<span class="ph"><img data-mid="${n.hit.id}" alt=""></span>` : "";
     const spl = n.sp.map(s => `<span class="pl sp2">⚭ ${s.id ? `<span class="splk" data-act="pedgo" data-id="${s.id}">${E(s.nm)}</span>` : E(s.nm)}${s.yrs ? " " + E(s.yrs) : ""}</span>`).join("");
     const arR = n.more ? `<span class="ar" data-act="dgo" data-id="${n.id}" title="${n.more} weitere Kinder: diese Person in die Mitte setzen">${ARROW[ori][0]}</span>` : "";
-    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}">${arR}${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${n.rl}${spl}</span>${qTotal(db, n.id)}</button>`;
+    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}${sideCls(n.id)}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}">${arR}${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${n.rl}${spl}</span>${qTotal(db, n.id)}</button>`;
   }
   const opts = [2, 3, 4, 5, 6, 8].map(n => `<option value="${n}"${n === S.depth ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
@@ -6167,7 +6230,7 @@ function ringsSvg(secs, root, o) {
   for (const s of secs) {
     const r0 = r0c + (s.g - 1) * RW, r1 = r0 + RW;
     if (s.empty) { body += `<path class="fsec empty" d="${sector(r0, r1, s.a0, s.a1)}"/>`; continue; }
-    body += `<path class="fsec ${s.sex || "U"}${s.more ? " more" : ""}" d="${sector(r0, r1, s.a0, s.a1)}" data-act="${o.act}" data-id="${s.id}"><title>${E(s.nm)}${s.yrs ? "\n" + E(s.yrs) : ""}${s.extra ? "\n" + E(s.extra) : ""}${s.id ? "\n" + E(bdText(S.db, s.id)) : ""}</title></path>`;
+    body += `<path class="fsec ${s.sex || "U"}${s.more ? " more" : ""}${s.id ? sideCls(s.id) : ""}" d="${sector(r0, r1, s.a0, s.a1)}" data-act="${o.act}" data-id="${s.id}"><title>${E(s.nm)}${s.yrs ? "\n" + E(s.yrs) : ""}${s.extra ? "\n" + E(s.extra) : ""}${s.id ? "\n" + E(bdText(S.db, s.id)) : ""}</title></path>`;
     const am = (s.a0 + s.a1) / 2, rm = (r0 + r1) / 2, span = s.a1 - s.a0, arc = rm * span * RAD;
     const tangential = arc >= RW * 1.1 && s.g <= 3;
     if (tangential) {
@@ -7303,6 +7366,7 @@ function openInfo() {
       <dt>Personen</dt><dd>${counts.INDI || 0}</dd><dt>Familien</dt><dd>${counts.FAM || 0}</dd><dt>Quellen</dt><dd>${counts.SOUR || 0}</dd><dt>Notizsätze</dt><dd>${counts.NOTE || 0}</dd>
       <dt>Geänderte Sätze</dt><dd>${edited} (alle übrigen werden unverändert wieder ausgegeben)</dd></dl>
       ${db.warnings.length ? `<div class="panel"><h4>Hinweise beim Einlesen</h4>${db.warnings.slice(0, 20).map(w => `<div class="issue">${E(w)}</div>`).join("")}</div>` : ""}
+      <div class="panel"><h4>Markdown-Import</h4><p class="hint" style="margin-top:0">Personen und Familien lassen sich unter Mehr, Personen per Markdown anlegen, aus einer eingerückten Liste einlesen. Die folgenden Regeln sind so geschrieben, dass eine KI daraus passenden Text erzeugen kann.</p>${mdAiBlockHtml()}</div>
       <p class="hint">Bilder und andere Medien werden nur als Verweis mit Dateipfad geführt. Die Pfade bleiben beim Bearbeiten unverändert, damit Reunion sie nach dem Re-Import wiederfindet.</p>`,
     buttons: () => [{ id: "close", label: "Schließen" }]
   });
@@ -7697,7 +7761,7 @@ ACT.qsrc = (d, e) => {
   const who = d.pid ? nameOf(d.pid) : "";
   const dlg = openDlg({
     title: who ? "Quellen von " + who : "Quellen", noFocus: true,
-    body: () => `<div class="qdl">` + groups.map(g => `<div class="qg"><h4>${E(g.label)}</h4>` + g.ids.map(i => `<div class="qr"><span class="qt">${E(srcTitle(i))}</span><button class="btn sm" data-d="show" data-id="${i}">Anzeigen</button>${S.viewer ? "" : `<button class="btn sm pri" data-d="edit" data-id="${i}">Bearbeiten</button>`}</div>`).join("") + `</div>`).join("") + `</div>`,
+    body: () => `<div class="qdl">` + groups.map(g => `<div class="qg"><h4>${E(g.label)}</h4>` + g.ids.map(i => `<div class="qr"><span class="qt">${E(srcTitle(i))} ${srcFilesHtml(i, true)}</span><button class="btn sm" data-d="show" data-id="${i}">Anzeigen</button>${S.viewer ? "" : `<button class="btn sm pri" data-d="edit" data-id="${i}">Bearbeiten</button>`}</div>`).join("") + `</div>`).join("") + `</div>`,
     buttons: () => [{ id: "close", label: "Schließen" }],
     on: {
       show: (dd, t) => { dd.close(); ACT.src({ id: t.dataset.id }); },
@@ -7923,9 +7987,10 @@ ACT.mdImport = () => {
       <details class="mdhelp"><summary>Schreibweise</summary><div class="hint">
         <p>Geburt <code>*</code>, Taufe <code>~</code>, Tod <code>†</code>, Beerdigung <code>begr.</code>, danach Datum und Ort: <code>* 12.3.1901 Köln</code>. Datum als <code>12.3.1901</code>, <code>3.1901</code>, <code>1901</code>, <code>12. März 1901</code>, mit <code>um</code>, <code>vor</code>, <code>nach</code>.</p>
         <p>Weitere Angaben nach Semikolon: <code>; Beruf: Schreiner</code>, <code>Wohnort</code>, <code>Religion</code>, <code>Quelle</code>, <code>Notiz</code>, <code>Geschlecht: w</code>. Geschlecht geht auch mit ♂ oder ♀ oder (m) und (w).</p>
-        <p>Partner: <code>⚭ Anna Müller geb. Schmidt</code>, die Heirat in Klammern am Ende: <code>(1925 Köln)</code>. Ein Kind nur mit Vornamen bekommt den Nachnamen des Vaters.</p>
+        <p>Partner: <code>⚭ Anna Müller geb. Schmidt</code> (statt ⚭ geht auch <code>oo</code>), die Heirat in Klammern am Ende: <code>(1925 Köln)</code>. Ein Kind nur mit Vornamen bekommt den Nachnamen des Vaters.</p>
         <p>Ist das Geschlecht nicht angegeben, gilt die Person über dem ⚭ als Mann. Bei einer Tochter mit Partner schreibst du deshalb ♀ oder (w) dazu.</p>
         <p>Eine Person, die es schon gibt, trägst du mit „Vorhandene Person einfügen“ ein. Sie bekommt dann die neuen Kinder oder Partner, ihre Daten bleiben unverändert. Dubletten werden in der Vorschau erkannt.</p></div></details>
+      ${mdAiBlockHtml()}
       <div id="mdprev" class="mdprev"></div>`,
     buttons: () => [{ id: "go", label: "Anlegen", cls: "pri" }, { id: "close", label: "Abbrechen" }],
     after: (d) => {
@@ -7949,6 +8014,63 @@ ACT.mdImport = () => {
     }
   });
 };
+
+/* ---- Regeln für eine KI: so formuliert, dass ein Sprachmodell daraus Text für den Import erzeugen kann ---- */
+const MD_AI_RULES = [
+  "AUFGABE",
+  "Wandle die Personen und Familien aus meinem Quelltext in eine Markdown-Liste um, die ich in meinen Stammbaum-Editor importiere. Gib als Antwort NUR die fertige Liste in einem einzigen Codeblock aus, ohne Erklärungen davor oder danach.",
+  "",
+  "GRUNDAUFBAU",
+  "- Jede Zeile ist genau eine Person. Jede Zeile beginnt mit \"- \" (Bindestrich und Leerzeichen).",
+  "- Die Einrückung zeigt die Verwandtschaft. Pro Ebene genau 2 Leerzeichen, keine Tabulatoren.",
+  "- Kinder stehen eine Ebene tiefer als ihre Eltern. Hat das Paar einen Partner angegeben, stehen die Kinder unter der Partnerzeile, sonst direkt unter dem Elternteil.",
+  "- Ein Partner steht eine Ebene tiefer unter der Person und beginnt nach dem \"- \" mit \"oo \" (zwei kleine o) und einem Leerzeichen. Das Zeichen ⚭ ist gleichwertig.",
+  "- Mehrere Ehen: mehrere \"oo\"-Zeilen untereinander auf gleicher Ebene, die Kinder jeder Ehe stehen unter der jeweiligen Partnerzeile.",
+  "- Mehrere voneinander unabhängige Familien: jede beginnt als eigene Zeile ganz links ohne Einrückung.",
+  "- Älteste Generation zuerst, Kinder nach Geburt aufsteigend.",
+  "",
+  "ANGABEN EINER PERSON (alle außer dem Namen sind freiwillig)",
+  "Format einer Zeile: Vorname Nachname * Geburt ~ Taufe † Tod begr. Beerdigung ; Schlüssel: Wert ; Schlüssel: Wert",
+  "- Name zuerst. Der letzte Wortteil ist der Nachname. Namensvorsätze gehören zum Nachnamen (von, van, de, zu). Mehrere Vornamen stehen vor dem Nachnamen. Alternativ \"Nachname, Vorname\".",
+  "- Frauen: Geburtsname mit \"geb.\" angeben: Anna Müller geb. Schmidt. Als Nachname zählt der Geburtsname (Schmidt).",
+  "- Ein Kind, das nur einen Vornamen hat, bekommt automatisch den Nachnamen des Vaters. Wenn der Nachname abweicht, schreibe ihn voll aus.",
+  "- Marker, jeweils mit Leerzeichen davor und danach: \"*\" Geburt, \"~\" Taufe, \"†\" Tod, \"begr.\" Beerdigung. Nach dem Marker folgt zuerst das Datum, dann der Ort: * 12.3.1901 Köln. Der Ort darf mit \"in\" eingeleitet werden. Nur Ort ohne Datum ist erlaubt: * Köln.",
+  "- Datumsformate: 12.3.1901 oder 3.1901 oder 1901 oder 12. März 1901 oder März 1901. Ungefähr: um 1850 (auch ca. 1850). Vor oder nach: vor 1900, nach 1900. Keine anderen Formate.",
+  "- Geschlecht: ♂ oder ♀ direkt hinter dem Namen, oder (m) bzw. (w). Das Geschlecht nur angeben, wenn es sicher feststeht. WICHTIG: Ist das Geschlecht nicht angegeben, gilt die Person über einer \"oo\"-Zeile als Mann. Bei jeder Frau, die eine \"oo\"-Zeile mit Partner hat, daher ♀ setzen.",
+  "- Weitere Angaben folgen nach einem Semikolon, jeweils \"Schlüssel: Wert\". Erlaubte Schlüssel: Beruf, Wohnort, Religion, Quelle, Notiz, Geschlecht (Wert m oder w), Taufe, Beerdigung. Mehrere Werte desselben Schlüssels als weitere Semikolon-Teile wiederholen. Innerhalb eines Wertes darf kein Semikolon stehen.",
+  "- Quelle: Titel der Quelle ohne Semikolon, zum Beispiel Quelle: Kirchenbuch Köln St. Johann 1901. Gleiche Titel werden zu einer Quelle zusammengefasst, also immer exakt gleich schreiben.",
+  "- Partnerzeile: oo Name * Geburt † Tod (Datum Ort der Heirat). Die Heirat steht in runden Klammern ganz am Ende der Zeile, zuerst das Datum, dann der Ort.",
+  "- Runde Klammern in einer Zeile ohne \"oo\" werden als Notiz übernommen. Verwende sie dort sparsam.",
+  "",
+  "STRENGE REGELN",
+  "- Erfinde nichts. Fehlende Angaben einfach weglassen, nicht raten, keine Platzhalter wie \"unbekannt\" oder \"?\" und keine Nachnamen aus dem Zusammenhang ergänzen.",
+  "- Unsichere Jahre als \"um 1850\" schreiben, nicht als genaues Datum.",
+  "- Keine Überschriften, keine Tabellen, keine Fettschrift, keine Nummerierung, keine Kommentarzeilen, keine Leerzeilen in der Liste.",
+  "- Jede Person nur einmal. Dieselbe Person darf nicht unter mehreren Eltern oder Partnern wiederholt werden.",
+  "",
+  "BEISPIEL",
+  "Quelltext: Hans Müller, geboren 12. März 1901 in Köln, gestorben 5. Juli 1980 in Bonn, Schreiner. Er heiratete 1925 in Köln Anna Schmidt (geboren 1903 in Bonn). Kinder: Karl (geboren 1926 in Köln) und Berta (geboren 14. Februar 1928), Berta heiratete Fritz Weber (geboren 1925), deren Sohn Peter wurde 1953 geboren.",
+  "Ausgabe:",
+  "- Hans Müller * 12.3.1901 Köln † 5.7.1980 Bonn; Beruf: Schreiner",
+  "  - oo Anna Schmidt ♀ * 1903 Bonn (1925 Köln)",
+  "    - Karl * 1926 Köln",
+  "    - Berta ♀ * 14.2.1928",
+  "      - oo Fritz Weber * 1925",
+  "        - Peter * 1953"
+].join("\n");
+function mdAiBlockHtml() {
+  return `<details class="mdhelp mdai"><summary>Regeln für eine KI (zum Kopieren)</summary><div class="hint"><p>Kopiere diesen Text in ein KI-Programm, füge danach deinen Quelltext (zum Beispiel eine Ahnentafel oder ein Abschnitt aus einem Buch) an und lass die KI die Liste erzeugen. Die Antwort kopierst du hier ins Textfeld.</p>
+    <button class="btn sm pri" data-act="mdAiCopy">Regeln kopieren</button> <span class="hint" id="mdAiMsg"></span>
+    <textarea class="mdtx mdaitx" readonly rows="10" onclick="this.select()">${E(MD_AI_RULES)}</textarea></div></details>`;
+}
+ACT.mdAiCopy = async (d, e) => {
+  const box = e && e.target && e.target.closest(".mdai"), ta = box && box.querySelector("textarea"), msg = box && box.querySelector("#mdAiMsg");
+  let okc = false;
+  try { await navigator.clipboard.writeText(MD_AI_RULES); okc = true; } catch (x) { if (ta) { ta.focus(); ta.select(); try { okc = document.execCommand("copy"); } catch (y) {} } }
+  if (msg) msg.textContent = okc ? "Kopiert." : "Kopieren nicht möglich, markiere den Text unten und kopiere ihn mit Strg+C.";
+  toast(okc ? "Regeln kopiert" : "Bitte den Text unten markieren und mit Strg+C kopieren");
+};
+VIEW_OK.add("mdAiCopy");
 
 /* ============ AHNENSPITZEN UND UNVERBUNDENE EINTRÄGE ============ */
 /* Ahnenspitzen: Vorfahren einer Person, deren Eltern nicht bekannt sind */

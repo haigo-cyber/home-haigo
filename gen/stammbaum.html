@@ -2057,7 +2057,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 09:01"; /* BUILD_ID=29.10.2026 09:01 */
+const BUILD = "29.10.2026 09:16"; /* BUILD_ID=29.10.2026 09:16 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -5440,6 +5440,7 @@ function placeIndex() {
     const m = new Map();
     const add = (pl, pid, label) => {
       pl = GED.unesc(pl).trim(); if (!pl) return;
+      if (isUnknownPlace(pl)) { m.skipped = (m.skipped || 0) + 1; return; }
       let e = m.get(pl); if (!e) m.set(pl, e = { name: pl, ids: new Map(), n: 0 });
       e.n++;
       if (pid) { const a = e.ids.get(pid) || []; if (!a.includes(label)) a.push(label); e.ids.set(pid, a); }
@@ -5467,7 +5468,7 @@ function tPlaces() {
   let list = [...idx.values()].filter(e => !q || fz(e.name).includes(q));
   list.sort(TG.plSort === "n" ? (a, b) => b.ids.size - a.ids.size : (a, b) => fz(a.name) < fz(b.name) ? -1 : 1);
   const withGeo = [...idx.values()].filter(e => geoOf(e.name)).length;
-  let h = tHead("Orte", `${idx.size} Orte, davon ${withGeo} mit Koordinaten. Koordinaten stammen aus den Ortsangaben von Reunion oder aus der Suche bei OpenStreetMap.`) + `<div class="tbar"><input id="t_plq" type="search" placeholder="Ort filtern" value="${E(TG.plQ)}" autocomplete="off">
+  let h = tHead("Orte", `${idx.size} Orte, davon ${withGeo} mit Koordinaten.${idx.skipped ? ` ${idx.skipped} Ortsangaben mit „unbekannt“ o. ä. sind nicht aufgeführt.` : ""} Koordinaten stammen aus den Ortsangaben von Reunion oder aus der Suche bei OpenStreetMap.`) + `<div class="tbar"><input id="t_plq" type="search" placeholder="Ort filtern" value="${E(TG.plQ)}" autocomplete="off">
     <div class="chips"><button class="chip${TG.plSort === "alpha" ? " on" : ""}" data-act="t_plsort" data-s="alpha">A bis Z</button><button class="chip${TG.plSort === "n" ? " on" : ""}" data-act="t_plsort" data-s="n">nach Personen</button></div>
     <button class="btn${TG.plMap ? " pri" : ""}" data-act="t_plmap">${TG.plMap ? "Karte ausblenden" : "Karte zeigen"}</button>${S.viewer ? "" : `<button class="btn" data-act="t_geo"${TG.geoBusy ? " disabled" : ""}>${TG.geoBusy ? "Suche läuft …" : "Fehlende Koordinaten suchen"}</button>`}</div>`;
   if (TG.plMap) h += `<div class="panel" style="padding:8px"><div id="t_map" class="mapbox"></div><div class="hint" id="t_mapnote" style="margin-top:6px"></div></div>`;
@@ -5628,7 +5629,7 @@ ACT.t_ics = () => {
 /* ---------------- Statistik ---------------- */
 function statsCompute() {
   return memo("stats", () => {
-    const S0 = { n: 0, m: 0, f: 0, u: 0, withB: 0, withD: 0, years: [], lifespans: [], ageList: [], births: {}, ageBuckets: {}, sur: new Map(), giv: new Map(), bpl: new Map(), occ: new Map(), kids: {}, marrM: [], marrF: [], media: 0, src: 0 };
+    const S0 = { n: 0, m: 0, f: 0, u: 0, withB: 0, withD: 0, years: [], lifespans: [], ageList: [], births: {}, ageBuckets: {}, sur: new Map(), giv: new Map(), bpl: new Map(), occ: new Map(), skip: { sur: 0, giv: 0, bpl: 0, occ: 0 }, kids: {}, marrM: [], marrF: [], media: 0, src: 0 };
     const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
     for (const r of S.db.ofTag("INDI")) {
       const p = pinf(r.xref); S0.n++;
@@ -5636,10 +5637,10 @@ function statsCompute() {
       const b = byear(p), d = dyear(p);
       if (b) { S0.withB++; S0.years.push(b); const dec = Math.floor(b / 10) * 10; S0.births[dec] = (S0.births[dec] || 0) + 1; }
       if (d) S0.withD++;
-      if (p.name.surn) bump(S0.sur, p.name.surn.trim());
-      const g = p.name.given.trim().split(/\s+/)[0]; if (g) bump(S0.giv, g);
-      if (p.birt && p.birt.place) bump(S0.bpl, shortPlace(p.birt.place));
-      for (const e of p.events) if ((e.tag === "OCCU" || e.tag === "BERUF") && e.val) bump(S0.occ, e.val.trim());
+      { const sn = (p.name.surn || "").trim(); if (sn) { if (isUnknownVal(sn)) S0.skip.sur++; else bump(S0.sur, sn); } }
+      const g = p.name.given.trim().split(/\s+/)[0]; if (g) { if (isUnknownVal(g)) S0.skip.giv++; else bump(S0.giv, g); }
+      if (p.birt && p.birt.place) { if (isUnknownPlace(p.birt.place)) S0.skip.bpl++; else bump(S0.bpl, shortPlace(p.birt.place)); }
+      for (const e of p.events) if ((e.tag === "OCCU" || e.tag === "BERUF") && e.val) { if (isUnknownVal(e.val)) S0.skip.occ++; else bump(S0.occ, e.val.trim()); }
       if (p.birt && p.birt.date.y && p.deat && p.deat.date.y) {
         const a = ageAt(p, p.deat.date);
         if (a != null && a <= 110) { S0.lifespans.push(a); S0.ageList.push({ id: r.xref, a }); const bk = Math.floor(a / 10) * 10; S0.ageBuckets[bk] = (S0.ageBuckets[bk] || 0) + 1; }
@@ -5673,6 +5674,7 @@ function colChart(obj, label) {
   const max = Math.max(...all.map(k => obj[k] || 0), 1);
   return `<div class="cols">${all.map(k => `<div class="col" title="${label.fmt(k)}: ${obj[k] || 0}"><i style="height:${((obj[k] || 0) / max * 100).toFixed(1)}%"></i><span>${label.short(k)}</span></div>`).join("")}</div>`;
 }
+const skipNote = (n) => n ? `<div class="hint">Nicht gewertet: ${n} ${n === 1 ? "Eintrag" : "Einträge"} mit „unbekannt“, „NN“ oder ähnlichem Platzhalter.</div>` : "";
 function tStats() {
   const s = statsCompute(), top = (m, n) => [...m.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, n);
   const pct = (x, y) => y ? Math.round(x / y * 100) + " %" : "—";
@@ -5683,7 +5685,7 @@ function tStats() {
   h += `<div class="scards">${card("Personen", s.n.toLocaleString("de-DE"), `${pct(s.m, s.n)} männlich, ${pct(s.f, s.n)} weiblich${s.u ? ", " + s.u + " unbekannt" : ""}`)}${card("Familien", s.fams.toLocaleString("de-DE"), `Ø ${f1(s.withKids ? s.kidsTotal / s.withKids : null)} Kinder je Familie mit Kindern`)}${card("Quellen", s.src.toLocaleString("de-DE"), `${s.media} Bild- oder Dokumentverweise bei Personen`)}${card("Zeitraum der Geburten", minY ? minY + " bis " + maxY : "—", `${pct(s.withB, s.n)} der Personen mit Geburtsjahr`)}${card("Ø Lebensalter", f1(avg(s.lifespans)) , `aus ${s.lifespans.length} Personen mit beiden Jahren`)}${card("Ø Heiratsalter", `${f1(avg(s.marrM))} / ${f1(avg(s.marrF))}`, "Männer / Frauen")}</div>`;
   h += `<div class="panel"><h4>Geburten je Jahrzehnt</h4>${colChart(s.births, { step: 10, fmt: k => k + "er", short: k => (k % 50 === 0 ? String(k) : "") })}</div>`;
   h += `<div class="panel"><h4>Lebensalter bei Tod</h4>${colChart(s.ageBuckets, { step: 10, fmt: k => k + " bis " + (k + 9) + " Jahre", short: k => String(k) })}</div>`;
-  h += `<div class="sgrid"><div class="panel"><h4>Häufigste Nachnamen</h4>${barRows(top(s.sur, 15))}</div><div class="panel"><h4>Häufigste Vornamen</h4>${barRows(top(s.giv, 15))}</div><div class="panel"><h4>Häufigste Geburtsorte</h4>${barRows(top(s.bpl, 15))}</div><div class="panel"><h4>Häufigste Berufe</h4>${barRows(top(s.occ, 15))}</div>
+  h += `<div class="sgrid"><div class="panel"><h4>Häufigste Nachnamen</h4>${barRows(top(s.sur, 15))}${skipNote(s.skip.sur)}</div><div class="panel"><h4>Häufigste Vornamen</h4>${barRows(top(s.giv, 15))}${skipNote(s.skip.giv)}</div><div class="panel"><h4>Häufigste Geburtsorte</h4>${barRows(top(s.bpl, 15))}${skipNote(s.skip.bpl)}</div><div class="panel"><h4>Häufigste Berufe</h4>${barRows(top(s.occ, 15))}${skipNote(s.skip.occ)}</div>
     <div class="panel"><h4>Kinder je Familie</h4>${barRows(Object.keys(s.kids).map(Number).sort((a, b) => a - b).map(k => [k === 12 ? "12 und mehr" : String(k), s.kids[k]]))}</div>
     <div class="panel"><h4>Am ältesten geworden</h4><div class="tlist">${oldest.map(o => prow(o.id, o.a + " Jahre")).join("") || `<div class="hint">Keine Angaben.</div>`}</div></div></div>`;
   return h;
@@ -7123,6 +7125,16 @@ function ageAtEv(p, date) {
   if (b && date && date.key != null && date.key < b.key) return null;   // Ereignis vor der Geburt: kein Alter
   const r = b ? ageCalc(b, date) : null; return r ? ageWord(r) : "--";
 }
+
+/* ---------- Platzhalter wie "unbekannt", "NN" oder "?" sind keine Namen und keine Orte ---------- */
+/* Sie dürfen nicht als häufigster Nachname oder Geburtsort gezählt und nicht bei Kartendiensten gesucht werden. */
+const UNK_RE = /^(unbekannt[a-zäöüß]*( ort| name| angabe)?|unbek\.?|unknown|n\.n\.?|n\. ?n\.?|nn|n\/a|k\.a\.?|k\. ?a\.?|ohne( name| angabe| ort)?|keine angaben?|nicht bekannt|nicht angegeben|nicht benannt|namenlos|nomen nescio|nescio|s\.n\.?|sine nomine|name unbekannt|vorname unbekannt|nachname unbekannt|ort unbekannt|geburtsort unbekannt|\?+|\.{2,}|…+|-+|–+|—+|_+)$/i;
+function isUnknownVal(s) {
+  s = GED.unesc(String(s == null ? "" : s)).replace(/[\[\]()"'„“”]/g, "").trim().toLowerCase();
+  return !!s && (UNK_RE.test(s) || UNK_RE.test(s.replace(/[.,;:!]+$/, "")));
+}
+/* Ort: unbekannt, wenn die erste Angabe ein Platzhalter ist (zum Beispiel "unbekannt, Deutschland") */
+const isUnknownPlace = (pl) => isUnknownVal(String(pl == null ? "" : pl).split(",")[0]);
 
 /* ---------- Erweitertes Familienblatt ---------- */
 const EXT = { on: lsGet("st.ext", "0") === "1" };

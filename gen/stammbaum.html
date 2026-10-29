@@ -734,6 +734,8 @@ input,textarea{color:var(--ink)}
 .ylegend{font-size:11px;margin-left:4px}
 .prow.on .yx{color:var(--yx)}
 
+.mdopt{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:6px 0}.mdopt label{display:flex;gap:6px;align-items:center}.mdgrp{margin:8px 0}.mdgh{font-weight:600;padding:4px 0;border-bottom:2px solid var(--line)}
+
 </style>
 </head>
 <body>
@@ -2066,7 +2068,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 09:42"; /* BUILD_ID=29.10.2026 09:42 */
+const BUILD = "29.10.2026 10:11"; /* BUILD_ID=29.10.2026 10:11 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -7558,7 +7560,7 @@ function openMenu() {
   if ($("menu")) { $("menu").remove(); return; }
   const m = document.createElement("div");
   m.className = "menu"; m.id = "menu";
-  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="pdf">PDF neben dem Stammbaum lesen</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><button data-m="md">Personen per Markdown anlegen</button><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
+  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="pdf">PDF neben dem Stammbaum lesen</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><button data-m="md">Neue Familienzweige per Markdown anlegen</button><button data-m="mde">Daten per Markdown ergänzen oder löschen</button><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
   if (S.viewer) m.querySelectorAll("button[data-m]").forEach(x => { if (!["info"].includes(x.dataset.m)) x.remove(); });
   m.querySelectorAll("hr").forEach(x => { if (S.viewer) x.remove(); });
   document.body.appendChild(m);
@@ -7566,7 +7568,7 @@ function openMenu() {
   m.addEventListener("click", (e) => {
     const b = e.target.closest("[data-m]"); if (!b) return;
     m.remove(); $("btnMenu").setAttribute("aria-expanded", "false");
-    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, pdf: () => ACT.pdfMenu(), places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), ahnen: () => ACT.ahnen() })[b.dataset.m]();
+    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, pdf: () => ACT.pdfMenu(), places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), mde: () => ACT.mdEdit(), ahnen: () => ACT.ahnen() })[b.dataset.m]();
   });
 }
 document.addEventListener("click", (e) => { const m = $("menu"); if (m && !e.target.closest("#menu") && e.target.id !== "btnMenu") { m.remove(); $("btnMenu").setAttribute("aria-expanded", "false"); } });
@@ -8453,6 +8455,486 @@ ACT.twLeft = (d) => { TWL.kind = ["ped", "desc"].includes(d.m) ? d.m : "card"; l
 { const _c = ACT.card, _p = ACT.ped;
   ACT.card = (d, e) => { if (S.view !== "two") return _c(d, e); TWL.kind = "card"; lsSet("st.twL", "card"); go(d.id); };
   ACT.ped = (d, e) => { if (S.view !== "two") return _p(d, e); TWL.kind = "ped"; lsSet("st.twL", "ped"); go(d.id); }; }
+
+/* ============ MARKDOWN: BESTEHENDE PERSONEN ERGÄNZEN (mit Löschschaltern) ============ */
+const MDE_EV = [["BIRT", "*"], ["CHR", "~"], ["DEAT", "†"], ["BURI", "⚰"]];
+const MDE_EVNAME = { BIRT: "Geburt", CHR: "Taufe", DEAT: "Tod", BURI: "Bestattung" };
+const MDE_MARK = { "*": "BIRT", "~": "CHR", "†": "DEAT", "⚰": "BURI" };
+const MDE_KEY = { geburt: "BIRT", taufe: "CHR", tod: "DEAT", gestorben: "DEAT", bestattung: "BURI", beerdigung: "BURI", beruf: "OCCU", wohnort: "RESI", religion: "RELI", konfession: "RELI", notiz: "NOTE", anmerkung: "NOTE", quelle: "SOUR", geschlecht: "SEX", vater: "Vater", mutter: "Mutter", ehepartner: "Ehepartner", partner: "Ehepartner", kind: "Kind" };
+const MDE_ATTRS = { OCCU: "Beruf", RESI: "Wohnort", RELI: "Religion", NOTE: "Notiz", SOUR: "Quelle" };
+const MDE_MAXP = 150;
+const mdeNorm = (s) => (s || "").replace(/\s+/g, " ").trim();
+const mdeF = (s) => GED.fold(mdeNorm(s));
+
+/* Datum für die Maske: so, dass mdDate es wieder einlesen kann; anderes bleibt unverändert */
+function mdeFmtDate(raw) {
+  raw = (raw || "").trim(); if (!raw) return "";
+  const M = GED.MON; let q = "", s = raw, m;
+  if ((m = /^(ABT|BEF|AFT) (.+)$/i.exec(s))) { q = { ABT: "um ", BEF: "vor ", AFT: "nach " }[m[1].toUpperCase()]; s = m[2]; }
+  if ((m = /^(\d{1,2}) ([A-Za-z]{3}) (\d{3,4})$/.exec(s)) && M.includes(m[2].toUpperCase())) return q + (+m[1]) + "." + (M.indexOf(m[2].toUpperCase()) + 1) + "." + m[3];
+  if ((m = /^([A-Za-z]{3}) (\d{3,4})$/.exec(s)) && M.includes(m[1].toUpperCase())) return q + (M.indexOf(m[1].toUpperCase()) + 1) + "." + m[2];
+  if (/^\d{3,4}$/.test(s)) return q + s;
+  return raw;
+}
+const mdeEvOf = (node) => node ? { date: (GED.kval(node, "DATE") || "").trim(), place: GED.unesc(GED.kval(node, "PLAC") || "").trim() } : null;
+const mdeEvLine = (mark, e) => { const d = mdeFmtDate(e.date); return mark + " " + d + (e.place ? (d ? " in " : "") + e.place : ""); };
+const mdeMarrSeg = (e) => { const d = mdeFmtDate(e.date); return e.place || d ? "; Heirat: " + d + (e.place ? (d ? " in " : "") + e.place : "") : ""; };
+function mdeNameTxt(g, s) { const n = [g, s].filter(Boolean).join(" "), r = mdName(n); return (r.given === (g || "") && r.surn === (s || "")) ? n : (s || "") + ", " + (g || ""); }
+function mdeLife(db, id) { try { const t = GED.lifeSpan(db, id); return /\d/.test(t) ? " (" + t + ")" : ""; } catch (e) { return ""; } }
+const mdeRelTxt = (db, id) => id + " " + (GED.displayName(db.get(id)) || "") + mdeLife(db, id);
+/* Wert eines Attributknotens */
+function mdeAttrVal(db, tag, n) {
+  let v;
+  if (tag === "RESI") v = GED.unesc(GED.kval(n, "PLAC") || n.val || "");
+  else if (tag === "NOTE") { if (GED.isPtr(n.val)) return null; v = GED.noteText(db, n); }
+  else if (tag === "SOUR") { if (!GED.isPtr(n.val)) return null; const s = db.get(n.val); if (!s) return null; v = GED.unesc(GED.kval(s, "TITL") || ""); }
+  else v = GED.unesc(n.val || "");
+  return v.replace(/\s*\n\s*/g, " ¶ ").trim();
+}
+
+/* Text einer Person erzeugen: Liste aus Zeilen { k: Schlüssel, t: Text } */
+function mdeGen(db, id) {
+  const p = GED.personInfo(db, id), rec = p.rec, L = [];
+  for (const [tag, mark] of MDE_EV) { const e = mdeEvOf(GED.kid(rec, tag)); if (e && (e.date || e.place)) L.push({ k: "EV:" + tag, t: mdeEvLine(mark, e) }); }
+  if (p.sex === "M" || p.sex === "F") L.push({ k: "SEX", t: "Geschlecht: " + (p.sex === "M" ? "m" : "w") });
+  for (const tag of ["OCCU", "RESI", "RELI", "NOTE", "SOUR"]) for (const n of GED.kidsOf(rec, tag)) { const v = mdeAttrVal(db, tag, n); if (v) L.push({ k: tag + ":" + mdeF(v), t: MDE_ATTRS[tag] + ": " + v, node: n }); }
+  const pa = GED.parentsOf(db, id);
+  if (pa) { if (pa.father) L.push({ k: "REL:Vater:" + pa.father, t: "Vater: " + mdeRelTxt(db, pa.father) }); if (pa.mother) L.push({ k: "REL:Mutter:" + pa.mother, t: "Mutter: " + mdeRelTxt(db, pa.mother) }); }
+  for (const fid of p.fams) {
+    const f = GED.famInfo(db, fid), sp = f.husb === id ? f.wife : f.husb, m = mdeEvOf(GED.kid(f.rec, "MARR"));
+    if (sp) L.push({ k: "REL:Ehepartner:" + sp, t: "Ehepartner: " + mdeRelTxt(db, sp) + (m ? mdeMarrSeg(m) : ""), fam: fid }); else L.push({ k: "CTX", t: "Ehepartner: -", fam: fid });
+    for (const c of f.children) L.push({ k: "REL:Kind:" + c, t: "Kind: " + mdeRelTxt(db, c), fam: fid });
+  }
+  return { head: mdeNameTxt(p.name.given, p.name.surn), lines: L, p };
+}
+function mdeText(db, ids) {
+  const out = ["# Ergänzen: Jede Person hat eine Überschrift mit ## und ihrer Kennung. Zeilen darunter ändern, ergänzen oder (mit Löschschalter) entfernen.", "# Neue Person: ## Vorname Nachname * 1900 Ort  (ohne Kennung). Neue Verwandte: Zeile Kind: Vorname * 1900 Ort", ""];
+  for (const id of ids) { const g = mdeGen(db, id); out.push("## " + id + " " + g.head); g.lines.forEach(l => out.push(l.t)); out.push(""); }
+  return out.join("\n");
+}
+/* Umfang: Startperson, Generationen, Ehepartner, Geschwister */
+function mdeScope(db, start, o) {
+  const set = new Set(), add = (id) => { if (id && db.get(id) && db.get(id).tag === "INDI") set.add(id); };
+  const par = (id) => { const r = [], p = GED.personInfo(db, id); (p ? p.famc : []).forEach(f => { const fi = GED.famInfo(db, f); fi && [fi.husb, fi.wife].forEach(x => x && r.push(x)); }); return r; };
+  const kids = (id) => { const r = [], p = GED.personInfo(db, id); (p ? p.fams : []).forEach(f => { const fi = GED.famInfo(db, f); fi && fi.children.forEach(x => r.push(x)); }); return r; };
+  add(start);
+  let lay = [start]; for (let g = 0; g < (o.up || 0); g++) { const nx = []; lay.forEach(i => par(i).forEach(x => { if (!set.has(x)) { add(x); nx.push(x); } })); lay = nx; }
+  lay = [start]; for (let g = 0; g < (o.down || 0); g++) { const nx = []; lay.forEach(i => kids(i).forEach(x => { if (!set.has(x)) { add(x); nx.push(x); } })); lay = nx; }
+  if (o.sibs) par(start).length && GED.personInfo(db, start).famc.forEach(f => { const fi = GED.famInfo(db, f); fi && fi.children.forEach(add); });
+  if (o.spouses) [...set].forEach(id => { const p = GED.personInfo(db, id); (p ? p.fams : []).forEach(f => { const fi = GED.famInfo(db, f); fi && add(fi.husb === id ? fi.wife : fi.husb); }); });
+  return [...set];
+}
+
+/* ---------- Text einlesen ---------- */
+function mdeLine(s) {
+  s = mdeNorm(s.replace(/^[-+•]\s+/, ""));
+  let m;
+  if ((m = /^([*~†⚰])\s*(.*)$/.exec(s))) { const d = mdDate(m[2]); return { kind: "EV", tag: MDE_MARK[m[1]], date: d.ged, place: d.rest, t: s }; }
+  if ((m = /^([A-Za-zÄÖÜäöüß]+)\s*:\s*(.*)$/.exec(s))) {
+    const key = MDE_KEY[m[1].toLowerCase()]; if (!key) return null;
+    const val = m[2].trim();
+    if (["BIRT", "CHR", "DEAT", "BURI"].includes(key)) { const d = mdDate(val); return { kind: "EV", tag: key, date: d.ged, place: d.rest, t: s }; }
+    if (key === "SEX") return { kind: "SEX", val: /^(m|männlich)/i.test(val) ? "M" : /^(w|f|weiblich)/i.test(val) ? "F" : "", t: s };
+    if (["Vater", "Mutter", "Ehepartner", "Kind"].includes(key)) return { kind: "REL", rel: key, body: val, t: s };
+    return { kind: "ATTR", tag: key, val: val.replace(/\s*¶\s*/g, "\n"), t: s };
+  }
+  return null;
+}
+function mdeParse(text) {
+  const blocks = [], warns = []; let cur = null, m;
+  text.replace(/\r/g, "").split("\n").forEach((raw, i) => {
+    const s = raw.trim(); if (!s) return;
+    if ((m = /^##\s+(.*)$/.exec(s))) {
+      const im = /^(@[A-Za-z0-9_]+@)\s*(.*)$/.exec(m[1].trim());
+      cur = { ln: i + 1, id: im ? im[1] : null, head: im ? im[2].trim() : m[1].trim(), lines: [] }; blocks.push(cur); return;
+    }
+    if (/^#/.test(s)) return;
+    if (!cur) { warns.push("Zeile " + (i + 1) + ": Angabe vor der ersten Überschrift (##) wird ignoriert"); return; }
+    const L = mdeLine(s); if (!L) { warns.push("Zeile " + (i + 1) + ": nicht verstanden: " + s.slice(0, 60)); return; }
+    L.ln = i + 1; cur.lines.push(L);
+  });
+  return { blocks, warns };
+}
+
+/* ---------- Plan: alles, was sich ändern würde, als Liste von Schritten ---------- */
+function mdeEvSame(a, b) { return mdeNorm(a.date).toUpperCase() === mdeNorm(b.date).toUpperCase() && mdeF(a.place) === mdeF(b.place); }
+const mdeYear = (d) => { const m = /\d{3,4}/.exec(d || ""); return m ? m[0] : ""; };
+function mdeSetKidAt(tx, node, tag, val, after) {
+  let k = GED.kid(node, tag);
+  if (!val) { if (k) node.kids.splice(node.kids.indexOf(k), 1); return; }
+  if (!k) { k = { tag, val: "", kids: [] }; const i = after ? node.kids.findIndex(x => x.tag === after) : -1; node.kids.splice(i >= 0 ? i + 1 : 0, 0, k); }
+  k.val = val;
+}
+function mdeIns(rec, node, before) { const i = rec.kids.findIndex(k => before.includes(k.tag)); if (i < 0) rec.kids.push(node); else rec.kids.splice(i, 0, node); }
+const MDE_BEFORE = ["FAMC", "FAMS", "NOTE", "SOUR", "OBJE", "CHAN", "_UID", "REFN"];
+function mdeNodeFor(tag, v, tx) {
+  if (tag === "RESI") return { tag, val: "", kids: [{ tag: "PLAC", val: GED.esc(v), kids: [] }] };
+  if (tag === "SOUR") return { tag, val: mdSource(tx, v), kids: [] };
+  return { tag, val: GED.esc(v), kids: [] };
+}
+function mdeFindNode(db, rec, tag, v) { const f = mdeF(v); return GED.kidsOf(rec, tag).find(n => { const x = mdeAttrVal(db, tag, n); return x != null && mdeF(x) === f; }); }
+const mdeSexRole = (sx) => sx;
+
+function mdePlan(text, o) {
+  const db = S.db, { blocks, warns } = mdeParse(text);
+  const ops = [], newP = new Map(), choice = o.choice || {};
+  let skippedDel = 0, unchanged = 0;
+  const NAME = (id) => E(GED.displayName(db.get(id)) || id);
+  const push = (op) => { op.sel = choice[op.key] !== undefined ? choice[op.key] : op.def; ops.push(op); return op; };
+  /* Ziel einer Beziehungszeile: Kennung oder neue Person */
+  const target = (body, rel, inherit, xref) => {
+    const im = /^(@[A-Za-z0-9_]+@)/.exec(body);
+    if (im) {
+      const r = db.get(im[1]); if (!r || r.tag !== "INDI") { warns.push(rel + ": " + im[1] + " gibt es nicht in der Datei"); return null; }
+      const hm = /;\s*Heirat\s*:\s*(.*)$/i.exec(body); let marr = null;
+      if (hm) { const d = mdDate(hm[1]); marr = { date: d.ged, place: d.rest }; }
+      return { ref: { id: im[1] }, marr };
+    }
+    const r = mdParseLine(body, { inherit: inherit || "" }), P = r.P;
+    if (!P.sex) P.sex = rel === "Vater" ? "M" : rel === "Mutter" ? "F" : "";
+    if (!P.given && !P.surn) { warns.push(rel + ": kein Name erkannt: " + body.slice(0, 40)); return null; }
+    const key = "new|" + mdeF(body);
+    if (!newP.has(key)) {
+      const cands = mdCands(P), best = cands[0];
+      const op = push({ key, phase: 0, grp: "", chip: cands.length ? "warn" : "new", chipT: cands.length ? "mögliche Dublette" : "neue Person", pnew: true, P,
+        html: `<b>${E([P.given, P.surn].filter(Boolean).join(" "))}</b> <span class="hint">${E(mdEvText(P))}</span>`,
+        opts: [["new", "Neu anlegen"], ...cands.map(c => [c.id, "Vorhandene verwenden: " + c.label + (c.by || c.dy ? " (" + (c.by || "") + "–" + (c.dy || "") + ")" : "")]), ["skip", "Auslassen"]],
+        def: best && best.score >= 7 ? best.id : "new" });
+      op.run = (tx, ctx) => { if (op.sel === "skip") { ctx.map.set(key, null); return; } ctx.map.set(key, op.sel === "new" ? mdBuildPerson(tx, { P }, "") : op.sel); ctx.made += op.sel === "new" ? 1 : 0; };
+      newP.set(key, { op, P, marr: r.marr });
+    }
+    return { ref: { tmp: key }, marr: r.marr, P };
+  };
+  const res = (ctx, ref) => ref ? (ref.id ? ref.id : (ctx.map.get(ref.tmp) || null)) : null;
+  const sexOf = (tx, id) => { const r = tx.db.get(id); return r ? GED.kval(r, "SEX") : ""; };
+  const findFam = (tx, a, b) => tx.db.ofTag("FAM").find(f => { const h = GED.kval(f, "HUSB"), w = GED.kval(f, "WIFE"); return (h === a && w === b) || (h === b && w === a); });
+  const mkFam = (tx, a, b) => { const sa = a && sexOf(tx, a), sb = b && sexOf(tx, b); let h = a, w = b; if (sa === "F" || sb === "M") { h = b; w = a; } return GED.addFamily(tx, h || null, w || null); };
+  const setMarr = (tx, f, m) => {
+    if (!m || (!m.date && !m.place)) return; tx.touch(f);
+    let n = GED.kid(f, "MARR"); if (!n) { n = { tag: "MARR", val: "", kids: [] }; mdeIns(f, n, ["CHAN", "_UID"]); }
+    mdeSetKidAt(tx, n, "DATE", m.date, null); mdeSetKidAt(tx, n, "PLAC", m.place ? GED.esc(m.place) : "", "DATE");
+  };
+  const famNoSp = (tx, x) => { const p = GED.personInfo(tx.db, x); return (p ? p.fams : []).find(fid => { const f = GED.famInfo(tx.db, fid); return f && !(f.husb && f.wife); }); };
+  const addKidTo = (tx, ctx, X, spRef, C) => {
+    if (!X || !C || X === C) return;
+    let F;
+    if (spRef && spRef.ref) { const T = res(ctx, spRef.ref); if (!T) return; const ex = findFam(tx, X, T); F = ex ? ex.xref : mkFam(tx, X, T).xref; }
+    else if (spRef === null) { F = famNoSp(tx, X) || mkFam(tx, X, null).xref; }
+    else { const p = GED.personInfo(tx.db, X); F = p && p.fams.length ? p.fams[0] : mkFam(tx, X, null).xref; }
+    if (!(GED.kidsOf(tx.db.get(F), "CHIL").some(k => k.val === C))) GED.addChild(tx, F, C);
+  };
+  const grpOf = (id) => id;
+
+  /* ---- Beziehungen eines Blocks ---- */
+  const planRels = (Xref, Xid, lines, genLines, grp, delOk) => {
+    const gk = new Map(); (genLines || []).forEach(l => { if (l.k.startsWith("REL:")) gk.set(l.k, l); });
+    const seen = new Set(); let spCtx; const Xp = Xid ? GED.personInfo(db, Xid) : null;
+    const xsurn = Xp ? Xp.name.surn : "";
+    let parOp = null;
+    const roleLines = { Vater: null, Mutter: null };
+    for (const L of lines.filter(l => l.kind === "REL")) {
+      const isCtx = L.rel === "Ehepartner" && /^(-|–|unbekannt|\?)?\s*$/.test(L.body.replace(/;.*$/, "").trim());
+      if (isCtx) { spCtx = null; continue; }
+      const inh = L.rel === "Vater" ? xsurn : L.rel === "Kind" ? (Xp && Xp.sex === "M" ? xsurn : (spCtx && spCtx.P ? spCtx.P.surn : "") || (Xp && Xp.sex === "F" ? "" : xsurn)) : "";
+      const T = target(L.body, L.rel, inh, Xref); if (!T) continue;
+      const tid = T.ref.id, k = tid ? "REL:" + L.rel + ":" + tid : null;
+      if (L.rel === "Ehepartner") spCtx = T;
+      if (k) seen.add(k);
+      const matched = k && gk.has(k);
+      if (matched && L.t === gk.get(k).t) continue;               // unverändert
+      if (matched) {                                              // gleiche Person, Heiratsangabe verändert
+        if (L.rel === "Ehepartner" && T.marr && (T.marr.date || T.marr.place)) {
+          const f = db.get(gk.get(k).fam), cur = mdeEvOf(GED.kid(f, "MARR"));
+          if (!cur || !mdeEvSame(cur, T.marr)) {
+            const op = push({ key: Xid + "|marr|" + tid, phase: 1, grp, chip: cur ? "warn2" : "new", chipT: cur ? "Heirat weicht ab" : "Heirat ergänzen",
+              html: `Heirat mit ${NAME(tid)}: ${cur ? E(mdeFmtDate(cur.date) + (cur.place ? " in " + cur.place : "")) + " → " : ""}<b>${E(mdeFmtDate(T.marr.date) + (T.marr.place ? " in " + T.marr.place : ""))}</b>`,
+              opts: cur ? [["replace", "Ersetzen"], ["keep", "Behalten"]] : [["add", "Übernehmen"], ["skip", "Auslassen"]], def: cur ? "keep" : "add" });
+            op.run = (tx) => { if (op.sel === "keep" || op.sel === "skip") return; setMarr(tx, tx.db.get(gk.get(k).fam), T.marr); };
+          }
+        }
+        continue;
+      }
+      /* neue Beziehung */
+      const lab = { Vater: "Vater", Mutter: "Mutter", Ehepartner: "Ehepartner", Kind: "Kind" }[L.rel];
+      const tname = tid ? NAME(tid) : `<b>${E([T.P.given, T.P.surn].filter(Boolean).join(" "))}</b> <span class="hint">(neue Person)</span>`;
+      const kk = (Xid || Xref.tmp) + "|rel|" + L.rel + "|" + (tid || T.ref.tmp);
+      if (L.rel === "Vater" || L.rel === "Mutter") {
+        const role = L.rel === "Vater" ? "HUSB" : "WIFE";
+        if (Xp && Xp.famc.length) {
+          const F = db.get(Xp.famc[0]), occ = GED.kval(F, role);
+          if (occ && occ === tid) continue;
+          if (occ) {
+            const op = push({ key: kk, phase: 1, grp, chip: "warn", chipT: "abweichend", html: `${lab}: bisher ${NAME(occ)}, im Text ${tname}`, opts: [["keep", "Behalten"], ["replace", "Ersetzen"]], def: "keep" });
+            op.run = (tx, ctx) => { if (op.sel !== "replace") return; const T2 = res(ctx, T.ref); if (T2) GED.setSpouse(tx, F.xref, role, T2); };
+          } else {
+            const op = push({ key: kk, phase: 1, grp, chip: "new", chipT: "ergänzen", html: `${lab}: ${tname}`, opts: [["add", "Übernehmen"], ["skip", "Auslassen"]], def: "add" });
+            op.run = (tx, ctx) => { if (op.sel === "skip") return; const T2 = res(ctx, T.ref); if (T2) GED.setSpouse(tx, F.xref, role, T2); };
+          }
+        } else { roleLines[L.rel] = { T, tname }; }
+        continue;
+      }
+      if (L.rel === "Ehepartner") {
+        const op = push({ key: kk, phase: 1, grp, chip: "new", chipT: "ergänzen", html: `Ehepartner: ${tname}${T.marr && (T.marr.date || T.marr.place) ? ` <span class="hint">(Heirat ${E(mdeFmtDate(T.marr.date) + (T.marr.place ? " in " + T.marr.place : ""))})</span>` : ""}`, opts: [["add", "Übernehmen"], ["skip", "Auslassen"]], def: "add" });
+        op.run = (tx, ctx) => {
+          if (op.sel === "skip") return; const X = res(ctx, Xref), T2 = res(ctx, T.ref); if (!X || !T2 || X === T2) return;
+          let f = findFam(tx, X, T2); if (!f) f = mkFam(tx, X, T2); setMarr(tx, f, T.marr && !GED.kid(f, "MARR") ? T.marr : null);
+        };
+        continue;
+      }
+      /* Kind */
+      let warn = "";
+      if (tid) { const cp = GED.personInfo(db, tid); if (cp && cp.famc.length && Xp && !cp.famc.some(f => Xp.fams.includes(f))) warn = "hat schon andere Eltern"; }
+      const sp = spCtx;
+      const op = push({ key: kk, phase: 2, grp, chip: warn ? "warn" : "new", chipT: warn || "ergänzen", html: `Kind: ${tname}${sp && sp.ref ? ` <span class="hint">(mit ${sp.ref.id ? NAME(sp.ref.id) : "neuer Person"})</span>` : ""}`,
+        opts: warn ? [["skip", "Auslassen"], ["add", "Zusätzlich verknüpfen"]] : [["add", "Übernehmen"], ["skip", "Auslassen"]], def: warn ? "skip" : "add" });
+      op.run = (tx, ctx) => { if (op.sel === "skip") return; addKidTo(tx, ctx, res(ctx, Xref), sp === undefined ? undefined : sp, res(ctx, T.ref)); };
+    }
+    /* Eltern für eine Person ohne Elternfamilie */
+    if (roleLines.Vater || roleLines.Mutter) {
+      const fa = roleLines.Vater, mo = roleLines.Mutter;
+      const op = push({ key: (Xid || Xref.tmp) + "|rel|Eltern", phase: 1, grp, chip: "new", chipT: "ergänzen", html: `Eltern: ${[fa && fa.tname, mo && mo.tname].filter(Boolean).join(" und ")}`, opts: [["add", "Übernehmen"], ["skip", "Auslassen"]], def: "add" });
+      op.run = (tx, ctx) => {
+        if (op.sel === "skip") return; const X = res(ctx, Xref), A = fa && res(ctx, fa.T.ref), B = mo && res(ctx, mo.T.ref); if (!X || (!A && !B)) return;
+        let f;
+        if (A && B) f = findFam(tx, A, B);
+        else { const one = A || B, role = A ? "HUSB" : "WIFE", other = A ? "WIFE" : "HUSB"; f = tx.db.ofTag("FAM").find(x => GED.kval(x, role) === one && !GED.kval(x, other)); }
+        if (!f) f = GED.addFamily(tx, A || null, B || null);
+        GED.addChild(tx, f.xref, X);
+      };
+    }
+    /* fehlende Beziehungen (nur mit Löschschalter) */
+    for (const [k, l] of gk) {
+      if (seen.has(k)) continue;
+      const [, rel, tid] = k.split(":");
+      if (!delOk) { skippedDel++; continue; }
+      let html, run;
+      if (rel === "Kind") { html = `Kind ${NAME(tid)} wird von dieser Person gelöst <span class="hint">(die Person bleibt erhalten)</span>`; run = (tx) => { const x = tx.db.get(Xid); GED.personInfo(tx.db, Xid).fams.forEach(fid => { if (GED.kidsOf(tx.db.get(fid), "CHIL").some(c => c.val === tid)) GED.removeChild(tx, fid, tid); }); }; }
+      else if (rel === "Ehepartner") {
+        const f = db.get(l.fam), nk = f ? GED.kidsOf(f, "CHIL").length : 0;
+        html = `Verbindung zu Ehepartner ${NAME(tid)} wird gelöst${nk ? ` <span class="hint">(Familie bleibt wegen ${nk} Kind${nk === 1 ? "" : "ern"} bestehen)</span>` : ` <span class="hint">(die leere Familie wird entfernt)</span>`}`;
+        run = (tx) => { const ff = tx.db.get(l.fam); if (!ff) return; if (GED.kidsOf(ff, "CHIL").length) GED.setSpouse(tx, l.fam, GED.kval(ff, "HUSB") === tid ? "HUSB" : "WIFE", null); else GED.deleteRecord(tx, ff); };
+      } else { html = `${rel} ${NAME(tid)} wird von dieser Person gelöst`; run = (tx) => { const pa = GED.parentsOf(tx.db, Xid); if (!pa) return; const f = tx.db.get(pa.fam); if (!f) return; const role = GED.kval(f, "HUSB") === tid ? "HUSB" : "WIFE"; if ((role === "HUSB" ? pa.mother : pa.father)) GED.setSpouse(tx, pa.fam, role, null); else GED.removeChild(tx, pa.fam, Xid); }; }
+      const op = push({ key: Xid + "|reldel|" + k, phase: 3, grp, chip: "del", chipT: "löschen", html, opts: [["del", "Entfernen"], ["keep", "Behalten"]], def: "del" });
+      op.run = (tx) => { if (op.sel === "del") run(tx); };
+    }
+  };
+
+  /* ---- Blöcke ---- */
+  const inText = new Set();
+  for (const b of blocks) {
+    if (!b.id) {                                    // neue Person
+      const r = mdParseLine(b.head, {}), P = r.P;
+      if (!P.given && !P.surn) { warns.push("Zeile " + b.ln + ": Überschrift ohne Namen"); continue; }
+      for (const L of b.lines) {
+        if (L.kind === "EV") P.ev[L.tag] = { date: L.date, place: L.place };
+        else if (L.kind === "SEX") P.sex = L.val;
+        else if (L.kind === "ATTR") { const m = { OCCU: "occ", RESI: "resi", RELI: "reli", NOTE: "notes", SOUR: "srcs" }[L.tag]; P[m].push(L.val); }
+      }
+      const key = "blk|" + b.ln;
+      const cands = mdCands(P), best = cands[0];
+      const op = push({ key, phase: 0, grp: "", chip: cands.length ? "warn" : "new", chipT: cands.length ? "mögliche Dublette" : "neue Person", html: `<b>${E([P.given, P.surn].filter(Boolean).join(" "))}</b> <span class="hint">${E(mdEvText(P))}</span>`,
+        opts: [["new", "Neu anlegen"], ...cands.map(c => [c.id, "Vorhandene verwenden: " + c.label + (c.by || c.dy ? " (" + (c.by || "") + "–" + (c.dy || "") + ")" : "")]), ["skip", "Auslassen"]], def: best && best.score >= 7 ? best.id : "new" });
+      op.run = (tx, ctx) => { if (op.sel === "skip") { ctx.map.set(key, null); return; } ctx.map.set(key, op.sel === "new" ? mdBuildPerson(tx, { P }, "") : op.sel); ctx.made += op.sel === "new" ? 1 : 0; };
+      planRels({ tmp: key }, null, b.lines, null, "", false);
+      continue;
+    }
+    const rec = db.get(b.id);
+    if (!rec || rec.tag !== "INDI") { warns.push("Zeile " + b.ln + ": " + b.id + " gibt es nicht in der Datei, Block ignoriert"); continue; }
+    if (inText.has(b.id)) { warns.push("Zeile " + b.ln + ": " + b.id + " steht mehrfach, die weiteren Blöcke werden ignoriert"); continue; }
+    inText.add(b.id);
+    const id = b.id, G = mdeGen(db, id), grp = id, p = G.p, delA = !!o.delA;
+    const used = new Set(), tl = b.lines.slice();
+    /* unveränderte Zeilen abhaken */
+    const genLeft = [];
+    for (const g of G.lines) { const i = tl.findIndex((l, ix) => !used.has(ix) && l.t === g.t); if (i >= 0) used.add(i); else genLeft.push(g); }
+    const txtLeft = tl.filter((l, ix) => !used.has(ix) && l.kind !== "REL");
+    const relTxt = b.lines.filter(l => l.kind === "REL");
+    /* Name */
+    if (mdeNorm(b.head) && mdeNorm(b.head) !== mdeNorm(G.head)) {
+      const nm = mdName(mdeNorm(b.head), ""), cur = p.name;
+      if (nm.given !== (cur.given || "") || nm.surn !== (cur.surn || "")) {
+        const op = push({ key: id + "|name", phase: 1, grp, chip: "warn2", chipT: "Name ändert sich", html: `${E(G.head)} → <b>${E(nm.given + " " + nm.surn)}</b>`, opts: [["chg", "Ändern"], ["keep", "Behalten"]], def: "chg" });
+        op.run = (tx) => {
+          if (op.sel !== "chg") return; const n = GED.kid(rec, "NAME"); if (!n) return; tx.touch(rec);
+          n.val = GED.buildName(GED.esc(nm.given), GED.esc(nm.surn), GED.esc(cur.nsfx || ""));
+          [["GIVN", nm.given], ["SURN", nm.surn]].forEach(([t, v]) => { const k = GED.kid(n, t); if (k) k.val = GED.esc(v); });
+        };
+      }
+    }
+    /* Ereignisse */
+    for (const [tag] of MDE_EV) if (GED.kidsOf(rec, tag).length > 1) warns.push(NAME(id).replace(/&[a-z]+;/g, "") + ": mehrere Einträge für " + MDE_EVNAME[tag] + ", angezeigt und bearbeitet wird nur der erste");
+    for (const [tag, mark] of MDE_EV) {
+      const T = txtLeft.filter(l => l.kind === "EV" && l.tag === tag), g = genLeft.find(x => x.k === "EV:" + tag), e0 = mdeEvOf(GED.kid(rec, tag));
+      if (T.length > 1) warns.push("Zeile " + T[1].ln + ": " + MDE_EVNAME[tag] + " steht mehrfach, nur die erste Angabe wird verwendet");
+      if (T.length) {
+        const n = { date: T[0].date, place: T[0].place };
+        if (e0 && (e0.date || e0.place) && mdeEvSame(e0, n)) continue;
+        const cur = e0 && (e0.date || e0.place) ? e0 : null;
+        const lessExact = cur && cur.date && ((DATE_EXACT.test(cur.date) && !DATE_EXACT.test(n.date) && (!n.date || mdeYear(n.date) === mdeYear(cur.date))) || !n.date);
+        const show = (e) => E(mdeFmtDate(e.date) + (e.place ? (e.date ? " in " : "") + e.place : ""));
+        const op = push({ key: id + "|ev|" + tag, phase: 1, grp, chip: cur ? "warn2" : "new", chipT: cur ? (lessExact ? "weniger genau" : "weicht ab") : "ergänzen",
+          html: `${MDE_EVNAME[tag]}: ${cur ? show(cur) + " → " : ""}<b>${show(n)}</b>`, opts: cur ? [["replace", "Ersetzen"], ["keep", "Behalten"]] : [["add", "Übernehmen"], ["skip", "Auslassen"]], def: cur ? (lessExact ? "keep" : "replace") : "add" });
+        op.run = (tx) => {
+          if (op.sel === "keep" || op.sel === "skip") return; tx.touch(rec);
+          let node = GED.kid(rec, tag);
+          if (!node) { node = { tag, val: "", kids: [] }; mdeIns(rec, node, MDE_BEFORE); }
+          mdeSetKidAt(tx, node, "DATE", n.date, null); mdeSetKidAt(tx, node, "PLAC", n.place ? GED.esc(n.place) : "", "DATE");
+        };
+      } else if (g) {
+        if (!delA) { skippedDel++; continue; }
+        const node = GED.kid(rec, tag), extra = node && node.kids.some(k => k.tag !== "DATE" && k.tag !== "PLAC");
+        const op = push({ key: id + "|evdel|" + tag, phase: 3, grp, chip: "del", chipT: "löschen", html: `${MDE_EVNAME[tag]} „${E(g.t.slice(2))}“ wird gelöscht${extra ? ` <span class="hint">(mit Quellen oder Notizen am Ereignis)</span>` : ""}`, opts: [["del", "Löschen"], ["keep", "Behalten"]], def: "del" });
+        op.run = (tx) => { if (op.sel !== "del") return; const nd = GED.kid(rec, tag); if (nd) { tx.touch(rec); rec.kids.splice(rec.kids.indexOf(nd), 1); } };
+      }
+    }
+    /* Geschlecht */
+    { const T = txtLeft.find(l => l.kind === "SEX"), g = genLeft.find(x => x.k === "SEX");
+      if (T && T.val && T.val !== p.sex) {
+        const op = push({ key: id + "|sex", phase: 1, grp, chip: p.sex ? "warn2" : "new", chipT: p.sex ? "weicht ab" : "ergänzen", html: `Geschlecht: ${p.sex ? (p.sex === "M" ? "m" : "w") + " → " : ""}<b>${T.val === "M" ? "m" : "w"}</b>`, opts: p.sex ? [["replace", "Ersetzen"], ["keep", "Behalten"]] : [["add", "Übernehmen"], ["skip", "Auslassen"]], def: p.sex ? "keep" : "add" });
+        op.run = (tx) => { if (op.sel === "keep" || op.sel === "skip") return; tx.touch(rec); let n = GED.kid(rec, "SEX"); if (!n) { n = { tag: "SEX", val: "", kids: [] }; const i = rec.kids.findIndex(k => k.tag === "NAME"); rec.kids.splice(i + 1, 0, n); } n.val = T.val; };
+      } else if (!T && g) {
+        if (!delA) skippedDel++;
+        else { const op = push({ key: id + "|sexdel", phase: 3, grp, chip: "del", chipT: "löschen", html: "Geschlecht wird entfernt", opts: [["del", "Entfernen"], ["keep", "Behalten"]], def: "del" }); op.run = (tx) => { if (op.sel !== "del") return; const n = GED.kid(rec, "SEX"); if (n) { tx.touch(rec); rec.kids.splice(rec.kids.indexOf(n), 1); } }; }
+      }
+    }
+    /* Beruf, Wohnort, Religion, Notiz, Quelle */
+    for (const tag of ["OCCU", "RESI", "RELI", "NOTE", "SOUR"]) {
+      const T = txtLeft.filter(l => l.kind === "ATTR" && l.tag === tag).filter(l => l.val), Gs = genLeft.filter(x => x.k.startsWith(tag + ":"));
+      const addT = [], pair = [];
+      T.forEach(l => { if (G.lines.some(g => g.k === tag + ":" + mdeF(l.val.replace(/\n/g, " ¶ ")))) return; addT.push(l); });
+      const gl = Gs.slice();
+      while (addT.length && gl.length) pair.push([gl.shift(), addT.shift()]);
+      const label = MDE_ATTRS[tag];
+      for (const [g, l] of pair) {
+        const old = g.t.slice(label.length + 2);
+        const op = push({ key: id + "|" + tag + "|chg|" + g.k, phase: 1, grp, chip: "warn2", chipT: "ändert sich", html: `${label}: ${E(old)} → <b>${E(l.val.replace(/\n/g, " ¶ "))}</b>`, opts: [["replace", "Ersetzen"], ["add", "Zusätzlich ergänzen"], ["keep", "Behalten"]], def: "replace" });
+        op.run = (tx) => {
+          if (op.sel === "keep") return; tx.touch(rec); const ov = mdeAttrVal(tx.db, tag, g.node), nn = mdeNodeFor(tag, l.val, tx);
+          if (op.sel === "replace") { const idx = rec.kids.indexOf(g.node); if (idx >= 0) { if (tag === "NOTE" || tag === "SOUR") rec.kids.splice(idx, 1, nn); else { nn.kids.push(...g.node.kids.filter(k => k.tag !== "PLAC")); rec.kids.splice(idx, 1, nn); } } else mdeIns(rec, nn, MDE_BEFORE); }
+          else mdeIns(rec, nn, tag === "SOUR" ? ["CHAN", "_UID"] : MDE_BEFORE);
+        };
+      }
+      for (const l of addT) {
+        const op = push({ key: id + "|" + tag + "|add|" + mdeF(l.val), phase: 1, grp, chip: "new", chipT: "ergänzen", html: `${label}: <b>${E(l.val.replace(/\n/g, " ¶ "))}</b>`, opts: [["add", "Übernehmen"], ["skip", "Auslassen"]], def: "add" });
+        op.run = (tx) => { if (op.sel === "skip") return; tx.touch(rec); mdeIns(rec, mdeNodeFor(tag, l.val, tx), tag === "SOUR" ? ["CHAN", "_UID"] : MDE_BEFORE); };
+      }
+      for (const g of gl) {
+        if (!delA) { skippedDel++; continue; }
+        const extra = g.node.kids.some(k => k.tag !== "PLAC");
+        const op = push({ key: id + "|" + tag + "|del|" + g.k, phase: 3, grp, chip: "del", chipT: "löschen", html: `${E(g.t)} wird gelöscht${extra ? ` <span class="hint">(mit weiteren Angaben daran)</span>` : ""}`, opts: [["del", "Löschen"], ["keep", "Behalten"]], def: "del" });
+        op.run = (tx) => { if (op.sel !== "del") return; const i = rec.kids.indexOf(g.node); if (i >= 0) { tx.touch(rec); rec.kids.splice(i, 1); } };
+      }
+    }
+    planRels({ id }, id, relTxt, G.lines, grp, delA);
+    if (!ops.some(x => x.grp === grp)) unchanged++;
+  }
+  /* Personen, deren Block aus dem Text verschwunden ist */
+  let pdelSkipped = 0;
+  const gone = (o.scope || []).filter(id => !inText.has(id) && db.get(id));
+  if (gone.length) {
+    if (!blocks.length) warns.push("Der Text enthält keine Person. Es wird nichts gelöscht.");
+    else for (const id of gone) {
+      if (!o.delP) { pdelSkipped++; continue; }
+      const p = GED.personInfo(db, id), refs = GED.countRefs(db, id);
+      const op = push({ key: id + "|pdel", phase: 4, grp: "", chip: "del", chipT: "Person löschen", html: `<b>${E(GED.displayName(db.get(id)))}</b> <span class="hint">${E(mdeLife(db, id).trim())} · ${refs} Verweis${refs === 1 ? "" : "e"} in der Datei</span>`, opts: [["del", "Aus dem Stammbaum löschen"], ["keep", "Behalten"]], def: "del" });
+      op.run = (tx) => { if (op.sel !== "del") return; const r = tx.db.get(id); if (r) GED.deleteRecord(tx, r); };
+    }
+  }
+  /* Personen-Neuanlage steht am Anfang, ohne Gruppe */
+  return { ops, warns, skippedDel, pdelSkipped, unchanged, blocks: blocks.length };
+}
+
+/* ---------- Anzeige ---------- */
+function mdePreviewHtml(plan, scopeNames) {
+  const sel = plan.ops.filter(o => !["skip", "keep"].includes(o.sel));
+  const nDel = sel.filter(o => o.chip === "del").length, nNew = sel.length - nDel;
+  let h = `<div class="mdsum">${plan.ops.length ? `<b>${plan.ops.length}</b> Änderung${plan.ops.length === 1 ? "" : "en"} erkannt (${nNew} Ergänzungen oder Änderungen, ${nDel} Löschungen)` : "Keine Änderungen erkannt."} ${plan.unchanged ? `· ${plan.unchanged} Person${plan.unchanged === 1 ? "" : "en"} unverändert` : ""}</div>`;
+  if (plan.skippedDel) h += `<div class="hint">${plan.skippedDel} Angabe${plan.skippedDel === 1 ? "" : "n"} fehlen im Text und bleiben erhalten, weil „Gelöschte Angaben auch löschen“ aus ist.</div>`;
+  if (plan.pdelSkipped) h += `<div class="hint">${plan.pdelSkipped} Person${plan.pdelSkipped === 1 ? "" : "en"} fehlen im Text und bleiben im Stammbaum, weil „Gelöschte Personen auch löschen“ aus ist.</div>`;
+  const groups = new Map(); plan.ops.forEach(o => { if (!groups.has(o.grp)) groups.set(o.grp, []); groups.get(o.grp).push(o); });
+  const order = [...groups.keys()].sort((a, b) => (a === "" ? -1 : 0) - (b === "" ? -1 : 0));
+  for (const g of order) {
+    const rows = groups.get(g);
+    h += `<div class="mdgrp"><div class="mdgh">${g === "" ? "Neue und zu löschende Personen" : E(GED.displayName(S.db.get(g)) || g) + ` <span class="hint">${E(g)}</span>`}</div>`;
+    h += rows.map(o => `<div class="mdrow"><span class="mdn" style="flex:1;min-width:200px">${o.html}</span><span class="twchip ${o.chip === "del" ? "warn" : o.chip}" style="margin-left:0">${E(o.chipT)}</span><select data-ok="${E(o.key)}">${o.opts.map(([v, l]) => `<option value="${E(v)}"${o.sel === v ? " selected" : ""}>${E(l)}</option>`).join("")}</select></div>`).join("") + `</div>`;
+  }
+  if (plan.warns.length) h += `<div class="twwarn">${plan.warns.map(w => E(w)).join("<br>")}</div>`;
+  return h;
+}
+function mdeApply(plan, allowDel) {
+  const ctx = { map: new Map(), made: 0 }, ops = plan.ops.slice().sort((a, b) => a.phase - b.phase);
+  let n = 0;
+  GED.run(S.db, "Per Markdown ergänzt", tx => { for (const o of ops) { if (o.sel === "skip" || o.sel === "keep") continue; if (o.chip === "del" && !allowDel) continue; o.run(tx, ctx); n++; } });
+  return { n, made: ctx.made };
+}
+
+/* ---------- Dialoge ---------- */
+const mdeOptsOf = (q) => ({ up: +q("#mdu").value, down: +q("#mdd").value, spouses: q("#mds").checked, sibs: q("#mdb").checked });
+ACT.mdEdit = () => {
+  if (S.viewer || !S.db) return;
+  pickPerson({ title: "Zu welcher Person soll ergänzt werden?", onPick: (id) => mdeStart(id) });
+};
+function mdeStart(start) {
+  const sel = (idn, v) => `<select id="${idn}">${[0, 1, 2, 3, 4, 5].map(i => `<option value="${i}"${i === v ? " selected" : ""}>${i}</option>`).join("")}</select>`;
+  openDlg({
+    title: "Markdown: Daten ergänzen", noFocus: true,
+    body: () => `<p style="margin-top:0">Startperson: <b>${E(GED.displayName(S.db.get(start)))}</b></p>
+      <div class="mdopt"><label>Generationen aufwärts (Vorfahren) ${sel("mdu", 1)}</label> <label>Generationen abwärts (Nachkommen) ${sel("mdd", 1)}</label></div>
+      <div class="mdopt"><label><input type="checkbox" id="mds" checked> Ehepartner mitnehmen</label> <label><input type="checkbox" id="mdb"> Geschwister der Startperson mitnehmen</label></div>
+      <hr>
+      <div class="mdopt"><label><input type="checkbox" id="mdp"> Personen, die ich im Text lösche, auch im Stammbaum löschen</label></div>
+      <div class="mdopt"><label><input type="checkbox" id="mda"> Angaben, die ich im Text lösche (Daten, Beziehungen), auch im Stammbaum löschen</label></div>
+      <p class="hint">Beide Schalter sind aus, solange du sie nicht einschaltest. Dann kann der Text nur ergänzen und ändern. Gelöscht wird erst nach der Vorschau und einer Bestätigung.</p>
+      <div id="mdcnt" class="mdsum"></div>`,
+    buttons: () => [{ id: "go", label: "Maske öffnen", cls: "pri" }, { id: "close", label: "Abbrechen" }],
+    after: (d) => { d._ct = () => { const n = mdeScope(S.db, start, mdeOptsOf(d.q.bind(d))).length; d.q("#mdcnt").innerHTML = `Umfang: <b>${n}</b> Person${n === 1 ? "" : "en"}${n > MDE_MAXP ? ` – zu viel (höchstens ${MDE_MAXP}), bitte weniger Generationen wählen` : ""}`; const go = d.el.querySelector("[data-d=go]"); if (go) go.disabled = n > MDE_MAXP; }; d._ct(); },
+    onChange: (d) => d._ct(),
+    on: { go: (d) => { const o = mdeOptsOf(d.q.bind(d)); o.delP = d.q("#mdp").checked; o.delA = d.q("#mda").checked; const ids = mdeScope(S.db, start, o); if (ids.length > MDE_MAXP) return; d.close(); mdeMask(start, ids, o); } }
+  });
+}
+function mdeMask(start, ids, o) {
+  let timer = 0;
+  openDlg({
+    title: "Markdown: Daten ergänzen", wide: true, noFocus: true, data: { choice: {}, plan: null, scope: ids },
+    body: (d) => `<div class="mdopt"><span class="hint">${ids.length} Person${ids.length === 1 ? "" : "en"} im Text.</span> <label><input type="checkbox" id="mdp"${o.delP ? " checked" : ""}> Gelöschte Personen auch im Stammbaum löschen</label> <label><input type="checkbox" id="mda"${o.delA ? " checked" : ""}> Gelöschte Angaben auch löschen</label></div>
+      <textarea id="mdtx" class="mdtx" rows="14" spellcheck="false" style="width:100%"></textarea>
+      <details class="mdhelp"><summary>Schreibweise</summary><div class="hint">
+        <p>Jede Person hat eine Überschrift <code>## @I12@ Name</code>. Darunter eine Angabe pro Zeile: <code>* 12.3.1901 Köln</code> (Geburt), <code>~</code> Taufe, <code>†</code> Tod, <code>⚰</code> Bestattung, <code>Beruf: …</code>, <code>Wohnort: …</code>, <code>Religion: …</code>, <code>Notiz: …</code>, <code>Quelle: …</code>, <code>Geschlecht: m</code>.</p>
+        <p>Beziehungen: <code>Vater: @I3@ …</code>, <code>Mutter: …</code>, <code>Ehepartner: @I5@ …; Heirat: 1925 in Köln</code>, <code>Kind: …</code>. Die Kinder stehen unter dem Ehepartner, mit dem sie sind.</p>
+        <p>Neue Verwandte schreibst du ohne Kennung mit Datum: <code>Kind: Karl * 1926 Köln</code>. Eine ganz neue Person bekommt eine Überschrift ohne Kennung: <code>## Anna Schmidt * 1903 Bonn</code>.</p>
+        <p>Eine vorhandene Angabe änderst du, indem du die Zeile umschreibst. Eine Zeile oder einen ganzen Block zu entfernen löscht nur dann etwas, wenn der passende Löschschalter an ist.</p>
+        <p>Genaue Daten werden nicht durch ungenauere überschrieben: ist im Stammbaum 12.3.1901 und im Text nur 1901, bleibt das genaue Datum, wenn du es nicht ausdrücklich ersetzt.</p></div></details>
+      <div id="mdprev" class="mdprev"></div>`,
+    buttons: () => [{ id: "go", label: "Übernehmen", cls: "pri" }, { id: "close", label: "Abbrechen" }],
+    after: (d) => {
+      if (d._init) return; d._init = true;
+      const ta = d.q("#mdtx"); ta.value = mdeText(S.db, ids);
+      const upd = () => {
+        const po = { scope: ids, delP: d.q("#mdp").checked, delA: d.q("#mda").checked, choice: d.data.choice };
+        try { d.data.plan = mdePlan(ta.value, po); d.q("#mdprev").innerHTML = mdePreviewHtml(d.data.plan); }
+        catch (e) { d.q("#mdprev").innerHTML = `<div class="twwarn">Fehler beim Lesen: ${E(e.message)}</div>`; d.data.plan = null; }
+        const go = d.el.querySelector("[data-d=go]"); if (go) go.disabled = !d.data.plan || !d.data.plan.ops.length;
+      };
+      d.upd = upd; ta.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(upd, 200); }); upd();
+    },
+    onChange: (d, e) => { const k = e.target.dataset && e.target.dataset.ok; if (k !== undefined) { d.data.choice[k] = e.target.value; d.upd(); } else if (e.target.id === "mdp" || e.target.id === "mda") d.upd(); },
+    on: {
+      go: async (d) => {
+        const plan = d.data.plan; if (!plan || !plan.ops.length) return;
+        const dels = plan.ops.filter(x => x.chip === "del" && x.sel === "del");
+        const pd = plan.ops.filter(x => x.key.endsWith("|pdel") && x.sel === "del");
+        let allow = true;
+        if (dels.length) {
+          const names = pd.map(x => "  " + GED.displayName(S.db.get(x.key.split("|")[0]))).slice(0, 15).join("\n");
+          allow = await confirmDlg({ title: "Löschen bestätigen", text: `${dels.length} Angabe${dels.length === 1 ? "" : "n"} werden gelöscht${pd.length ? `, davon ${pd.length} ganze Person${pd.length === 1 ? "" : "en"} mit allen Angaben und Verbindungen:\n${names}${pd.length > 15 ? "\n  …" : ""}` : "."}\nDas lässt sich mit Rückgängig zurücknehmen.`, ok: "Ja, löschen", cls: "danger" });
+          if (!allow) return;
+        }
+        let r; try { r = mdeApply(plan, allow); } catch (e) { toast("Fehler: " + e.message); return; }
+        d.close(); afterEdit(`${r.n} Änderung${r.n === 1 ? "" : "en"} übernommen`); renderList(true);
+      }
+    }
+  });
+}
 
 </script>
 </body>

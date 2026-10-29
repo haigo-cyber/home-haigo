@@ -2083,7 +2083,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 19:42"; /* BUILD_ID=29.10.2026 19:42 */
+const BUILD = "29.10.2026 21:31"; /* BUILD_ID=29.10.2026 21:31 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -8053,14 +8053,19 @@ function mdDate(t) {
   t = (t || "").trim();
   let q = "", m = /^(um|ca\.?|circa|vor|nach|ab|bis)\s+/i.exec(t);
   if (m) { const w = m[1].toLowerCase().replace(".", ""); q = w === "um" || w === "ca" || w === "circa" ? "ABT " : w === "vor" || w === "bis" ? "BEF " : "AFT "; t = t.slice(m[0].length); }
-  const M = GED.MON, done = (g, rest) => ({ ged: q + g, rest: rest.replace(/^[\s,;]*(in|zu|bei|aus)?\s+/i, " ").replace(/^[\s,]+/, "").trim() });
+  const M = GED.MON, done = (g, rest) => ({ ged: q + g, rest: rest.replace(/^[\s,;]*(in|zu|bei|aus)?\s+/i, " ").replace(/^[\s,]+/, "").replace(/[\s,;]+$/, "").trim() });
   if ((m = /^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{3,4})(?!\d)/.exec(t)) && +m[2] >= 1 && +m[2] <= 12) return done(+m[1] + " " + M[+m[2] - 1] + " " + m[3], t.slice(m[0].length));
   if ((m = /^(\d{4})-(\d{2})-(\d{2})(?!\d)/.exec(t)) && +m[2] >= 1 && +m[2] <= 12) return done(+m[3] + " " + M[+m[2] - 1] + " " + m[1], t.slice(m[0].length));
-  if ((m = /^(\d{1,2})\.\s*([A-Za-zäöüÄÖÜ]{3,9})\.?\s+(\d{3,4})(?!\d)/.exec(t)) && MD_MON[m[2].toLowerCase()]) return done(+m[1] + " " + M[MD_MON[m[2].toLowerCase()] - 1] + " " + m[3], t.slice(m[0].length));
+  if ((m = /^(\d{1,2})\.?\s*([A-Za-zäöüÄÖÜ]{3,9})\.?\s+(\d{3,4})(?!\d)/.exec(t)) && MD_MON[m[2].toLowerCase()]) return done(+m[1] + " " + M[MD_MON[m[2].toLowerCase()] - 1] + " " + m[3], t.slice(m[0].length));
   if ((m = /^([A-Za-zäöüÄÖÜ]{3,9})\.?\s+(\d{3,4})(?!\d)/.exec(t)) && MD_MON[m[1].toLowerCase()]) return done(M[MD_MON[m[1].toLowerCase()] - 1] + " " + m[2], t.slice(m[0].length));
   if ((m = /^(\d{1,2})\.\s*(\d{3,4})(?!\d)/.exec(t)) && +m[1] >= 1 && +m[1] <= 12) return done(M[+m[1] - 1] + " " + m[2], t.slice(m[0].length));
   if ((m = /^(\d{3,4})(?!\d)/.exec(t))) return done(m[1], t.slice(m[0].length));
-  return { ged: "", rest: t.replace(/^(in|zu|bei|aus)\s+/i, "").replace(/^[\s,]+/, "").trim(), nodate: true };
+  // Ort vor dem Datum: "Köln 1901", "Köln, 12.3.1901"
+  if ((m = /^(.*?\S)[,\s]+(\d{1,2}\.\s*\d{1,2}\.\s*\d{3,4}|\d{1,2}\.?\s*[A-Za-zäöüÄÖÜ]{3,9}\.?\s+\d{3,4}|1\d{3}|20\d{2})\s*$/.exec(t)) && !/^\d/.test(m[1])) {
+    const d2 = mdDate(m[2]);
+    if (d2.ged && !d2.rest) return { ged: q + d2.ged, rest: m[1].replace(/^(in|zu|bei|aus)\s+/i, "").replace(/[\s,;]+$/, "").trim() };
+  }
+  return { ged: "", rest: t.replace(/^(in|zu|bei|aus)\s+/i, "").replace(/^[\s,]+/, "").replace(/[\s,;]+$/, "").trim(), nodate: true };
 }
 /* Name zerlegen: "Anna Müller geb. Schmidt", "Müller, Hans", "Karl von der Heide" */
 function mdName(s, inherit) {
@@ -8076,7 +8081,8 @@ function mdName(s, inherit) {
   return { given, surn, inh };
 }
 const MD_ATTR = { beruf: "OCCU", berufe: "OCCU", wohnort: "RESI", wohnt: "RESI", religion: "RELI", konfession: "RELI", quelle: "SOUR", quellen: "SOUR", notiz: "NOTE", anmerkung: "NOTE", heirat: "MARR", hochzeit: "MARR", geburt: "BIRT", taufe: "CHR", tod: "DEAT", gestorben: "DEAT", bestattung: "BURI", beerdigung: "BURI", geschlecht: "SEX", sex: "SEX" };
-const MD_MARK = { "*": "BIRT", "geb.": "BIRT", "geboren": "BIRT", "~": "CHR", "get.": "CHR", "getauft": "CHR", "†": "DEAT", "+": "DEAT", "gest.": "DEAT", "gestorben": "DEAT", "⚰": "BURI", "begr.": "BURI", "beerdigt": "BURI" };
+const MD_SYM_D = "†✝✞✟✠♰♱‡";
+const MD_MARK = { "✝": "DEAT", "✞": "DEAT", "✟": "DEAT", "✠": "DEAT", "♰": "DEAT", "♱": "DEAT", "‡": "DEAT", "verst.": "DEAT", "starb": "DEAT", "verstorben": "DEAT", "begraben": "BURI", "bestattet": "BURI", "*": "BIRT", "geb.": "BIRT", "geboren": "BIRT", "~": "CHR", "get.": "CHR", "getauft": "CHR", "†": "DEAT", "+": "DEAT", "gest.": "DEAT", "gestorben": "DEAT", "⚰": "BURI", "begr.": "BURI", "beerdigt": "BURI" };
 /* eine Zeile (ohne Aufzählungszeichen) zerlegen */
 function mdParseLine(body, ctx) {
   let partner = false, m;
@@ -8087,25 +8093,36 @@ function mdParseLine(body, ctx) {
   if ((m = /@[A-Za-z0-9_]+@/.exec(work))) { P.ref = m[0]; work = work.replace(m[0], " "); }
   work = work.replace(/[♂]|\((?:m|männlich)\)|\[(?:m|männlich)\]/gi, () => { P.sex = "M"; return " "; }).replace(/[♀]|\((?:w|f|weiblich)\)|\[(?:w|f|weiblich)\]/gi, () => { P.sex = "F"; return " "; });
   let paren = ""; if ((m = /\(([^()]*)\)\s*$/.exec(work))) { paren = m[1].trim(); work = work.slice(0, m.index); }
+  if (paren) {   // (†1980), (* 1901 † 1980), (1901-1980) sind Lebensdaten, keine Notiz und keine Heirat
+    if (/^[*~†✝✞✟✠♰♱‡⚰]/.test(paren)) { work += " " + paren; paren = ""; }
+    else if (!partner && ((m = /^(\d{3,4})\s*[-–]\s*(\d{3,4})$/.exec(paren)))) { work += " * " + m[1] + " † " + m[2]; paren = ""; }
+  }
   // Marker suchen
-  const words = work.replace(/([*~†⚰])(?=\S)/g, "$1 ").split(/\s+/).filter(Boolean);
+  const words = work.replace(/([*~†✝✞✟✠♰♱‡⚰])(?=\S)/g, "$1 ").split(/\s+/).filter(Boolean);
   const isDateStart = (w) => /^(\d|um$|ca\.?$|circa$|vor$|nach$)/i.test(w) || !!MD_MON[(w || "").toLowerCase().replace(".", "")];
   let mode = "name", buf = { name: [] }, order = ["name"];
   words.forEach((w, i) => {
     const lw = w.toLowerCase(); let k = null;
-    if (MD_MARK[lw] && (w === "*" || w === "~" || w === "†" || w === "⚰" || w === "+" || (lw === "geb." ? isDateStart(words[i + 1]) : true)) && !(w === "+" && i === 0)) k = MD_MARK[lw];
+    if (MD_MARK[lw] && (w === "*" || w === "~" || w === "⚰" || w === "+" || MD_SYM_D.includes(w) || (/^(geb\.|starb|verst\.|verstorben|begraben|bestattet)$/.test(lw) ? isDateStart(words[i + 1]) : true)) && !(w === "+" && i === 0)) k = MD_MARK[lw];
     if (k && (i > 0 || mode !== "name")) { mode = k; if (!buf[k]) { buf[k] = []; order.push(k); } return; }
     (buf[mode] = buf[mode] || []).push(w);
   });
   P.name = buf.name.join(" ");
   for (const k of ["BIRT", "CHR", "DEAT", "BURI"]) if (buf[k]) { const d = mdDate(buf[k].join(" ")); P.ev[k] = { date: d.ged, place: d.rest }; }
   if (paren) { if (partner) { const d = mdDate(paren.replace(/^(⚭|oo|∞|verh\.?)\s*/i, "")); marr.date = d.ged; marr.place = d.rest; } else P.notes.push(paren); }
+  let last = null;   // zuletzt gelesene Angabe, an die Folgetext angehängt wird
+  const addTo = (arr, v) => { arr.push(v); last = { arr, i: arr.length - 1, note: arr === P.notes }; };
   for (let s of segs) {
     s = s.trim(); if (!s) continue;
-    const c = s.indexOf(":"); if (c < 0) { warn.push("Angabe ohne Doppelpunkt: " + s); continue; }
-    const key = MD_ATTR[s.slice(0, c).trim().toLowerCase()], val = s.slice(c + 1).trim();
-    if (!key) { warn.push("Unbekannte Angabe: " + s.slice(0, c)); continue; }
-    if (key === "OCCU") P.occ.push(val); else if (key === "RESI") P.resi.push(val); else if (key === "RELI") P.reli.push(val); else if (key === "SOUR") P.srcs.push(val); else if (key === "NOTE") P.notes.push(val);
+    const c = s.indexOf(":"), key = c > 0 && c <= 30 ? MD_ATTR[s.slice(0, c).trim().toLowerCase()] : null, val = c >= 0 ? s.slice(c + 1).trim() : "";
+    if (!key) {
+      if (last && (last.note || c < 0 || c > 30)) { last.arr[last.i] += "; " + s; continue; }   // Text mit Semikolon gehört zur vorigen Angabe
+      if (c > 0 && c <= 30) { addTo(P.notes, s); warn.push("Unbekannte Angabe „" + s.slice(0, c) + "“ als Notiz übernommen"); continue; }
+      if (last) { last.arr[last.i] += "; " + s; continue; }
+      warn.push("Angabe ohne Doppelpunkt: " + s); continue;
+    }
+    last = null;
+    if (key === "OCCU") addTo(P.occ, val); else if (key === "RESI") addTo(P.resi, val); else if (key === "RELI") addTo(P.reli, val); else if (key === "SOUR") addTo(P.srcs, val); else if (key === "NOTE") addTo(P.notes, val);
     else if (key === "SEX") P.sex = /^(m|männlich)/i.test(val) ? "M" : /^(w|f|weiblich)/i.test(val) ? "F" : P.sex;
     else if (key === "MARR") { const d = mdDate(val); marr.date = d.ged; marr.place = d.rest; }
     else { const d = mdDate(val); P.ev[key] = { date: d.ged, place: d.rest }; }
@@ -8117,11 +8134,18 @@ function mdParseLine(body, ctx) {
 /* ganzen Text in einen Baum überführen */
 function mdParse(text) {
   const roots = [], warns = [], stack = [];   // stack: {indent, node}
-  const lines = text.replace(/\r/g, "").split("\n");
+  const lines = text.replace(/\r/g, "").split("\n"), items = [];
+  const bl = lines.filter(l => /^\s*(?:[-+*]|\d+[.)])\s+\S/.test(l)).length, bulletMode = bl >= lines.filter(l => l.trim() && !/^\s*#/.test(l)).length / 2;
   lines.forEach((raw, ln) => {
     if (!raw.trim() || /^\s*#/.test(raw) || /^\s*(---|\*\*\*)\s*$/.test(raw)) return;
     const mm = /^(\s*)(?:([-+*]|\d+[.)])\s+)?(.*)$/.exec(raw.replace(/\t/g, "    "));
-    const indent = mm[1].length; let body = mm[3].trim(); if (!body) return;
+    const indent = mm[1].length, body = mm[3].trim(); if (!body) return;
+    const prev = items[items.length - 1];
+    // Ohne Aufzählungszeichen, tiefer eingerückt und sonst mit Aufzählungszeichen geschrieben: umgebrochene Fortsetzung der Zeile davor
+    if (bulletMode && !mm[2] && prev && indent > prev.indent && !/^(⚭|∞|oo\s)/i.test(body)) { prev.body += " " + body; return; }
+    items.push({ indent, body, ln });
+  });
+  items.forEach(({ indent, body, ln }) => {
     while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
     const parent = stack.length ? stack[stack.length - 1].node : null;
     let inherit = "";
@@ -8167,7 +8191,7 @@ function mdCands(P) {
   return out.sort((a, b) => b.score - a.score).slice(0, 4);
 }
 const mdD = (e) => [GED.formatDate(e.date), e.place].filter(Boolean).join(" in ");
-const mdEvText = (P) => [P.ev.BIRT && "* " + mdD(P.ev.BIRT), P.ev.CHR && "~ " + mdD(P.ev.CHR), P.ev.DEAT && "† " + mdD(P.ev.DEAT), P.ev.BURI && "begr. " + mdD(P.ev.BURI), ...P.occ.map(x => "Beruf " + x), ...P.resi.map(x => "wohnt " + x)].filter(Boolean).join(" · ");
+const mdEvText = (P) => [P.ev.BIRT && "* " + mdD(P.ev.BIRT), P.ev.CHR && "~ " + mdD(P.ev.CHR), P.ev.DEAT && "† " + mdD(P.ev.DEAT), P.ev.BURI && "begr. " + mdD(P.ev.BURI), ...P.occ.map(x => "Beruf " + x), ...P.resi.map(x => "wohnt " + x), ...P.notes.map(x => "Notiz: " + (x.length > 70 ? x.slice(0, 70) + " …" : x))].filter(Boolean).join(" · ");
 /* Vorschau */
 function mdPlan(text, choice) {
   const { roots, warns } = mdParse(text), rows = []; let nNew = 0, nOld = 0, nFam = 0, key = 0;
@@ -8476,7 +8500,7 @@ ACT.twLeft = (d) => { TWL.kind = ["ped", "desc"].includes(d.m) ? d.m : "card"; l
 /* ============ MARKDOWN: BESTEHENDE PERSONEN ERGÄNZEN (mit Löschschaltern) ============ */
 const MDE_EV = [["BIRT", "*"], ["CHR", "~"], ["DEAT", "†"], ["BURI", "⚰"]];
 const MDE_EVNAME = { BIRT: "Geburt", CHR: "Taufe", DEAT: "Tod", BURI: "Bestattung" };
-const MDE_MARK = { "*": "BIRT", "~": "CHR", "†": "DEAT", "⚰": "BURI" };
+const MDE_MARK = { "*": "BIRT", "~": "CHR", "†": "DEAT", "✝": "DEAT", "✞": "DEAT", "✟": "DEAT", "✠": "DEAT", "♰": "DEAT", "♱": "DEAT", "‡": "DEAT", "⚰": "BURI" };
 const MDE_KEY = { geburt: "BIRT", taufe: "CHR", tod: "DEAT", gestorben: "DEAT", bestattung: "BURI", beerdigung: "BURI", beruf: "OCCU", wohnort: "RESI", religion: "RELI", konfession: "RELI", notiz: "NOTE", anmerkung: "NOTE", quelle: "SOUR", geschlecht: "SEX", vater: "Vater", mutter: "Mutter", ehepartner: "Ehepartner", partner: "Ehepartner", kind: "Kind" };
 const MDE_ATTRS = { OCCU: "Beruf", RESI: "Wohnort", RELI: "Religion", NOTE: "Notiz", SOUR: "Quelle" };
 const MDE_MAXP = 150;
@@ -8546,7 +8570,7 @@ function mdeScope(db, start, o) {
 function mdeLine(s) {
   s = mdeNorm(s.replace(/^[-+•]\s+/, ""));
   let m;
-  if ((m = /^([*~†⚰])\s*(.*)$/.exec(s))) { const d = mdDate(m[2]); return { kind: "EV", tag: MDE_MARK[m[1]], date: d.ged, place: d.rest, t: s }; }
+  if ((m = /^([*~†✝✞✟✠♰♱‡⚰])\s*(.*)$/.exec(s))) { const d = mdDate(m[2]); return { kind: "EV", tag: MDE_MARK[m[1]], date: d.ged, place: d.rest, t: s }; }
   if ((m = /^([A-Za-zÄÖÜäöüß]+)\s*:\s*(.*)$/.exec(s))) {
     const key = MDE_KEY[m[1].toLowerCase()]; if (!key) return null;
     const val = m[2].trim();

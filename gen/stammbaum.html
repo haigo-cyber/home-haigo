@@ -2057,7 +2057,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 08:40"; /* BUILD_ID=29.10.2026 08:40 */
+const BUILD = "29.10.2026 09:01"; /* BUILD_ID=29.10.2026 09:01 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -6237,7 +6237,7 @@ function renderPedTree() {
     <label>Generationen <select id="gensSel">${opts}</select></label>${modeSeg("ped")}${oriSeg("ped")}${densCtl()}${zoomCtl("ped")}${pedNav()}
     <button class="btn sm" data-act="back" ${S.hpos <= 0 ? "disabled" : ""}>‹ Zurück</button>
     <button class="btn sm" data-act="card" data-id="${S.pid}">Familienblatt</button>
-    <span class="hint">Klick setzt eine Person in die Mitte, Doppelklick bearbeitet sie.</span></div>
+    <span class="hint">Klick setzt eine Person in die Mitte, Doppelklick öffnet ihr Familienblatt.</span></div>
     ${zoomWrap("ped", L.W, L.H, `<svg width="${L.W}" height="${L.H}" aria-hidden="true"><path d="${L.d}"/></svg>${boxes}`, ori)}`;
 }
 
@@ -7602,11 +7602,20 @@ document.addEventListener("click", (e) => {
   if (S.viewer && !VIEW_OK.has(el.dataset.act) && !/^(t_|v)/.test(el.dataset.act)) return;
   if (fn) { if (el.tagName === "A") e.preventDefault(); fn(el.dataset, e); }
 });
-/* Doppelklick öffnet überall das Bearbeiten der Person unter dem Mauszeiger (sonst der gewählten Person).
+/* Doppelklick öffnet überall das Bearbeiten der Person unter dem Mauszeiger (sonst der gewählten Person), in Vorfahren und Nachkommen das Familienblatt.
    Eigene Erkennung über Zeit und Ort zweier Klicks, weil die Ansichten beim ersten Klick neu aufgebaut werden
    und der Browser dann kein dblclick-Ereignis mehr meldet. */
 const LASTCLK = { id: null, t: 0, x: 0, y: 0 };
 const personIdOf = (el) => { const x = el && el.closest && el.closest("[data-id]"); const id = x && x.dataset.id; const r = id && S.db && S.db.get(id); return r && (r.tag === "INDI" || (r.tag === "SOUR" && !x.closest(".twoR"))) ? id : null; };
+/* In den Ansichten Vorfahren und Nachkommen (Baum, Liste, Fächer, Kreis) öffnet der Doppelklick das Familienblatt statt des Bearbeitens */
+function dblToCard(t) {
+  if (!t || !t.closest) return false;
+  if (S.view === "ped" || S.view === "desc") return !!t.closest("#content");
+  if (S.view === "split") return SPL.right && SPL.rkind !== "pdf" && !!t.closest("#splR");
+  if (S.view === "two") return TWL.kind !== "card" && !!t.closest("#splL");
+  return false;
+}
+const dblOpen = (id, t) => { const r = S.db.get(id); if (r && r.tag === "INDI" && dblToCard(t)) { ACT.card({ id }); return true; } return editRec(id); };
 const editRec = (id) => { const r = S.db.get(id); if (!r) return false; if (r.tag === "SOUR") { editSrc(id); return true; } if (GED.personInfo(S.db, id)) { editPerson(id); return true; } return false; };
 document.addEventListener("click", (e) => {
   if (!S.db || e.target.closest(".ovl")) return;
@@ -7622,7 +7631,7 @@ document.addEventListener("click", (e) => {
     if (target && S.db.get(target) && (S.db.get(target).tag === "SOUR" || GED.personInfo(S.db, target))) {
       e.stopPropagation(); e.preventDefault();
       const sel = window.getSelection && window.getSelection(); if (sel && sel.removeAllRanges) sel.removeAllRanges();
-      editRec(target);
+      dblOpen(target, t);
       return;
     }
   }
@@ -7635,7 +7644,7 @@ document.addEventListener("dblclick", (e) => {
   if (!t.closest("#content, #plist, #info") || t.closest("input, textarea, select, label, .ar, .parrows, .treebar, .splbar, .rz, #info .ihead, .abc, .tabs, .top")) return;
   if (!personIdOf(t) && t.closest("button, a, [data-act], summary")) return;
   const id = personIdOf(t) || LASTCLK.id || (t.closest("#content") ? S.pid : null);
-  if (id) editRec(id);
+  if (id) dblOpen(id, t);
 });
 document.addEventListener("change", (e) => {
   if (e.target.id === "gensSel") { S.gens = +e.target.value; lsSet("st.gens", S.gens); render(); }

@@ -718,6 +718,7 @@
 .tp-b.drag{cursor:grabbing;z-index:4;box-shadow:0 6px 16px rgba(0,0,0,.6)}
 .tp-b.tp-sch{outline:2px dashed rgba(255,255,255,.55);outline-offset:-3px;opacity:.85}
 .tp-b.done{opacity:.55}.tp-b.done .tp-t{text-decoration:line-through}
+.tp-b.tm-slim{height:18px;padding:0 20px 0 8px;border-radius:6px;font-size:calc(10.5px*var(--f,1))}.tp-b.tm-slim .tp-t{line-height:16px;font-weight:500}.tp-b.tm-slim .tp-m{display:none}.tp-b.tm-slim .tp-ck{top:1px;right:4px;width:14px;height:14px;line-height:11px;font-size:9px}
 .tp-b.narrow .tp-ck{display:none}.tp-b.narrow{padding-right:6px}
 .tp-t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
 .tp-m{font-size:calc(10.5px*var(--f,1));opacity:.88;white-space:nowrap;overflow:hidden}
@@ -3685,7 +3686,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v267";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v268";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -5131,7 +5132,12 @@ function tmChildSet(metaMap){            // Metaprojekte, die selbst Unterpunkt 
   st = new Set(); metaMap.forEach(h=>{ try{ wsChildItems(h.doc, h.node).forEach(k=>st.add(k.node.id)); }catch(e){} });
   tmKidCache.set(metaMap, st); return st;
 }
+function tmIsGoal(b, metaMap){            // Tagesziel-Knoten (Punkt oder Überschrift mit Tages-Ziel-Verknüpfung) -> schmal darstellen
+  const h = b.src ? tmNodeOf(b.src.ref, metaMap) : null;
+  return !!(h && h.node && h.node.link && h.node.link.kind==="goal");
+}
 function tmBlockHtml(b, top, metaMap, ki){
+  const slim = tmIsGoal(b, metaMap);
   const isKid = !!(b.src && tmChildSet(metaMap).has(b.src.ref)), hexOk = /^#[0-9a-f]{6}$/i.test(b.color||"");
   const kidStyle = isKid ? (hexOk ? "background:"+b.color+"38;border:2px solid "+b.color+";box-sizing:border-box;" : "opacity:.7;border:2px dashed #fff;box-sizing:border-box;") : "background:"+esc(b.color)+";";
   const s = tmDN(b.start), e = tmDN(b.end), days = e-s+1;
@@ -5143,9 +5149,9 @@ function tmBlockHtml(b, top, metaMap, ki){
     flag = `<i class="tm-dl" title="Deadline ${esc(tmShort(h.node.dl))} (aus dem Arbeitsbereich)" style="left:${(dn-tm.range.from)*tm.ppd}px;top:${top}px">⚑</i>`;
   }
   const kidTxt = ki && ki.total ? ` · ${ki.done}/${ki.total} ✓` : "";
-  return `<div class="tp-b tm-b${tmDn(b,metaMap)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})${ki&&ki.total?" · Unterpunkte: "+ki.done+" von "+ki.total+" erledigt":""}" style="left:${left}px;width:${w}px;top:${top}px;${kidStyle}">
+  return `<div class="tp-b tm-b${slim?" tm-slim":""}${tmDn(b,metaMap)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})${ki&&ki.total?" · Unterpunkte: "+ki.done+" von "+ki.total+" erledigt":""}" style="left:${left}px;width:${w}px;top:${top}px;${kidStyle}">
     <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${tmDn(b,metaMap)?"✓":""}</span>
-    <div class="tp-t">${isKid?"↳ ":""}${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${esc(tmShort(b.start))}–${esc(tmShort(b.end))} · ${days} T${kidTxt}</div><i class="tp-h r" data-h="r"></i></div>${flag}`;
+    <div class="tp-t">${slim?"🎯 ":isKid?"↳ ":""}${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${esc(tmShort(b.start))}–${esc(tmShort(b.end))} · ${days} T${kidTxt}</div><i class="tp-h r" data-h="r"></i></div>${flag}`;
 }
 function tmPoolItems(){
   if(!(typeof wsLoaded!=="undefined" && wsLoaded)) return null;
@@ -5191,7 +5197,8 @@ function tmMount(m){
   const kidInfo = new Map(); vis.forEach(b=>{ const h = b.src ? metaMap.get(b.src.ref) : null; kidInfo.set(b.id, tmKidInfo(h, b)); });
   const laneRows = new Array(L.n).fill(0);
   if(tm.showKids) vis.forEach(b=>{ const ki = kidInfo.get(b.id), ln = L.lane.get(b.id); if(ki && ki.rows>laneRows[ln]) laneRows[ln] = ki.rows; });
-  const laneTop = [4]; for(let i = 0; i<L.n; i++) laneTop.push(laneTop[i]+44+laneRows[i]*TM_KID_H+(laneRows[i]?4:0));
+  const laneSlim = new Array(L.n).fill(true); vis.forEach(b=>{ const ln = L.lane.get(b.id); if(!tmIsGoal(b, metaMap)) laneSlim[ln] = false; });
+  const laneTop = [4]; for(let i = 0; i<L.n; i++) laneTop.push(laneTop[i]+(laneSlim[i]?22:44)+laneRows[i]*TM_KID_H+(laneRows[i]?4:0));
   const H = laneTop[L.n]+4;
   let mon = "", dayRow = "", shade = "", i0 = R.from;
   while(i0<=R.to){
@@ -5220,7 +5227,7 @@ function tmMount(m){
       <div class="tm-mon">${mon}</div><div class="tm-days">${dayRow}</div>
       <div class="tp-track" id="tm_track" style="height:${H}px">${shade}
         ${vis.map(b=>{ const ln = L.lane.get(b.id), ki = kidInfo.get(b.id), h = b.src ? metaMap.get(b.src.ref) : null, sp = h ? wsSpan(h.node) : null;
-          return tmBlockHtml(b, laneTop[ln], metaMap, ki) + (tm.showKids ? tmKidsHtml(b, ki, laneTop[ln]+42, sp?sp.start:"", sp?(h.node.dl||sp.end):"") : ""); }).join("")}
+          return tmBlockHtml(b, laneTop[ln], metaMap, ki) + (tm.showKids ? tmKidsHtml(b, ki, laneTop[ln]+(laneSlim[ln]?20:42), sp?sp.start:"", sp?(h.node.dl||sp.end):"") : ""); }).join("")}
         ${today>=R.from&&today<=R.to?`<div class="tp-now" style="left:${(today-R.from)*ppd+ppd/2}px"></div>`:""}
       </div></div></div>
     <div class="tp-sum">${tm.data.blocks.length ? `${tm.data.blocks.length} ${tm.data.blocks.length===1?"Block":"Blöcke"}, zusammen ${sumDays} Tage geplant${tm.hideDone&&vis.length<tm.data.blocks.length?" ("+(tm.data.blocks.length-vis.length)+" erledigte ausgeblendet)":""}` : "Noch nichts geplant. In die Zeitleiste tippen oder unten ein Meta-Projekt übernehmen."}</div>

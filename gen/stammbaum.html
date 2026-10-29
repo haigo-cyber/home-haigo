@@ -745,6 +745,10 @@ input,textarea{color:var(--ink)}
 .tdadd{display:flex;gap:6px}.tdin{flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
 @media print{.todo .tdadd,.todo .btn{display:none}}
 
+.ftrow{align-items:flex-start;gap:10px;text-align:left;width:100%}.ftk{flex:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;border:1px solid var(--line);min-width:58px;text-align:center}
+.ftk.p{background:var(--neu);}.ftk.f{background:var(--fem)}.ftk.s{background:var(--mas)}.ftk.n{background:color-mix(in srgb,#d9a21b 18%,transparent)}
+.ftb{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}.ftsn{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}.ftl{font-weight:600;color:var(--ink);margin-right:4px}.ftsn mark,.ftb .tn mark{background:color-mix(in srgb,#e8b923 45%,transparent);color:inherit;border-radius:2px;padding:0 1px}
+
 </style>
 </head>
 <body>
@@ -771,6 +775,7 @@ input,textarea{color:var(--ink)}
     <button class="tab" role="tab" data-view="src">Quellen</button>
     <button class="tab" role="tab" data-view="names">Nachnamen</button>
     <button class="tab" role="tab" data-view="search">Suche</button>
+    <button class="tab" role="tab" data-view="full">Volltext</button>
     <button class="tab" role="tab" data-view="time">Zeitleiste</button>
     <button class="tab" role="tab" data-view="rel">Verwandtschaft</button>
     <button class="tab" role="tab" data-view="places">Orte</button>
@@ -2078,7 +2083,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 15:42"; /* BUILD_ID=29.10.2026 15:42 */
+const BUILD = "29.10.2026 19:42"; /* BUILD_ID=29.10.2026 19:42 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -5136,7 +5141,7 @@ ACT.vUnlock = async () => {
 };
 
 /* ============ ANSICHTEN WIE IN TNG: Namen, Suche, Zeitleiste, Verwandtschaft, Orte, Kalender, Statistik, Medien ============ */
-const TNG_VIEWS = ["names", "search", "time", "rel", "places", "cal", "stats", "media"];
+const TNG_VIEWS = ["names", "search", "full", "time", "rel", "places", "cal", "stats", "media"];
 const hasSide = (v) => ["card", "ped", "desc", "time", "rel"].includes(v);
 const TG = {
   namesMode: "sur", nameSel: null, nameLetter: "", nameSort: "alpha", nameQ: "",
@@ -5161,11 +5166,12 @@ function prow(id, extra) {
 }
 const tHead = (t, sub) => `<div class="thead"><h2>${E(t)}</h2>${sub ? `<div class="hint">${sub}</div>` : ""}</div>`;
 function tngRender(v) {
-  const fn = { names: tNames, search: tSearch, time: tTime, rel: tRel, places: tPlaces, cal: tCal, stats: tStats, media: tMedia }[v];
+  const fn = { names: tNames, search: tSearch, full: tFull, time: tTime, rel: tRel, places: tPlaces, cal: tCal, stats: tStats, media: tMedia }[v];
   return `<div class="tng">${fn()}</div>`;
 }
 function tngAfter(v) {
   if (v === "search") searchRun();
+  if (v === "full") { ftRun(); const q = $("ft_q"); if (q && !q.value) q.focus(); }
   if (v === "places") placesAfter();
   if (v === "media") { hydrateMedia(); mediaEnsure(); }
 }
@@ -6927,6 +6933,7 @@ const CAR_META = {
   src: { t: "Quellen", s: "Alle Quellen der Datei", c: "#7c3a4d", ic: CAR_SVG(`<path d="M12 10h30a6 6 0 0 1 6 6v36H18a6 6 0 0 1-6-6z"/><path d="M12 46a6 6 0 0 1 6-6h30M22 20h18M22 28h12"/>`) },
   names: { t: "Nachnamen", s: "Namen und ihre Häufigkeit", c: "#365f8c", ic: CAR_SVG(`<path d="M6 52 22 12l16 40M12 38h20M46 20h12M46 32h12M46 44h12"/>`) },
   search: { t: "Suche", s: "Personen suchen", c: "#b05a30", ic: CAR_SVG(`<circle cx="27" cy="27" r="15"/><path d="M38 38l16 16"/>`) },
+  full: { t: "Volltext", s: "Alles durchsuchen: Notizen, Quellen, Orte", c: "#9a4a2a", ic: CAR_SVG(`<path d="M12 8h30v48H12z"/><path d="M19 18h16M19 26h16M19 34h10"/><circle cx="44" cy="40" r="9"/><path d="M51 47l8 8"/>`) },
   time: { t: "Zeitleiste", s: "Lebenslinien und Ereignisse", c: "#3f7a68", ic: CAR_SVG(`<path d="M5 32h54M14 32V20M30 32v14M46 32V16"/><circle cx="14" cy="16" r="3.5"/><circle cx="30" cy="50" r="3.5"/><circle cx="46" cy="12" r="3.5"/>`) },
   rel: { t: "Verwandtschaft", s: "Wie zwei Personen verwandt sind", c: "#8a4a7c", ic: CAR_SVG(`<circle cx="32" cy="11" r="5"/><circle cx="12" cy="51" r="5"/><circle cx="52" cy="51" r="5"/><path d="M29 15 15 46M35 15l14 31" /><path d="M19 51h26" stroke-dasharray="3 5"/>`) },
   places: { t: "Orte", s: "Orte der Familie", c: "#4f6f2c", ic: CAR_SVG(`<path d="M32 57C20 41 14 33 14 24a18 18 0 0 1 36 0c0 9-6 17-18 33z"/><circle cx="32" cy="24" r="6"/>`) },
@@ -9034,6 +9041,96 @@ ACT.todoAll = () => {
   });
 };
 VIEW_OK.add("todoAll");
+
+/* ============ VOLLTEXTSUCHE ÜBER ALLE ANGABEN ============ */
+const FT = { q: "", kinds: { p: true, f: true, s: true, n: true } };
+const FT_KIND = { p: "Person", f: "Familie", s: "Quelle", n: "Notiz" };
+const FT_LAB = { NAME: "Name", NICK: "Rufname", GIVN: "Vorname", SURN: "Nachname", NPFX: "Titel", NSFX: "Zusatz", SEX: "Geschlecht", NOTE: "Notiz", SOUR: "Quelle", PLAC: "Ort", DATE: "Datum", ADDR: "Adresse", PAGE: "Seite", TEXT: "Text", TITL: "Titel", AUTH: "Autor", PUBL: "Veröffentlichung", ABBR: "Kurztitel", REPO: "Archiv", CAUS: "Ursache", AGE: "Alter", TYPE: "Art", _TODO: "Forschungsschritt", REFN: "Kennung", FILE: "Datei", FORM: "Format", CALN: "Signatur", WWW: "Web", EMAIL: "E-Mail", PHON: "Telefon", AGNC: "Stelle", RESN: "Vermerk", MARR: "Heirat", DIV: "Scheidung" };
+const FT_SKIP = new Set(["CHAN", "_UID", "FAMC", "FAMS", "HUSB", "WIFE", "CHIL", "OBJE", "CONC", "CONT", "_DONE"]);
+const ftLabel = (t) => FT_LAB[t] || GED.INDI_EVENTS[t] || GED.FAM_EVENTS[t] || t;
+function ftFlat(db, rec) {
+  const out = [];
+  const walk = (n, parent) => {
+    for (const k of n.kids) {
+      if (FT_SKIP.has(k.tag)) continue;
+      const lab = parent ? parent + " · " + ftLabel(k.tag) : ftLabel(k.tag);
+      let v = k.val || "";
+      if (GED.isPtr(v)) { if (k.tag === "SOUR") { const s = db.get(v); v = s ? GED.unesc(GED.kval(s, "TITL") || "") : ""; } else v = ""; }
+      else if (k.tag === "DATE") v = GED.formatDate(v) + " " + v;
+      else v = GED.unesc(v);
+      v = v.replace(/\s+/g, " ").trim();
+      if (v) out.push({ lab, text: v, f: GED.fold(v) });
+      walk(k, ftLabel(k.tag));
+    }
+  };
+  walk(rec, "");
+  return out;
+}
+function ftIndex() {
+  return memo("ftidx", () => {
+    const db = S.db, docs = [], noteOwner = new Map();
+    for (const r of db.records) {
+      if (r.tag !== "INDI" && r.tag !== "FAM" && r.tag !== "SOUR") continue;
+      (function w(n) { n.kids.forEach(k => { if (k.tag === "NOTE" && GED.isPtr(k.val) && !noteOwner.has(k.val)) noteOwner.set(k.val, r.xref); w(k); }); })(r);
+    }
+    for (const r of db.records) {
+      if (r.tag === "INDI") { const pc = ftFlat(db, r); docs.push({ k: "p", id: r.xref, title: GED.displayName(r), pieces: pc }); }
+      else if (r.tag === "FAM") {
+        const f = GED.famInfo(db, r.xref), nm = (id) => id ? GED.displayName(db.get(id)) : "unbekannt";
+        const pc = ftFlat(db, r); if (pc.length) docs.push({ k: "f", id: r.xref, title: nm(f.husb) + " ⚭ " + nm(f.wife), pieces: pc, fam: r.xref, who: f.husb || f.wife });
+      }
+      else if (r.tag === "SOUR") docs.push({ k: "s", id: r.xref, title: GED.unesc(GED.kval(r, "TITL") || "") || r.xref, pieces: ftFlat(db, r) });
+      else if (r.tag === "NOTE") {
+        const t = GED.unesc(r.val || "").replace(/\s+/g, " ").trim(), o = noteOwner.get(r.xref), orec = o && db.get(o);
+        if (t) docs.push({ k: "n", id: r.xref, title: orec ? "zu " + (orec.tag === "INDI" ? GED.displayName(orec) : orec.tag === "SOUR" ? GED.unesc(GED.kval(orec, "TITL") || o) : "Familie " + o) : "Notiz " + r.xref, owner: o, pieces: [{ lab: "Notiz", text: t, f: GED.fold(t) }] });
+      }
+    }
+    for (const d of docs) d.all = d.pieces.map(p => p.f).join("\n") + "\n" + GED.fold(d.title);
+    return { docs };
+  });
+}
+function ftTerms(q) { const t = []; (q || "").replace(/"([^"]+)"|(\S+)/g, (_, a, b) => { const x = GED.fold(a || b).trim(); if (x) t.push(x); }); return t; }
+/* Treffer im Text hervorheben, mit Ausschnitt um den ersten Treffer */
+function ftMark(text, terms, win) {
+  let f = "", map = [];
+  for (let i = 0; i < text.length; i++) { const c = GED.fold(text[i]); for (let j = 0; j < c.length; j++) { f += c[j]; map.push(i); } }
+  let rg = [];
+  for (const t of terms) { let p = 0; while ((p = f.indexOf(t, p)) >= 0) { rg.push([map[p], map[p + t.length - 1] + 1]); p += t.length; } }
+  rg.sort((a, b) => a[0] - b[0]);
+  const m = []; for (const r of rg) { const l = m[m.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else m.push(r.slice()); }
+  let s = 0, e = text.length;
+  if (win && text.length > win) { s = Math.max(0, (m.length ? m[0][0] : 0) - 50); e = Math.min(text.length, s + win); }
+  let h = s > 0 ? "… " : "", p = s;
+  for (const r of m) { if (r[1] <= s || r[0] >= e) continue; const a = Math.max(r[0], s), b = Math.min(r[1], e); h += E(text.slice(p, a)) + "<mark>" + E(text.slice(a, b)) + "</mark>"; p = b; }
+  return h + E(text.slice(p, e)) + (e < text.length ? " …" : "");
+}
+function tFull() {
+  return tHead("Volltextsuche", "Durchsucht alle Angaben der Datei: Namen, Ereignisse, Orte, Berufe, Notizen, Quellen, Familien und Forschungsschritte. Alle Wörter müssen in demselben Eintrag vorkommen. Ein Ausdruck in Anführungszeichen wird als Ganzes gesucht. Groß- und Kleinschreibung und Akzente spielen keine Rolle.")
+    + `<div class="tbar"><input id="ft_q" type="search" class="fld" style="min-width:300px;flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)" placeholder="Suchbegriffe, z. B. Kirchenbuch Hamm 1850" value="${E(FT.q)}" autocomplete="off"><div class="chips" id="ft_kinds"></div></div><div id="ft_res" class="panel"></div>`;
+}
+function ftRun() {
+  const box = $("ft_res"); if (!box) return;
+  const terms = ftTerms(FT.q), kb = $("ft_kinds");
+  if (!terms.length) { box.innerHTML = `<div class="hint">Gib mindestens einen Suchbegriff ein.</div>`; if (kb) kb.innerHTML = ""; return; }
+  const idx = ftIndex(), cnt = { p: 0, f: 0, s: 0, n: 0 }, hits = [];
+  for (const d of idx.docs) if (terms.every(t => d.all.includes(t))) { cnt[d.k]++; if (FT.kinds[d.k]) hits.push(d); }
+  if (kb) kb.innerHTML = ["p", "f", "s", "n"].map(k => `<button class="chip${FT.kinds[k] ? " on" : ""}" data-act="ftKind" data-k="${k}">${{ p: "Personen", f: "Familien", s: "Quellen", n: "Notizen" }[k]} ${cnt[k]}</button>`).join("");
+  const order = { p: 0, f: 1, s: 2, n: 3 };
+  hits.sort((a, b) => order[a.k] - order[b.k] || GED.fold(a.title).localeCompare(GED.fold(b.title)));
+  const LIM = 200;
+  box.innerHTML = `<h4>${hits.length} Treffer</h4>` + (hits.length ? hits.slice(0, LIM).map(d => {
+    const mine = d.pieces.filter(p => terms.some(t => p.f.includes(t))).slice(0, 3);
+    const sn = mine.map(p => `<div class="ftsn"><span class="ftl">${E(p.lab)}</span> ${ftMark(p.text, terms, 170)}</div>`).join("");
+    const extra = d.k === "s" ? (() => { const c = GED.citationIndex(S.db).get(d.id); return c ? `<span class="hint"> · zitiert von ${new Set(c.map(x => x.rec)).size} Einträgen</span>` : ""; })() : "";
+    const act = d.k === "p" ? `data-act="card" data-id="${d.id}"` : d.k === "s" ? `data-act="src" data-id="${d.id}"` : d.k === "f" ? `data-act="ftFam" data-id="${d.who || ""}" data-fam="${d.fam}"` : `data-act="ftNote" data-id="${d.owner || ""}"`;
+    return `<button class="trow ftrow" ${act}><span class="ftk ${d.k}">${FT_KIND[d.k]}</span><span class="ftb"><span class="tn">${ftMark(d.title, terms)}${extra}</span>${sn}</span></button>`;
+  }).join("") + (hits.length > LIM ? `<div class="hint" style="margin-top:8px">Die ersten ${LIM} werden gezeigt. Nimm weitere Wörter dazu, um die Suche einzugrenzen.</div>` : "") : `<div class="hint">Nichts gefunden.</div>`);
+}
+ACT.ftKind = (d) => { FT.kinds[d.k] = !FT.kinds[d.k]; ftRun(); };
+ACT.ftFam = (d) => { if (d.id) { S.view = "card"; go(d.id, d.fam); } };
+ACT.ftNote = (d) => { if (!d.id) { toast("Diese Notiz gehört zu keinem Eintrag"); return; } const r = S.db.get(d.id); if (!r) return; if (r.tag === "INDI") { S.view = "card"; go(d.id); } else if (r.tag === "SOUR") { S.view = "src"; S.srcSel = d.id; render(); } else if (r.tag === "FAM") { const f = GED.famInfo(S.db, d.id); const w = f && (f.husb || f.wife); if (w) { S.view = "card"; go(w, d.id); } } };
+VIEW_OK.add("ftKind"); VIEW_OK.add("ftFam"); VIEW_OK.add("ftNote");
+document.addEventListener("input", (e) => { if (e.target.id === "ft_q") { FT.q = e.target.value; clearTimeout(ftRun._t); ftRun._t = setTimeout(ftRun, 150); } });
 
 </script>
 </body>

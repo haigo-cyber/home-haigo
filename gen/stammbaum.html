@@ -736,6 +736,15 @@ input,textarea{color:var(--ink)}
 
 .mdopt{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:6px 0}.mdopt label{display:flex;gap:6px;align-items:center}.mdgrp{margin:8px 0}.mdgh{font-weight:600;padding:4px 0;border-bottom:2px solid var(--line)}
 
+.xdgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}.xdc{border:1px solid var(--line);border-radius:var(--r);padding:6px;display:flex;flex-direction:column;gap:5px}
+.xdesc .xc{display:flex;flex-direction:column;gap:1px;text-align:left;width:100%;min-height:40px;padding:4px 7px;border:1px solid var(--neu-line);border-radius:6px;background:var(--neu);color:var(--ink);cursor:pointer}
+.xdesc .xc.M{background:var(--mas);border-color:var(--mas-line)}.xdesc .xc.F{background:var(--fem);border-color:var(--fem-line)}.xdesc .xc b{font:600 12.5px var(--serif)}.xdesc .xc span{color:var(--muted);font-size:11px}
+.xdf{margin-left:10px;display:flex;flex-direction:column;gap:4px}.xdk{margin-left:14px;display:flex;flex-direction:column;gap:4px}.xdl{font-size:12px;color:var(--muted)}.xdn{font-size:12px}
+@media (max-width:899px){.xdesc{display:none}}
+.tdgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.tdp{margin-bottom:8px}.tdh{margin-bottom:4px}.tdl{list-style:none;margin:0 0 6px;padding:0}.tdl li{display:flex;gap:8px;align-items:flex-start;padding:3px 0;border-bottom:1px solid var(--line2)}.tdl li span{flex:1}.tdl li.done span{text-decoration:line-through;color:var(--muted)}
+.tdadd{display:flex;gap:6px}.tdin{flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+@media print{.todo .tdadd,.todo .btn{display:none}}
+
 </style>
 </head>
 <body>
@@ -1778,7 +1787,7 @@ function renderCard() {
     <button class="btn sm" data-act="fwd" ${S.hpos >= S.hist.length - 1 ? "disabled" : ""} aria-label="Vor">Vor ›</button>
     <button class="btn sm" data-act="home" title="Zur Hauptperson">Hauptperson</button>
     <span class="spacer"></span>
-    <button class="btn sm${EXT.on ? " pri" : ""}" data-act="t_ext" aria-pressed="${EXT.on}" title="Eltern und Großeltern beider Partner über dem Familienblatt anzeigen">Erweitert</button><button class="btn sm" data-act="ped" data-id="${S.pid}">Vorfahren zeigen</button>
+    <button class="btn sm" data-act="todoAll" title="Offene Forschungsschritte der ganzen Datei">Forschung (${todoCount()})</button><button class="btn sm${EXT.on ? " pri" : ""}" data-act="t_ext" aria-pressed="${EXT.on}" title="Eltern und Großeltern beider Partner über dem Familienblatt anzeigen">Erweitert</button><button class="btn sm" data-act="ped" data-id="${S.pid}">Vorfahren zeigen</button>
     <button class="btn sm" data-act="print">Drucken</button></div>`;
   if (f) {
     h += extHtml(f, S.pid) + `<div class="couple">${personBlock(f.husb, f.id, ctx, "HUSB")}${personBlock(f.wife, f.id, ctx, "WIFE")}</div>`;
@@ -1805,10 +1814,11 @@ function renderCard() {
       });
       h += `</tbody></table>`;
     }
-    h += `</div>`;
+    h += `</div>` + xDesc(f) + todoPanel([f.husb, f.wife]);
   } else {
     h += extHtml(null, S.pid) + `<div class="couple" style="grid-template-columns:1fr">${personBlock(S.pid, null, ctx, p.sex === "F" ? "WIFE" : "HUSB")}</div>`;
   }
+  if (!f) h += todoPanel([S.pid]);
   if (ctx.list.length) {
     h += `<div class="panel"><h4>Quellen</h4><ol class="fnl">` + ctx.list.map(id => {
       const s = db.get(id), ty = GED.unesc(GED.kval(s, "TYPE"));
@@ -2068,7 +2078,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 10:11"; /* BUILD_ID=29.10.2026 10:11 */
+const BUILD = "29.10.2026 15:27"; /* BUILD_ID=29.10.2026 15:27 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -7161,7 +7171,7 @@ function lifeHtml(db, id) {
   return sp(b) + "–" + sp(d);
 }
 /* ---------- Erweitertes Familienblatt ---------- */
-const EXT = { on: lsGet("st.ext", "0") === "1" };
+const EXT = { on: lsGet("st.ext2", "1") === "1" };
 function xCard(id, sex, role) {
   if (!id || !GED.personInfo(S.db, id)) return `<span class="xc u" title="${E(role)}">${E(role)} unbekannt</span>`;
   const p = GED.personInfo(S.db, id), ls = lifeHtml(S.db, id), ag = personAge(S.db, id);
@@ -7180,7 +7190,7 @@ function extHtml(f, pid) {
   if (!EXT.on) return "";
   return f ? `<div class="ext">${xSide(f.husb)}${xSide(f.wife)}</div>` : `<div class="ext one">${xSide(pid)}</div>`;
 }
-ACT.t_ext = () => { EXT.on = !EXT.on; lsSet("st.ext", EXT.on ? "1" : "0"); render._same = true; render(); };
+ACT.t_ext = () => { EXT.on = !EXT.on; lsSet("st.ext2", EXT.on ? "1" : "0"); render._same = true; render(); };
 VIEW_OK.add("t_ext");
 
 /* ============ HAUPTANSICHT ============ */
@@ -8935,6 +8945,84 @@ function mdeMask(start, ids, o) {
     }
   });
 }
+
+/* ============ NACHKOMMEN-ÜBERSICHT UND FORSCHUNGSNOTIZEN ============ */
+/* Zwei Generationen unter dem Paar: Kinder mit Partnern und deren Kindern */
+function xDesc(f) {
+  if (!EXT.on || !f || !f.children.length) return "";
+  const db = S.db;
+  const cols = f.children.map(cid => {
+    const c = GED.personInfo(db, cid); if (!c) return "";
+    const fams = c.fams.map(fid => GED.famInfo(db, fid)).filter(Boolean);
+    let h = `<div class="xdc">` + xCard(cid, c.sex, "Kind");
+    if (!fams.length) h += `<div class="xdn hint">keine Ehe, keine Kinder eingetragen</div>`;
+    for (const ff of fams) {
+      const sp = ff.husb === cid ? ff.wife : ff.husb;
+      h += `<div class="xdf">${sp ? `<div class="xdl">⚭</div>` + xCard(sp, GED.personInfo(db, sp).sex, "Partner") : `<div class="xdl hint">⚭ Partner unbekannt</div>`}`;
+      if (ff.children.length) h += `<div class="xdk">` + ff.children.map(g => xCard(g, GED.personInfo(db, g).sex, "Enkel")).join("") + `</div>`;
+      h += `</div>`;
+    }
+    return h + `</div>`;
+  }).join("");
+  return `<div class="panel xdesc"><h4>Nachkommen, zwei Generationen</h4><div class="xdgrid">${cols}</div></div>`;
+}
+
+/* Forschungsnotizen: Benutzer-Tag _TODO an der Person, erledigt mit Unterzeile _DONE */
+function todoItems(rec) { return GED.kidsOf(rec, "_TODO").map(n => ({ node: n, text: GED.unesc(n.val || ""), done: !!GED.kid(n, "_DONE") })); }
+function todoCount() {
+  const db = S.db; if (db._tdc && db._tdc.cc === db.changeCount) return db._tdc.n;
+  let n = 0; for (const r of db.ofTag("INDI")) for (const k of r.kids) if (k.tag === "_TODO" && !GED.kid(k, "_DONE")) n++;
+  db._tdc = { cc: db.changeCount, n }; return n;
+}
+function todoPanel(ids) {
+  const db = S.db, seen = new Set(), out = [];
+  for (const id of ids) { if (!id || seen.has(id) || !GED.personInfo(db, id)) continue; seen.add(id); out.push(id); }
+  if (!out.length) return "";
+  const ed = !S.viewer;
+  const sec = out.map(id => {
+    const p = GED.personInfo(db, id), items = todoItems(p.rec);
+    return `<div class="tdp"><div class="tdh"><b>${E(GED.displayName(p.rec))}</b></div>
+      ${items.length ? `<ul class="tdl">${items.map((it, i) => `<li class="${it.done ? "done" : ""}">${ed ? `<input type="checkbox" data-act="todoDone" data-id="${id}" data-i="${i}"${it.done ? " checked" : ""} aria-label="erledigt">` : (it.done ? "✓ " : "• ")}<span>${E(it.text)}</span>${ed ? `<button class="btn sm ghost" data-act="todoDel" data-id="${id}" data-i="${i}" title="Eintrag löschen">×</button>` : ""}</li>`).join("")}</ul>` : `<div class="hint">Noch keine Schritte eingetragen.</div>`}
+      ${ed ? `<div class="tdadd"><input type="text" class="tdin" data-id="${id}" placeholder="Nächster Schritt, z. B. Heiratseintrag im Kirchenbuch prüfen" maxlength="400"><button class="btn sm" data-act="todoAdd" data-id="${id}">Hinzufügen</button></div>` : ""}</div>`;
+  }).join("");
+  return `<div class="panel todo"><h4>Nächste Forschungsschritte</h4><div class="tdgrid">${sec}</div></div>`;
+}
+function todoWrite(label, id, fn) {
+  const rec = S.db.get(id); if (!rec) return;
+  GED.run(S.db, label, tx => { tx.touch(rec); fn(rec); });
+  afterEdit(label);
+}
+ACT.todoAdd = (d, e) => {
+  if (S.viewer) return;
+  const box = e.target.closest(".tdadd"), inp = box && box.querySelector(".tdin"), t = inp && inp.value.trim(); if (!t) { toast("Bitte einen Schritt eintragen"); return; }
+  todoWrite("Forschungsschritt eingetragen", d.id, rec => { const n = { tag: "_TODO", val: GED.esc(t), kids: [] }; const i = rec.kids.findIndex(k => k.tag === "CHAN"); if (i < 0) rec.kids.push(n); else rec.kids.splice(i, 0, n); });
+};
+ACT.todoDone = (d) => {
+  const rec = S.db.get(d.id); const n = rec && GED.kidsOf(rec, "_TODO")[+d.i]; if (!n) return;
+  todoWrite(GED.kid(n, "_DONE") ? "Forschungsschritt wieder offen" : "Forschungsschritt erledigt", d.id, () => { const k = GED.kid(n, "_DONE"); if (k) n.kids.splice(n.kids.indexOf(k), 1); else n.kids.push({ tag: "_DONE", val: GED.todayGed(), kids: [] }); });
+};
+ACT.todoDel = (d) => {
+  const rec = S.db.get(d.id); const n = rec && GED.kidsOf(rec, "_TODO")[+d.i]; if (!n) return;
+  todoWrite("Forschungsschritt gelöscht", d.id, () => { rec.kids.splice(rec.kids.indexOf(n), 1); });
+};
+document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList && e.target.classList.contains("tdin")) { e.preventDefault(); const b = e.target.parentNode.querySelector("[data-act=todoAdd]"); if (b) b.click(); } });
+/* Übersicht über die ganze Datei */
+ACT.todoAll = () => {
+  if (!S.db) return;
+  openDlg({
+    title: "Forschungsnotizen der ganzen Datei", wide: true, noFocus: true, data: { all: false },
+    body: (d) => {
+      const rows = [];
+      for (const r of S.db.ofTag("INDI")) { const its = todoItems(r).filter(it => d.data.all || !it.done); if (its.length) rows.push({ id: r.xref, name: GED.displayName(r), its }); }
+      rows.sort((a, b) => a.name.localeCompare(b.name, "de"));
+      return `<label class="mdopt"><input type="checkbox" data-d="tall"${d.data.all ? " checked" : ""}> auch erledigte zeigen</label>` + (rows.length ? rows.map(r => `<div class="tdp"><div class="tdh"><button class="lk" data-d="gop" data-id="${r.id}"><b>${E(r.name)}</b></button> <span class="hint">${E(mdeLife(S.db, r.id).trim())}</span></div><ul class="tdl">${r.its.map(it => `<li class="${it.done ? "done" : ""}">${it.done ? "✓ " : "• "}<span>${E(it.text)}</span></li>`).join("")}</ul></div>`).join("") : `<div class="hint">Keine ${d.data.all ? "" : "offenen "}Forschungsschritte eingetragen.</div>`);
+    },
+    buttons: () => [{ id: "close", label: "Schließen" }],
+    on: { gop: (d, t) => { d.close(); go(t.dataset.id); } },
+    onChange: (d, e) => { if (e.target.dataset.d === "tall") { d.data.all = e.target.checked; d.paint(); } }
+  });
+};
+VIEW_OK.add("todoAll");
 
 </script>
 </body>

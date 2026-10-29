@@ -708,6 +708,24 @@ select{background-color:var(--bg);color:var(--ink);border:1px solid var(--line);
 select option,select optgroup{background-color:var(--panel);color:var(--ink)}
 input,textarea{color:var(--ink)}
 
+/* Erweitertes Familienblatt */
+.ext{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.ext.one{grid-template-columns:1fr}
+.ext .xs{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px}
+.ext .xh{font-size:12px;color:var(--muted);margin-bottom:6px}.ext .xh b{color:var(--ink);font-family:var(--serif)}
+.ext .xg{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:5px}
+.ext .xg.xp{grid-template-columns:1fr 1fr;margin-bottom:0}.ext .xg.xp>div{display:block}
+.ext .xc{display:flex;flex-direction:column;gap:1px;text-align:left;width:100%;min-height:44px;padding:4px 7px;border:1px solid var(--neu-line);border-radius:6px;background:var(--neu);color:var(--ink);font-size:12px;line-height:1.25;overflow:hidden}
+.ext .xc b{font:600 12.5px var(--serif);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ext .xc span{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ext .xc.M{background:var(--mas);border-color:var(--mas-line)}.ext .xc.F{background:var(--fem);border-color:var(--fem-line)}
+.ext .xc.u{border-style:dashed;background:transparent;color:var(--muted);justify-content:center;align-items:center}
+.ext button.xc{cursor:pointer}.ext button.xc:hover{filter:brightness(.96)}
+.ext .xc.side{opacity:.55}
+.ageh{margin-left:8px}
+@media(max-width:860px){.ext{grid-template-columns:1fr}.ext .xg{grid-template-columns:repeat(2,1fr)}}
+@media print{.ext{break-inside:avoid}}
+
 </style>
 </head>
 <body>
@@ -1114,14 +1132,20 @@ input,textarea{color:var(--ink)}
     if (!f) return null;
     return f.husb === personId ? f.wife : f.wife === personId ? f.husb : (f.husb || f.wife);
   }
+  /* Zusatz vor dem Jahr bei Schätzungen: "vor 1982" darf nicht als Jahr 1982 erscheinen */
+  function dateQual(raw) {
+    const m = /^(ABT|CAL|EST|CIR|CA|UM|BEF|VOR|AFT|NACH|BET|FROM|TO)\b/i.exec(raw || ""); if (!m) return "";
+    const q = m[1].toUpperCase();
+    return q === "BEF" || q === "VOR" || q === "TO" ? "vor " : q === "AFT" || q === "NACH" || q === "FROM" ? "nach " : "~";
+  }
   function lifeSpan(db, id) {
     const p = personInfo(db, id);
     if (!p) return "";
-    const b = (p.birt && p.birt.date.y) || (p.chr && p.chr.date.y);
-    const d = (p.deat && p.deat.date.y) || (p.buri && p.buri.date.y);
-    const bp = b ? ((p.birt && p.birt.date.y) ? "" : "~") + b : "";
+    const yr = (e, subst) => e && e.date.y ? (subst ? "~" : dateQual(e.date.raw)) + e.date.y : "";
+    const b = yr(p.birt) || yr(p.chr, true);
+    const d = yr(p.deat) || yr(p.buri, true);
     if (!b && !d) return "";
-    return bp + "–" + (d || "");
+    return b + "–" + d;
   }
   /* Hauptperson: ausdrücklich festgelegt (HEAD _HOME) oder als Hinweis der Anwendung (db.mainHint) */
   function mainPerson(db) {
@@ -1699,7 +1723,7 @@ function personBlock(id, famId, ctx, fallbackRole) {
   const evs = sortedEvents(p.events);
   let h = `<section class="pb ${p.sex === "F" ? "fem" : p.sex === "M" ? "mas" : ""}${id === S.pid ? " focus" : ""}${sideCls(id)}">`;
   h += `<h3><button data-act="go" data-id="${id}"${famId ? ` data-fam="${famId}"` : ""}>${E(GED.displayName(p.rec))}</button>${mark(ctx, GED.kid(p.rec, "NAME") ? GED.kidsOf(GED.kid(p.rec, "NAME"), "SOUR") : [])}</h3>`;
-  h += `<div class="sub"><span>${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${qTotal(db, id)}${relTag(id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
+  h += `<div class="sub"><span>${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}${E(ageSub(db, id))}</span>${qTotal(db, id)}${relTag(id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
   if (par) {
     h += `<div class="par">Eltern: ${par.father ? nameBtn(par.father, par.fam) : "unbekannt"} und ${par.mother ? nameBtn(par.mother, par.fam) : "unbekannt"}</div>`;
   } else {
@@ -1743,15 +1767,16 @@ function renderCard() {
     <button class="btn sm" data-act="fwd" ${S.hpos >= S.hist.length - 1 ? "disabled" : ""} aria-label="Vor">Vor ›</button>
     <button class="btn sm" data-act="home" title="Zur Hauptperson">Hauptperson</button>
     <span class="spacer"></span>
-    <button class="btn sm" data-act="ped" data-id="${S.pid}">Vorfahren zeigen</button>
+    <button class="btn sm${EXT.on ? " pri" : ""}" data-act="t_ext" aria-pressed="${EXT.on}" title="Eltern und Großeltern beider Partner über dem Familienblatt anzeigen">Erweitert</button><button class="btn sm" data-act="ped" data-id="${S.pid}">Vorfahren zeigen</button>
     <button class="btn sm" data-act="print">Drucken</button></div>`;
   if (f) {
-    h += `<div class="couple">${personBlock(f.husb, f.id, ctx, "HUSB")}${personBlock(f.wife, f.id, ctx, "WIFE")}</div>`;
+    h += extHtml(f, S.pid) + `<div class="couple">${personBlock(f.husb, f.id, ctx, "HUSB")}${personBlock(f.wife, f.id, ctx, "WIFE")}</div>`;
     const surn = [f.husb ? GED.personInfo(db, f.husb).name.surn : "", f.wife ? GED.personInfo(db, f.wife).name.surn : ""];
     const evs = f.events;
     h += `<div class="band"><span class="ring" title="Ehe">⚭</span>`;
     if (!evs.length) h += `<span class="hint">Keine Angaben zur Ehe</span>`;
     for (const e of evs) h += evHtml(e, ctx, surn);
+    h += marrAges(f);
     const fnotes = GED.kidsOf(f.rec, "NOTE").map(n => GED.noteText(db, n).trim()).filter(t => t && !autoNote(t, surn));
     const fcites = mark(ctx, GED.kidsOf(f.rec, "SOUR"));
     if (fcites) h += `<span class="v">Quellen${fcites}</span>`;
@@ -1765,13 +1790,13 @@ function renderCard() {
         const c = GED.personInfo(db, cid);
         const bd = c.birt ? c.birt.date.text : (c.chr ? "get. " + c.chr.date.text : "");
         const dd = c.deat ? c.deat.date.text : "";
-        h += `<tr class="${sideCls(cid).trim()}"><td class="n">${i + 1}</td><td><span class="sx">${sexSym(c.sex)}</span> <button class="lk" data-act="go" data-id="${cid}">${E(GED.displayName(c.rec))}</button></td><td>${E(bd)}</td><td>${E(dd)}</td><td>${c.fams.length ? '<span title="hat eigene Familie">⚭</span>' : ""}</td></tr>`;
+        h += `<tr class="${sideCls(cid).trim()}"><td class="n">${i + 1}</td><td><span class="sx">${sexSym(c.sex)}</span> <button class="lk" data-act="go" data-id="${cid}">${E(GED.displayName(c.rec))}</button></td><td>${E(bd)}</td><td>${E(dd)}${E(dd ? ageTag(db, cid, "d") : "")}</td><td>${c.fams.length ? '<span title="hat eigene Familie">⚭</span>' : ""}</td></tr>`;
       });
       h += `</tbody></table>`;
     }
     h += `</div>`;
   } else {
-    h += `<div class="couple" style="grid-template-columns:1fr">${personBlock(S.pid, null, ctx, p.sex === "F" ? "WIFE" : "HUSB")}</div>`;
+    h += extHtml(null, S.pid) + `<div class="couple" style="grid-template-columns:1fr">${personBlock(S.pid, null, ctx, p.sex === "F" ? "WIFE" : "HUSB")}</div>`;
   }
   if (ctx.list.length) {
     h += `<div class="panel"><h4>Quellen</h4><ol class="fnl">` + ctx.list.map(id => {
@@ -1854,7 +1879,7 @@ function bdLine(db, id, which, o) {
   const sym = which === "b" ? "*" : "†";
   const pre = e.lab ? e.lab + " " : "";
   const pl = e.place ? (o.fullPlace ? e.place : (GED.unesc(e.place).split(",").map(s => s.trim()).slice(0, S.placeFull ? 99 : 2).join(", "))) : "";
-  const txt = [e.date, pl].filter(Boolean).join(", ") || "—";
+  const txt = [e.date ? e.date + ageTag(db, id, which) : "", pl].filter(Boolean).join(", ") || "—";
   const cls = o.cls || "pl bl";
   return `<span class="${cls}" title="${E((which === "b" ? "Geboren" : "Gestorben") + (e.lab ? " (" + e.lab + ")" : "") + ": " + [e.date, e.place].filter(Boolean).join(", "))}">${sym} ${E(pre + txt)}${o.noBadge ? "" : qBadge(db, which === "b" ? "Quellen Geburt" : "Quellen Tod", e.ids)}</span>`;
 }
@@ -2032,7 +2057,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "28.10.2026 23:43"; /* BUILD_ID=28.10.2026 23:43 */
+const BUILD = "29.10.2026 08:40"; /* BUILD_ID=29.10.2026 08:40 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -5231,13 +5256,7 @@ ACT.t_sreset = () => { TG.q = { given: "", surn: "", smode: "has", sex: "", by1:
 
 /* ---------------- Zeitleiste einer Person ---------------- */
 const dKey = (d) => d && d.y != null ? d.key : null;
-function ageAt(p, d) {
-  const b = p.birt && p.birt.date.y != null ? p.birt.date : (p.chr && p.chr.date.y != null ? p.chr.date : null);
-  if (!b || !d || d.y == null) return null;
-  let a = d.y - b.y;
-  if (b.m && d.m && (d.m < b.m || (d.m === b.m && b.d && d.d && d.d < b.d))) a--;
-  return a >= 0 && a < 125 ? a : null;
-}
+function ageAt(p, d) { const b = birthDate(p), r = b ? ageCalc(b, d) : null; return r ? r.a : null; }
 function timelineEvents(id, withFam) {
   const p = pinf(id), out = [];
   const add = (who, label, ev, kind) => { if (ev) out.push({ date: ev.date, label, place: ev.place, who, kind, val: ev.val, tag: ev.tag }); };
@@ -5304,7 +5323,7 @@ function tTime() {
   else {
     h += `<ol class="tl">`;
     for (const e of dated) {
-      const age = e.who === id ? ageAt(p, e.date) : (e.kind === "fam" ? ageAt(p, e.date) : null);
+      const age = (e.who === id && e.tag === "BIRT") ? null : e.who === id || e.kind === "fam" ? ageAtEv(p, e.date) : null;
       h += `<li class="${e.kind}"><span class="tly">${e.date.y}</span><div><b>${E(e.label)}</b>${e.val ? " " + E(e.val) : ""}<div class="hint">${E(e.date.text)}${e.place ? " · " + E(shortPlace(e.place)) : ""}${age != null ? " · " + (e.who === id ? "Alter " + age : "du warst " + age) : ""}</div></div></li>`;
     }
     h += `</ol>`;
@@ -5660,7 +5679,7 @@ function tStats() {
   const oldest = s.ageList.slice().sort((a, b) => b.a - a.a).slice(0, 10);
   const minY = s.years.length ? Math.min(...s.years) : null, maxY = s.years.length ? Math.max(...s.years) : null;
   const card = (t, v, sub) => `<div class="scard"><div class="sv">${v}</div><div class="sl">${t}</div>${sub ? `<div class="hint">${sub}</div>` : ""}</div>`;
-  let h = tHead("Statistik", "Auswertung der geladenen Datei. Alter und Spannen werden nur aus vollständigen Jahresangaben berechnet.");
+  let h = tHead("Statistik", "Auswertung der geladenen Datei. Alter werden nur aus genauen Daten (Tag, Monat und Jahr) berechnet, Schätzungen wie „vor 1982“ zählen nicht.");
   h += `<div class="scards">${card("Personen", s.n.toLocaleString("de-DE"), `${pct(s.m, s.n)} männlich, ${pct(s.f, s.n)} weiblich${s.u ? ", " + s.u + " unbekannt" : ""}`)}${card("Familien", s.fams.toLocaleString("de-DE"), `Ø ${f1(s.withKids ? s.kidsTotal / s.withKids : null)} Kinder je Familie mit Kindern`)}${card("Quellen", s.src.toLocaleString("de-DE"), `${s.media} Bild- oder Dokumentverweise bei Personen`)}${card("Zeitraum der Geburten", minY ? minY + " bis " + maxY : "—", `${pct(s.withB, s.n)} der Personen mit Geburtsjahr`)}${card("Ø Lebensalter", f1(avg(s.lifespans)) , `aus ${s.lifespans.length} Personen mit beiden Jahren`)}${card("Ø Heiratsalter", `${f1(avg(s.marrM))} / ${f1(avg(s.marrF))}`, "Männer / Frauen")}</div>`;
   h += `<div class="panel"><h4>Geburten je Jahrzehnt</h4>${colChart(s.births, { step: 10, fmt: k => k + "er", short: k => (k % 50 === 0 ? String(k) : "") })}</div>`;
   h += `<div class="panel"><h4>Lebensalter bei Tod</h4>${colChart(s.ageBuckets, { step: 10, fmt: k => k + " bis " + (k + 9) + " Jahre", short: k => String(k) })}</div>`;
@@ -6139,7 +6158,7 @@ const DENS = { v: (() => { let id = lsGet("st.dens2", ""); if (!id) id = ["vd", 
 const boxGeo = () => { const D = DENS_T[DENS.v]; return { c: D.c || 0, BW: D.bw || 214, BH: D.bh || 48 }; };
 /* Inhalt eines kleinen Kastens */
 function tcInner(c, nm, id) {
-  if (c === 1) return `<span class="tx"><span class="nm">${E(nm)}</span><span class="yr">${E(GED.lifeSpan(S.db, id))}</span></span>`;
+  if (c === 1) return `<span class="tx"><span class="nm">${E(nm)}</span><span class="yr">${E(GED.lifeSpan(S.db, id))}${E(ageTag(S.db, id, personAge(S.db, id) && personAge(S.db, id).kind === "living" ? "b" : "d"))}</span></span>`;
   if (c === 2) return `<span class="tx"><span class="nm">${E(nm)}</span> <span class="yr">${E(GED.lifeSpan(S.db, id))}</span></span>`;
   if (c === 3) return `<span class="tx"><span class="nm">${E(nm)}</span></span>`;
   return `<span class="tx"><span class="nm">${E(shortNm(nm, 14))}</span></span>`;
@@ -7030,6 +7049,103 @@ window.addEventListener("resize", () => {
   CAR.ov.querySelectorAll(".carc").forEach((el, i) => { el.style.transform = `rotateY(${i * CAR.step}deg) translateZ(${CAR.R}px)`; });
   carPaint();
 });
+
+/* ============ ALTERSANGABEN und ERWEITERTES FAMILIENBLATT (Eltern und Großeltern) ============ */
+/* Regel: Ein Alter wird nur aus genauen Daten berechnet (Tag, Monat und Jahr, ohne Zusatz wie vor, nach, um, zwischen).
+   Schätzungen wie "vor 1982" ergeben kein Alter. Wo ein Alter ausdrücklich beschriftet ist und nicht berechnet werden kann, steht "--". */
+const DATE_EXACT = /^(?:@#DGREGORIAN@\s*)?(\d{1,2}) (JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC) (\d{4})$/i;
+function dExact(d) {
+  if (!d || !d.raw) return false;
+  const m = DATE_EXACT.exec(d.raw.trim()); if (!m) return false;
+  const dd = +m[1], mm = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"].indexOf(m[2].toUpperCase()), yy = +m[3];
+  const t = new Date(Date.UTC(yy, mm, dd)); t.setUTCFullYear(yy);
+  return dd >= 1 && t.getUTCFullYear() === yy && t.getUTCMonth() === mm && t.getUTCDate() === dd;
+}
+/* Alter zwischen zwei genauen Daten, sonst null */
+function ageCalc(b, e) {
+  if (!dExact(b) || !dExact(e)) return null;
+  let a = e.y - b.y;
+  if (e.m < b.m || (e.m === b.m && e.d < b.d)) a--;
+  if (a < 0 || a > 125) return null;
+  const r = { a };
+  if (a === 0) {
+    let mo = e.m - b.m - (e.d < b.d ? 1 : 0); if (mo < 0) mo += 12; r.mo = mo;
+    if (mo === 0) r.days = Math.round((Date.UTC(e.y, e.m - 1, e.d) - Date.UTC(b.y, b.m - 1, b.d)) / 864e5);
+  }
+  return r;
+}
+function ageWord(r, short) {
+  if (r.days != null) return `${r.days} ${r.days === 1 ? "Tag" : "Tage"}`;
+  if (r.mo != null) return `${r.mo} ${short ? "Mon." : r.mo === 1 ? "Monat" : "Monate"}`;
+  return `${r.a}${short ? " J." : r.a === 1 ? " Jahr" : " Jahre"}`;
+}
+/* Geburtsdatum für die Altersrechnung: nur die Geburt, keine Taufe als Ersatz */
+const birthDate = (p) => p.birt && dExact(p.birt.date) ? p.birt.date : null;
+/* Hat die Person überhaupt eine Datumsangabe zu Geburt oder Tod (dann ist ein "--" aussagekräftig)? */
+const hasAnyDate = (p) => [p.birt, p.chr, p.deat, p.buri].some(e => e && e.date && e.date.y != null);
+/* Alter einer Person: beim Tod (beide Daten genau) oder heute bei Lebenden (kein Sterbe- oder Begräbniseintrag, Geburt genau, höchstens 105 Jahre) */
+function personAge(db, id) {
+  return bdMemo(db, "age:" + id, () => {
+    const p = GED.personInfo(db, id); if (!p) return null;
+    const b = birthDate(p); if (!b) return null;
+    if (p.deat || p.buri) { const r = p.deat ? ageCalc(b, p.deat.date) : null; return r ? { kind: "death", r } : null; }
+    const n = new Date(), today = { y: n.getFullYear(), m: n.getMonth() + 1, d: n.getDate(), raw: `${n.getDate()} ${["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][n.getMonth()]} ${n.getFullYear()}` };
+    const r = ageCalc(b, today); return r && r.a <= 105 ? { kind: "living", r } : null;
+  });
+}
+/* Kurzer Zusatz in Zeilen mit Geburt und Tod: " (81 J.)" bzw. " (heute 58 J.)". Ohne genaues Alter bleibt er weg. */
+function ageTag(db, id, which) {
+  const a = personAge(db, id); if (!a) return "";
+  if (which === "d" && a.kind === "death") return ` (${ageWord(a.r, true)})`;
+  if (which === "b" && a.kind === "living") return ` (heute ${ageWord(a.r, true)})`;
+  return "";
+}
+/* Kopf eines Personenblocks: " · 81 Jahre", " · heute 58 Jahre" oder " · Alter --" (nur wenn es Datumsangaben gibt, aus denen sich kein genaues Alter ergibt) */
+function ageSub(db, id) {
+  const a = personAge(db, id);
+  if (a) return ` · ${a.kind === "living" ? "heute " : ""}${ageWord(a.r)}`;
+  const p = GED.personInfo(db, id);
+  return p && hasAnyDate(p) ? " · Alter --" : "";
+}
+/* Alter bei der Heirat (nur bei genauem Heiratsdatum und genauem Geburtsdatum, sonst "--") */
+function marrAges(f) {
+  const db = S.db; if (!f || !f.marr || f.marr.date.y == null) return "";
+  const out = [];
+  for (const id of [f.husb, f.wife]) {
+    if (!id) continue; const p = GED.personInfo(db, id), b = birthDate(p), r = b ? ageCalc(b, f.marr.date) : null;
+    out.push(`${E((p.name.given || GED.displayName(p.rec)).split(" ")[0])} ${r ? ageWord(r, true) : "--"}`);
+  }
+  return out.length ? `<span class="hint ageh">Alter bei der Heirat: ${out.join(", ")}</span>` : "";
+}
+/* Alter bei einem Ereignis in der Zeitleiste: Text oder "--" */
+function ageAtEv(p, date) {
+  const b = birthDate(p);
+  if (b && date && date.key != null && date.key < b.key) return null;   // Ereignis vor der Geburt: kein Alter
+  const r = b ? ageCalc(b, date) : null; return r ? ageWord(r) : "--";
+}
+
+/* ---------- Erweitertes Familienblatt ---------- */
+const EXT = { on: lsGet("st.ext", "0") === "1" };
+function xCard(id, sex, role) {
+  if (!id || !GED.personInfo(S.db, id)) return `<span class="xc u" title="${E(role)}">${E(role)} unbekannt</span>`;
+  const p = GED.personInfo(S.db, id), ls = GED.lifeSpan(S.db, id), ag = personAge(S.db, id);
+  return `<button class="xc ${sex}${sideCls(id)}" data-act="go" data-id="${id}" title="${E(role + ": " + GED.displayName(p.rec))}"><b>${E(GED.displayName(p.rec))}</b><span>${E(ls)}${ag && ag.kind === "death" ? " · " + E(ageWord(ag.r, true)) : ""}</span></button>`;
+}
+function xSide(id) {
+  const db = S.db, p = id && GED.personInfo(db, id);
+  if (!p) return `<div class="xs"><div class="xh">Person unbekannt</div></div>`;
+  const par = GED.parentsOf(db, id), fa = par && par.father, mo = par && par.mother;
+  const pf = fa ? GED.parentsOf(db, fa) : null, pm = mo ? GED.parentsOf(db, mo) : null;
+  return `<div class="xs"><div class="xh">Eltern und Großeltern von <b>${E(GED.displayName(p.rec))}</b></div>
+    <div class="xg">${xCard(pf && pf.father, "M", "Großvater")}${xCard(pf && pf.mother, "F", "Großmutter")}${xCard(pm && pm.father, "M", "Großvater")}${xCard(pm && pm.mother, "F", "Großmutter")}</div>
+    <div class="xg xp"><div>${xCard(fa, "M", "Vater")}</div><div>${xCard(mo, "F", "Mutter")}</div></div></div>`;
+}
+function extHtml(f, pid) {
+  if (!EXT.on) return "";
+  return f ? `<div class="ext">${xSide(f.husb)}${xSide(f.wife)}</div>` : `<div class="ext one">${xSide(pid)}</div>`;
+}
+ACT.t_ext = () => { EXT.on = !EXT.on; lsSet("st.ext", EXT.on ? "1" : "0"); render._same = true; render(); };
+VIEW_OK.add("t_ext");
 
 /* ============ HAUPTANSICHT ============ */
 function welcomeHtml() {

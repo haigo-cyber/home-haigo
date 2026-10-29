@@ -749,6 +749,10 @@ input,textarea{color:var(--ink)}
 .ftk.p{background:var(--neu);}.ftk.f{background:var(--fem)}.ftk.s{background:var(--mas)}.ftk.n{background:color-mix(in srgb,#d9a21b 18%,transparent)}
 .ftb{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}.ftsn{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}.ftl{font-weight:600;color:var(--ink);margin-right:4px}.ftsn mark,.ftb .tn mark{background:color-mix(in srgb,#e8b923 45%,transparent);color:inherit;border-radius:2px;padding:0 1px}
 
+.godrow{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:3px 0}.godit{display:inline-flex;align-items:center}
+.pate .xc{cursor:pointer}.pate .xc.M{background:var(--mas);border:1px solid var(--mas-line);border-radius:6px}.pate .xc.F{background:var(--fem);border:1px solid var(--fem-line);border-radius:6px}.pate .xc b{font:600 12.5px var(--serif)}.pate .xc span{color:var(--muted);font-size:11px}
+@media print{.pate .btn{display:none}}
+
 </style>
 </head>
 <body>
@@ -1819,11 +1823,11 @@ function renderCard() {
       });
       h += `</tbody></table>`;
     }
-    h += `</div>` + xDesc(f) + todoPanel([f.husb, f.wife]);
+    h += `</div>` + xDesc(f) + patenPanel([f.husb, f.wife]) + todoPanel([f.husb, f.wife]);
   } else {
     h += extHtml(null, S.pid) + `<div class="couple" style="grid-template-columns:1fr">${personBlock(S.pid, null, ctx, p.sex === "F" ? "WIFE" : "HUSB")}</div>`;
   }
-  if (!f) h += todoPanel([S.pid]);
+  if (!f) h += patenPanel([S.pid]) + todoPanel([S.pid]);
   if (ctx.list.length) {
     h += `<div class="panel"><h4>Quellen</h4><ol class="fnl">` + ctx.list.map(id => {
       const s = db.get(id), ty = GED.unesc(GED.kval(s, "TYPE"));
@@ -2083,7 +2087,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 21:56"; /* BUILD_ID=29.10.2026 21:56 */
+const BUILD = "29.10.2026 23:20"; /* BUILD_ID=29.10.2026 23:20 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -9070,20 +9074,91 @@ ACT.todoAll = () => {
 };
 VIEW_OK.add("todoAll");
 
+/* ============ PATEN UND ANDERE VERKNÜPFTE PERSONEN (GEDCOM ASSO) ============ */
+/* Wie in Reunion: Am Patenkind steht  1 ASSO @Pate@ / 2 TYPE INDI / 2 RELA Taufpate */
+const GOD_ROLES = ["Taufpate", "Taufpatin", "Firmpate", "Firmpatin", "Pate", "Patin", "Trauzeuge", "Trauzeugin", "Zeuge", "Zeugin"];
+function godList(db, id) {
+  const rec = db.get(id); if (!rec) return [];
+  return GED.kidsOf(rec, "ASSO").map((n, i) => ({ node: n, i, pid: n.val, rela: GED.unesc(GED.kval(n, "RELA") || "").trim() })).filter(x => GED.isPtr(x.pid) && db.get(x.pid) && db.get(x.pid).tag === "INDI");
+}
+function godKids(db, id) {   // Patenkinder: alle, die diese Person als ASSO tragen
+  const m = memo("godrev", () => {
+    const map = new Map();
+    for (const r of db.ofTag("INDI")) for (const n of GED.kidsOf(r, "ASSO")) if (GED.isPtr(n.val)) { if (!map.has(n.val)) map.set(n.val, []); map.get(n.val).push({ child: r.xref, rela: GED.unesc(GED.kval(n, "RELA") || "").trim() }); }
+    return map;
+  });
+  return (m.get(id) || []).filter(x => db.get(x.child));
+}
+function godChip(id, extra) { return `<button class="xc lk ${GED.personInfo(S.db, id).sex || ""}" data-act="go" data-id="${id}" style="display:inline-flex;gap:6px;align-items:baseline;width:auto;min-height:0;padding:3px 9px;margin:2px 4px 2px 0"><b>${E(GED.displayName(S.db.get(id)))}</b><span>${lifeHtml(S.db, id)}${extra ? " · " + E(extra) : ""}</span></button>` }
+function patenPanel(ids) {
+  const db = S.db, ed = !S.viewer, seen = new Set(), out = [];
+  for (const id of ids) if (id && !seen.has(id) && GED.personInfo(db, id)) { seen.add(id); out.push(id); }
+  const rows = out.map(id => {
+    const gl = godList(db, id), gk = godKids(db, id);
+    if (!ed && !gl.length && !gk.length) return "";
+    return `<div class="tdp"><div class="tdh"><b>${E(GED.displayName(db.get(id)))}</b></div>
+      <div class="godrow"><span class="hint">Paten und Verknüpfte:</span> ${gl.length ? gl.map(x => `<span class="godit">${godChip(x.pid, x.rela || "verknüpft")}${ed ? `<button class="btn sm ghost" data-act="godDel" data-id="${id}" data-i="${x.i}" title="Verknüpfung entfernen (die Person bleibt erhalten)">×</button>` : ""}</span>`).join("") : `<span class="hint">keine</span>`}${ed ? ` <button class="btn sm" data-act="godAdd" data-id="${id}">Pate hinzufügen</button>` : ""}</div>
+      ${gk.length ? `<div class="godrow"><span class="hint">Patenkind von ${E(GED.displayName(db.get(id)))}:</span> ${gk.map(x => godChip(x.child, x.rela)).join("")}</div>` : ""}</div>`;
+  }).join("");
+  if (!rows.trim()) return "";
+  return `<div class="panel pate"><h4>Paten</h4><div class="tdgrid">${rows}</div></div>`;
+}
+function godAddNode(tx, childId, targetId, rela) {
+  const rec = tx.db.get(childId); tx.touch(rec);
+  const n = { tag: "ASSO", val: targetId, kids: [{ tag: "TYPE", val: "INDI", kids: [] }, ...(rela ? [{ tag: "RELA", val: GED.esc(rela), kids: [] }] : [])] };
+  const i = rec.kids.findIndex(k => k.tag === "CHAN"); if (i < 0) rec.kids.push(n); else rec.kids.splice(i, 0, n);
+}
+ACT.godAdd = (d) => {
+  if (S.viewer) return;
+  pickPerson({ title: "Wer ist Pate oder Patin?", exclude: [d.id], newLabel: "Person neu anlegen (nicht im Stammbaum)", onPick: (pid) => godDlg(d.id, pid), onNew: () => godDlg(d.id, null) });
+};
+function godDlg(childId, target) {
+  const cname = GED.displayName(S.db.get(childId)), tp = target && GED.personInfo(S.db, target);
+  const defRole = tp && tp.sex === "F" ? "Taufpatin" : "Taufpate";
+  openDlg({
+    title: "Pate verknüpfen", noFocus: true,
+    body: () => `<p style="margin-top:0">Patenkind: <b>${E(cname)}</b></p>
+      ${target ? `<p>Pate oder Patin: <b>${E(GED.displayName(S.db.get(target)))}</b> <span class="hint">${E(GED.lifeSpan(S.db, target))}</span></p>` : `<div class="mdopt"><label>Vorname <input id="gdg" type="text" autocomplete="off"></label> <label>Nachname <input id="gds" type="text" autocomplete="off"></label> <label>Geschlecht <select id="gdx"><option value="">unbekannt</option><option value="M">männlich</option><option value="F">weiblich</option></select></label></div>`}
+      <div class="mdopt"><label>Rolle <select id="gdr">${GOD_ROLES.map(r => `<option${r === defRole ? " selected" : ""}>${r}</option>`).join("")}<option value="">andere (unten eintragen)</option></select></label> <label>eigene Bezeichnung <input id="gdo" type="text" placeholder="z. B. Taufzeuge" autocomplete="off"></label></div>
+      <p class="hint">${target ? "Die Person bleibt unverändert, am Patenkind wird die Verknüpfung eingetragen." : "Die Person wird neu angelegt, ohne Eltern und Familie."} Die Verknüpfung wird wie in Reunion als Zeile ASSO gespeichert.</p>`,
+    buttons: () => [{ id: "go", label: "Verknüpfen", cls: "pri" }, { id: "close", label: "Abbrechen" }],
+    on: {
+      go: (d) => {
+        const rela = (d.q("#gdo").value || "").trim() || d.q("#gdr").value;
+        let tid = target;
+        if (!tid) { const g = d.q("#gdg").value.trim(), s = d.q("#gds").value.trim(); if (!g && !s) { toast("Bitte einen Namen eintragen"); return; } }
+        if (tid && godList(S.db, childId).some(x => x.pid === tid && x.rela === rela)) { toast("Diese Verknüpfung gibt es schon"); return; }
+        let nid = null;
+        GED.run(S.db, "Pate verknüpft", tx => {
+          if (!tid) { const rec = GED.addPerson(tx, { given: d.q("#gdg").value.trim(), surn: d.q("#gds").value.trim() }); const sx = d.q("#gdx").value; if (sx) rec.kids.push({ tag: "SEX", val: sx, kids: [] }); tid = nid = rec.xref; }
+          godAddNode(tx, childId, tid, rela);
+        });
+        d.close(); afterEdit(nid ? "Pate neu angelegt und verknüpft" : "Pate verknüpft");
+      }
+    }
+  });
+}
+ACT.godDel = (d) => {
+  if (S.viewer) return;
+  const rec = S.db.get(d.id), n = rec && GED.kidsOf(rec, "ASSO")[+d.i]; if (!n) return;
+  GED.run(S.db, "Pate-Verknüpfung entfernt", tx => { tx.touch(rec); rec.kids.splice(rec.kids.indexOf(n), 1); });
+  afterEdit("Verknüpfung entfernt");
+};
+
 /* ============ VOLLTEXTSUCHE ÜBER ALLE ANGABEN ============ */
 const FT = { q: "", kinds: { p: true, f: true, s: true, n: true } };
 const FT_KIND = { p: "Person", f: "Familie", s: "Quelle", n: "Notiz" };
-const FT_LAB = { NAME: "Name", NICK: "Rufname", GIVN: "Vorname", SURN: "Nachname", NPFX: "Titel", NSFX: "Zusatz", SEX: "Geschlecht", NOTE: "Notiz", SOUR: "Quelle", PLAC: "Ort", DATE: "Datum", ADDR: "Adresse", PAGE: "Seite", TEXT: "Text", TITL: "Titel", AUTH: "Autor", PUBL: "Veröffentlichung", ABBR: "Kurztitel", REPO: "Archiv", CAUS: "Ursache", AGE: "Alter", TYPE: "Art", _TODO: "Forschungsschritt", REFN: "Kennung", FILE: "Datei", FORM: "Format", CALN: "Signatur", WWW: "Web", EMAIL: "E-Mail", PHON: "Telefon", AGNC: "Stelle", RESN: "Vermerk", MARR: "Heirat", DIV: "Scheidung" };
+const FT_LAB = { NAME: "Name", NICK: "Rufname", GIVN: "Vorname", SURN: "Nachname", NPFX: "Titel", NSFX: "Zusatz", SEX: "Geschlecht", NOTE: "Notiz", SOUR: "Quelle", ASSO: "Pate oder verknüpft mit", RELA: "Rolle", PLAC: "Ort", DATE: "Datum", ADDR: "Adresse", PAGE: "Seite", TEXT: "Text", TITL: "Titel", AUTH: "Autor", PUBL: "Veröffentlichung", ABBR: "Kurztitel", REPO: "Archiv", CAUS: "Ursache", AGE: "Alter", TYPE: "Art", _TODO: "Forschungsschritt", REFN: "Kennung", FILE: "Datei", FORM: "Format", CALN: "Signatur", WWW: "Web", EMAIL: "E-Mail", PHON: "Telefon", AGNC: "Stelle", RESN: "Vermerk", MARR: "Heirat", DIV: "Scheidung" };
 const FT_SKIP = new Set(["CHAN", "_UID", "FAMC", "FAMS", "HUSB", "WIFE", "CHIL", "OBJE", "CONC", "CONT", "_DONE"]);
 const ftLabel = (t) => FT_LAB[t] || GED.INDI_EVENTS[t] || GED.FAM_EVENTS[t] || t;
 function ftFlat(db, rec) {
   const out = [];
   const walk = (n, parent) => {
     for (const k of n.kids) {
-      if (FT_SKIP.has(k.tag)) continue;
+      if (FT_SKIP.has(k.tag) || (k.tag === "TYPE" && k.val === "INDI")) continue;
       const lab = parent ? parent + " · " + ftLabel(k.tag) : ftLabel(k.tag);
       let v = k.val || "";
-      if (GED.isPtr(v)) { if (k.tag === "SOUR") { const s = db.get(v); v = s ? GED.unesc(GED.kval(s, "TITL") || "") : ""; } else v = ""; }
+      if (GED.isPtr(v)) { if (k.tag === "ASSO") { const t = db.get(v); v = t && t.tag === "INDI" ? GED.displayName(t) : ""; } else if (k.tag === "SOUR") { const s = db.get(v); v = s ? GED.unesc(GED.kval(s, "TITL") || "") : ""; } else v = ""; }
       else if (k.tag === "DATE") v = GED.formatDate(v) + " " + v;
       else v = GED.unesc(v);
       v = v.replace(/\s+/g, " ").trim();

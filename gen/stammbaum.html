@@ -726,6 +726,14 @@ input,textarea{color:var(--ink)}
 @media(max-width:860px){.ext{grid-template-columns:1fr}.ext .xg{grid-template-columns:repeat(2,1fr)}}
 @media print{.ext{break-inside:avoid}}
 
+/* Jahreszahlen: genaues Datum normal, nur Jahr oder ungefaehr leicht andersfarbig */
+:root{--yx:#a35f00}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--yx:#e8b055}}
+:root[data-theme="dark"]{--yx:#e8b055}
+.yx{color:var(--yx)}
+.ylegend{font-size:11px;margin-left:4px}
+.prow.on .yx{color:var(--yx)}
+
 </style>
 </head>
 <body>
@@ -1505,7 +1513,7 @@ input,textarea{color:var(--ink)}
     MON, MON_DE, MON_LONG_DE, INDI_EVENTS, FAM_EVENTS, ORDER_INDI,
     fold, isPtr, esc, unesc, todayGed, decode, detectEol, parseGedcom, parseRecordText, serializeRecord, recordText, exportText,
     kid, kidsOf, kval, parseName, buildName, nameParts, displayName, parseDate, formatDate,
-    personInfo, famInfo, parentsOf, spouseIn, lifeSpan, startPerson, mainPerson, setMainPerson, personIndex, searchPersons, ancestors, citationIndex, noteText,
+    personInfo, famInfo, parentsOf, spouseIn, lifeSpan, dateQual, startPerson, mainPerson, setMainPerson, personIndex, searchPersons, ancestors, citationIndex, noteText,
     begin, commit, rollback, run, undo, redo, setKid, addPerson, addFamily, addChild, removeChild, setSpouse, linkPtr, unlinkPtr,
     deleteRecord, countRefs, check
   };
@@ -1672,6 +1680,7 @@ function renderList(keepScroll) {
   $("vs").style.height = (S.listRows.length * ROW_H) + "px";
   $("pcount").textContent = S.listRows.length === GED.personIndex(S.db).length
     ? S.listRows.length + " Personen" : S.listRows.length + " von " + GED.personIndex(S.db).length + " Personen";
+  $("pcount").innerHTML = E($("pcount").textContent) + ` <span class="yx ylegend" title="Jahreszahlen in dieser Farbe haben kein genaues Datum: nur Jahr, Monat oder ungefähre Angabe">· nur Jahr</span>`;
   if (!keepScroll) $("plist").scrollTop = 0;
   paintRows();
   const abc = $("abc");
@@ -1689,7 +1698,7 @@ function paintRows() {
     const r = S.listRows[i];
     const p = GED.personInfo(S.db, r.id);
     const yrs = (r.by || r.dy) ? (r.by || "") + "–" + (r.dy || "") : "";
-    html += `<button class="prow${r.id === S.pid ? " on" : ""}${sideCls(r.id)}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pcol"><span class="pr1"><span class="pn">${E(r.label)}</span><span class="py">${E(yrs)}</span>${qTotal(S.db, r.id)}</span><span class="pr2">${bdLine(S.db, r.id, "b", { noBadge: true, cls: "bl" })}${bdLine(S.db, r.id, "d", { noBadge: true, cls: "bl" })}</span>${relTag(r.id, "pr3")}</span></button>`;
+    html += `<button class="prow${r.id === S.pid ? " on" : ""}${sideCls(r.id)}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pcol"><span class="pr1"><span class="pn">${E(r.label)}</span><span class="py">${lifeHtml(S.db, r.id)}</span>${qTotal(S.db, r.id)}</span><span class="pr2">${bdLine(S.db, r.id, "b", { noBadge: true, cls: "bl" })}${bdLine(S.db, r.id, "d", { noBadge: true, cls: "bl" })}</span>${relTag(r.id, "pr3")}</span></button>`;
   }
   vs.innerHTML = html;
 }
@@ -1723,7 +1732,7 @@ function personBlock(id, famId, ctx, fallbackRole) {
   const evs = sortedEvents(p.events);
   let h = `<section class="pb ${p.sex === "F" ? "fem" : p.sex === "M" ? "mas" : ""}${id === S.pid ? " focus" : ""}${sideCls(id)}">`;
   h += `<h3><button data-act="go" data-id="${id}"${famId ? ` data-fam="${famId}"` : ""}>${E(GED.displayName(p.rec))}</button>${mark(ctx, GED.kid(p.rec, "NAME") ? GED.kidsOf(GED.kid(p.rec, "NAME"), "SOUR") : [])}</h3>`;
-  h += `<div class="sub"><span>${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}${E(ageSub(db, id))}</span>${qTotal(db, id)}${relTag(id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
+  h += `<div class="sub"><span>${sexSym(p.sex)} ${lifeHtml(db, id)}${E(ageSub(db, id))}</span>${qTotal(db, id)}${relTag(id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
   if (par) {
     h += `<div class="par">Eltern: ${par.father ? nameBtn(par.father, par.fam) : "unbekannt"} und ${par.mother ? nameBtn(par.mother, par.fam) : "unbekannt"}</div>`;
   } else {
@@ -2057,7 +2066,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 09:16"; /* BUILD_ID=29.10.2026 09:16 */
+const BUILD = "29.10.2026 09:42"; /* BUILD_ID=29.10.2026 09:42 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -2099,7 +2108,7 @@ ACT.t_pchild = () => {
   if (!k.kids.length) return;
   openDlg({
     title: "Zu welchem Kind?", noFocus: true,
-    body: () => `<div class="tlist">${k.kids.map(id => { const p = GED.personInfo(S.db, id); const dir = isDirect(id); return `<button class="trow ${dir ? "dir" : "offline"}" data-d="pick" data-id="${id}"><span class="tsx">${sexSym(p.sex)}</span><span class="tn">${E(GED.displayName(p.rec))}</span><span class="ty">${E(GED.lifeSpan(S.db, id))}</span>${dir ? relTag(id, "pr3") : ""}</button>`; }).join("")}</div>`,
+    body: () => `<div class="tlist">${k.kids.map(id => { const p = GED.personInfo(S.db, id); const dir = isDirect(id); return `<button class="trow ${dir ? "dir" : "offline"}" data-d="pick" data-id="${id}"><span class="tsx">${sexSym(p.sex)}</span><span class="tn">${E(GED.displayName(p.rec))}</span><span class="ty">${lifeHtml(S.db, id)}</span>${dir ? relTag(id, "pr3") : ""}</button>`; }).join("")}</div>`,
     buttons: () => [{ id: "close", label: "Abbrechen" }],
     on: { pick: (dd, t) => { dd.close(); go(t.dataset.id); } }
   });
@@ -2119,7 +2128,7 @@ function renderDescList() {
     const famLine = (fid) => {
       const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, pid);
       const m = f.marr && f.marr.date.text ? ` <span class="sp">(${E(f.marr.date.text)})</span>` : "";
-      return `<span class="sp">⚭</span> ${sp ? `<button class="lk" data-act="dgo" data-id="${sp}">${E(nameOf(sp))}</button> <span class="sp">${E(GED.lifeSpan(db, sp))}</span>${qTotal(db, sp)} <span class="sp">${E(bdShort(db, sp))}</span>` : '<span class="sp">unbekannt</span>'}${m}`;
+      return `<span class="sp">⚭</span> ${sp ? `<button class="lk" data-act="dgo" data-id="${sp}">${E(nameOf(sp))}</button> <span class="sp">${lifeHtml(db, sp)}</span>${qTotal(db, sp)} <span class="sp">${E(bdShort(db, sp))}</span>` : '<span class="sp">unbekannt</span>'}${m}`;
     };
     const kidsOf = (fid) => {
       const f = GED.famInfo(db, fid);
@@ -2518,7 +2527,7 @@ function ensureMediaIdx(cb) {
 }
 function pRow(pid, extra) {
   const q = GED.personInfo(S.db, pid);
-  return `<span><b>${E(q ? GED.displayName(q.rec) : pid)}</b> <span class="hint">${E(GED.lifeSpan(S.db, pid))}</span></span>${extra || ""}`;
+  return `<span><b>${E(q ? GED.displayName(q.rec) : pid)}</b> <span class="hint">${lifeHtml(S.db, pid)}</span></span>${extra || ""}`;
 }
 function kinEditorHtml(id) {
   const db = S.db, p = GED.personInfo(db, id);
@@ -2713,7 +2722,7 @@ function editFam(id) {
     srcs: GED.kidsOf(rec, "SOUR").filter(k => GED.isPtr(k.val)).map(k => k.val)
   };
   const BEFORE = ["CHIL", "CHAN"];
-  const spouseHtml = (role, pid) => `<div class="erow"><div class="eh"><b>${role === "HUSB" ? "Ehemann" : "Ehefrau"}</b><span><button class="btn sm" data-d="spick" data-role="${role}">${pid ? "Ändern" : "Wählen"}</button> ${pid ? `<button class="btn sm ghost" data-d="sclear" data-role="${role}">Entfernen</button>` : ""}</span></div>${pid ? E(nameOf(pid)) + ` <span class="hint">${E(GED.lifeSpan(db, pid))}</span>` : '<span class="hint">nicht eingetragen</span>'}</div>`;
+  const spouseHtml = (role, pid) => `<div class="erow"><div class="eh"><b>${role === "HUSB" ? "Ehemann" : "Ehefrau"}</b><span><button class="btn sm" data-d="spick" data-role="${role}">${pid ? "Ändern" : "Wählen"}</button> ${pid ? `<button class="btn sm ghost" data-d="sclear" data-role="${role}">Entfernen</button>` : ""}</span></div>${pid ? E(nameOf(pid)) + ` <span class="hint">${lifeHtml(db, pid)}</span>` : '<span class="hint">nicht eingetragen</span>'}</div>`;
   openDlg({
     title: "Familie bearbeiten", wide: true, data: { w },
     body: (d) => {
@@ -2721,7 +2730,7 @@ function editFam(id) {
       return `<div class="row2">${spouseHtml("HUSB", w.husb)}${spouseHtml("WIFE", w.wife)}</div>
         ${evEditorHtml(w, TYPES_FAM, GED.FAM_EVENTS)}
         <div class="sect"><span>Kinder (Reihenfolge wie angezeigt)</span><button class="btn sm" data-d="kadd">Bestehende Person hinzufügen</button></div>` +
-        (w.children.length ? w.children.map((c, i) => `<div class="erow" style="display:flex;gap:6px;align-items:center;justify-content:space-between"><span>${i + 1}. ${E(nameOf(c))} <span class="hint">${E(GED.lifeSpan(db, c))}</span></span><span><button class="btn sm ghost" data-d="kup" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="nach oben">↑</button><button class="btn sm ghost" data-d="kdown" data-i="${i}" ${i === w.children.length - 1 ? "disabled" : ""} aria-label="nach unten">↓</button><button class="btn sm ghost" data-d="kdel" data-i="${i}">Entfernen</button></span></div>`).join("") : `<div class="hint">Keine Kinder.</div>`) +
+        (w.children.length ? w.children.map((c, i) => `<div class="erow" style="display:flex;gap:6px;align-items:center;justify-content:space-between"><span>${i + 1}. ${E(nameOf(c))} <span class="hint">${lifeHtml(db, c)}</span></span><span><button class="btn sm ghost" data-d="kup" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="nach oben">↑</button><button class="btn sm ghost" data-d="kdown" data-i="${i}" ${i === w.children.length - 1 ? "disabled" : ""} aria-label="nach unten">↓</button><button class="btn sm ghost" data-d="kdel" data-i="${i}">Entfernen</button></span></div>`).join("") : `<div class="hint">Keine Kinder.</div>`) +
         notesEditorHtml(w) + `<div class="sect"><span>Quellen der Familie</span></div>${srcChips(w.srcs, "p", 0)}`;
     },
     buttons: () => [{ id: "del", label: "Familie löschen", cls: "dng" }, { id: "raw", label: "GEDCOM-Text" }, { id: "cancel", label: "Abbrechen" }, { id: "save", label: "Speichern", cls: "pri" }],
@@ -3638,7 +3647,7 @@ function pickOne(accept) {
 
 function cpPerson(db, id) {
   const p = GED.personInfo(db, id);
-  return `${E(GED.displayName(p.rec))} <span class="w">${E(GED.lifeSpan(db, id))}</span>`;
+  return `${E(GED.displayName(p.rec))} <span class="w">${lifeHtml(db, id)}</span>`;
 }
 function cpList() {
   const f = CMP.filter;
@@ -3663,7 +3672,7 @@ function cpDetailHtml() {
   if (b && !a) return `<h3 style="margin-top:0">${cpPerson(CMP.db, b)}</h3><p>Diese Person aus der Abgleichdatei hat in der geöffneten Datei keine Entsprechung. Anlegen kann das Tool sie nicht automatisch, weil dabei die Verknüpfungen zu Eltern und Ehepartnern fehlen würden.</p>${cpFieldsOnly(b)}`;
   const pair = CMP.pairs.find(p => p.a === a && p.b === b);
   const rows = cpFields(a, b);
-  return `<h3 style="margin-top:0">${E(GED.displayName(S.db.get(a)))} <span class="w">${E(GED.lifeSpan(S.db, a))}</span></h3>
+  return `<h3 style="margin-top:0">${E(GED.displayName(S.db.get(a)))} <span class="w">${lifeHtml(S.db, a)}</span></h3>
     <div class="hint" style="margin-bottom:8px">Abgleichdatei: ${cpPerson(CMP.db, b)}. Zuordnung: ${pair && pair.level === "prob" ? "wahrscheinlich, bitte selbst prüfen" : "sicher"}. <button class="btn sm" data-d="jump" data-a="${a}">In dieser Datei anzeigen</button></div>
     <table class="tbl" style="width:100%"><thead><tr><th>Angabe</th><th>Diese Datei</th><th>Abgleichdatei</th><th>Stand</th><th></th></tr></thead><tbody>
     ${rows.map(r => `<tr><td>${E(r.label)}</td><td>${E(r.a || "—")}</td><td>${E(r.b || "—")}</td><td class="w">${CP_ST[r.st]}</td><td>${r.st !== "same" && r.apply ? `<button class="btn sm" data-d="apply" data-key="${r.key}">${r.st === "missA" ? "Übernehmen" : "Durch diesen Wert ersetzen"}</button>` : ""}</td></tr>`).join("")}
@@ -5136,7 +5145,7 @@ const memo = (key, fn) => { const m = S.db._memo; const k = key + "#" + S.db.cha
 function prow(id, extra) {
   const p = pinf(id);
   if (!p) return "";
-  return `<button class="trow" data-act="card" data-id="${id}"><span class="tsx ${p.sex === "M" ? "m" : p.sex === "F" ? "f" : ""}">${sexSym(p.sex)}</span><span class="tn">${E(GED.displayName(p.rec, "list"))}</span><span class="ty">${E(GED.lifeSpan(S.db, id))}</span><span class="tp">${E(shortPlace(p.birt && p.birt.place))}</span>${extra ? `<span class="tx">${extra}</span>` : ""}<span class="tb2">${bdLine(S.db, id, "b")}${bdLine(S.db, id, "d")}${qTotal(S.db, id)}</span></button>`;
+  return `<button class="trow" data-act="card" data-id="${id}"><span class="tsx ${p.sex === "M" ? "m" : p.sex === "F" ? "f" : ""}">${sexSym(p.sex)}</span><span class="tn">${E(GED.displayName(p.rec, "list"))}</span><span class="ty">${lifeHtml(S.db, id)}</span><span class="tp">${E(shortPlace(p.birt && p.birt.place))}</span>${extra ? `<span class="tx">${extra}</span>` : ""}<span class="tb2">${bdLine(S.db, id, "b")}${bdLine(S.db, id, "d")}${qTotal(S.db, id)}</span></button>`;
 }
 const tHead = (t, sub) => `<div class="thead"><h2>${E(t)}</h2>${sub ? `<div class="hint">${sub}</div>` : ""}</div>`;
 function tngRender(v) {
@@ -5315,7 +5324,7 @@ function tTime() {
   const ev = timelineEvents(id, TG.timeFam);
   const dated = ev.filter(e => e.date.y != null).sort((a, b) => a.date.y - b.date.y || (a.tag === "BIRT" ? -1 : b.tag === "BIRT" ? 1 : 0) || a.date.key - b.date.key);
   const undated = ev.filter(e => e.date.y == null && e.kind === "own" && (e.val || e.place));
-  let h = tHead("Zeitleiste: " + pname(id), `${E(GED.lifeSpan(S.db, id))} · wähle links eine andere Person`) + `<div class="tbar"><label class="chk"><input type="checkbox" id="t_tfam"${TG.timeFam ? " checked" : ""}> Ereignisse der Familie einbeziehen (Eltern, Geschwister, Ehepartner, Kinder)</label></div>`;
+  let h = tHead("Zeitleiste: " + pname(id), `${lifeHtml(S.db, id)} · wähle links eine andere Person`) + `<div class="tbar"><label class="chk"><input type="checkbox" id="t_tfam"${TG.timeFam ? " checked" : ""}> Ereignisse der Familie einbeziehen (Eltern, Geschwister, Ehepartner, Kinder)</label></div>`;
   const rows = lifelines(id);
   if (rows.length > 1) h += `<div class="panel"><h4>Lebenslinien</h4>${lifelineSvg(rows)}<div class="hint">Gestrichelt: Geburts- oder Sterbejahr unbekannt, die Länge ist dann geschätzt.</div></div>`;
   h += `<div class="panel"><h4>Ereignisse</h4>`;
@@ -5982,12 +5991,12 @@ function renderInfo() {
   const id = S.pid, p = pinf(id), rw = !S.viewer;
   if (!M.idx && (accessToken || LM.list.length) && !M.loading && !M.failed.has("idx")) loadMediaIdx().then(() => { if (S.db && infoVisible()) renderInfo(); }).catch(() => M.failed.add("idx"));
   const keep = el.scrollTop;
-  let h = `<div class="ihead"><b>${E(GED.displayName(p.rec))}</b><div class="hint">${E(GED.lifeSpan(S.db, id))} ${relTag(id)}</div>${bdBlock(S.db, id)}
+  let h = `<div class="ihead"><b>${E(GED.displayName(p.rec))}</b><div class="hint">${lifeHtml(S.db, id)} ${relTag(id)}</div>${bdBlock(S.db, id)}
     <div class="iact"><button class="btn sm" data-act="card" data-id="${id}">Familienblatt</button>${rw ? `<button class="btn sm pri" data-act="t_editp">Bearbeiten</button>` : ""}<button class="btn sm ghost" data-act="t_idock" title="Leiste auf die andere Seite des Inhalts legen">${SIDE.dockl ? "Nach rechts ▷" : "◁ Nach links"}</button><button class="btn sm ghost" data-act="t_info" title="Leiste schließen" aria-label="Leiste schließen">✕</button></div>
     <div class="isecs" role="group" aria-label="Angezeigte Abschnitte">${INFO_SEC.map(([k, t]) => `<button class="chipb${SIDE.sec[k] ? " on" : ""}" data-act="t_isec" data-s="${k}" aria-pressed="${SIDE.sec[k] ? "true" : "false"}">${t}</button>`).join("")}</div></div>`;
   const head = (k, title, n, addSect) => `<div class="sh"><button class="fold" data-act="t_ifold" data-s="${k}" aria-expanded="${SIDE.fold[k] ? "false" : "true"}"><span class="car">${SIDE.fold[k] ? "▸" : "▾"}</span> ${title}${n ? ` <span class="hint">(${n})</span>` : ""}</button>${rw && addSect ? `<button class="btn sm ghost" data-act="t_iedit" data-s="${addSect}" title="Hinzufügen oder ändern">+</button>` : ""}</div>`;
   const sec = (k, title, n, addSect, body) => !SIDE.sec[k] ? "" : `<section>${head(k, title, n, addSect)}${SIDE.fold[k] ? "" : `<div class="sb">${body}</div>`}</section>`;
-  const pl = (pid, extra) => { const q = GED.personInfo(S.db, pid); return q ? `<button class="lk" data-act="card" data-id="${pid}">${E(GED.displayName(q.rec))}</button> <span class="hint">${E(GED.lifeSpan(S.db, pid))}${extra ? " " + E(extra) : ""}</span>` : ""; };
+  const pl = (pid, extra) => { const q = GED.personInfo(S.db, pid); return q ? `<button class="lk" data-act="card" data-id="${pid}">${E(GED.displayName(q.rec))}</button> <span class="hint">${lifeHtml(S.db, pid)}${extra ? " " + E(extra) : ""}</span>` : ""; };
   /* Familie */
   const par = GED.parentsOf(S.db, id);
   let fam = `<div class="hint">Eltern</div>`;
@@ -6095,7 +6104,7 @@ function renderPedList() {
       const p = GED.personInfo(db, id);
       const bp = p.birt && p.birt.place ? shortPlace(p.birt.place) : "", dp = p.deat && p.deat.place ? shortPlace(p.deat.place) : "";
       const role = g === 0 ? "" : k % 2 === 0 ? "Vater" : "Mutter";
-      body += `<li class="arow ${p.sex}${sideCls(id)}" data-id="${id}"><span class="kn" title="Kekulé-Nummer">${k}</span><span class="am"><button class="lk" data-act="pedgo" data-id="${id}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${E(GED.lifeSpan(db, id))}</span>${role && g === 1 ? ` <span class="hint">${role}</span>` : ""}${relTag(id)}${bdBlock(db, id)}</span><button class="btn sm ghost" data-act="card" data-id="${id}" title="Familienblatt">Blatt</button></li>`;
+      body += `<li class="arow ${p.sex}${sideCls(id)}" data-id="${id}"><span class="kn" title="Kekulé-Nummer">${k}</span><span class="am"><button class="lk" data-act="pedgo" data-id="${id}">${E(GED.displayName(p.rec))}</button> <span class="sp">${sexSym(p.sex)} ${lifeHtml(db, id)}</span>${role && g === 1 ? ` <span class="hint">${role}</span>` : ""}${relTag(id)}${bdBlock(db, id)}</span><button class="btn sm ghost" data-act="card" data-id="${id}" title="Familienblatt">Blatt</button></li>`;
     }
     body += `</ul></section>`;
   });
@@ -6160,8 +6169,8 @@ const DENS = { v: (() => { let id = lsGet("st.dens2", ""); if (!id) id = ["vd", 
 const boxGeo = () => { const D = DENS_T[DENS.v]; return { c: D.c || 0, BW: D.bw || 214, BH: D.bh || 48 }; };
 /* Inhalt eines kleinen Kastens */
 function tcInner(c, nm, id) {
-  if (c === 1) return `<span class="tx"><span class="nm">${E(nm)}</span><span class="yr">${E(GED.lifeSpan(S.db, id))}${E(ageTag(S.db, id, personAge(S.db, id) && personAge(S.db, id).kind === "living" ? "b" : "d"))}</span></span>`;
-  if (c === 2) return `<span class="tx"><span class="nm">${E(nm)}</span> <span class="yr">${E(GED.lifeSpan(S.db, id))}</span></span>`;
+  if (c === 1) return `<span class="tx"><span class="nm">${E(nm)}</span><span class="yr">${lifeHtml(S.db, id)}${E(ageTag(S.db, id, personAge(S.db, id) && personAge(S.db, id).kind === "living" ? "b" : "d"))}</span></span>`;
+  if (c === 2) return `<span class="tx"><span class="nm">${E(nm)}</span> <span class="yr">${lifeHtml(S.db, id)}</span></span>`;
   if (c === 3) return `<span class="tx"><span class="nm">${E(nm)}</span></span>`;
   return `<span class="tx"><span class="nm">${E(shortNm(nm, 14))}</span></span>`;
 }
@@ -6662,8 +6671,8 @@ function openTakeDlg(bId, o) {
       const D = d.data, B = GED.personInfo(CMP.db, D.b), brec = CMP.db.get(D.b);
       const T = D.target && S.db.get(D.target) ? GED.personInfo(S.db, D.target) : null;
       const sexN = B.sex;
-      const tName = T ? `<b>${E(GED.displayName(T.rec))}</b> <span class="w">${E(GED.lifeSpan(S.db, T.id))}</span>` : "";
-      let h = `<h3 style="margin-top:0">${E(GED.displayName(brec))} <span class="w">${E(GED.lifeSpan(CMP.db, D.b))}</span></h3>
+      const tName = T ? `<b>${E(GED.displayName(T.rec))}</b> <span class="w">${lifeHtml(S.db, T.id)}</span>` : "";
+      let h = `<h3 style="margin-top:0">${E(GED.displayName(brec))} <span class="w">${lifeHtml(CMP.db, D.b)}</span></h3>
         <div class="hint" style="margin-bottom:8px">Übernommen werden nur die eigenen Angaben dieser Person: ${twCount(brec, "SOUR")} Quellenverweis(e), ${twCount(brec, "NOTE")} Notiz(en), ${twCount(brec, "OBJE")} Medienverweis(e). Familie, Eltern, Partner und Kinder bleiben in der zweiten Datei.</div>${cpFieldsOnly(D.b)}`;
       if (cands.length) {
         h += `<div class="panel" style="border-color:var(--warn)"><h4 style="color:var(--warn)">Ähnliche Personen in ${E(S.fileName)}</h4>
@@ -6740,7 +6749,7 @@ function twListHtml() {
 }
 function twTargetInfo() {
   const T = S.pid && S.db.get(S.pid) ? GED.personInfo(S.db, S.pid) : null;
-  return T ? `<b>${E(GED.displayName(T.rec))}</b> <span class="w">${E(GED.lifeSpan(S.db, T.id))}</span>` : "";
+  return T ? `<b>${E(GED.displayName(T.rec))}</b> <span class="w">${lifeHtml(S.db, T.id)}</span>` : "";
 }
 function twDetHtml() {
   const db = CMP.db;
@@ -6748,7 +6757,7 @@ function twDetHtml() {
   const id = TWO.sel, B = GED.personInfo(db, id), par = GED.parentsOf(db, id), st = twStatus(id);
   const rel = (label, ids) => ids.length ? `<div class="twrel"><b>${label}</b> ${ids.map(x => twRow(x)).join(" ")}</div>` : "";
   const parents = par ? [par.father, par.mother].filter(x => x && db.get(x)) : [];
-  let h = `<div class="twhead"><span class="twrow big" draggable="true" data-two="${id}" title="Mit der Maus auf eine Person links ziehen"><span class="grip" aria-hidden="true">⋮⋮</span><span class="sx">${sexSym(B.sex)}</span><b>${E(GED.displayName(B.rec))}</b><span class="w">${E(GED.lifeSpan(db, id))}</span></span>${twChip(id)}</div>`;
+  let h = `<div class="twhead"><span class="twrow big" draggable="true" data-two="${id}" title="Mit der Maus auf eine Person links ziehen"><span class="grip" aria-hidden="true">⋮⋮</span><span class="sx">${sexSym(B.sex)}</span><b>${E(GED.displayName(B.rec))}</b><span class="w">${lifeHtml(db, id)}</span></span>${twChip(id)}</div>`;
   h += bdBlock(db, id, true);
   h += cpFieldsOnly(id);
   h += `<div class="twact">`;
@@ -7136,12 +7145,25 @@ function isUnknownVal(s) {
 /* Ort: unbekannt, wenn die erste Angabe ein Platzhalter ist (zum Beispiel "unbekannt, Deutschland") */
 const isUnknownPlace = (pl) => isUnknownVal(String(pl == null ? "" : pl).split(",")[0]);
 
+/* ---------- Jahreszahlen nach Genauigkeit einfärben: genaues Datum normal, nur Jahr oder ungefähr in anderer Farbe ---------- */
+function lifeHtml(db, id) {
+  const p = GED.personInfo(db, id); if (!p) return "";
+  const part = (ev, alt) => {
+    if (ev && ev.date.y) return { t: GED.dateQual(ev.date.raw) + ev.date.y, x: !dExact(ev.date) };
+    if (alt && alt.date.y) return { t: "~" + alt.date.y, x: true };
+    return null;
+  };
+  const b = part(p.birt, p.chr), d = part(p.deat, p.buri);
+  if (!b && !d) return "";
+  const sp = (o) => o ? `<span class="${o.x ? "yx" : "yd"}" title="${o.x ? "Kein genaues Datum: nur Jahr, Monat oder ungefähre Angabe" : "Genaues Datum (Tag, Monat und Jahr)"}">${E(o.t)}</span>` : "";
+  return sp(b) + "–" + sp(d);
+}
 /* ---------- Erweitertes Familienblatt ---------- */
 const EXT = { on: lsGet("st.ext", "0") === "1" };
 function xCard(id, sex, role) {
   if (!id || !GED.personInfo(S.db, id)) return `<span class="xc u" title="${E(role)}">${E(role)} unbekannt</span>`;
-  const p = GED.personInfo(S.db, id), ls = GED.lifeSpan(S.db, id), ag = personAge(S.db, id);
-  return `<button class="xc ${sex}${sideCls(id)}" data-act="go" data-id="${id}" title="${E(role + ": " + GED.displayName(p.rec))}"><b>${E(GED.displayName(p.rec))}</b><span>${E(ls)}${ag && ag.kind === "death" ? " · " + E(ageWord(ag.r, true)) : ""}</span></button>`;
+  const p = GED.personInfo(S.db, id), ls = lifeHtml(S.db, id), ag = personAge(S.db, id);
+  return `<button class="xc ${sex}${sideCls(id)}" data-act="go" data-id="${id}" title="${E(role + ": " + GED.displayName(p.rec))}"><b>${E(GED.displayName(p.rec))}</b><span>${ls}${ag && ag.kind === "death" ? " · " + E(ageWord(ag.r, true)) : ""}</span></button>`;
 }
 function xSide(id) {
   const db = S.db, p = id && GED.personInfo(db, id);
@@ -8335,7 +8357,7 @@ function komponenten() {
 }
 function ahnenRows(list, withGen) {
   const db = S.db;
-  return list.map(x => { const id = x.id; return `<div class="ahrow"><button class="lk" data-d="go" data-id="${id}">${E(nameOf(id))}</button> <span class="hint">${E(GED.lifeSpan(db, id))}</span>${withGen ? ` <span class="hint">· ${x.g}. Generation vor der Startperson</span>` : ""}${relTag(id)}${bdLine(db, id, "b", { noBadge: true, cls: "bl" })}</div>`; }).join("");
+  return list.map(x => { const id = x.id; return `<div class="ahrow"><button class="lk" data-d="go" data-id="${id}">${E(nameOf(id))}</button> <span class="hint">${lifeHtml(db, id)}</span>${withGen ? ` <span class="hint">· ${x.g}. Generation vor der Startperson</span>` : ""}${relTag(id)}${bdLine(db, id, "b", { noBadge: true, cls: "bl" })}</div>`; }).join("");
 }
 function ahnenHtml(d) {
   const db = S.db, tab = d.data.tab, K = komponenten(), main = mainId();
@@ -8351,7 +8373,7 @@ function ahnenHtml(d) {
     h += `<div class="mdsum"><b>${A.tips.length}</b> Ahnenspitze${A.tips.length === 1 ? "" : "n"} unter ${A.total} Vorfahren (einschließlich der Person selbst)</div>` + ahnenRows(A.tips.slice(0, 600), true) + (A.tips.length > 600 ? `<div class="hint">Nur die ersten 600 gezeigt.</div>` : "");
   } else if (tab === "trees") {
     h += `<p class="hint">Gruppen von Personen, die über keine Familie mit der Hauptperson ${E(nameOf(main))} verbunden sind. Die größte steht oben. Mit „Anzeigen“ springst du zu einer Person der Gruppe.</p>`;
-    h += trees.length ? trees.slice(0, 300).map(([, m]) => { const ms = m.map(id => ({ id, y: (GED.personInfo(db, id).birt || {}).date ? GED.personInfo(db, id).birt.date.y : null })).sort((a, b) => (a.y || 9999) - (b.y || 9999)); return `<div class="ahrow"><b>${m.length} Personen</b> <button class="lk" data-d="go" data-id="${ms[0].id}">${E(nameOf(ms[0].id))}</button> <span class="hint">${E(GED.lifeSpan(db, ms[0].id))}</span> <span class="hint">${E(ms.slice(1, 4).map(x => nameOf(x.id)).join(", "))}${m.length > 4 ? " …" : ""}</span></div>`; }).join("") : `<div class="hint">Alle Personen sind mit der Hauptperson verbunden.</div>`;
+    h += trees.length ? trees.slice(0, 300).map(([, m]) => { const ms = m.map(id => ({ id, y: (GED.personInfo(db, id).birt || {}).date ? GED.personInfo(db, id).birt.date.y : null })).sort((a, b) => (a.y || 9999) - (b.y || 9999)); return `<div class="ahrow"><b>${m.length} Personen</b> <button class="lk" data-d="go" data-id="${ms[0].id}">${E(nameOf(ms[0].id))}</button> <span class="hint">${lifeHtml(db, ms[0].id)}</span> <span class="hint">${E(ms.slice(1, 4).map(x => nameOf(x.id)).join(", "))}${m.length > 4 ? " …" : ""}</span></div>`; }).join("") : `<div class="hint">Alle Personen sind mit der Hauptperson verbunden.</div>`;
   } else {
     h += `<p class="hint">Personen, die in keiner Familie vorkommen: weder Eltern noch Partner noch Kinder.</p>`;
     h += single.length ? ahnenRows(single.map(id => ({ id })).sort((a, b) => nameOf(a.id).localeCompare(nameOf(b.id), "de")).slice(0, 600), false) + (single.length > 600 ? `<div class="hint">Nur die ersten 600 gezeigt.</div>` : "") : `<div class="hint">Es gibt keine einzelnen Personen ohne Verbindung.</div>`;

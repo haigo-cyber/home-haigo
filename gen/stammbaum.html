@@ -2083,7 +2083,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 21:31"; /* BUILD_ID=29.10.2026 21:31 */
+const BUILD = "29.10.2026 21:56"; /* BUILD_ID=29.10.2026 21:56 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -8094,11 +8094,12 @@ function mdParseLine(body, ctx) {
   work = work.replace(/[♂]|\((?:m|männlich)\)|\[(?:m|männlich)\]/gi, () => { P.sex = "M"; return " "; }).replace(/[♀]|\((?:w|f|weiblich)\)|\[(?:w|f|weiblich)\]/gi, () => { P.sex = "F"; return " "; });
   let paren = ""; if ((m = /\(([^()]*)\)\s*$/.exec(work))) { paren = m[1].trim(); work = work.slice(0, m.index); }
   if (paren) {   // (†1980), (* 1901 † 1980), (1901-1980) sind Lebensdaten, keine Notiz und keine Heirat
-    if (/^[*~†✝✞✟✠♰♱‡⚰]/.test(paren)) { work += " " + paren; paren = ""; }
+    if (/^([*~†✝✞✟✠♰♱‡⚰]|\+\s*\d)/.test(paren)) { work += " " + paren; paren = ""; }
+    else if ((m = /^(\d{3,4})\s*\+\s*(\d{3,4})$/.exec(paren))) { work += " * " + m[1] + " + " + m[2]; paren = ""; }
     else if (!partner && ((m = /^(\d{3,4})\s*[-–]\s*(\d{3,4})$/.exec(paren)))) { work += " * " + m[1] + " † " + m[2]; paren = ""; }
   }
   // Marker suchen
-  const words = work.replace(/([*~†✝✞✟✠♰♱‡⚰])(?=\S)/g, "$1 ").split(/\s+/).filter(Boolean);
+  const words = work.replace(/([*~†✝✞✟✠♰♱‡⚰])(?=\S)/g, "$1 ").replace(/(^|\s)\+(?=\d)/g, "$1+ ").split(/\s+/).filter(Boolean);
   const isDateStart = (w) => /^(\d|um$|ca\.?$|circa$|vor$|nach$)/i.test(w) || !!MD_MON[(w || "").toLowerCase().replace(".", "")];
   let mode = "name", buf = { name: [] }, order = ["name"];
   words.forEach((w, i) => {
@@ -8141,6 +8142,9 @@ function mdParse(text) {
     const mm = /^(\s*)(?:([-+*]|\d+[.)])\s+)?(.*)$/.exec(raw.replace(/\t/g, "    "));
     const indent = mm[1].length, body = mm[3].trim(); if (!body) return;
     const prev = items[items.length - 1];
+    // "+ 11.7.1842 in Hamm" oder "† 1842" in einer eigenen Zeile: Sterbe- oder Geburtsangabe der Zeile davor, kein neuer Eintrag
+    if (prev && ((mm[2] === "+" || mm[2] === "*") && /^(\d|um\s|ca\.?\s|circa\s|vor\s|nach\s)/i.test(body))) { prev.body += " " + mm[2] + " " + body; return; }
+    if (prev && /^[*~†✝✞✟✠♰♱‡⚰]/.test(body) && indent >= prev.indent) { prev.body += " " + body; return; }
     // Ohne Aufzählungszeichen, tiefer eingerückt und sonst mit Aufzählungszeichen geschrieben: umgebrochene Fortsetzung der Zeile davor
     if (bulletMode && !mm[2] && prev && indent > prev.indent && !/^(⚭|∞|oo\s)/i.test(body)) { prev.body += " " + body; return; }
     items.push({ indent, body, ln });
@@ -8500,7 +8504,7 @@ ACT.twLeft = (d) => { TWL.kind = ["ped", "desc"].includes(d.m) ? d.m : "card"; l
 /* ============ MARKDOWN: BESTEHENDE PERSONEN ERGÄNZEN (mit Löschschaltern) ============ */
 const MDE_EV = [["BIRT", "*"], ["CHR", "~"], ["DEAT", "†"], ["BURI", "⚰"]];
 const MDE_EVNAME = { BIRT: "Geburt", CHR: "Taufe", DEAT: "Tod", BURI: "Bestattung" };
-const MDE_MARK = { "*": "BIRT", "~": "CHR", "†": "DEAT", "✝": "DEAT", "✞": "DEAT", "✟": "DEAT", "✠": "DEAT", "♰": "DEAT", "♱": "DEAT", "‡": "DEAT", "⚰": "BURI" };
+const MDE_MARK = { "+": "DEAT", "*": "BIRT", "~": "CHR", "†": "DEAT", "✝": "DEAT", "✞": "DEAT", "✟": "DEAT", "✠": "DEAT", "♰": "DEAT", "♱": "DEAT", "‡": "DEAT", "⚰": "BURI" };
 const MDE_KEY = { geburt: "BIRT", taufe: "CHR", tod: "DEAT", gestorben: "DEAT", bestattung: "BURI", beerdigung: "BURI", beruf: "OCCU", wohnort: "RESI", religion: "RELI", konfession: "RELI", notiz: "NOTE", anmerkung: "NOTE", quelle: "SOUR", geschlecht: "SEX", vater: "Vater", mutter: "Mutter", ehepartner: "Ehepartner", partner: "Ehepartner", kind: "Kind" };
 const MDE_ATTRS = { OCCU: "Beruf", RESI: "Wohnort", RELI: "Religion", NOTE: "Notiz", SOUR: "Quelle" };
 const MDE_MAXP = 150;
@@ -8568,9 +8572,9 @@ function mdeScope(db, start, o) {
 
 /* ---------- Text einlesen ---------- */
 function mdeLine(s) {
-  s = mdeNorm(s.replace(/^[-+•]\s+/, ""));
+  s = mdeNorm(s.replace(/^[-•]\s+/, ""));
   let m;
-  if ((m = /^([*~†✝✞✟✠♰♱‡⚰])\s*(.*)$/.exec(s))) { const d = mdDate(m[2]); return { kind: "EV", tag: MDE_MARK[m[1]], date: d.ged, place: d.rest, t: s }; }
+  if ((m = /^([*~†✝✞✟✠♰♱‡⚰]|\+(?=\s|\d))\s*(.*)$/.exec(s))) { const d = mdDate(m[2]); return { kind: "EV", tag: MDE_MARK[m[1]], date: d.ged, place: d.rest, t: s }; }
   if ((m = /^([A-Za-zÄÖÜäöüß]+)\s*:\s*(.*)$/.exec(s))) {
     const key = MDE_KEY[m[1].toLowerCase()]; if (!key) return null;
     const val = m[2].trim();

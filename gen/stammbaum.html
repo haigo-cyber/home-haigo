@@ -2087,7 +2087,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 23:20"; /* BUILD_ID=29.10.2026 23:20 */
+const BUILD = "30.10.2026 00:17"; /* BUILD_ID=30.10.2026 00:17 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -9077,28 +9077,34 @@ VIEW_OK.add("todoAll");
 /* ============ PATEN UND ANDERE VERKNÜPFTE PERSONEN (GEDCOM ASSO) ============ */
 /* Wie in Reunion: Am Patenkind steht  1 ASSO @Pate@ / 2 TYPE INDI / 2 RELA Taufpate */
 const GOD_ROLES = ["Taufpate", "Taufpatin", "Firmpate", "Firmpatin", "Pate", "Patin", "Trauzeuge", "Trauzeugin", "Zeuge", "Zeugin"];
-function godList(db, id) {
+function godAll(db, id) {   // alle ASSO-Zeilen einer Person mit Index
   const rec = db.get(id); if (!rec) return [];
   return GED.kidsOf(rec, "ASSO").map((n, i) => ({ node: n, i, pid: n.val, rela: GED.unesc(GED.kval(n, "RELA") || "").trim() })).filter(x => GED.isPtr(x.pid) && db.get(x.pid) && db.get(x.pid).tag === "INDI");
 }
-function godKids(db, id) {   // Patenkinder: alle, die diese Person als ASSO tragen
+const GOD_RE = /pat|zeug/i;
+/* Reunion legt zu "A hat Pate B" bei B einen Gegeneintrag ohne Rolle an. Der ist kein Pate, sondern nur die Rückseite. */
+function godRecip(db, holder, e) {
+  return e.rela === "" && godAll(db, e.pid).some(x => x.pid === holder && x.rela !== "");
+}
+function godList(db, id) { return godAll(db, id).filter(x => !godRecip(db, id, x)); }
+function godKids(db, id) {   // Personen, die diese Person als Pate oder Verknüpfte eingetragen haben
   const m = memo("godrev", () => {
     const map = new Map();
-    for (const r of db.ofTag("INDI")) for (const n of GED.kidsOf(r, "ASSO")) if (GED.isPtr(n.val)) { if (!map.has(n.val)) map.set(n.val, []); map.get(n.val).push({ child: r.xref, rela: GED.unesc(GED.kval(n, "RELA") || "").trim() }); }
+    for (const r of db.ofTag("INDI")) for (const e of godAll(db, r.xref)) { if (!map.has(e.pid)) map.set(e.pid, []); map.get(e.pid).push({ child: r.xref, rela: e.rela, i: e.i }); }
     return map;
   });
-  return (m.get(id) || []).filter(x => db.get(x.child));
+  return (m.get(id) || []).filter(x => !godRecip(db, x.child, { pid: id, rela: x.rela }));
 }
 function godChip(id, extra) { return `<button class="xc lk ${GED.personInfo(S.db, id).sex || ""}" data-act="go" data-id="${id}" style="display:inline-flex;gap:6px;align-items:baseline;width:auto;min-height:0;padding:3px 9px;margin:2px 4px 2px 0"><b>${E(GED.displayName(S.db.get(id)))}</b><span>${lifeHtml(S.db, id)}${extra ? " · " + E(extra) : ""}</span></button>` }
 function patenPanel(ids) {
   const db = S.db, ed = !S.viewer, seen = new Set(), out = [];
   for (const id of ids) if (id && !seen.has(id) && GED.personInfo(db, id)) { seen.add(id); out.push(id); }
   const rows = out.map(id => {
-    const gl = godList(db, id), gk = godKids(db, id);
+    const gl = godList(db, id), gk = godKids(db, id), nm = E(GED.displayName(db.get(id)));
     if (!ed && !gl.length && !gk.length) return "";
-    return `<div class="tdp"><div class="tdh"><b>${E(GED.displayName(db.get(id)))}</b></div>
-      <div class="godrow"><span class="hint">Paten und Verknüpfte:</span> ${gl.length ? gl.map(x => `<span class="godit">${godChip(x.pid, x.rela || "verknüpft")}${ed ? `<button class="btn sm ghost" data-act="godDel" data-id="${id}" data-i="${x.i}" title="Verknüpfung entfernen (die Person bleibt erhalten)">×</button>` : ""}</span>`).join("") : `<span class="hint">keine</span>`}${ed ? ` <button class="btn sm" data-act="godAdd" data-id="${id}">Pate hinzufügen</button>` : ""}</div>
-      ${gk.length ? `<div class="godrow"><span class="hint">Patenkind von ${E(GED.displayName(db.get(id)))}:</span> ${gk.map(x => godChip(x.child, x.rela)).join("")}</div>` : ""}</div>`;
+    return `<div class="tdp"><div class="tdh"><b>${nm}</b></div>
+      <div class="godrow"><span class="hint">Pate oder Patin von ${nm}:</span> ${gl.length ? gl.map(x => `<span class="godit">${godChip(x.pid, x.rela || "ohne Rolle")}${ed ? `<button class="btn sm ghost" data-act="godEdit" data-id="${id}" data-i="${x.i}" title="Person oder Rolle ändern, Verknüpfung entfernen">Bearbeiten</button>` : ""}</span>`).join("") : `<span class="hint">keine eingetragen</span>`}${ed ? ` <button class="btn sm" data-act="godAdd" data-id="${id}">Pate hinzufügen</button>` : ""}</div>
+      ${[["Patenkinder von " + nm + ":", gk.filter(x => GOD_RE.test(x.rela))], [nm + " ist außerdem eingetragen bei:", gk.filter(x => !GOD_RE.test(x.rela))]].filter(g => g[1].length).map(g => `<div class="godrow"><span class="hint">${g[0]}</span> ${g[1].map(x => `<span class="godit">${godChip(x.child, x.rela || "ohne Rolle")}${ed ? `<button class="btn sm ghost" data-act="godEdit" data-id="${x.child}" data-i="${x.i}" title="Eintrag bei ${E(GED.displayName(db.get(x.child)))} bearbeiten">Bearbeiten</button>` : ""}</span>`).join("")}</div>`).join("")}</div>`;
   }).join("");
   if (!rows.trim()) return "";
   return `<div class="panel pate"><h4>Paten</h4><div class="tdgrid">${rows}</div></div>`;
@@ -9138,6 +9144,33 @@ function godDlg(childId, target) {
     }
   });
 }
+ACT.godEdit = (d) => {
+  if (S.viewer) return;
+  const childId = d.id, rec = S.db.get(childId), n = rec && GED.kidsOf(rec, "ASSO")[+d.i]; if (!n) return;
+  let target = n.val; const cur = GED.unesc(GED.kval(n, "RELA") || "").trim();
+  openDlg({
+    title: "Pate-Verknüpfung bearbeiten", noFocus: true, data: {},
+    body: () => `<p style="margin-top:0">Eingetragen bei: <b>${E(GED.displayName(rec))}</b></p>
+      <p>Pate oder verknüpfte Person: <b>${E(GED.displayName(S.db.get(target)))}</b> <span class="hint">${E(GED.lifeSpan(S.db, target))}</span> <button class="btn sm" data-d="pick">Andere Person wählen</button></p>
+      <div class="mdopt"><label>Rolle <select id="gdr">${[...new Set([...(cur && !GOD_ROLES.includes(cur) ? [cur] : []), ...GOD_ROLES])].map(r => `<option${r === cur ? " selected" : ""}>${E(r)}</option>`).join("")}<option value="">ohne Rolle</option></select></label> <label>oder eigene Bezeichnung <input id="gdo" type="text" autocomplete="off"></label></div>
+      <p class="hint">Die Person ${E(GED.displayName(S.db.get(target)))} wird nicht verändert. Geändert wird nur der Eintrag bei ${E(GED.displayName(rec))}.</p>`,
+    buttons: () => [{ id: "go", label: "Speichern", cls: "pri" }, { id: "del", label: "Verknüpfung entfernen" }, { id: "close", label: "Abbrechen" }],
+    on: {
+      pick: (dd) => { const keepR = dd.q("#gdr").value, keepO = dd.q("#gdo").value; pickPerson({ title: "Wer ist Pate oder Patin?", exclude: [childId], onPick: (pid) => { target = pid; dd.paint(); dd.q("#gdr").value = keepR; dd.q("#gdo").value = keepO; } }); },
+      go: (dd) => {
+        const rela = (dd.q("#gdo").value || "").trim() || dd.q("#gdr").value;
+        GED.run(S.db, "Pate-Verknüpfung geändert", tx => {
+          tx.touch(rec); n.val = target;
+          if (!GED.kid(n, "TYPE")) n.kids.unshift({ tag: "TYPE", val: "INDI", kids: [] });
+          const k = GED.kid(n, "RELA");
+          if (!rela) { if (k) n.kids.splice(n.kids.indexOf(k), 1); } else if (k) k.val = GED.esc(rela); else n.kids.push({ tag: "RELA", val: GED.esc(rela), kids: [] });
+        });
+        dd.close(); afterEdit("Verknüpfung geändert");
+      },
+      del: (dd) => { dd.close(); ACT.godDel({ id: childId, i: d.i }); }
+    }
+  });
+};
 ACT.godDel = (d) => {
   if (S.viewer) return;
   const rec = S.db.get(d.id), n = rec && GED.kidsOf(rec, "ASSO")[+d.i]; if (!n) return;

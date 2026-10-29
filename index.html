@@ -3686,7 +3686,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v268";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v270";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -5132,6 +5132,16 @@ function tmChildSet(metaMap){            // Metaprojekte, die selbst Unterpunkt 
   st = new Set(); metaMap.forEach(h=>{ try{ wsChildItems(h.doc, h.node).forEach(k=>st.add(k.node.id)); }catch(e){} });
   tmKidCache.set(metaMap, st); return st;
 }
+function tmKindLabel(b, metaMap){          // Art des Eintrags für Anzeige und Dialog
+  const h = b && b.src ? tmNodeOf(b.src.ref, metaMap) : null;
+  if(!h || !h.node) return "Block (ohne Verknüpfung zum Arbeitsbereich)";
+  const n = h.node;
+  if(n.type==="heading") return "Überschrift "+(n.lvl===2?"E2":"E1")+(n.meta?" · Projekt":"");
+  const kids = (n.children||[]).length;
+  let t = (kids || n.meta) ? "Projekt" : "Punkt";
+  if(n.link) t += " und "+(n.link.kind==="goal"?"Tagesziel":"ToDo");
+  return t;
+}
 function tmIsGoal(b, metaMap){            // Tagesziel-Knoten (Punkt oder Überschrift mit Tages-Ziel-Verknüpfung) -> schmal darstellen
   const h = b.src ? tmNodeOf(b.src.ref, metaMap) : null;
   return !!(h && h.node && h.node.link && h.node.link.kind==="goal");
@@ -5149,7 +5159,7 @@ function tmBlockHtml(b, top, metaMap, ki){
     flag = `<i class="tm-dl" title="Deadline ${esc(tmShort(h.node.dl))} (aus dem Arbeitsbereich)" style="left:${(dn-tm.range.from)*tm.ppd}px;top:${top}px">⚑</i>`;
   }
   const kidTxt = ki && ki.total ? ` · ${ki.done}/${ki.total} ✓` : "";
-  return `<div class="tp-b tm-b${slim?" tm-slim":""}${tmDn(b,metaMap)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})${ki&&ki.total?" · Unterpunkte: "+ki.done+" von "+ki.total+" erledigt":""}" style="left:${left}px;width:${w}px;top:${top}px;${kidStyle}">
+  return `<div class="tp-b tm-b${slim?" tm-slim":""}${tmDn(b,metaMap)?" done":""}${w<46?" narrow":""}" data-id="${esc(b.id)}" title="${esc(tmKindLabel(b, metaMap))}: ${esc(b.title)} · ${esc(tmShort(b.start))}–${esc(tmShort(b.end))} (${days} Tag${days===1?"":"e"})${ki&&ki.total?" · Unterpunkte: "+ki.done+" von "+ki.total+" erledigt":""}" style="left:${left}px;width:${w}px;top:${top}px;${kidStyle}">
     <i class="tp-h l" data-h="l"></i><span class="tp-ck" data-ck="1">${tmDn(b,metaMap)?"✓":""}</span>
     <div class="tp-t">${slim?"🎯 ":isKid?"↳ ":""}${esc(b.title||"(ohne Titel)")}</div><div class="tp-m">${esc(tmShort(b.start))}–${esc(tmShort(b.end))} · ${days} T${kidTxt}</div><i class="tp-h r" data-h="r"></i></div>${flag}`;
 }
@@ -5254,12 +5264,18 @@ function tmAddFromPool(ref){
   tmAddBlock({id:uid(), title:(wsTitleOf(n)||"(ohne Titel)"), start:s, end:e, color:TP_COLORS[2], done:false, note:"", src:{kind:"meta", ref}});
   tm.scrollL = null; render(); toast("Zur Metaprojektplanung hinzugefügt");
 }
+function n_isLinked(n){ return !!(n && n.link); }
 function tmEdit(id, nb){
   if(document.getElementById("modalBg")) return;
   const b = nb || tmBlock(id); if(!b) return;
-  const isNew = !!nb, fld = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px";
+  const isNew = !!nb;
+  let tmNodeAct = null;
+  if(!isNew && b.src){ const h = tmNodeOf(b.src.ref); if(h && h.doc && h.node && h.node.type!=="heading" && typeof wsFindNode==="function" && wsFindNode(h.doc, h.node.id)){
+    let kids = 0; try{ kids = (h.node.children||[]).filter(k=>!k.link && !k.done && !wsIsAtt(k)).length; }catch(e){}
+    tmNodeAct = {doc:h.doc, node:h.node, kids}; } }
+  const fld = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px";
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal">
-    <h2>${isNew?"Neuer Block":"Block bearbeiten"}</h2>
+    <h2>${isNew?"Neuer Block":"Block bearbeiten"}</h2>${isNew?"":`<div class="muted" id="tme_kind" style="font-size:13px;margin:-4px 0 8px">Art: ${esc(tmKindLabel(b, tmMetaMap()))}</div>`}
     <label>Titel</label><input type="text" id="tme_t" maxlength="200" value="${esc(b.title)}" style="${fld};margin-bottom:8px">
     <div style="display:flex;gap:10px;margin-bottom:8px"><div style="flex:1"><label>Von</label><input type="date" id="tme_s" value="${esc(b.start)}" style="${fld}"></div>
       <div style="flex:1"><label>Bis</label><input type="date" id="tme_e" value="${esc(b.end)}" style="${fld}"></div></div>
@@ -5267,8 +5283,28 @@ function tmEdit(id, nb){
     <label>Notiz</label><input type="text" id="tme_n" maxlength="500" value="${esc(b.note||"")}" style="${fld};margin-bottom:8px">
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="tme_d"${b.done?" checked":""}> Erledigt (gilt nur in der Metaprojektplanung)</label>
     ${(!isNew && b.src)?`<button class="btn-ghost" id="tme_term" style="width:100%;margin-bottom:10px">Start und Deadline bearbeiten (ToDo-App)</button>`:""}
+    ${tmNodeAct?`<label>Deadline</label><input type="date" id="tme_dl" value="${esc(tmNodeAct.node.dl||"")}" style="${fld};margin-bottom:8px">
+      <div class="muted" style="font-size:12px;margin-bottom:4px">Aus diesem Eintrag machen:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"><button class="btn-ghost" id="tme_goal">🎯 Tagesziel</button><button class="btn-ghost" id="tme_todo">☑ ToDo</button><button class="btn-ghost" id="tme_par">Elternprojekt …</button>${tmNodeAct.kids?`<button class="btn-ghost" id="tme_kg">Unterpunkte → Tagesziele (${tmNodeAct.kids})</button>`:""}</div>`:""}
     <div class="modal-actions">${isNew?"":`<button class="btn-ghost" id="tme_del" style="color:#ff8a8e">Löschen</button>`}<button class="btn-ghost" id="tme_x">Abbrechen</button><button class="btn-primary" id="tme_ok">Speichern</button></div></div></div>`);
   let color = b.color;
+  if(tmNodeAct){
+    const A = tmNodeAct, did = A.doc.id, nid = A.node.id;
+    const conv = kind=>()=>{ const dlv = ($("tme_dl")&&$("tme_dl").value)||A.node.dl||""; $("modalBg").remove(); setTimeout(async()=>{
+      const n = A.node; await wsApplyMenuCore(did, nid, {date:n.date||todayKey(), dur:n.dur>0?n.dur:0, dl:dlv, meta:false, kind, cal:false}); tmDirty(); render(); }, 0); };
+    if(n_isLinked(A.node)) { $("tme_goal").textContent = A.node.link.kind==="goal" ? "🎯 ist Tagesziel" : "🎯 In Tagesziel umwandeln"; $("tme_todo").textContent = A.node.link.kind==="todo" ? "☑ ist ToDo" : "☑ In ToDo umwandeln"; }
+    $("tme_goal").onclick = ()=>{ const n = A.node; if(n.link){ if(n.link.kind==="goal"){ toast("Ist schon ein Tagesziel"); return; } $("modalBg").remove(); wsLinkRun(()=>wsConvertLink(A.doc, n, "goal", !!n.link.cal)).then(()=>{ tmDirty(); render(); }); } else conv("goal")(); };
+    $("tme_todo").onclick = ()=>{ const n = A.node; if(n.link){ if(n.link.kind==="todo"){ toast("Ist schon ein ToDo"); return; } $("modalBg").remove(); wsLinkRun(()=>wsConvertLink(A.doc, n, "todo", !!n.link.cal)).then(()=>{ tmDirty(); render(); }); } else conv("todo")(); };
+    $("tme_par").onclick = ()=>{ $("modalBg").remove(); wsOpenParentPick(did, nid); };
+    if($("tme_kg")) $("tme_kg").onclick = ()=>{
+      const ks = (A.node.children||[]).filter(k=>!k.link && !k.done && !wsIsAtt(k));
+      if(!confirm(ks.length+" Unterpunkte von „"+(A.node.text||"").slice(0,40)+"“ werden zu Tageszielen (Datum: ihr eigenes, sonst heute). Die Meta-Markierung dieser Unterpunkte entfällt. Fortfahren?")) return;
+      $("modalBg").remove();
+      setTimeout(async()=>{ let ok = 0; for(const k of ks){ const before = !!k.link;
+          await wsApplyMenuCore(did, k.id, {date:wsIsDate(k.date)&&k.date>=todayKey()?k.date:todayKey(), dur:k.dur>0?k.dur:0, dl:k.dl||"", meta:false, kind:"goal", cal:false});
+          if(k.link && !before) ok++; }
+        toast(ok+" von "+ks.length+" Unterpunkten zu Tageszielen gemacht"); tmDirty(); render(); }, 0); };
+  }
   if($("tme_term")) $("tme_term").onclick = ()=>{ $("modalBg").remove(); tmTermView(b.src.ref); };
   $("tme_c").onclick = e=>{ const c = e.target.closest("[data-c]"); if(!c) return; color = c.dataset.c; [...$("tme_c").children].forEach(x=>x.classList.toggle("on", x===c)); };
   $("tme_x").onclick = ()=>$("modalBg").remove();
@@ -5279,7 +5315,11 @@ function tmEdit(id, nb){
     if(!tmOk(s) || !tmOk(e) || e<s){ toast("Das Enddatum darf nicht vor dem Startdatum liegen"); return; }
     b.title = $("tme_t").value.trim().slice(0,200); b.start = s; b.end = e; b.color = color; b.note = $("tme_n").value.trim().slice(0,500); b.done = $("tme_d").checked;
     if(isNew) tmAddBlock(b); else tmDirty();
-    $("modalBg").remove(); render();
+    const dl0 = tmNodeAct ? ($("tme_dl").value||"") : null;
+    $("modalBg").remove();
+    if(tmNodeAct && dl0!==(tmNodeAct.node.dl||"") && (dl0==="" || tmOk(dl0))){ const n = tmNodeAct.node;
+      wsApplyMenuCore(tmNodeAct.doc.id, n.id, {date:n.date||"", dur:n.dur>0?n.dur:0, dl:dl0, meta:!!n.meta, cal:!!(n.link&&n.link.cal)}).then(()=>{ tmDirty(); render(); }); }
+    render();
   };
   setTimeout(()=>{ const t = $("tme_t"); if(t) t.focus(); }, 50);
 }

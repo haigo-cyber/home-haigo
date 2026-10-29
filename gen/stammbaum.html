@@ -2078,7 +2078,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "29.10.2026 15:27"; /* BUILD_ID=29.10.2026 15:27 */
+const BUILD = "29.10.2026 15:42"; /* BUILD_ID=29.10.2026 15:42 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -7570,15 +7570,15 @@ function openMenu() {
   if ($("menu")) { $("menu").remove(); return; }
   const m = document.createElement("div");
   m.className = "menu"; m.id = "menu";
-  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="pdf">PDF neben dem Stammbaum lesen</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><button data-m="md">Neue Familienzweige per Markdown anlegen</button><button data-m="mde">Daten per Markdown ergänzen oder löschen</button><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
-  if (S.viewer) m.querySelectorAll("button[data-m]").forEach(x => { if (!["info"].includes(x.dataset.m)) x.remove(); });
+  m.innerHTML = `<button data-m="export">Als .ged-Datei herunterladen</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><hr><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="pdf">PDF neben dem Stammbaum lesen</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><button data-m="todo">Forschungsnotizen (${todoCount()} offen)</button><button data-m="check">Datenprüfung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><button data-m="md">Neue Familienzweige per Markdown anlegen</button><button data-m="mde">Daten per Markdown ergänzen oder löschen</button><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
+  if (S.viewer) m.querySelectorAll("button[data-m]").forEach(x => { if (!["info", "todo"].includes(x.dataset.m)) x.remove(); });
   m.querySelectorAll("hr").forEach(x => { if (S.viewer) x.remove(); });
   document.body.appendChild(m);
   $("btnMenu").setAttribute("aria-expanded", "true");
   m.addEventListener("click", (e) => {
     const b = e.target.closest("[data-m]"); if (!b) return;
     m.remove(); $("btnMenu").setAttribute("aria-expanded", "false");
-    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, pdf: () => ACT.pdfMenu(), places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), mde: () => ACT.mdEdit(), ahnen: () => ACT.ahnen() })[b.dataset.m]();
+    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, pdf: () => ACT.pdfMenu(), places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), todo: () => ACT.todoAll(), mde: () => ACT.mdEdit(), ahnen: () => ACT.ahnen() })[b.dataset.m]();
   });
 }
 document.addEventListener("click", (e) => { const m = $("menu"); if (m && !e.target.closest("#menu") && e.target.id !== "btnMenu") { m.remove(); $("btnMenu").setAttribute("aria-expanded", "false"); } });
@@ -9006,19 +9006,30 @@ ACT.todoDel = (d) => {
   todoWrite("Forschungsschritt gelöscht", d.id, () => { rec.kids.splice(rec.kids.indexOf(n), 1); });
 };
 document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList && e.target.classList.contains("tdin")) { e.preventDefault(); const b = e.target.parentNode.querySelector("[data-act=todoAdd]"); if (b) b.click(); } });
-/* Übersicht über die ganze Datei */
+/* Übersicht über die ganze Datei: abhaken, löschen, filtern, zur Person springen */
+function todoAllBody(d) {
+  const q = mdeF(d.data.q || ""), rows = [];
+  for (const r of S.db.ofTag("INDI")) {
+    const its = todoItems(r).map((it, i) => ({ ...it, i })).filter(it => (d.data.all || !it.done) && (!q || mdeF(it.text + " " + GED.displayName(r)).includes(q)));
+    if (its.length) rows.push({ id: r.xref, name: GED.displayName(r), its });
+  }
+  rows.sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const n = rows.reduce((s, r) => s + r.its.length, 0), ed = !S.viewer;
+  return `<div class="mdopt"><input type="search" id="tdq" class="tdin" style="max-width:280px" placeholder="Filtern nach Name oder Text" value="${E(d.data.q || "")}"><label><input type="checkbox" data-d="tall"${d.data.all ? " checked" : ""}> auch erledigte zeigen</label><span class="hint">${n} Schritt${n === 1 ? "" : "e"} bei ${rows.length} Person${rows.length === 1 ? "" : "en"}</span></div>`
+    + (rows.length ? rows.map(r => `<div class="tdp"><div class="tdh"><button class="lk" data-d="gop" data-id="${r.id}"><b>${E(r.name)}</b></button> <span class="hint">${E(mdeLife(S.db, r.id).trim())}</span></div><ul class="tdl">${r.its.map(it => `<li class="${it.done ? "done" : ""}">${ed ? `<input type="checkbox" data-d="tdone" data-id="${r.id}" data-i="${it.i}"${it.done ? " checked" : ""} aria-label="erledigt">` : (it.done ? "✓ " : "• ")}<span>${E(it.text)}</span>${ed ? `<button class="btn sm ghost" data-d="tdel" data-id="${r.id}" data-i="${it.i}" title="Eintrag löschen">×</button>` : ""}</li>`).join("")}</ul></div>`).join("") : `<div class="hint">Keine ${d.data.all ? "" : "offenen "}Forschungsschritte gefunden. Einen Schritt trägst du im Familienblatt unter „Nächste Forschungsschritte“ ein.</div>`);
+}
 ACT.todoAll = () => {
   if (!S.db) return;
+  const edit = (d, id, i, label, fn) => { const rec = S.db.get(id), n = rec && GED.kidsOf(rec, "_TODO")[+i]; if (!n) return; GED.run(S.db, label, tx => { tx.touch(rec); fn(rec, n); }); const sc = d.body.scrollTop; d.paint(); d.body.scrollTop = sc; render._same = true; render(); };
   openDlg({
-    title: "Forschungsnotizen der ganzen Datei", wide: true, noFocus: true, data: { all: false },
-    body: (d) => {
-      const rows = [];
-      for (const r of S.db.ofTag("INDI")) { const its = todoItems(r).filter(it => d.data.all || !it.done); if (its.length) rows.push({ id: r.xref, name: GED.displayName(r), its }); }
-      rows.sort((a, b) => a.name.localeCompare(b.name, "de"));
-      return `<label class="mdopt"><input type="checkbox" data-d="tall"${d.data.all ? " checked" : ""}> auch erledigte zeigen</label>` + (rows.length ? rows.map(r => `<div class="tdp"><div class="tdh"><button class="lk" data-d="gop" data-id="${r.id}"><b>${E(r.name)}</b></button> <span class="hint">${E(mdeLife(S.db, r.id).trim())}</span></div><ul class="tdl">${r.its.map(it => `<li class="${it.done ? "done" : ""}">${it.done ? "✓ " : "• "}<span>${E(it.text)}</span></li>`).join("")}</ul></div>`).join("") : `<div class="hint">Keine ${d.data.all ? "" : "offenen "}Forschungsschritte eingetragen.</div>`);
+    title: "Forschungsnotizen der ganzen Datei", wide: true, noFocus: true, data: { all: false, q: "" },
+    body: todoAllBody, buttons: () => [{ id: "close", label: "Schließen" }],
+    after: (d) => { const qi = d.q("#tdq"); if (qi && !qi._b) { qi._b = 1; qi.addEventListener("input", () => { clearTimeout(d._t); d._t = setTimeout(() => { d.data.q = qi.value; const pos = qi.selectionStart; d.paint(); const n = d.q("#tdq"); n.focus(); n.setSelectionRange(pos, pos); }, 200); }); } },
+    on: {
+      gop: (d, t) => { d.close(); go(t.dataset.id); },
+      tdone: (d, t) => edit(d, t.dataset.id, t.dataset.i, "Forschungsschritt geändert", (rec, n) => { const k = GED.kid(n, "_DONE"); if (k) n.kids.splice(n.kids.indexOf(k), 1); else n.kids.push({ tag: "_DONE", val: GED.todayGed(), kids: [] }); }),
+      tdel: (d, t) => edit(d, t.dataset.id, t.dataset.i, "Forschungsschritt gelöscht", (rec, n) => { rec.kids.splice(rec.kids.indexOf(n), 1); })
     },
-    buttons: () => [{ id: "close", label: "Schließen" }],
-    on: { gop: (d, t) => { d.close(); go(t.dataset.id); } },
     onChange: (d, e) => { if (e.target.dataset.d === "tall") { d.data.all = e.target.checked; d.paint(); } }
   });
 };

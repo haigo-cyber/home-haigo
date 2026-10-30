@@ -1359,7 +1359,7 @@ async function start(){
     setInterval(()=>{if(HOST&&HOST.isConnected&&document.visibilityState==='visible')refresh(true)},5*60000);
   }
 }
-window.kalInvalidate=async function(){ calsLoaded=false; if(HOST&&HOST.isConnected){ try{ await loadCalendars(); drawCalList(); }catch(e){} refresh(true); } };
+window.kalInvalidate=async function(){ calsLoaded=false; if(HOST&&HOST.isConnected){ try{ await loadCalendars(); drawCalList(); }catch(e){ logErr("stumm", e); } refresh(true); } };
 window.kalRefresh=function(){ if(HOST&&HOST.isConnected) refresh(true) };
 window.kalMount=function(main){
   if(typeof accessToken==='undefined'||!accessToken){main.innerHTML='<p class="muted" style="padding:18px">Bitte zuerst anmelden.</p>';return}
@@ -1392,7 +1392,7 @@ const SCOPES = [
 ].join(" ");
 const SHEET_NAME = "ToDo App Data";
 const DEFAULT_SYNC = true;          // Kalender-Sync standardmäßig AN
-const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived","calendarId","startTime","projectId","tag"];
+const TASK_COLS = ["id","type","title","scheduleType","startDate","weekday","syncCalendar","calendarEventId","notes","createdAt","archived","calendarId","startTime","projectId","tag","fromId","fromDay"];
 const LOG_COLS  = ["itemId","date","doneAt"];
 const WEEKDAYS  = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 
@@ -1443,7 +1443,30 @@ function parseDate(s){ if(!s) return null; const [y,m,d]=s.split("-").map(Number
 function diffDays(a,b){ return Math.round((Date.UTC(b.getFullYear(),b.getMonth(),b.getDate())-Date.UTC(a.getFullYear(),a.getMonth(),a.getDate()))/86400000); }
 function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 let toastTimer;
-function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2200); }
+function toast(msg, ms){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),ms||2200); }
+/* Fehlerprotokoll: die letzten 40 Fehler bleiben lokal gespeichert (Einstellungen, „Letzte Fehler“) */
+function logErr(ctx, e){
+  try{
+    const msg = String((e && e.message) || e || "").slice(0,300);
+    let a = []; try{ a = JSON.parse(localStorage.getItem("errLog")||"[]"); }catch(_){ a = []; }
+    const last = a[a.length-1];
+    if(last && last.c===ctx && last.m===msg){ last.n = (last.n||1)+1; last.t = Date.now(); }
+    else a.push({t:Date.now(), c:String(ctx||"").slice(0,60), m:msg});
+    if(a.length>40) a = a.slice(-40);
+    localStorage.setItem("errLog", JSON.stringify(a));
+  }catch(_){}
+}
+function errLogText(){
+  try{ const a = JSON.parse(localStorage.getItem("errLog")||"[]");
+    return a.slice().reverse().map(x=>new Date(x.t).toLocaleString("de-DE")+"  "+x.c+(x.n>1?" (x"+x.n+")":"")+(x.m?": "+x.m:"")).join("\n");
+  }catch(_){ return ""; }
+}
+/* Meldungen ohne blockierendes Dialogfenster: sichtbar als Hinweis, zusätzlich im Fehlerprotokoll */
+function appAlert(msg){
+  const m = String(msg==null?"":msg).replace(/\s+/g," ").trim();
+  logErr("Meldung", m);
+  toast(m.length>220 ? m.slice(0,217)+"…" : m, Math.min(12000, 3500 + m.length*45));
+}
 function setSync(state){ const d=$("syncDot"); d.className="dot"+(state==="on"?" on":state==="busy"?" busy":""); }
 
 /* ============ WIEDERHOLUNGSLOGIK (geprüft) ============ */
@@ -1464,8 +1487,17 @@ function isDue(task, date){
   }
   return false;
 }
-function isDone(itemId, key){ return logs.some(l=>l.itemId===itemId && l.date===key); }
-function isEverDone(itemId){ return logs.some(l=>l.itemId===itemId); }
+let _logIdx = null, _logIdxArr = null, _logIdxLen = -1, _logIdxFirst = null, _logIdxLast = null;
+function logIndex(){
+  const n = logs.length;
+  if(_logIdx && _logIdxArr===logs && _logIdxLen===n && _logIdxFirst===logs[0] && _logIdxLast===logs[n-1]) return _logIdx;
+  const m = new Map();
+  for(const l of logs){ let st = m.get(l.itemId); if(!st){ st = new Set(); m.set(l.itemId, st); } st.add(l.date); }
+  _logIdx = m; _logIdxArr = logs; _logIdxLen = n; _logIdxFirst = logs[0]; _logIdxLast = logs[n-1];
+  return m;
+}
+function isDone(itemId, key){ const st = logIndex().get(itemId); return !!st && st.has(key); }
+function isEverDone(itemId){ return logIndex().has(itemId); }
 function streakDays(itemId){
   let n=0; const d=new Date();
   while(isDone(itemId,dateKey(d))){ n++; d.setDate(d.getDate()-1); }
@@ -1480,7 +1512,7 @@ function taskStreak(){
   d.setDate(d.getDate()-1);  // Starte mit GESTERN
   while(true){
     const k=dateKey(d);
-    const count=logs.filter(l=>l.date===k).length;
+    const count=logsForCount().filter(l=>l.date===k).length;
     if(count>=minTaskGoal){ n++; d.setDate(d.getDate()-1); }
     else break;
   }
@@ -1494,11 +1526,9 @@ function parseDeadlineFromNotes(notes){
 
 function daysUntilDeadline(deadline){
   if(!deadline) return null;
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const dl = new Date(deadline+"T00:00:00");
-  const diff = Math.ceil((dl - today)/(1000*60*60*24));
-  return diff;
+  const dl = parseDate(deadline);
+  if(!dl || isNaN(dl)) return null;
+  return diffDays(new Date(), dl);   // volle Kalendertage, unabhängig von Uhrzeit und Zeitumstellung
 }
 
 function deadlineColor(days){
@@ -1560,7 +1590,14 @@ function requestToken(interactive){
 /* ============ GOOGLE-API-AUFRUFE ============ */
 async function api(url, opts={}, retried=false){
   opts.headers = Object.assign({Authorization:"Bearer "+accessToken,"Content-Type":"application/json"}, opts.headers||{});
-  const r = await fetch(url, opts);
+  let r;
+  const m = (opts.method||"GET").toUpperCase();
+  for(let att=0;; att++){
+    try{ r = await fetch(url, opts); }
+    catch(e){ if(att<2 && m!=="POST"){ await new Promise(z=>setTimeout(z, 700*(att+1))); continue; } logErr("Netzwerk", e); throw new Error("Keine Verbindung ("+(e && e.message || e)+")"); }
+    if((r.status===429 || r.status>=500) && att<2 && m!=="POST"){ await new Promise(z=>setTimeout(z, 900*(att+1))); continue; }
+    break;
+  }
   if(r.status===401 && !retried){
     console.log("🔄 Token abgelaufen, versuche zu erneuern...");
     try{ 
@@ -1692,22 +1729,26 @@ async function loadGTasks(){
 }
 
 /* ---- Ziel als Google Task anlegen (Standardliste, Fälligkeit heute, mit Marker) ---- */
-async function addGoalTask(title, dueDate){
+async function addGoalTask(title, dueDate, fromId){
   dueDate=dueDate||todayKey();
   if(wsGoalCount(dueDate)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tages-Ziele pro Tag"); return; }
   setSync("busy");
   try{
     if(!defaultGTaskListId){ await loadGTasks(); }
     const due=dueDate+"T12:00:00.000Z";
-    await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks`, {
+    const made = await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId)}/tasks`, {
       method:"POST",
       body:JSON.stringify({title:title, notes:GOAL_MARKER, due:due})
     });
+    if(fromId && made && made.id){          // Platzhalter-Zeile, damit das Abhaken auch für die Gewohnheit/Ablenkung zählt
+      tasks.push({id:"gf_"+made.id, type:"todo", title, scheduleType:"", startDate:dueDate, weekday:"", syncCalendar:false, calendarEventId:"", notes:"[geplant aus Gewohnheit/Ablenkung]", createdAt:new Date().toISOString(), archived:true, calendarId:"", startTime:"", projectId:"", tag:"", fromId, fromDay:""});
+      await saveTasks();
+    }
     await loadGTasks();
     setSync("on"); render(); toast("Ziel gespeichert");
   }catch(e){
     console.error("❌ addGoalTask Fehler:",e.message);
-    alert("Ziel speichern fehlgeschlagen:\n"+e.message);
+    appAlert("Ziel speichern fehlgeschlagen:\n"+e.message);
     setSync("on");
   }
 }
@@ -1726,7 +1767,7 @@ async function updateGoalTask(id, title, dueDate){
     setSync("on"); render(); toast("Ziel aktualisiert");
   }catch(e){
     console.error("❌ updateGoalTask Fehler:",e.message);
-    alert("Ziel aktualisieren fehlgeschlagen:\n"+e.message);
+    appAlert("Ziel aktualisieren fehlgeschlagen:\n"+e.message);
     setSync("on");
   }
 }
@@ -1741,7 +1782,7 @@ async function pushGoalToCalendar(id, calId){
     setSync("on"); toast("Im Kalender eingetragen");
   }catch(e){
     console.error("❌ pushGoalToCalendar Fehler:",e.message);
-    alert("Eintragen in den Kalender fehlgeschlagen:\n"+e.message);
+    appAlert("Eintragen in den Kalender fehlgeschlagen:\n"+e.message);
     setSync("on");
   }
 }
@@ -1830,7 +1871,7 @@ async function completeGTask(taskId){
     render(); setSync("on");
   }catch(e){
     console.error("❌ completeGTask Fehler:",e.message);
-    alert("Abhaken fehlgeschlagen:\n"+e.message);
+    appAlert("Abhaken fehlgeschlagen:\n"+e.message);
     setSync("on");
   }
 }
@@ -1849,7 +1890,7 @@ async function uncompleteGTask(taskId){
     render(); setSync("on");
   }catch(e){
     console.error("❌ uncompleteGTask Fehler:",e.message);
-    alert("Wiederöffnen fehlgeschlagen:\n"+e.message);
+    appAlert("Wiederöffnen fehlgeschlagen:\n"+e.message);
     setSync("on");
   }
 }
@@ -1872,7 +1913,7 @@ async function deleteGTask(taskId, quiet){
     render(); setSync("on");
   }catch(e){
     console.error("❌ deleteGTask Fehler:",e.message);
-    alert("Löschen fehlgeschlagen:\n"+e.message);
+    appAlert("Löschen fehlgeschlagen:\n"+e.message);
     setSync("on");
   }
 }
@@ -1977,7 +2018,7 @@ async function ensureSheet(){
     console.log("✅ ensureSheet OK");
   }catch(e){
     console.error("❌ ensureSheet Tab-Check fehlgeschlagen:",e.message);
-    alert("Fehler beim Erstellen der Tabellen-Tabs:\n"+e.message);
+    appAlert("Fehler beim Erstellen der Tabellen-Tabs:\n"+e.message);
   }
 }
 
@@ -1991,21 +2032,22 @@ async function loadAll(){
     {method:"PUT",body:JSON.stringify({values:[TASK_COLS]})});
   const t=await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2:${colLetter(TASK_COLS.length)}`);
   const l=await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C`);
-  tasks=rowsToObjs(t.values, TASK_COLS).filter(x=>x.id).map(x=>({
-    ...x, syncCalendar:x.syncCalendar!=="false", archived:x.archived==="true"
-  }));
+  tasks=(t.values||[]).map(taskFromRow).filter(x=>x.id);
+  tasksBaseReset();
   logs=rowsToObjs(l.values, LOG_COLS).filter(x=>x.itemId&&x.date);
   logsSnapshotAtLoad = logs.map(l=>({...l}));   // Kopie für spätere Abgleich-Erkennung beim Speichern
+  _lastRefresh = Date.now();
   // Projekte: JSON von Projects!A1 laden
   try{
     console.log("📖 loadAll Projects START");
     const p=await api(`${SHEETS}/${spreadsheetId}/values/Projects!A1`);
     const json=p.values?.[0]?.[0];
     if(json) projects=JSON.parse(json); else projects=[];
+    listLoadErr.projects=""; listBaseReset("projects");
     console.log("✅ loadAll Projects OK, Anzahl:",projects.length);
   }catch(e){
     console.warn("❌ loadAll Projects FEHLER:",e.message);
-    projects=[];
+    listLoadFailed("projects", e);
   }
   // Notizen: JSON von Notes!A1 laden
   await loadNotes();
@@ -2035,17 +2077,145 @@ async function loadCalendars(){
   }
   if(typeof ksAutoAdopt==="function") ksAutoAdopt();
 }
+/* Beim Zurückkehren in die App: Aufgaben und Protokoll vom Server holen, lokale Änderungen bleiben erhalten */
+let _lastRefresh = Date.now(), _refreshing = false;
+async function refreshFromServer(force){
+  if(_refreshing || !accessToken || !spreadsheetId || _busyCount>0) return false;
+  if(!force && Date.now()-_lastRefresh<90000) return false;
+  if(document.getElementById("modalBg") || (typeof tp!=="undefined" && tp.drag)) return false;
+  _refreshing = true; let changed = false;
+  try{
+    const last = colLetter(TASK_COLS.length);
+    const [tr, lr] = await Promise.all([api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2:${last}${SHEET_MAXROW}`), api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C${SHEET_MAXROW}`)]);
+    if(_busyCount>0) return false;
+    const srv = (tr && tr.values || []).map(taskFromRow).filter(x=>x.id);
+    const m = mergeTasksWith(srv);
+    const before = tasks.map(taskRowKey).join("\n"), after = m.out.map(taskRowKey).join("\n");
+    if(before!==after){ tasks = m.out; changed = true; }
+    m.taken.forEach(t=>tasksBase.set(t.id, taskRowKey(t)));
+    m.dropped.forEach(id=>tasksBase.delete(id));
+    const sl = []; ((lr && lr.values) || []).forEach(row=>{ const l={}; LOG_COLS.forEach((c,i)=>l[c]=row[i]||""); if(l.itemId && l.date) sl.push(l); });
+    if(!(sl.length===0 && logsSnapshotAtLoad.length>20)){
+      const key = l=>l.itemId+"|"+l.date, snapK = new Set(logsSnapshotAtLoad.map(key)), curK = new Set(logs.map(key));
+      const added = logs.filter(l=>!snapK.has(key(l))), removed = new Set(logsSnapshotAtLoad.filter(l=>!curK.has(key(l))).map(key));
+      const merged = sl.filter(l=>!removed.has(key(l))), mk = new Set(merged.map(key));
+      added.forEach(l=>{ if(!mk.has(key(l))){ merged.push(l); mk.add(key(l)); } });
+      if(merged.length!==logs.length || merged.some(l=>!curK.has(key(l)))){ logs = merged; changed = true; }
+      logsSnapshotAtLoad = sl.map(l=>({...l}));
+    }
+    _lastRefresh = Date.now();
+    if(changed){ try{ render(); }catch(e){ logErr("refresh/render", e); } toast("Von einem anderen Gerät aktualisiert"); }
+  }catch(e){ logErr("refreshFromServer", e); }
+  finally{ _refreshing = false; }
+  return changed;
+}
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") refreshFromServer(false); });
+function restoreLocalBackup(kind){
+  try{
+    const b = JSON.parse(localStorage.getItem(kind==="tasks"?"tasksBak":"logsBak")||"null");
+    if(!b || !Array.isArray(b.rows)){ toast("Keine lokale Sicherung vorhanden"); return; }
+    const when = new Date(b.t).toLocaleString("de-DE");
+    if(!confirm((kind==="tasks"?"Aufgaben":"Protokoll")+" aus der lokalen Sicherung von "+when+" ("+b.rows.length+" Zeilen) wiederherstellen? Der aktuelle Stand in der Tabelle wird dadurch ersetzt.")) return;
+    if(kind==="tasks"){ tasks = b.rows.map(taskFromRow).filter(x=>x.id); tasksBase = new Map(); saveTasks().then(()=>{ render(); toast("Aufgaben wiederhergestellt"); }).catch(e=>toast("Wiederherstellen fehlgeschlagen: "+e.message)); }
+    else{ logs = b.rows.map(r=>({itemId:r[0],date:r[1],doneAt:r[2]||""})).filter(l=>l.itemId&&l.date); logsSnapshotAtLoad = []; saveLogs().then(()=>{ render(); toast("Protokoll wiederhergestellt"); }).catch(e=>toast("Wiederherstellen fehlgeschlagen: "+e.message)); }
+  }catch(e){ logErr("restoreLocalBackup", e); toast("Wiederherstellen nicht möglich"); }
+}
+/* Projekte, Notizen und Links liegen als JSON in je einer Zelle. Vor dem Speichern wird der Serverstand gelesen und zusammengeführt;
+   nach einem Ladefehler wird nicht gespeichert, damit die Tabelle nicht mit einer leeren Liste überschrieben wird. */
+const LISTCFG = {
+  projects:{tab:"Projects", get:()=>projects, set:v=>{ projects = v; }, label:"Projekte"},
+  notes:{tab:"Notes", get:()=>notes, set:v=>{ notes = v; }, label:"Notizen"},
+  links:{tab:"Links", get:()=>links, set:v=>{ links = v; }, label:"Links"}
+};
+const listBase = {projects:new Map(), notes:new Map(), links:new Map()};
+const listLoadErr = {projects:"", notes:"", links:""};
+function listBaseReset(kind){ listBase[kind] = new Map((LISTCFG[kind].get()||[]).filter(x=>x && x.id).map(x=>[x.id, JSON.stringify(x)])); }
+function listLoadFailed(kind, e){
+  const msg = String((e && e.message) || e || "");
+  if(/Unable to parse range/i.test(msg)){ listLoadErr[kind] = ""; return; }      // Tab gibt es noch nicht: gilt als leer
+  listLoadErr[kind] = msg.slice(0,120) || "unbekannter Fehler"; logErr("Laden "+LISTCFG[kind].label, e);
+}
+async function listPreSave(kind){
+  const c = LISTCFG[kind];
+  if(listLoadErr[kind]){ const m = c.label+" nicht gespeichert: Das Laden ist fehlgeschlagen. Bitte unter Einstellungen aktualisieren."; toast(m); throw new Error(m); }
+  let srv = [];
+  try{
+    const r = await api(`${SHEETS}/${spreadsheetId}/values/${c.tab}!A1`);
+    const cell = r && r.values && r.values[0] && r.values[0][0];
+    if(cell){ srv = JSON.parse(cell); if(!Array.isArray(srv)) throw new Error("Tabelleninhalt ist keine Liste"); }
+  }catch(e){
+    if(!/Unable to parse range/i.test(String(e && e.message))) throw new Error(c.label+": Serverstand nicht lesbar, nichts überschrieben ("+(e && e.message || e)+")");
+  }
+  const base = listBase[kind], local = c.get() || [], L = new Set(local.map(x=>x && x.id)), S = new Map(srv.filter(x=>x && x.id).map(x=>[x.id, x]));
+  const suspicious = srv.length===0 && base.size>3;
+  const out = [];
+  local.forEach(x=>{
+    if(!x || !x.id){ out.push(x); return; }
+    const b = base.get(x.id), sv = S.get(x.id), k = JSON.stringify(x);
+    if(b===undefined || k!==b) out.push(x);
+    else if(sv){ out.push(JSON.stringify(sv)===b ? x : sv); }
+    else if(suspicious) out.push(x);
+  });
+  srv.forEach(x=>{ if(x && x.id && !L.has(x.id) && !base.has(x.id)) out.push(x); });
+  c.set(out);
+  const json = JSON.stringify(out);
+  if(json.length>49500){ const m = c.label+" sind zu groß für eine Tabellenzelle (Grenze 50.000 Zeichen). Bitte Einträge löschen oder auslagern."; toast(m); throw new Error(m); }
+  if(json.length>40000) toast(c.label+": "+Math.round(json.length/500)/100+" von 50 Tausend Zeichen belegt");
+  return json;
+}
 function colLetter(n){ let s=""; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
 
 /* ---- Speichern (komplette Bereiche neu schreiben) ---- */
-async function saveTasks(){
-  const last=colLetter(TASK_COLS.length);
-  await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2:${last}10000:clear`,{method:"POST",body:"{}"});
-  const values=tasks.map(t=>TASK_COLS.map(c=>{
-    const v=t[c]; return typeof v==="boolean"?String(v):(v==null?"":String(v));
-  }));
-  if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2?valueInputOption=RAW`,
-    {method:"PUT",body:JSON.stringify({values})});
+/* Aufgaben: erst schreiben, dann überzählige Zeilen leeren; vorher Serverstand lesen und mit den lokalen Änderungen zusammenführen */
+const SHEET_MAXROW = 60000;
+let tasksBase = new Map();          // id -> Zeilenwert beim letzten Laden/Speichern (Grundlage für den Abgleich)
+let _busyCount = 0;                 // laufende Speichervorgänge (Neuladen beim Zurückkehren wartet darauf)
+function taskRowVals(t){ return TASK_COLS.map(c=>{ const v=t[c]; return typeof v==="boolean"?String(v):(v==null?"":String(v)); }); }
+function taskRowKey(t){ return taskRowVals(t).join("\u0001"); }
+function taskFromRow(r){ const o={}; TASK_COLS.forEach((c,i)=>o[c]=r[i]!==undefined?r[i]:""); return {...o, syncCalendar:o.syncCalendar!=="false", archived:o.archived==="true"}; }
+function tasksBaseReset(){ tasksBase = new Map(tasks.map(t=>[t.id, taskRowKey(t)])); }
+function mergeTasksWith(srv){
+  const S = new Map(srv.map(t=>[t.id, t])), L = new Set(tasks.map(t=>t.id));
+  const suspicious = srv.length===0 && tasksBase.size>3;          // leere Antwort bei vielen bekannten Aufgaben: nichts verwerfen
+  const out = [], taken = [], dropped = [];
+  tasks.forEach(t=>{
+    const b = tasksBase.get(t.id), s = S.get(t.id);
+    if(b===undefined || taskRowKey(t)!==b) out.push(t);                         // lokal neu oder lokal geändert
+    else if(s){ if(taskRowKey(s)===b) out.push(t); else { out.push(s); taken.push(s); } }   // unverändert: Serverstand gewinnt
+    else if(suspicious) out.push(t);
+    else dropped.push(t.id);                                                    // auf dem Server gelöscht
+  });
+  srv.forEach(s=>{ if(!L.has(s.id) && !tasksBase.has(s.id)){ out.push(s); taken.push(s); } });   // auf dem Server neu
+  return {out, taken, dropped};
+}
+function backupLocal(key, rows, force){
+  try{
+    const prev = JSON.parse(localStorage.getItem(key)||"null");
+    if(!force && prev && Date.now()-prev.t<5*60000 && rows.length>=prev.rows.length-5) return;
+    localStorage.setItem(key, JSON.stringify({t:Date.now(), rows}));
+  }catch(e){ logErr("Sicherung", e); }
+}
+let _saveTasksQ = Promise.resolve();
+function saveTasks(){
+  const run = _saveTasksQ.then(()=>_saveTasksInner());
+  _saveTasksQ = run.catch(e=>{ console.error("❌ saveTasks (Warteschlange):", e.message); logErr("saveTasks", e); });
+  return run;
+}
+async function _saveTasksInner(){
+  _busyCount++;
+  try{
+    const last = colLetter(TASK_COLS.length);
+    const r = await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2:${last}${SHEET_MAXROW}`);      // Lesen nicht möglich: lieber nichts überschreiben
+    const srv = (r && r.values || []).map(taskFromRow).filter(x=>x.id);
+    const m = mergeTasksWith(srv);
+    tasks = m.out;
+    const rows = tasks.map(taskRowVals);
+    backupLocal("tasksBak", rows);
+    if(rows.length) await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A2?valueInputOption=RAW`, {method:"PUT", body:JSON.stringify({values:rows})});
+    if(srv.length>rows.length) await api(`${SHEETS}/${spreadsheetId}/values/Tasks!A${rows.length+2}:${last}${SHEET_MAXROW}:clear`, {method:"POST", body:"{}"});
+    tasksBaseReset();
+    if(rows.length>SHEET_MAXROW*0.5) toast("Das Blatt Tasks wird sehr voll ("+rows.length+" Zeilen)");
+  }finally{ _busyCount--; }
 }
 let _saveLogsQueue = Promise.resolve();
 function saveLogs(){
@@ -2055,13 +2225,70 @@ function saveLogs(){
   _saveLogsQueue = run.catch(e=>{ console.error("❌ saveLogs (Warteschlange):",e.message); });
   return run;
 }
+/* Geplante Gewohnheiten und Ablenkungen: ein ToDo oder Tagesziel mit fromId zählt beim Abhaken auch für die Gewohnheit beziehungsweise Ablenkung.
+   fromDay merkt sich den gespiegelten Tag ("~" davor: der Eintrag war schon da und wird beim Zurücknehmen nicht entfernt). */
+let fromGoalOps = [];
+function fromParse(cur){ const p = /^[~^-]/.test(cur) ? cur[0] : ""; return {p, d:p ? cur.slice(1) : cur}; }
+function fromOwn(t){ return String(t.id).startsWith("gf_") ? String(t.id).slice(3) : t.id; }
+/* Zählung für Tageszähler, Serie und Punkte: ein geplanter Termin und die zugehörige Gewohnheit/Ablenkung am selben Tag zählen zusammen einmal */
+function logsForCount(){
+  const by = new Map();
+  tasks.forEach(t=>{ if(!t.fromId) return; const own = fromOwn(t);
+    logs.forEach(l=>{ if(l.itemId===own){ if(!by.has(t.fromId)) by.set(t.fromId, new Set()); by.get(t.fromId).add(l.date); } }); });
+  if(!by.size) return logs;
+  return logs.filter(l=>!(by.has(l.itemId) && by.get(l.itemId).has(l.date)));
+}
+function fromReconcile(){
+  let chg = false;
+  const today = todayKey(), cut = tpDayAdd(today, -60);
+  const ops = (t, done)=>{ if(String(t.id).startsWith("gf_")) fromGoalOps.push({id:fromOwn(t), done}); else { try{ wsOnItemDone("todo", t.id, done); }catch(e){ logErr("stumm", e); } } };
+  tasks.forEach(t=>{
+    if(!t.fromId) return;
+    const own = fromOwn(t), cur = String(t.fromDay||""), {p, d} = fromParse(cur);
+    const ol = logs.find(l=>l.itemId===own);
+    if(ol){
+      if(p==="^" && !logs.some(l=>l.itemId===t.fromId && l.date===d)){      // Gewohnheit wurde wieder zurückgenommen: der automatisch geschlossene Termin wird wieder geöffnet
+        logs = logs.filter(l=>l.itemId!==own); t.fromDay = ""; ops(t, false); chg = true; return;
+      }
+      if(d!==ol.date || p==="-"){
+        if(cur && p==="") logs = logs.filter(l=>!(l.itemId===t.fromId && l.date===d));
+        const had = logs.some(l=>l.itemId===t.fromId && l.date===ol.date);
+        if(!had) logs.push({itemId:t.fromId, date:ol.date, doneAt:ol.doneAt||new Date().toISOString()});
+        t.fromDay = (had ? "~" : "")+ol.date; chg = true;
+      }
+    }else if(cur){
+      if(p==="") logs = logs.filter(l=>!(l.itemId===t.fromId && l.date===d));
+      t.fromDay = (p==="~" || p==="^") ? "-"+d : ""; chg = true;
+    }else if(!t.archived || String(t.id).startsWith("gf_")){
+      const hl = logs.find(l=>l.itemId===t.fromId && l.date===(t.startDate||""));      // Gewohnheit am Tag des Termins abgehakt: Termin miterledigen
+      if(hl){ logs.push({itemId:own, date:hl.date, doneAt:hl.doneAt||new Date().toISOString()}); t.fromDay = "^"+hl.date; ops(t, true); chg = true; }
+    }
+  });
+  const n0 = tasks.length;
+  tasks = tasks.filter(t=>!(String(t.id).startsWith("gf_") && t.fromId && (t.startDate||"")<cut && t.fromDay));
+  if(tasks.length!==n0) chg = true;
+  return chg;
+}
 async function _saveLogsInner(){
+  _busyCount++;
+  try{ return await _saveLogsCore(); }finally{ _busyCount--; }
+}
+async function _saveLogsCore(){
   const logKey = l => l.itemId+"|"+l.date;
+  try{
+    if(fromReconcile()){
+      await saveTasks();
+      const ops = fromGoalOps; fromGoalOps = [];
+      for(const o of ops){ try{ await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId||"@default")}/tasks/${encodeURIComponent(o.id)}`, {method:"PATCH", body:JSON.stringify(o.done ? {status:"completed"} : {status:"needsAction", completed:null})}); wsOnItemDone("goal", o.id, o.done); }catch(e){ console.warn("Ziel miterledigen:", e && e.message); } }
+      if(ops.length){ try{ await loadGTasks(); }catch(e){ logErr("stumm", e); } }
+      try{ render(); }catch(e){ logErr("stumm", e); }
+    }
+  }catch(e){ console.warn("fromReconcile:", e && e.message); }
 
   // 1) Aktuellen Serverstand holen, NICHT blind vom lokalen Speicher ausgehen
   let serverLogs = [];
   try{
-    const res = await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000`);
+    const res = await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C${SHEET_MAXROW}`);
     const rows = (res && res.values) || [];
     rows.forEach(row=>{
       const l={};
@@ -2081,15 +2308,18 @@ async function _saveLogsInner(){
   const removedKeys = new Set(removedLocally.map(logKey));
 
   // 3) Serverstand als Basis nehmen, lokale Änderungen darauf anwenden
-  const merged = serverLogs.filter(l=>!removedKeys.has(logKey(l)));
+  const srvEmptyOdd = serverLogs.length===0 && logsSnapshotAtLoad.length>20;      // leere Antwort bei vielen bekannten Einträgen: nichts verwerfen
+  const merged = srvEmptyOdd ? logs.slice() : serverLogs.filter(l=>!removedKeys.has(logKey(l)));
   const mergedKeys = new Set(merged.map(logKey));
   addedLocally.forEach(l=>{ if(!mergedKeys.has(logKey(l))){ merged.push(l); mergedKeys.add(logKey(l)); } });
 
   // 4) Ergebnis schreiben und als neuen lokalen Stand übernehmen
-  await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000:clear`,{method:"POST",body:"{}"});
   const values=merged.map(l=>LOG_COLS.map(c=>l[c]||""));
+  backupLocal("logsBak", values);
   if(values.length) await api(`${SHEETS}/${spreadsheetId}/values/Log!A2?valueInputOption=RAW`,
     {method:"PUT",body:JSON.stringify({values})});
+  if(serverLogs.length>values.length) await api(`${SHEETS}/${spreadsheetId}/values/Log!A${values.length+2}:C${SHEET_MAXROW}:clear`,{method:"POST",body:"{}"});
+  if(values.length>SHEET_MAXROW*0.5) toast("Das Blatt Log wird sehr voll ("+values.length+" Zeilen)");
 
   logs = merged;
   logsSnapshotAtLoad = merged.map(l=>({...l}));
@@ -2098,7 +2328,7 @@ async function _saveLogsInner(){
 async function loadLogs(){
   logs=[];
   try{
-    const res=await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C10000`);
+    const res=await api(`${SHEETS}/${spreadsheetId}/values/Log!A2:C${SHEET_MAXROW}`);
     const rows=(res && res.values)||[];
     rows.forEach(row=>{
       const l={};
@@ -2159,15 +2389,15 @@ async function syncCalendar(t){
       await api(`${url}/${t.calendarEventId}`,{method:"DELETE"});
       t.calendarEventId="";
     }
-  }catch(e){ console.warn("Kalender-Sync fehlgeschlagen:",e); alert("Kalender-Sync fehlgeschlagen:\n"+(e&&e.message?e.message:e)); }
+  }catch(e){ console.warn("Kalender-Sync fehlgeschlagen:",e); appAlert("Kalender-Sync fehlgeschlagen:\n"+(e&&e.message?e.message:e)); }
 }
 async function deleteCalendar(t){
-  if(t.calendarEventId){ try{ await api(`${calUrl(effectiveCalId(t))}/${t.calendarEventId}`,{method:"DELETE"}); }catch(e){} }
+  if(t.calendarEventId){ try{ await api(`${calUrl(effectiveCalId(t))}/${t.calendarEventId}`,{method:"DELETE"}); }catch(e){ logErr("stumm", e); } }
 }
 // Kalenderwechsel: alten Termin auf dem alten Kalender entfernen
 async function moveCalendarIfNeeded(t, oldCalId, oldEventId){
   if(oldEventId && effectiveCalId(t)!==oldCalId){
-    try{ await api(`${calUrl(oldCalId)}/${oldEventId}`,{method:"DELETE"}); }catch(e){}
+    try{ await api(`${calUrl(oldCalId)}/${oldEventId}`,{method:"DELETE"}); }catch(e){ logErr("stumm", e); }
     t.calendarEventId="";
   }
 }
@@ -2218,7 +2448,7 @@ async function saveProjects(){
   if(!spreadsheetId){
     const msg="FEHLER: spreadsheetId nicht gesetzt!";
     console.error(msg);
-    alert(msg);
+    appAlert(msg);
     throw new Error(msg);
   }
   try{
@@ -2235,18 +2465,19 @@ async function saveProjects(){
       await new Promise(r=>setTimeout(r,500));
     }
     
-    const json=JSON.stringify(projects);
+    const json=await listPreSave("projects");
     console.log("  JSON-Länge:",json.length);
     const url=`${SHEETS}/${spreadsheetId}/values/Projects!A1?valueInputOption=RAW`;
     console.log("  Speichere zu:",url);
     const resp=await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+    listBaseReset("projects");
     console.log("✅ saveProjects OK, Antwort:",resp);
     toast("Projekte gespeichert ✓");
     return resp;
   }catch(e){
     const msg="❌ saveProjects FEHLER: "+e.message;
     console.error(msg);
-    alert(msg);
+    appAlert(msg);
     toast(msg);
     throw e;
   }
@@ -2261,7 +2492,7 @@ async function addProject(data){
     setSync("on"); render();
   }catch(e){
     console.error("❌ addProject Fehler:",e.message);
-    alert("Projekt speichern FEHLGESCHLAGEN:\n"+e.message);
+    appAlert("Projekt speichern FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -2269,7 +2500,7 @@ async function updateProject(id, data){
   setSync("busy");
   try{
     const p=projects.find(x=>x.id===id);
-    if(!p){ alert("Projekt nicht gefunden!"); return; }
+    if(!p){ appAlert("Projekt nicht gefunden!"); return; }
     console.log("updateProject:",id,data);
     
     // Prüfe ob Projekt gerade archiviert wird
@@ -2301,7 +2532,7 @@ async function updateProject(id, data){
     setSync("on"); render();
   }catch(e){
     console.error("❌ updateProject Fehler:",e.message);
-    alert("Projekt Update FEHLGESCHLAGEN:\n"+e.message);
+    appAlert("Projekt Update FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -2327,7 +2558,7 @@ async function purgeStaleGoals(){
   const stale=tasks.filter(t=>t.type==="goal" && (t.startDate||"")!==today);
   if(!stale.length) return false;
   // Verknüpfte Kalendertermine der abgelaufenen Ziele entfernen
-  for(const g of stale){ if(g.calendarEventId){ try{ await deleteCalendar(g); }catch(e){} } }
+  for(const g of stale){ if(g.calendarEventId){ try{ await deleteCalendar(g); }catch(e){ logErr("stumm", e); } } }
   const ids=new Set(stale.map(t=>t.id));
   tasks=tasks.filter(t=>!ids.has(t.id));
   logs=logs.filter(l=>!ids.has(l.itemId));
@@ -2423,6 +2654,7 @@ function habitCard(t){
       <div class="streak">${days.map(x=>`<div class="d${x?' on':''}"></div>`).join("")}</div>
     </div>
     <div class="row-actions">
+      <button class="mini" data-plan-from="${t.id}" title="Für einen Tag einplanen (als ToDo oder Tagesziel), die Gewohnheit bleibt unverändert">📅 Planen</button>
       <button class="mini" data-edit="${t.id}">Bearb.</button>
       <button class="mini" data-del="${t.id}">🗑</button>
     </div>
@@ -2596,9 +2828,9 @@ function priorityBoard(){
 
 function urgencyDays(startDate){
   if(!startDate) return 999;
-  const due=parseDate(startDate), today=new Date();
-  const d=Math.floor((due-today)/86400000);
-  return Math.max(0,d);
+  const due=parseDate(startDate);
+  if(!due || isNaN(due)) return 999;
+  return Math.max(0, diffDays(new Date(), due));
 }
 function urgencyBar(d){
   if(d>3) return "";
@@ -2662,12 +2894,13 @@ document.addEventListener("click",()=>{ _lastClick=Date.now(); },true);
 
 function computeGame(){
   const perDay={}; let early=false;
-  for(const l of logs){
+  const cl=logsForCount();
+  for(const l of cl){
     perDay[l.date]=(perDay[l.date]||0)+1;
     if(!early && l.doneAt){ const h=new Date(l.doneAt).getHours(); if(!isNaN(h) && h<7) early=true; }
   }
   const goal=Math.max(1,minTaskGoal);
-  const total=logs.length;
+  const total=cl.length;
   let questDays=0, best=0, run=0, prev=null;
   Object.keys(perDay).sort().forEach(k=>{
     if(perDay[k]>=goal){
@@ -2708,17 +2941,17 @@ function gameTick(){
   // Nur animieren, wenn die Erhöhung zu einer einzelnen, gerade angetippten Aktion passt (nicht beim Laden der Daten)
   const live=delta>0 && delta<=XP_PER_TASK+XP_QUEST_BONUS && (Date.now()-_lastClick)<20000;
   const earned=TROPHIES.filter(t=>t.test(GAME)).map(t=>t.id);
-  let stored=null; try{ stored=JSON.parse(localStorage.getItem("trophies")||"null"); }catch(e){}
+  let stored=null; try{ stored=JSON.parse(localStorage.getItem("trophies")||"null"); }catch(e){ logErr("stumm", e); }
   const have=new Set(stored||[]);
   const fresh=earned.filter(id=>!have.has(id));
   if(fresh.length || stored===null){
     fresh.forEach(id=>have.add(id));
-    try{ localStorage.setItem("trophies",JSON.stringify([...have])); }catch(e){}
+    try{ localStorage.setItem("trophies",JSON.stringify([...have])); }catch(e){ logErr("stumm", e); }
   }
   if(live){
     xpFloat(delta);
     const up=_lastLevel!==null && GAME.level>_lastLevel;
-    if(navigator.vibrate){ try{ navigator.vibrate(up?[30,40,60]:15); }catch(e){} }
+    if(navigator.vibrate){ try{ navigator.vibrate(up?[30,40,60]:15); }catch(e){ logErr("stumm", e); } }
     if(up) levelUp(GAME);
     if(stored!==null && fresh.length){
       const names=fresh.map(id=>TROPHIES.find(t=>t.id===id).name).join(", ");
@@ -2801,18 +3034,18 @@ function navGo(g, k){
   const it = NAV_GROUPS[g].items.find(x=>x.k===k); if(!it) return;
   if(it.act){ if(it.act==="trash") wsOpenTrash(); else openDoneList(); return; }
   view = it.v;
-  if(it.mode){ tp.mode = it.mode; tp.unlock = false; tp.more = false; tm.more = false; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){} tm.scrollL = null; }
-  if(it.tab){ wsTab = it.tab; try{ localStorage.setItem("wsTab", wsTab); }catch(_){} }
+  if(it.mode){ tp.mode = it.mode; tp.unlock = false; tp.more = false; tm.more = false; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){ logErr("stumm", _); } tm.scrollL = null; }
+  if(it.tab){ wsTab = it.tab; try{ localStorage.setItem("wsTab", wsTab); }catch(_){ logErr("stumm", _); } }
   render();
 }
-function navLast(g){ let k = ""; try{ k = localStorage.getItem("navLast_"+g)||""; }catch(_){} const it = NAV_GROUPS[g].items.find(x=>x.k===k && !x.act) || NAV_GROUPS[g].items[0]; return it.k; }
+function navLast(g){ let k = ""; try{ k = localStorage.getItem("navLast_"+g)||""; }catch(_){ logErr("stumm", _); } const it = NAV_GROUPS[g].items.find(x=>x.k===k && !x.act) || NAV_GROUPS[g].items[0]; return it.k; }
 function navBarHtml(g){ const cur = navItemKey(g); return `<div class="tp-bar nav-sub" style="margin-bottom:10px;flex-wrap:wrap">${NAV_GROUPS[g].items.map(x=>`<button class="tp-btn${x.k===cur?" on":""}" data-navsub="${x.k}" data-navg="${g}">${x.label}</button>`).join("")}${g==="grp_plan"?`<span style="flex:1"></span><button class="tp-btn" data-fs="-" title="Schrift kleiner" aria-label="Schrift kleiner">A−</button><button class="tp-btn" data-fs="+" title="Schrift größer" aria-label="Schrift größer">A+</button>`:""}</div>`; }
 function navFsApply(){ if(typeof main==="undefined") return; if(navKey(view)==="grp_plan") main.style.setProperty("--f", String(tpFsGet())); else main.style.removeProperty("--f"); }
 (function(){
   const r0 = render;
   render = function(){
     const g = navKey(view);
-    if(NAV_GROUPS[g]){ const k = navItemKey(g); if(k){ try{ localStorage.setItem("navLast_"+g, k); }catch(_){} } }
+    if(NAV_GROUPS[g]){ const k = navItemKey(g); if(k){ try{ localStorage.setItem("navLast_"+g, k); }catch(_){ logErr("stumm", _); } } }
     navFsApply();
     const res = r0.apply(this, arguments);
     if(NAV_GROUPS[g] && main && !main.querySelector(".nav-sub")) main.insertAdjacentHTML("afterbegin", navBarHtml(g));
@@ -2821,7 +3054,7 @@ function navFsApply(){ if(typeof main==="undefined") return; if(navKey(view)==="
   main.addEventListener("click", e=>{
     const fb = e.target.closest && e.target.closest("[data-fs]");
     if(fb){ const i = TP_FS.indexOf(tpFsGet()), n = Math.max(0, Math.min(TP_FS.length-1, i+(fb.dataset.fs==="+"?1:-1)));
-      try{ localStorage.setItem("tpFs", String(TP_FS[n])); }catch(_){} tp.scrollL = null; render(); toast("Schrift "+Math.round(TP_FS[n]*100)+" %"); e.stopPropagation(); return; }
+      try{ localStorage.setItem("tpFs", String(TP_FS[n])); }catch(_){ logErr("stumm", _); } tp.scrollL = null; render(); toast("Schrift "+Math.round(TP_FS[n]*100)+" %"); e.stopPropagation(); return; }
     const b = e.target.closest && e.target.closest("[data-navsub]"); if(b){ navGo(b.dataset.navg, b.dataset.navsub); e.stopPropagation(); } }, true);
 })();
 function setNavH(){
@@ -2993,6 +3226,7 @@ function render(){
           <div class="row-actions" style="display:flex;flex-direction:column;gap:6px;align-items:stretch">
             <button class="mini" data-do-distraction="${d.id}" style="background:var(--accent2);color:#fff;font-weight:bold">Jetzt erledigt</button>
             <div style="display:flex;gap:6px">
+              <button class="mini" data-plan-from="${d.id}" title="Für einen Tag einplanen (als ToDo oder Tagesziel), die Ablenkung bleibt unverändert">📅 Planen</button>
               <button class="mini" data-edit-distraction="${d.id}">Bearb.</button>
               <button class="mini" data-del-distraction="${d.id}">🗑</button>
             </div>
@@ -3086,9 +3320,9 @@ function render(){
     const keyDaysAgo=(n)=>{ const d=new Date(); d.setDate(d.getDate()-n); return dateKey(d); };
     const k7=keyDaysAgo(6), k30=keyDaysAgo(29);
     const inRange=(date,from)=> date>=from && date<=today;
-    const cntToday=logs.filter(l=>l.date===today).length;
-    const cnt7=logs.filter(l=>inRange(l.date,k7)).length;
-    const cnt30=logs.filter(l=>inRange(l.date,k30)).length;
+    const cl2=logsForCount(); const cntToday=cl2.filter(l=>l.date===today).length;
+    const cnt7=cl2.filter(l=>inRange(l.date,k7)).length;
+    const cnt30=cl2.filter(l=>inRange(l.date,k30)).length;
     // Nach Bereich (30 Tage)
     const typeLabel={habit:"Gewohnheiten",duty:"Pflichtaufgaben",todo:"ToDos"};
     const byType={habit:0,duty:0,todo:0};
@@ -3098,7 +3332,7 @@ function render(){
     const byProj={};
     logs.filter(l=>inRange(l.date,k30)).forEach(l=>{ const t=byId[l.itemId]; if(t&&t.projectId){ const n=projName[t.projectId]||"(unbekannt)"; byProj[n]=(byProj[n]||0)+1; } });
     // Pro Tag (14 Tage)
-    const perDay=[]; for(let i=13;i>=0;i--){ const k=keyDaysAgo(i); perDay.push({k, n:logs.filter(l=>l.date===k).length}); }
+    const perDay=[]; for(let i=13;i>=0;i--){ const k=keyDaysAgo(i); perDay.push({k, n:cl2.filter(l=>l.date===k).length}); }
     const maxDay=Math.max(1,...perDay.map(d=>d.n));
     const goalsDone=goalTasks.filter(g=>g.completed).length, goalsTot=goalTasks.length;
 
@@ -3110,7 +3344,7 @@ function render(){
     const cum=[]; let summ=0; let bilanzSumm=0;
     for(let i=9;i>=0;i--){ 
       const k=keyDaysAgo(i); 
-      const n=logs.filter(l=>l.date===k).length; 
+      const n=cl2.filter(l=>l.date===k).length; 
       summ+=n;
       // Bilanz für diesen Tag laden
       const dayBilanzStr=localStorage.getItem("bilanz-"+k);
@@ -3263,6 +3497,16 @@ function render(){
         <button id="resetSheetBtn" style="padding:12px 16px;background-color:#f44336;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;width:100%;margin-top:8px">🗑️ Tabelle zurücksetzen</button>
       </div>
       
+      <div class="section-title">Sicherung und Fehler</div>
+      <div class="card">
+        <div class="body"><div class="title">Lokale Sicherung wiederherstellen</div><div class="sub">Dieses Gerät sichert vor jedem Speichern den letzten Stand von Aufgaben und Protokoll</div></div>
+        <div style="display:flex;gap:6px"><button class="icon-btn" id="restTasksBtn">Aufgaben</button><button class="icon-btn" id="restLogsBtn">Protokoll</button></div>
+      </div>
+      <div class="card">
+        <div class="body"><div class="title">Letzte Fehler</div><div class="sub">Zur Fehlersuche, bleibt nur auf diesem Gerät</div></div>
+        <div style="display:flex;gap:6px"><button class="icon-btn" id="errShowBtn">Anzeigen</button><button class="icon-btn" id="errClearBtn">Leeren</button></div>
+      </div>
+
       <div class="section-title">Rückgängig machen</div>
       <div class="card">
         <div class="body"><div class="title">Papierkorb</div><div class="sub">Gelöschte ToDos und Arbeitsbereich-Einträge, 3 Tage lang</div></div>
@@ -3302,6 +3546,10 @@ function render(){
     const mtg=$("minTaskGoalInput"); if(mtg) mtg.onchange=()=>{ minTaskGoal=parseInt(mtg.value)||18; localStorage.setItem("minTaskGoal",minTaskGoal); toast("Mindest-Ziel gesetzt: "+minTaskGoal); };
     $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); await wsReconcileLinks(); setSync("on"); render(); toast("Aktualisiert"); };
     $("signoutBtn").onclick=signOut;
+    $("restTasksBtn").onclick=()=>restoreLocalBackup("tasks");
+    $("restLogsBtn").onclick=()=>restoreLocalBackup("logs");
+    $("errShowBtn").onclick=()=>{ const t=errLogText(); if(!t){ toast("Keine Fehler protokolliert"); return; } const w=document.createElement("div"); w.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px"; w.innerHTML='<div style="background:var(--card,#fff);color:inherit;border-radius:12px;padding:14px;max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column"><div style="font-weight:700;margin-bottom:8px">Letzte Fehler</div><pre style="white-space:pre-wrap;word-break:break-word;overflow:auto;font-size:12px;margin:0;flex:1"></pre><button class="icon-btn" style="margin-top:10px">Schließen</button></div>'; w.querySelector("pre").textContent=t; w.querySelector("button").onclick=()=>w.remove(); w.onclick=ev=>{ if(ev.target===w) w.remove(); }; document.body.appendChild(w); };
+    $("errClearBtn").onclick=()=>{ try{ localStorage.removeItem("errLog"); }catch(_){} toast("Fehlerprotokoll geleert"); };
     $("btnDoBackupTodo").onclick=doBackupTodo;
     $("btnDoRestoreTodo").onclick=doRestoreTodo;
     $("resetSheetBtn").onclick=async()=>{
@@ -3321,7 +3569,7 @@ function render(){
         location.reload();
       }catch(e){
         console.error("resetSheetBtn Fehler:",e);
-        alert("❌ Fehler: "+e.message);
+        appAlert("❌ Fehler: "+e.message);
         setSync("on");
       }
     };
@@ -3476,7 +3724,7 @@ async function ksSyncKind(kind, force){
   return {add:nAdd, upd:nUpd, del:nDel, skipped:delSkipped, total:want.size, failed, lastErr};
 }
 function ksStatusSet(txt){
-  ksStatus = txt; try{ localStorage.setItem("ksStatus", txt); }catch(e){}
+  ksStatus = txt; try{ localStorage.setItem("ksStatus", txt); }catch(e){ logErr("stumm", e); }
   const el = document.getElementById("ks_status"); if(el) el.textContent = txt;
 }
 async function ksSyncNow(force){
@@ -3543,7 +3791,7 @@ function ksCreateCal(kind){
   }).catch(e=>{
     setSync("on");
     const msg = e && (e.message || e.type || e.error) || String(e);
-    alert("Der Kalender konnte nicht angelegt werden ("+msg+").\n\nAlternative: In Google Kalender selbst einen neuen Kalender anlegen (Name frei wählbar), danach hier in der Liste auswählen.");
+    appAlert("Der Kalender konnte nicht angelegt werden ("+msg+").\n\nAlternative: In Google Kalender selbst einen neuen Kalender anlegen (Name frei wählbar), danach hier in der Liste auswählen.");
   });
 }
 function ksSettingsHtml(){
@@ -3686,7 +3934,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v276";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v279";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -3808,10 +4056,10 @@ async function tpLoad(){
   if(tp.loading) return;
   tp.loading = true; tp.err = "";
   try{
-    let id = ""; try{ id = localStorage.getItem("tpFileId")||""; }catch(e){}
+    let id = ""; try{ id = localStorage.getItem("tpFileId")||""; }catch(e){ logErr("stumm", e); }
     let ok = false;
     if(id){
-      try{ const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?fields=id,trashed,modifiedTime"); if(f && f.id && !f.trashed){ ok = true; tp.mt = f.modifiedTime||""; } }catch(e){}
+      try{ const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?fields=id,trashed,modifiedTime"); if(f && f.id && !f.trashed){ ok = true; tp.mt = f.modifiedTime||""; } }catch(e){ logErr("stumm", e); }
     }
     if(!ok){
       const q = encodeURIComponent(`name='${TP_FILE}' and trashed=false`);
@@ -3821,7 +4069,7 @@ async function tpLoad(){
     if(ok){
       const blob = await wsDriveFetch(id);
       let parsed = null; try{ parsed = JSON.parse(await blob.text()); }catch(e){ throw new Error("Datei Tagesstruktur.json ist nicht lesbar"); }
-      tp.data = tpNorm(parsed); tp.fileId = id; try{ localStorage.setItem("tpFileId", id); }catch(e){}
+      tp.data = tpNorm(parsed); tp.fileId = id; try{ localStorage.setItem("tpFileId", id); }catch(e){ logErr("stumm", e); }
       tpRestoreBreaks();
     }else{
       tp.data = tpDefault(); tp.fileId = "";     // Datei wird beim ersten Speichern angelegt
@@ -3832,11 +4080,11 @@ async function tpLoad(){
 }
 /* Lokale Sicherung der Ferien: fehlen sie nach dem Laden in Drive (zum Beispiel von einem Gerät mit älterem Programmstand überschrieben), werden noch gültige Ferien wiederhergestellt */
 function tpRestoreBreaks(){
-  let bak = []; try{ bak = JSON.parse(localStorage.getItem("tpBreaksBak")||"[]"); }catch(e){}
+  let bak = []; try{ bak = JSON.parse(localStorage.getItem("tpBreaksBak")||"[]"); }catch(e){ logErr("stumm", e); }
   if(!Array.isArray(bak) || !bak.length || !tp.data) return;
   const t0 = todayKey(); let n = 0;
   tpNorm({breaks:bak}).breaks.forEach(b=>{ if(b.to>=t0 && !tp.data.breaks.some(x=>x.id===b.id) && !tp.deleted.has(b.id)){ tp.data.breaks.push(b); n++; } });
-  if(n){ tpDirty(); try{ toast(n+(n===1?" Ferieneintrag":" Ferieneinträge")+" aus der Sicherung auf diesem Gerät wiederhergestellt"); }catch(e){} }
+  if(n){ tpDirty(); try{ toast(n+(n===1?" Ferieneintrag":" Ferieneinträge")+" aus der Sicherung auf diesem Gerät wiederhergestellt"); }catch(e){ logErr("stumm", e); } }
 }
 /* Frühere Versionen der Datei aus Drive ansehen und Fehlendes (Ferien, Farben, Wochenangaben, Bausteine, Einträge) in den heutigen Stand übernehmen; Neueres bleibt unverändert */
 function tpHistDiff(r){
@@ -3956,7 +4204,7 @@ async function tpSave(){
     const json = JSON.stringify(tp.data);
     if(!tp.fileId){
       const f = await wsDriveUpload(new File([json], TP_FILE, {type:"application/json"}));
-      tp.fileId = f.id; try{ localStorage.setItem("tpFileId", f.id); }catch(e){}
+      tp.fileId = f.id; try{ localStorage.setItem("tpFileId", f.id); }catch(e){ logErr("stumm", e); }
       const m = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(f.id)+"?fields=modifiedTime");
       tp.mt = (m && m.modifiedTime) || "";
     }else{
@@ -3964,7 +4212,7 @@ async function tpSave(){
       tp.mt = (r && r.modifiedTime) || tp.mt;
     }
     tp.deleted.clear();
-    try{ localStorage.setItem("tpBreaksBak", JSON.stringify(tp.data.breaks)); }catch(e){}
+    try{ localStorage.setItem("tpBreaksBak", JSON.stringify(tp.data.breaks)); }catch(e){ logErr("stumm", e); }
   }catch(e){
     tp.pending = true; console.error("Tagesstruktur speichern:", e.message);
     toast("Tagesstruktur: Speichern fehlgeschlagen, neuer Versuch folgt");
@@ -3984,7 +4232,7 @@ function tpFree(day, dur, prefer){
   for(const b of bl){ if(t+dur<=b.start) break; if(b.end>t && b.start<t+dur) t = b.end; }
   return tpCl(t, 0, 1440-dur);
 }
-function tpFsGet(){ let v = 1; try{ v = parseFloat(localStorage.getItem("tpFs")||"1"); }catch(_){} return TP_FS.includes(v) ? v : 1; }
+function tpFsGet(){ let v = 1; try{ v = parseFloat(localStorage.getItem("tpFs")||"1"); }catch(_){ logErr("stumm", _); } return TP_FS.includes(v) ? v : 1; }
 function tpLP(){ return Math.round(44*tpFsGet()); }
 function tpLanes(blocks){
   const sorted = blocks.slice().sort((a,b)=>a.start-b.start||a.end-b.end), ends = [], lane = new Map();
@@ -4171,7 +4419,7 @@ function tpReportOpen(){
   $c("rp_copy").onclick = async ()=>{
     const o = read(); if(!check(o)) return; const txt = tpReportText(o, tpReportRows(o));
     try{ await navigator.clipboard.writeText(txt); toast("Bericht in die Zwischenablage kopiert"); }
-    catch(e){ const ta = document.createElement("textarea"); ta.value = txt; ta.style.cssText = "position:fixed;left:-999px"; document.body.appendChild(ta); ta.select(); let ok = false; try{ ok = document.execCommand("copy"); }catch(_){} ta.remove(); toast(ok ? "Bericht in die Zwischenablage kopiert" : "Kopieren nicht möglich"); }
+    catch(e){ const ta = document.createElement("textarea"); ta.value = txt; ta.style.cssText = "position:fixed;left:-999px"; document.body.appendChild(ta); ta.select(); let ok = false; try{ ok = document.execCommand("copy"); }catch(_){ logErr("stumm", _); } ta.remove(); toast(ok ? "Bericht in die Zwischenablage kopiert" : "Kopieren nicht möglich"); }
   };
 }
 function tpKcalHtml(){
@@ -4455,7 +4703,7 @@ function tpOccOpen(itemId, key){
     if(!tp.unlock){ tpLockHint(); return; }
     const item = tp.data.items.find(x=>x.id===h.dataset.grip); if(!item) return;
     g = {item, pid:e.pointerId, ghost:null, moved:false, x0:e.clientX, y0:e.clientY};
-    try{ h.setPointerCapture(e.pointerId); }catch(_){}
+    try{ h.setPointerCapture(e.pointerId); }catch(_){ logErr("stumm", _); }
     e.preventDefault();
   });
   main.addEventListener("pointermove", e=>{
@@ -4540,7 +4788,7 @@ function tpMetaSpans(){            // Eintrag -> Zeitraum, so wie ihn die Ansich
   });
   tm.data.blocks.forEach(b=>{
     if(!b.src || !mm.get(b.src.ref)) return; const h = mm.get(b.src.ref);
-    let kids = []; try{ kids = wsChildItems(h.doc, h.node); }catch(e){}
+    let kids = []; try{ kids = wsChildItems(h.doc, h.node); }catch(e){ logErr("stumm", e); }
     kids.forEach(k=>{
       const n = k.node; if(out.has(n.id)) return;
       const sp = wsSpan(n), ld = wsIsDate(n.ld) ? n.ld : ""; if(!sp && !ld) return;
@@ -4854,12 +5102,12 @@ function tpAct(a, el){
   else if(a==="today"){ tp.day = todayKey(); tp.scrollL = null; render(); }
   else if(a==="add"){ const dur = 30, st = tpFree(tp.day, dur); tpEdit("", {id:uid(), title:"", start:st, end:st+dur, color:TP_COLORS[0], done:false, note:"", src:null}); }
   else if(a==="set"){ tp.showSet = !tp.showSet; render(); }
-  else if(a==="school"){ try{ localStorage.setItem("tpSchool", tpSchoolOn()?"0":"1"); }catch(e){} render(); toast(tpSchoolOn()?"Schultermine eingeblendet":"Schultermine ausgeblendet"); }
+  else if(a==="school"){ try{ localStorage.setItem("tpSchool", tpSchoolOn()?"0":"1"); }catch(e){ logErr("stumm", e); } render(); toast(tpSchoolOn()?"Schultermine eingeblendet":"Schultermine ausgeblendet"); }
   else if(a==="kcal"){ ksCreateCal("job"); }
   else if(a==="ksync"){ ksStatusSet("Gleiche ab …"); ksSyncNow(true); setTimeout(()=>{ if(view==="plan") render(); }, 4000); }
   else if(a==="hist"){ tpHist(); }
   else if(a==="more"){ tp.more = !tp.more; render(); }
-  else if(a==="hd"){ tp.hideDone = !tp.hideDone; try{ localStorage.setItem("tpHideDone", tp.hideDone?"1":"0"); }catch(_){} render(); }
+  else if(a==="hd"){ tp.hideDone = !tp.hideDone; try{ localStorage.setItem("tpHideDone", tp.hideDone?"1":"0"); }catch(_){ logErr("stumm", _); } render(); }
   else if(a==="retry"){ tp.err = ""; render(); }
   else if(a==="pf"){ tp.filter = el.dataset.v; tp.q = ""; tpPoolRender(); document.querySelectorAll("#tp_pool [data-tp=pf]").forEach(x=>x.classList.toggle("on", x.dataset.v===tp.filter)); }
   else if(a==="padd"){ tpAddFromPool(el.dataset.k, el.dataset.r); }
@@ -4921,7 +5169,7 @@ function tpDown(e){
   const blk = tpBlock(b.dataset.id); if(!blk || blk.rep || blk.jb) return;
   const h = e.target.closest("[data-h]"), sc = document.getElementById("tp_scroll");
   tp.drag = {id:blk.id, mode:h?h.dataset.h:"m", x0:e.clientX, sl0:sc?sc.scrollLeft:0, s0:blk.start, e0:blk.end, ns:blk.start, ne:blk.end, moved:false, el:b, pid:e.pointerId, lastX:e.clientX, timer:null};
-  try{ b.setPointerCapture(e.pointerId); }catch(_){}
+  try{ b.setPointerCapture(e.pointerId); }catch(_){ logErr("stumm", _); }
   b.classList.add("drag");
   tp.drag.timer = setInterval(()=>{            // am Rand der Zeitleiste mitscrollen
     const d = tp.drag, s2 = document.getElementById("tp_scroll"); if(!d || !s2 || !d.moved) return;
@@ -4987,7 +5235,7 @@ function tpListStore(e){
 function tpInput(e){
   if(view!=="plan" || tp.mode==="meta") return;
   if(tp.mode==="job" && e.target.dataset && e.target.dataset.lf && tpListStore(e)) return;
-  if(e.target.id==="tp_q"){ tp.q = e.target.value; const el = document.getElementById("tp_pool"); if(el){ el.innerHTML = tpPoolHtml(); const q = document.getElementById("tp_q"); if(q){ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(_){} } } }
+  if(e.target.id==="tp_q"){ tp.q = e.target.value; const el = document.getElementById("tp_pool"); if(el){ el.innerHTML = tpPoolHtml(); const q = document.getElementById("tp_q"); if(q){ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(_){ logErr("stumm", _); } } } }
 }
 function tpChange(e){
   if(view!=="plan" || tp.mode==="meta") return;
@@ -5059,9 +5307,9 @@ async function tmLoad(){
   if(tm.loading) return;
   tm.loading = true; tm.err = "";
   try{
-    let id = ""; try{ id = localStorage.getItem("tmFileId")||""; }catch(e){}
+    let id = ""; try{ id = localStorage.getItem("tmFileId")||""; }catch(e){ logErr("stumm", e); }
     let ok = false;
-    if(id){ try{ const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?fields=id,trashed,modifiedTime"); if(f && f.id && !f.trashed){ ok = true; tm.mt = f.modifiedTime||""; } }catch(e){} }
+    if(id){ try{ const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?fields=id,trashed,modifiedTime"); if(f && f.id && !f.trashed){ ok = true; tm.mt = f.modifiedTime||""; } }catch(e){ logErr("stumm", e); } }
     if(!ok){
       const q = encodeURIComponent(`name='${TM_FILE}' and trashed=false`);
       const r = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&orderBy=${encodeURIComponent("modifiedTime desc")}&fields=files(id,modifiedTime)`);
@@ -5070,7 +5318,7 @@ async function tmLoad(){
     if(ok){
       const blob = await wsDriveFetch(id);
       let parsed = null; try{ parsed = JSON.parse(await blob.text()); }catch(e){ throw new Error("Datei Metaprojektplanung.json ist nicht lesbar"); }
-      tm.data = tmNorm(parsed); tm.fileId = id; try{ localStorage.setItem("tmFileId", id); }catch(e){}
+      tm.data = tmNorm(parsed); tm.fileId = id; try{ localStorage.setItem("tmFileId", id); }catch(e){ logErr("stumm", e); }
     }else{ tm.data = tmDefault(); tm.fileId = ""; }
   }catch(e){ tm.err = String(e.message||e).slice(0,200); tm.data = null; }
   finally{ tm.loading = false; }
@@ -5088,13 +5336,13 @@ async function tmSave(){
       const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(tm.fileId)+"?fields=modifiedTime");
       if(f && f.modifiedTime && tm.mt && f.modifiedTime!==tm.mt){
         const blob = await wsDriveFetch(tm.fileId);
-        try{ tmMerge(tmNorm(JSON.parse(await blob.text()))); if(view==="plan" && tp.mode==="meta" && !tm.drag) render(); }catch(e){}
+        try{ tmMerge(tmNorm(JSON.parse(await blob.text()))); if(view==="plan" && tp.mode==="meta" && !tm.drag) render(); }catch(e){ logErr("stumm", e); }
       }
     }
     const json = JSON.stringify(tm.data);
     if(!tm.fileId){
       const f = await wsDriveUpload(new File([json], TM_FILE, {type:"application/json"}));
-      tm.fileId = f.id; try{ localStorage.setItem("tmFileId", f.id); }catch(e){}
+      tm.fileId = f.id; try{ localStorage.setItem("tmFileId", f.id); }catch(e){ logErr("stumm", e); }
       const m = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(f.id)+"?fields=modifiedTime");
       tm.mt = (m && m.modifiedTime) || "";
     }else{
@@ -5177,7 +5425,7 @@ function tmDn(b, metaMap){
 const tmKidCache = new WeakMap();
 function tmChildSet(metaMap){            // Metaprojekte, die selbst Unterpunkt eines anderen Metaprojekts sind
   let st = tmKidCache.get(metaMap); if(st) return st;
-  st = new Set(); metaMap.forEach(h=>{ try{ wsChildItems(h.doc, h.node).forEach(k=>st.add(k.node.id)); }catch(e){} });
+  st = new Set(); metaMap.forEach(h=>{ try{ wsChildItems(h.doc, h.node).forEach(k=>st.add(k.node.id)); }catch(e){ logErr("stumm", e); } });
   tmKidCache.set(metaMap, st); return st;
 }
 function tmKindLabel(b, metaMap){          // Art des Eintrags für Anzeige und Dialog
@@ -5250,7 +5498,7 @@ function tmMount(m){
   const R = tm.range, days = R.to-R.from+1, W = days*tm.ppd, ppd = tm.ppd, metaMap = tmMetaMap();
   /* Unterprojekte, deren Elternprojekt einen Balken hat, erscheinen nur als schmale Kästchen unter dem Elternbalken (nicht zusätzlich als eigener Balken) */
   const vis0 = tm.hideDone ? tm.data.blocks.filter(b=>!tmDn(b,metaMap)) : tm.data.blocks, kidHide = new Set(), visRefs = new Set(vis0.filter(b=>b.src).map(b=>b.src.ref));
-  vis0.forEach(b=>{ const h = b.src ? metaMap.get(b.src.ref) : null; if(!h) return; try{ wsChildItems(h.doc, h.node).forEach(k=>{ if(visRefs.has(k.node.id)) kidHide.add(k.node.id); }); }catch(e){} });
+  vis0.forEach(b=>{ const h = b.src ? metaMap.get(b.src.ref) : null; if(!h) return; try{ wsChildItems(h.doc, h.node).forEach(k=>{ if(visRefs.has(k.node.id)) kidHide.add(k.node.id); }); }catch(e){ logErr("stumm", e); } });
   const vis = vis0.filter(b=>!(b.src && kidHide.has(b.src.ref))), L = tmLanes(vis), today = tmDN(todayKey());
   const kidInfo = new Map(); vis.forEach(b=>{ const h = b.src ? metaMap.get(b.src.ref) : null; kidInfo.set(b.id, tmKidInfo(h, b)); });
   const laneRows = new Array(L.n).fill(0);
@@ -5319,7 +5567,7 @@ function tmEdit(id, nb){
   const isNew = !!nb;
   let tmNodeAct = null;
   if(!isNew && b.src){ const h = tmNodeOf(b.src.ref); if(h && h.doc && h.node && h.node.type!=="heading" && typeof wsFindNode==="function" && wsFindNode(h.doc, h.node.id)){
-    let kids = 0; try{ kids = (h.node.children||[]).filter(k=>!k.link && !k.done && !wsIsAtt(k)).length; }catch(e){}
+    let kids = 0; try{ kids = (h.node.children||[]).filter(k=>!k.link && !k.done && !wsIsAtt(k)).length; }catch(e){ logErr("stumm", e); }
     tmNodeAct = {doc:h.doc, node:h.node, kids}; } }
   const fld = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px";
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal">
@@ -5585,9 +5833,9 @@ function tmAct(a, el){
   else if(a==="padd"){ tmAddFromPool(el.dataset.r); }
   else if(a==="term"){ tmTermView(""); }
   else if(a==="chk"){ wsCheckAllChildren(); }
-  else if(a==="kids"){ tm.showKids = !tm.showKids; try{ localStorage.setItem("tmShowKids", tm.showKids?"1":"0"); }catch(_){} render(); }
-  else if(a==="hf"){ tm.hideFlags = !tm.hideFlags; try{ localStorage.setItem("tmHideFlags", tm.hideFlags?"1":"0"); }catch(_){} render(); }
-  else if(a==="hd"){ tm.hideDone = !tm.hideDone; try{ localStorage.setItem("tmHideDone", tm.hideDone?"1":"0"); }catch(_){} render(); }
+  else if(a==="kids"){ tm.showKids = !tm.showKids; try{ localStorage.setItem("tmShowKids", tm.showKids?"1":"0"); }catch(_){ logErr("stumm", _); } render(); }
+  else if(a==="hf"){ tm.hideFlags = !tm.hideFlags; try{ localStorage.setItem("tmHideFlags", tm.hideFlags?"1":"0"); }catch(_){ logErr("stumm", _); } render(); }
+  else if(a==="hd"){ tm.hideDone = !tm.hideDone; try{ localStorage.setItem("tmHideDone", tm.hideDone?"1":"0"); }catch(_){ logErr("stumm", _); } render(); }
 }
 /* ---- Ziehen in der Struktur wirkt auf den Arbeitsbereich: Meta-Projekt und Unterpunkte ---- */
 function tmAsk3(msg, labels){
@@ -5688,7 +5936,7 @@ function tmDown(e){
   if(kb && kb.closest("#tm_track") && kb.dataset.st && kb.dataset.en && !(e.pointerType==="mouse" && e.button!==0)){
     const sc0 = document.getElementById("tm_scroll");
     tm.drag = {kid:{id:kb.dataset.kid, kk:kb.dataset.kk, doc:kb.dataset.doc}, id:"", mode:"m", x0:e.clientX, sl0:sc0?sc0.scrollLeft:0, s0:tmDN(kb.dataset.st), e0:tmDN(kb.dataset.en), ns:tmDN(kb.dataset.st), ne:tmDN(kb.dataset.en), moved:false, el:kb, pid:e.pointerId, lastX:e.clientX, timer:null};
-    try{ kb.setPointerCapture(e.pointerId); }catch(_){}
+    try{ kb.setPointerCapture(e.pointerId); }catch(_){ logErr("stumm", _); }
     kb.classList.add("drag");
     tm.drag.timer = setInterval(()=>{
       const d = tm.drag, s2 = document.getElementById("tm_scroll"); if(!d || !s2 || !d.moved) return;
@@ -5704,7 +5952,7 @@ function tmDown(e){
   const blk = tmBlock(b.dataset.id); if(!blk) return;
   const h = e.target.closest("[data-h]"), sc = document.getElementById("tm_scroll");
   tm.drag = {id:blk.id, mode:h?h.dataset.h:"m", x0:e.clientX, sl0:sc?sc.scrollLeft:0, s0:tmDN(blk.start), e0:tmDN(blk.end), ns:tmDN(blk.start), ne:tmDN(blk.end), moved:false, el:b, pid:e.pointerId, lastX:e.clientX, timer:null};
-  try{ b.setPointerCapture(e.pointerId); }catch(_){}
+  try{ b.setPointerCapture(e.pointerId); }catch(_){ logErr("stumm", _); }
   b.classList.add("drag");
   tm.drag.timer = setInterval(()=>{
     const d = tm.drag, s2 = document.getElementById("tm_scroll"); if(!d || !s2 || !d.moved) return;
@@ -5767,7 +6015,7 @@ function tmClick(e){
 }
 function tmInput(e){
   if(view!=="plan" || tp.mode!=="meta") return;
-  if(e.target.id==="tm_q"){ tm.q = e.target.value; tmPoolRender(); const q = document.getElementById("tm_q"); if(q){ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(_){} } }
+  if(e.target.id==="tm_q"){ tm.q = e.target.value; tmPoolRender(); const q = document.getElementById("tm_q"); if(q){ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(_){ logErr("stumm", _); } } }
 }
 function tmChange(e){
   if(view!=="plan" || tp.mode!=="meta") return;
@@ -5779,7 +6027,7 @@ function tmChange(e){
     const mb = e.target.closest && e.target.closest("[data-tpmode]");
     if(mb){
       if(mb.dataset.tpmode==="work"){ view = "notes"; }
-      else{ tp.mode = ["meta","job"].includes(mb.dataset.tpmode) ? mb.dataset.tpmode : "day"; tp.unlock = false; tp.more = false; tm.more = false; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){} view = "plan"; }
+      else{ tp.mode = ["meta","job"].includes(mb.dataset.tpmode) ? mb.dataset.tpmode : "day"; tp.unlock = false; tp.more = false; tm.more = false; try{ localStorage.setItem("tpMode", tp.mode); }catch(_){ logErr("stumm", _); } view = "plan"; }
       tm.scrollL = null; render(); e.stopPropagation(); return;
     }
     if(view!=="plan") return;
@@ -5803,7 +6051,7 @@ async function saveNotes(){
   if(!spreadsheetId){
     const msg="FEHLER: spreadsheetId nicht gesetzt!";
     console.error(msg);
-    alert(msg);
+    appAlert(msg);
     throw new Error(msg);
   }
   try{
@@ -5820,18 +6068,19 @@ async function saveNotes(){
       await new Promise(r=>setTimeout(r,500));
     }
     
-    const json=JSON.stringify(notes);
+    const json=await listPreSave("notes");
     console.log("  JSON-Länge:",json.length);
     const url=`${SHEETS}/${spreadsheetId}/values/Notes!A1?valueInputOption=RAW`;
     console.log("  Speichere zu:",url);
     const resp=await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+    listBaseReset("notes");
     console.log("✅ saveNotes OK, Antwort:",resp);
     toast("Notizen gespeichert ✓");
     return resp;
   }catch(e){
     const msg="❌ saveNotes FEHLER: "+e.message;
     console.error(msg);
-    alert(msg);
+    appAlert(msg);
     toast(msg);
     throw e;
   }
@@ -5843,17 +6092,18 @@ async function loadNotes(){
     const cell=res.values?.[0]?.[0]||"[]";
     console.log("  Geladen, JSON-Länge:",cell.length);
     notes=JSON.parse(cell);
+    listLoadErr.notes=""; listBaseReset("notes");
     console.log("✅ loadNotes OK, Anzahl:",notes.length);
   }catch(e){
     console.error("❌ loadNotes FEHLER:",e.message);
-    notes=[];
+    listLoadFailed("notes", e);
   }
 }
 async function saveDistractions(){
   if(distrLoadErr){ toast("Ablenkungen nicht gespeichert: Liste konnte nicht geladen werden. Bitte unter Ablenkungen „Neu laden“ tippen."); throw new Error("Ablenkungen nicht geladen"); }
   try{
     const json=JSON.stringify(distractions);
-    try{ localStorage.setItem("distrBak", json); }catch(_){}
+    try{ localStorage.setItem("distrBak", json); }catch(_){ logErr("stumm", _); }
     const url=`${SHEETS}/${spreadsheetId}/values/Distractions!A1?valueInputOption=RAW`;
     try{
       await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
@@ -5887,13 +6137,13 @@ async function loadDistractions(){
       const cell=res.values?.[0]?.[0]||"[]";
       const arr=JSON.parse(cell); if(!Array.isArray(arr)) throw new Error("Inhalt ist keine Liste");
       distractions=arr; distrLoadErr="";
-      try{ localStorage.setItem("distrBak", cell); }catch(_){}
+      try{ localStorage.setItem("distrBak", cell); }catch(_){ logErr("stumm", _); }
       return;
     }catch(e){ lastErr = e; if(i<2) await new Promise(r=>setTimeout(r, 1500*(i+1))); }
   }
   distrLoadErr = String((lastErr && lastErr.message) || lastErr || "unbekannter Fehler").slice(0,160);
   console.warn("❌ loadDistractions FEHLER:", distrLoadErr);
-  let bak = []; try{ const x = JSON.parse(localStorage.getItem("distrBak")||"[]"); if(Array.isArray(x)) bak = x; }catch(_){}
+  let bak = []; try{ const x = JSON.parse(localStorage.getItem("distrBak")||"[]"); if(Array.isArray(x)) bak = x; }catch(_){ logErr("stumm", _); }
   distractions = bak;      // nur zur Anzeige, gespeichert wird in diesem Zustand nicht
 }
 async function addDistraction(data){
@@ -5949,6 +6199,27 @@ async function toggleDistractionToday(id){
   await saveLogs();
   setSync("on");
 }
+function openPlanFrom(srcId){            // Gewohnheit oder Ablenkung für einen Tag einplanen, ohne sie zu verändern
+  if(document.getElementById("modalBg")) return;
+  const src = tasks.find(t=>t.id===srcId && t.type==="habit") || distractions.find(d=>d.id===srcId); if(!src) return;
+  const isHabit = !!tasks.find(t=>t.id===srcId);
+  const fld = "width:100%;padding:10px;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px;margin-bottom:8px;box-sizing:border-box";
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>Einplanen</h2>
+    <p class="muted" style="font-size:13px;margin:0 0 10px">${esc(src.title)} bleibt unverändert. Es entsteht ein eigener Termin. Wird er abgehakt, zählt das für ${isHabit?"die Gewohnheit (Serie)":"die Ablenkung"}.</p>
+    <label>Tag</label><input type="date" id="pf_d" value="${todayKey()}" style="${fld}">
+    <label>Als</label><select id="pf_k" style="${fld}"><option value="todo">ToDo</option><option value="goal">Tagesziel</option></select>
+    <div class="modal-actions"><button class="btn-ghost" id="pf_x">Abbrechen</button><button class="btn-primary" id="pf_ok">Einplanen</button></div></div></div>`);
+  $("pf_x").onclick = ()=>$("modalBg").remove();
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") $("modalBg").remove(); };
+  $("pf_ok").onclick = async ()=>{
+    const day = $("pf_d").value, kind = $("pf_k").value;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day)){ toast("Bitte einen Tag wählen"); return; }
+    if(day<todayKey()){ toast("Bitte heute oder einen späteren Tag wählen"); return; }
+    $("modalBg").remove();
+    if(kind==="goal") await addGoalTask(src.title, day, srcId);
+    else{ const wd = parseDate(day); await addTask({type:"todo", title:src.title, notes:"Geplant aus "+(isHabit?"Gewohnheit":"Ablenkung"), scheduleType:"once", startDate:day, weekday:wd?String(wd.getDay()):"", syncCalendar:false, fromId:srcId, fromDay:""}); }
+  };
+}
 function openDistractionForm(existing){
   const isEdit=!!existing;
   const title=existing?.title||"";
@@ -5973,13 +6244,14 @@ function openDistractionForm(existing){
 async function saveLinks(){
   console.log("💾 saveLinks START, Anzahl:",links.length);
   try{
-    const json=JSON.stringify(links);
+    const json=await listPreSave("links");
     const url=`${SHEETS}/${spreadsheetId}/values/Links!A1?valueInputOption=RAW`;
     
     // Versuch 1: Direkt speichern
     console.log("  Versuch 1: Speichern...");
     try{
       await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+      listBaseReset("links");
       console.log("✅ saveLinks OK (Versuch 1)");
       toast("Links gespeichert ✓");
       return;
@@ -6001,6 +6273,7 @@ async function saveLinks(){
         console.log("  Versuch 2: Nach 1s erneut speichern...");
         await new Promise(r=>setTimeout(r,1000));
         await api(url,{method:"PUT",body:JSON.stringify({values:[[json]]})});
+        listBaseReset("links");
         console.log("✅ saveLinks OK (Versuch 2)");
         toast("Links gespeichert ✓");
         return;
@@ -6010,7 +6283,7 @@ async function saveLinks(){
     }
   }catch(e){
     console.error("❌ saveLinks FEHLER:",e.message);
-    alert("Links speichern FEHLGESCHLAGEN:\n"+e.message);
+    appAlert("Links speichern FEHLGESCHLAGEN:\n"+e.message);
     throw e;
   }
 }
@@ -6021,10 +6294,11 @@ async function loadLinks(){
     const cell=res.values?.[0]?.[0]||"[]";
     console.log("  Geladen, JSON-Länge:",cell.length);
     links=JSON.parse(cell);
+    listLoadErr.links=""; listBaseReset("links");
     console.log("✅ loadLinks OK, Anzahl:",links.length);
   }catch(e){
     console.error("❌ loadLinks FEHLER:",e.message);
-    links=[];
+    listLoadFailed("links", e);
   }
 }
 async function addNote(data){
@@ -6037,7 +6311,7 @@ async function addNote(data){
     setSync("on"); render();
   }catch(e){
     console.error("❌ addNote Fehler:",e.message);
-    alert("Notiz speichern FEHLGESCHLAGEN:\n"+e.message);
+    appAlert("Notiz speichern FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -6045,14 +6319,14 @@ async function updateNote(id, data){
   setSync("busy");
   try{
     const n=notes.find(x=>x.id===id);
-    if(!n){ alert("Notiz nicht gefunden!"); return; }
+    if(!n){ appAlert("Notiz nicht gefunden!"); return; }
     console.log("updateNote:",id,data);
     Object.assign(n, data, {updatedAt:new Date().toISOString()});
     await saveNotes();
     setSync("on"); render();
   }catch(e){
     console.error("❌ updateNote Fehler:",e.message);
-    alert("Notiz Update FEHLGESCHLAGEN:\n"+e.message);
+    appAlert("Notiz Update FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -6079,7 +6353,7 @@ async function addLink(data){
     setSync("on"); render();
   }catch(e){
     console.error("❌ addLink Fehler:",e.message);
-    alert("Link speichern FEHLGESCHLAGEN:\n"+e.message);
+    appAlert("Link speichern FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -6087,14 +6361,14 @@ async function updateLink(id, data){
   setSync("busy");
   try{
     const l=links.find(x=>x.id===id);
-    if(!l){ alert("Link nicht gefunden!"); return; }
+    if(!l){ appAlert("Link nicht gefunden!"); return; }
     console.log("updateLink:",id,data);
     Object.assign(l, data, {updatedAt:new Date().toISOString()});
     await saveLinks();
     setSync("on"); render();
   }catch(e){
     console.error("❌ updateLink Fehler:",e.message);
-    alert("Link Update FEHLGESCHLAGEN:\n"+e.message);
+    appAlert("Link Update FEHLGESCHLAGEN:\n"+e.message);
     setSync("on");
   }
 }
@@ -7632,7 +7906,7 @@ let wsLoaded = false, wsLoadError = "", wsTabOk = false, wsLastLoad = 0;
 let wsF = (()=>{ try{ return wsFNorm(JSON.parse(localStorage.getItem("wsFilter")||"null")); }catch(e){ return wsFNorm(null); } })();
 let wsFOpen = (()=>{ try{ return localStorage.getItem("wsFOpen")==="1"; }catch(e){ return false; } })();
 const wsColl = new Map();   // nur für diese Sitzung: Auf-/Zuklappen, solange ein Filter aktiv ist
-function wsFSave(){ try{ localStorage.setItem("wsFilter", JSON.stringify(wsF)); }catch(e){} wsColl.clear(); }
+function wsFSave(){ try{ localStorage.setItem("wsFilter", JSON.stringify(wsF)); }catch(e){ logErr("stumm", e); } wsColl.clear(); }
 let wsMetaOv = false;       // beim Zeichnen eines Abschnitts unter einer Meta-Überschrift gilt der Filter "Nur Meta" nicht
 function wsVis(n, inh){ return wsNodeShown(n, wsMetaOv ? Object.assign({}, wsF, {meta:false}) : wsF, todayKey(), inh); }
 const wsOpenMap = new Map();   // nur für diese Sitzung: einzeln auf- oder zugeklappte Notizen, Tabellen und Gliederungen
@@ -8275,7 +8549,7 @@ function wsTodayHtml(){
   if(!d && !cards) return "";
   return `<div class="section-title">📌 Fokus</div>` + (d ? `<div class="ws-card ws-mount" data-doc="${d.id}" data-mode="today">${wsTodayInner(d)}</div>` : "") + cards;
 }
-let wsTagOpen = false; try{ wsTagOpen = localStorage.getItem("wsTagOpen")==="1"; }catch(e){}
+let wsTagOpen = false; try{ wsTagOpen = localStorage.getItem("wsTagOpen")==="1"; }catch(e){ logErr("stumm", e); }
 function wsTagBarHtml(inline){
   const tags = wsAllTags(wsDocs);
   if(!tags.length && !wsF.tag) return "";
@@ -8378,7 +8652,7 @@ let wsWk = (()=>{ try{ const o = JSON.parse(localStorage.getItem("wsWk")||"null"
 let wsWkStart = null, wsPoolAll = false, wsWkDrag = null;
 let wsWkCals = (()=>{ try{ const r = localStorage.getItem("wsWkCals"); if(r===null) return null; const a = JSON.parse(r); return Array.isArray(a) ? a.map(String) : null; }catch(e){ return null; } })();
 const wsWkEv = {key:"", list:[], busy:false, err:""};
-function wsWkSave(){ try{ localStorage.setItem("wsWk", JSON.stringify(wsWk)); }catch(e){} }
+function wsWkSave(){ try{ localStorage.setItem("wsWk", JSON.stringify(wsWk)); }catch(e){ logErr("stumm", e); } }
 function wsWkFirst(){ return wsWkStart || todayKey(); }
 function wsWkN(){ return WK_MODES[wsWk.mode].n; }
 function wsWkDays(){ const f = wsWkFirst(), a = []; for(let i=0;i<wsWkN();i++) a.push(wsAddDays(f, i)); return a; }
@@ -8660,7 +8934,7 @@ function wsOpenWkCalMenu(){
   document.querySelectorAll("#modalBg [data-cal]").forEach(b=>{ b.onclick = ()=>b.classList.toggle("on"); });
   $("wsc_ok").onclick = ()=>{
     wsWkCals = Array.from(document.querySelectorAll("#modalBg [data-cal].on")).map(b=>b.dataset.cal);
-    try{ localStorage.setItem("wsWkCals", JSON.stringify(wsWkCals)); }catch(e){}
+    try{ localStorage.setItem("wsWkCals", JSON.stringify(wsWkCals)); }catch(e){ logErr("stumm", e); }
     close(); wsWkEv.key = ""; render();
   };
 }
@@ -8695,7 +8969,7 @@ main.addEventListener("dragstart", e=>{
   const card = h.closest(".ws-wkcard"); if(!card) return;
   wsWkDrag = card.dataset.xk ? {xk:card.dataset.xk, xid:card.dataset.xid, el:card} : {did:card.dataset.did, nid:card.dataset.nid, el:card};
   e.dataTransfer.effectAllowed = "move";
-  try{ e.dataTransfer.setData("text/plain", "wk"); e.dataTransfer.setDragImage(card, 12, 12); }catch(_){}
+  try{ e.dataTransfer.setData("text/plain", "wk"); e.dataTransfer.setDragImage(card, 12, 12); }catch(_){ logErr("stumm", _); }
   setTimeout(()=>{ if(wsWkDrag) card.classList.add("ws-dragging"); }, 0);
 });
 main.addEventListener("dragover", e=>{
@@ -8792,9 +9066,9 @@ const WS_MAXFILE = 15*1024*1024;
 let wsFolderP = null;
 async function wsDriveFolder(){
   if(!wsFolderP) wsFolderP = (async()=>{
-    let id = ""; try{ id = localStorage.getItem("wsDriveFolder")||""; }catch(e){}
+    let id = ""; try{ id = localStorage.getItem("wsDriveFolder")||""; }catch(e){ logErr("stumm", e); }
     if(id){
-      try{ const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?fields=id,trashed"); if(f && f.id && !f.trashed) return id; }catch(e){}
+      try{ const f = await api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?fields=id,trashed"); if(f && f.id && !f.trashed) return id; }catch(e){ logErr("stumm", e); }
     }
     const q = encodeURIComponent(`name='${WS_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
     const res = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
@@ -8803,7 +9077,7 @@ async function wsDriveFolder(){
       const c = await api("https://www.googleapis.com/drive/v3/files?fields=id", {method:"POST", body:JSON.stringify({name:WS_FOLDER_NAME, mimeType:"application/vnd.google-apps.folder"})});
       id = c.id;
     }
-    try{ localStorage.setItem("wsDriveFolder", id); }catch(e){}
+    try{ localStorage.setItem("wsDriveFolder", id); }catch(e){ logErr("stumm", e); }
     return id;
   })();
   const p = wsFolderP;
@@ -8859,15 +9133,15 @@ function wsThumbSet(id, c){
   wsThumbDone.set(id, {c, url});
   try{
     localStorage.setItem("wsTh:"+id, url);
-    let idx = []; try{ idx = JSON.parse(localStorage.getItem("wsThIdx")||"[]")||[]; }catch(e){}
+    let idx = []; try{ idx = JSON.parse(localStorage.getItem("wsThIdx")||"[]")||[]; }catch(e){ logErr("stumm", e); }
     idx = idx.filter(x=>x!==id); idx.push(id);
     while(idx.length>WS_THKEEP){ localStorage.removeItem("wsTh:"+idx.shift()); }
     localStorage.setItem("wsThIdx", JSON.stringify(idx));
-  }catch(e){}
+  }catch(e){ logErr("stumm", e); }
   return wsThumbDone.get(id);
 }
 function wsThumbFromUrl(id){
-  let url = null; try{ url = localStorage.getItem("wsTh:"+id); }catch(e){}
+  let url = null; try{ url = localStorage.getItem("wsTh:"+id); }catch(e){ logErr("stumm", e); }
   if(!url) return Promise.resolve(null);
   return new Promise(res=>{
     const im = new Image();
@@ -8896,7 +9170,7 @@ async function wsThumbMake(a){
       const page = await pdf.getPage(1), v1 = page.getViewport({scale:1}), t = wsThumbScaled(v1.width, v1.height);
       await page.render({canvasContext:t.x, viewport:page.getViewport({scale:t.k})}).promise;
       return wsThumbSet(a.fileId, t.c);
-    }finally{ try{ pdf.destroy(); }catch(e){} }
+    }finally{ try{ pdf.destroy(); }catch(e){ logErr("stumm", e); } }
   }
   return null;
 }
@@ -8954,7 +9228,7 @@ async function wsAddFiles(doc, owner){
   inp.onchange = async ()=>{
     const files = [...inp.files]; if(!files.length) return;
     for(const f of files){
-      if(f.size>WS_MAXFILE){ alert(`„${f.name}“ ist größer als ${WS_MAXFILE/1048576} MB und wird nicht hochgeladen.`); continue; }
+      if(f.size>WS_MAXFILE){ appAlert(`„${f.name}“ ist größer als ${WS_MAXFILE/1048576} MB und wird nicht hochgeladen.`); continue; }
       toast("Lade „"+f.name+"“ in Google Drive hoch …");
       try{
         const r = await wsDriveUpload(f);
@@ -8964,7 +9238,7 @@ async function wsAddFiles(doc, owner){
         owner.att.push(at); owner.aopen = true; wsTouch(doc);
         wsFocusSel = null; wsRerender(doc.id);
         toast("Hochgeladen: "+at.name);
-      }catch(e){ alert("Hochladen fehlgeschlagen:\n"+e.message); }
+      }catch(e){ appAlert("Hochladen fehlgeschlagen:\n"+e.message); }
     }
   };
   inp.click();
@@ -8994,10 +9268,10 @@ const ws3d = {
   cam:{yaw:0.6, pitch:0.4, dist:900, F:700, ox:0, oy:0, tx:0, ty:0, tz:0},
   pos:new Map(), sel:"", g:null, byId:new Map(), nb:new Map(), proj:new Map(),
   cv:null, ctx:null, w:0, h:0, alpha:1, raf:0, hits:[], ptr:new Map(), moved:false, thumbs:new Map(), loading:0, hover:"",
-  opt:(()=>{ let o = {}; try{ o = JSON.parse(localStorage.getItem("ws3dOpt")||"{}")||{}; }catch(e){}
+  opt:(()=>{ let o = {}; try{ o = JSON.parse(localStorage.getItem("ws3dOpt")||"{}")||{}; }catch(e){ logErr("stumm", e); }
     return {doc:o.doc||"", showDone:!!o.showDone, tags:o.tags!==false, labels:o.labels!==false, layout:o.layout==="net"?"net":"tree", floor:o.floor!==false, spin:!!o.spin, edit:o.edit!==false, head:"", focus:false, q:""}; })()
 };
-function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels, layout:ws3d.opt.layout, floor:ws3d.opt.floor, spin:ws3d.opt.spin, edit:ws3d.opt.edit})); }catch(e){} }
+function ws3dSaveOpt(){ try{ localStorage.setItem("ws3dOpt", JSON.stringify({doc:ws3d.opt.doc, showDone:ws3d.opt.showDone, tags:ws3d.opt.tags, labels:ws3d.opt.labels, layout:ws3d.opt.layout, floor:ws3d.opt.floor, spin:ws3d.opt.spin, edit:ws3d.opt.edit})); }catch(e){ logErr("stumm", e); } }
 function ws3dHeadOpts(){
   const o = ws3d.opt, out = []; let found = !o.head;
   wsDocs.forEach(d=>{
@@ -9462,7 +9736,7 @@ function wsAfterRender(){
   wsHydrateFiles();
   if(wsFocusSel){
     const el = document.querySelector(wsFocusSel); wsFocusSel = null;
-    if(el){ el.focus(); try{ const n = el.value.length; el.setSelectionRange(n, n); }catch(e){} }
+    if(el){ el.focus(); try{ const n = el.value.length; el.setSelectionRange(n, n); }catch(e){ logErr("stumm", e); } }
   }
 }
 function wsRerender(docId){
@@ -9493,7 +9767,7 @@ main.addEventListener("input", e=>{
   if(f==="title") doc.title = el.value;
   else if(f==="text"){ const b = wsBlock(doc, el.closest(".ws-block").dataset.bid); if(b) b.text = el.value; if(el.tagName==="TEXTAREA") wsAutosizeEl(el); }
   else if(f==="node"){
-    if(/[\r\n]/.test(el.value)){ const p = el.selectionStart; el.value = el.value.replace(/\s*[\r\n]+\s*/g, " "); try{ el.setSelectionRange(p, p); }catch(_){} }
+    if(/[\r\n]/.test(el.value)){ const p = el.selectionStart; el.value = el.value.replace(/\s*[\r\n]+\s*/g, " "); try{ el.setSelectionRange(p, p); }catch(_){ logErr("stumm", _); } }
     const r = wsFindNode(doc, el.closest(".ws-node").dataset.nid); if(r) r.node.text = el.value; wsAutosizeEl(el);
   }
   else if(f==="atitle"){ const a = wsFindAny(doc, el.closest(".ws-att").dataset.aid); if(a) a.title = el.value; }
@@ -9641,7 +9915,7 @@ main.addEventListener("click", e=>{
   }
   if(act==="focus-open" && doc){
     const h = wsFindNode(doc, a.dataset.fid);
-    wsOpenDocId = doc.id; try{ localStorage.setItem("wsOpenDoc", doc.id); localStorage.setItem("wsTab","docs"); }catch(e){}
+    wsOpenDocId = doc.id; try{ localStorage.setItem("wsOpenDoc", doc.id); localStorage.setItem("wsTab","docs"); }catch(e){ logErr("stumm", e); }
     wsTab = "docs"; view = "notes"; render(); return;
   }
   if(act==="unhide-all" && doc){
@@ -9651,9 +9925,9 @@ main.addEventListener("click", e=>{
     toast(hs.length+(hs.length===1?" Punkt":" Punkte")+" wieder eingeblendet"); return;
   }
   if(act==="plus" && doc){ wsOpenPlusMenu(doc.id, a.dataset.kind, a.dataset.id); return; }
-  if(act==="lean-toggle"){ wsLean = !wsLean; try{ localStorage.setItem("wsLean", wsLean?"1":"0"); }catch(err){} render(); return; }
-  if(act==="f-open"){ wsFOpen = !wsFOpen; try{ localStorage.setItem("wsFOpen", wsFOpen?"1":"0"); }catch(err){} render(); return; }
-  if(act==="tag-bar-toggle"){ wsTagOpen = !wsTagOpen; try{ localStorage.setItem("wsTagOpen", wsTagOpen?"1":"0"); }catch(err){} if(!wsTagOpen && wsF.tag){ wsF = wsFNorm({...wsF, tag:""}); wsFSave(); } render(); return; }
+  if(act==="lean-toggle"){ wsLean = !wsLean; try{ localStorage.setItem("wsLean", wsLean?"1":"0"); }catch(err){ logErr("stumm", err); } render(); return; }
+  if(act==="f-open"){ wsFOpen = !wsFOpen; try{ localStorage.setItem("wsFOpen", wsFOpen?"1":"0"); }catch(err){ logErr("stumm", err); } render(); return; }
+  if(act==="tag-bar-toggle"){ wsTagOpen = !wsTagOpen; try{ localStorage.setItem("wsTagOpen", wsTagOpen?"1":"0"); }catch(err){ logErr("stumm", err); } if(!wsTagOpen && wsF.tag){ wsF = wsFNorm({...wsF, tag:""}); wsFSave(); } render(); return; }
   if(act==="tag-sel"){ wsF = wsFNorm({...wsF, tag:(wsF.tag===a.dataset.t)?"":a.dataset.t}); wsFSave(); render(); return; }
   if(act==="f-reset"){ wsF = wsFNorm(null); wsFSave(); render(); return; }
   if(act==="f-preset"){
@@ -9715,7 +9989,7 @@ main.addEventListener("click", e=>{
   }
   if(act==="gs-go"){
     const res = wsSearchAll(wsGQ, 60), r = res[+a.dataset.i]; if(!r) return;
-    if(r.kind==="doc"){ wsOpenDocId = r.docId; try{ localStorage.setItem("wsOpenDoc", r.docId); }catch(err){} render(); return; }
+    if(r.kind==="doc"){ wsOpenDocId = r.docId; try{ localStorage.setItem("wsOpenDoc", r.docId); }catch(err){ logErr("stumm", err); } render(); return; }
     wsGoToItem(r.docId, r.kind, r.ref, false); return;
   }
   if(act==="open-doc"){ wsOpenDocId = a.dataset.id; localStorage.setItem("wsOpenDoc", wsOpenDocId); render(); return; }
@@ -9744,7 +10018,7 @@ main.addEventListener("click", e=>{
     const k = +a.dataset.k;
     if(k===wsHLvl(block)){ toast("Das ist schon Ebene "+k); return; }
     const ok = k===3 ? !!wsDemoteHeading(doc, block.id, null) : wsSetHeadLvl(doc, block.id, k);
-    if(!ok){ alert("Das geht an dieser Stelle nicht."); return; }
+    if(!ok){ appAlert("Das geht an dieser Stelle nicht."); return; }
     wsTouch(doc); wsRerender(doc.id); return;
   }
   if(act==="head-lvl" && block && block.type==="heading"){
@@ -9814,13 +10088,13 @@ main.addEventListener("click", e=>{
           rel = Object.assign({}, r.node.link); r.node.link = null;
         }
         const rr = wsPromoteNode(doc, nid, k);
-        if(rr.err){ if(rel) r.node.link = rel; alert(rr.err); return; }
+        if(rr.err){ if(rel) r.node.link = rel; appAlert(rr.err); return; }
         if(rel) wsLinkRun(()=>wsReleaseLinks([rel], false));
       }else{
         const need = Math.max(0, 3-base); let d = c-base, guard = 0;
         while(d>need && guard++<10){ if(!wsOutdent(doc, nid)) break; d--; }
         while(d<need && guard++<10){ if(!wsIndent(doc, nid)) break; d++; }
-        if(d!==need){ alert("Das geht hier nicht: Für Ebene 3 fehlt ein Punkt davor, unter den dieser Punkt rücken kann."); if(guard>0) { wsTouch(doc); wsRerender(doc.id); } return; }
+        if(d!==need){ appAlert("Das geht hier nicht: Für Ebene 3 fehlt ein Punkt davor, unter den dieser Punkt rücken kann."); if(guard>0) { wsTouch(doc); wsRerender(doc.id); } return; }
       }
       wsTouch(doc); wsRerender(doc.id); return;
     }
@@ -9926,7 +10200,7 @@ function wsOpenPlusMenu(docId, kind, id){
       if(a==="n-kid") wsColl.set(id, false);
       if(a==="n-h1" || a==="n-h2"){
         const rr = wsPromoteNode(doc, n.id, a==="n-h1"?1:2);
-        if(rr.err){ wsDeleteNode(doc, n.id); alert(rr.err); wsRerender(doc.id); return; }
+        if(rr.err){ wsDeleteNode(doc, n.id); appAlert(rr.err); wsRerender(doc.id); return; }
       }else focusNode(n);
     }else if(a.startsWith("a-")){
       const r = wsFindNode(doc, id); if(!r) return;
@@ -10042,7 +10316,7 @@ main.addEventListener("dragstart", e=>{
   try{
     e.dataTransfer.setData("text/plain", "ws");
     e.dataTransfer.setDragImage(kind==="node" ? src.querySelector(".ws-nrow") : src, 12, 12);
-  }catch(_){}
+  }catch(_){ logErr("stumm", _); }
   setTimeout(()=>{ if(wsDrag) src.classList.add("ws-dragging"); }, 0);
 });
 main.addEventListener("dragover", e=>{
@@ -10102,7 +10376,7 @@ function wsPdAuto(){
 function wsPdEnd(commit){
   const d = wsPD; if(!d) return; wsPD = null;
   if(d.raf) cancelAnimationFrame(d.raf);
-  try{ d.h.releasePointerCapture(d.pid); }catch(_){}
+  try{ d.h.releasePointerCapture(d.pid); }catch(_){ logErr("stumm", _); }
   if(d.ghost) d.ghost.remove();
   document.body.classList.remove("ws-pdrag");
   window.removeEventListener("pointermove", wsPdMove, true);
@@ -10140,7 +10414,7 @@ main.addEventListener("pointerdown", e=>{
   wsDrag = {kind, docId:docEl.dataset.doc, el:src,
     bid: (h.closest(".ws-block")||{dataset:{}}).dataset.bid, head: kind==="block" && src.dataset.kind==="heading", nid: kind==="node" ? src.dataset.nid : null, ri:null};
   wsPD = {h, src, pid:e.pointerId, x0:e.clientX, y0:e.clientY, x:e.clientX, y:e.clientY, on:false, raf:0, ghost:null, lab:null};
-  try{ h.setPointerCapture(e.pointerId); }catch(_){}
+  try{ h.setPointerCapture(e.pointerId); }catch(_){ logErr("stumm", _); }
   window.addEventListener("pointermove", wsPdMove, true);
   window.addEventListener("pointerup", wsPdUp, true);
   window.addEventListener("pointercancel", wsPdCancel, true);
@@ -10541,7 +10815,7 @@ function wsNodePath(items, id, path){
 function wsGoToItem(docId, kind, ref, from3d){
   const doc = wsGet(docId); if(!doc) return;
   wsBack = from3d ? "3d" : null;
-  wsOpenDocId = docId; try{ localStorage.setItem("wsOpenDoc", docId); }catch(e){}
+  wsOpenDocId = docId; try{ localStorage.setItem("wsOpenDoc", docId); }catch(e){ logErr("stumm", e); }
   if(wsF.tag){ wsF = wsFNorm({...wsF, tag:""}); wsFSave(); }
   let sel = `.ws-doc[data-doc="${docId}"] .ws-doctitle`;
   if(kind==="node" || kind==="att"){
@@ -10567,7 +10841,7 @@ function wsGoToItem(docId, kind, ref, from3d){
       if(wsFiltered()) wsColl.set(hd.id, false); else if(hd.collapsed){ hd.collapsed = false; wsTouch(doc); }
     });
   }
-  wsTab = "docs"; try{ localStorage.setItem("wsTab", "docs"); }catch(e){}
+  wsTab = "docs"; try{ localStorage.setItem("wsTab", "docs"); }catch(e){ logErr("stumm", e); }
   view = "notes"; render();
   let tries = 0;
   const seek = ()=>{
@@ -10835,7 +11109,7 @@ function tpPlanOpen(itemId, key){            // Stunde: Eintrag im Arbeitsbereic
   let hit = o.planNode ? wsFindNodeAnyDoc(o.planNode) : null;
   if(!hit || hit.head){
     let doc = wsDocs.find(d=>d.inbox);
-    if(!doc){ doc = wsNewDoc("ToDo-Eingang"); doc.inbox = true; doc.seen = []; const ol0 = wsNewBlock("outline"); ol0.items = []; doc.blocks.push(ol0); wsDocs.push(doc); try{ localStorage.setItem("wsInboxMade", "1"); }catch(e){} }
+    if(!doc){ doc = wsNewDoc("ToDo-Eingang"); doc.inbox = true; doc.seen = []; const ol0 = wsNewBlock("outline"); ol0.items = []; doc.blocks.push(ol0); wsDocs.push(doc); try{ localStorage.setItem("wsInboxMade", "1"); }catch(e){ logErr("stumm", e); } }
     let ol = doc.blocks.find(b=>b.type==="outline"); if(!ol){ ol = wsNewBlock("outline"); ol.items = []; doc.blocks.push(ol); }
     const n = wsNewNode(it.title+" "+wsShortDate(day)+", "+tpHM(sl.start)+(o.topic?": "+o.topic.split("\n")[0].slice(0,60):"")); n.date = day;
     ol.items.push(n); wsTouch(doc);
@@ -10869,7 +11143,7 @@ function wsEnsureTaskNode(kind, ref){
   if(!doc){
     doc = wsNewDoc("ToDo-Eingang"); doc.inbox = true; doc.seen = [];
     const ol = wsNewBlock("outline"); ol.items = []; doc.blocks.push(ol); wsDocs.push(doc);
-    try{ localStorage.setItem("wsInboxMade", "1"); }catch(e){}
+    try{ localStorage.setItem("wsInboxMade", "1"); }catch(e){ logErr("stumm", e); }
   }
   wsInsertLinked(doc, [x], null, null);
   if(!doc.seen.includes(kind+":"+ref)) doc.seen.push(kind+":"+ref);
@@ -10888,7 +11162,7 @@ function wsInboxSync(){
     if(!wsLoaded || !wsInboxOn() || !Array.isArray(tasks)) return;
     let doc = wsDocs.find(d=>d.inbox);
     let made = false;
-    try{ made = localStorage.getItem("wsInboxMade")==="1"; }catch(e){}
+    try{ made = localStorage.getItem("wsInboxMade")==="1"; }catch(e){ logErr("stumm", e); }
     if(!doc && made) return;                                   // wurde bewusst gelöscht: nicht neu anlegen
     const cands = wsImportCandidates().filter(x=>!doc || !doc.seen.includes(x.kind+":"+x.id));
     if(!doc){
@@ -10898,7 +11172,7 @@ function wsInboxSync(){
       doc.blocks.push(tx);
       const ol = wsNewBlock("outline"); ol.items = []; doc.blocks.push(ol);
       wsDocs.push(doc);
-      try{ localStorage.setItem("wsInboxMade", "1"); }catch(e){}
+      try{ localStorage.setItem("wsInboxMade", "1"); }catch(e){ logErr("stumm", e); }
     }
     if(!cands.length) return;
     wsInsertLinked(doc, cands, null, null);
@@ -11496,6 +11770,7 @@ function wsOpenItemMenu(docId, kind, id, scope){
 function wsCmLabel(b){
   const d = b.dataset, t = (b.getAttribute("title")||"").trim(), tx = (b.textContent||"").trim();
   if(b.tagName==="A") return {k:1, label:"🔗 Link öffnen"};
+  if(d.planFrom!==undefined) return {k:2, label:"📅 Für einen Tag einplanen (ToDo oder Tagesziel)"};
   if(d.wsact==="task-kid") return {k:3, label:"＋ Kind-ToDo / Kind-Tagesziel anlegen"};
   if(d.wsact==="task-focus") return {k:5, label:"📌 Fokus in Heute an / aus"};
   if(d.wsact==="task-meta") return {k:4, label:"★ Meta-Projekt an / aus"};
@@ -11582,7 +11857,7 @@ function gGripDown(e){
   const card = grip.closest(".card"), list = card && card.parentElement; if(!list) return;
   e.preventDefault();
   gDrag = {grip, card, list, orig:list, id:grip.dataset.ggrip, pid:e.pointerId, x:e.clientX, y:e.clientY, before:[...list.querySelectorAll("[data-gid]")].map(c=>c.dataset.gid), sp:gScrollParent(list), raf:0, chip:null};
-  try{ grip.setPointerCapture(e.pointerId); }catch(_){}
+  try{ grip.setPointerCapture(e.pointerId); }catch(_){ logErr("stumm", _); }
   card.classList.add("g-drag"); document.body.classList.add("g-sorting");
   gBarShow();
 }
@@ -11617,7 +11892,7 @@ function gAuto(){
 function gGripUp(e){
   const d = gDrag; if(!d || (e && e.pointerId!==d.pid)) return;
   gDrag = null; if(d.raf) cancelAnimationFrame(d.raf);
-  try{ d.grip.releasePointerCapture(d.pid); }catch(_){}
+  try{ d.grip.releasePointerCapture(d.pid); }catch(_){ logErr("stumm", _); }
   d.card.classList.remove("g-drag"); document.body.classList.remove("g-sorting");
   gDragAt = Date.now();
   const chipDay = d.chip ? d.chip.dataset.gday : "";
@@ -11781,7 +12056,7 @@ async function wsReleaseLinks(links, del){
       await deleteCalendar(t);
       tasks = tasks.filter(x=>x.id!==t.id); logs = logs.filter(l=>l.itemId!==t.id); tasksChanged = true;
     }else{
-      if(L.evId){ try{ await api(`${calUrl(L.calId || defaultCalId || "primary")}/${L.evId}`, {method:"DELETE"}); }catch(e){} }
+      if(L.evId){ try{ await api(`${calUrl(L.calId || defaultCalId || "primary")}/${L.evId}`, {method:"DELETE"}); }catch(e){ logErr("stumm", e); } }
       if(del){
         try{ await api(`${GTASKS}/lists/${encodeURIComponent(defaultGTaskListId||"@default")}/tasks/${encodeURIComponent(L.ref)}`, {method:"DELETE"}); }
         catch(e){ if(!/404/.test(e.message||"")) throw e; }
@@ -12057,10 +12332,10 @@ const WS_BRIEF_SECS = [["cal","Kalender heute"],["todos","ToDos heute"],["duties
 let wsBriefQ = [], wsBriefI = 0, wsBriefOn = false, wsBriefTok = 0, wsBriefLock = null;
 function wsBriefOpts(){
   const o = {cal:1, todos:1, duties:1, dl:1, soon:1, goals:1, focus:1, meta:1, rate:1};
-  try{ Object.assign(o, JSON.parse(localStorage.getItem("wsBrief")||"{}")); }catch(e){}
+  try{ Object.assign(o, JSON.parse(localStorage.getItem("wsBrief")||"{}")); }catch(e){ logErr("stumm", e); }
   return o;
 }
-function wsBriefSave(o){ try{ localStorage.setItem("wsBrief", JSON.stringify(o)); }catch(e){} }
+function wsBriefSave(o){ try{ localStorage.setItem("wsBrief", JSON.stringify(o)); }catch(e){ logErr("stumm", e); } }
 function wsBriefClean(t){
   return String(t||"").replace(/[\u{1F000}-\u{1FFFF}☀-➿️]/gu, " ").replace(/[#*_`>|\[\]{}<~^]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -12178,7 +12453,7 @@ function wsPlanBuild(){
 }
 async function wsPlanOpen(){
   if(document.getElementById("modalBg")) return;
-  if(!tp.data){ toast("Lade Tagesplanung …"); try{ await tpLoad(); }catch(e){} }
+  if(!tp.data){ toast("Lade Tagesplanung …"); try{ await tpLoad(); }catch(e){ logErr("stumm", e); } }
   if(!tp.data){ toast("Die Tagesstruktur konnte nicht geladen werden"); return; }
   wsBriefOpen("plan");
 }
@@ -12218,7 +12493,7 @@ function wsBriefSpeak(i){
 }
 function wsBriefHalt(reset){
   wsBriefTok++; wsBriefOn = false;
-  try{ speechSynthesis.cancel(); }catch(e){}
+  try{ speechSynthesis.cancel(); }catch(e){ logErr("stumm", e); }
   wsBriefWake(false);
   if(reset) wsBriefI = 0;
   wsBriefUi();
@@ -12254,7 +12529,7 @@ function wsBriefOpen(kind){
   document.getElementById("wsb_prev").onclick = ()=>{ wsBriefSpeak(Math.max(0, wsBriefI-1)); };
   document.getElementById("wsb_next").onclick = ()=>{ wsBriefSpeak(Math.min(wsBriefQ.length-1, wsBriefI+1)); };
   document.getElementById("wsbrief").addEventListener("click", e=>{ const l = e.target.closest("[data-bl]"); if(l) wsBriefSpeak(+l.dataset.bl); });
-  try{ speechSynthesis.getVoices(); }catch(e){}
+  try{ speechSynthesis.getVoices(); }catch(e){ logErr("stumm", e); }
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-brief]"); if(b){ e.preventDefault(); if(b.dataset.brief==="plan") wsPlanOpen(); else wsBriefOpen(); } });
 
@@ -12315,6 +12590,7 @@ main.addEventListener("click",e=>{
   }
   const el=e.target.closest("[data-edit-link]"); if(el){ const l=links.find(x=>x.id===el.dataset.editLink); if(l) openLinkForm(l); return; }
   const dl2=e.target.closest("[data-del-link]"); if(dl2){ deleteLink(dl2.dataset.delLink); return; }
+  const pf=e.target.closest("[data-plan-from]"); if(pf){ openPlanFrom(pf.dataset.planFrom); return; }
   const dtg=e.target.closest("[data-tog-distraction]"); if(dtg){ toggleDistractionToday(dtg.dataset.togDistraction); return; }
   const mdi=e.target.closest("[data-md-import]"); if(mdi){ openMdImport(); return; }
   const drl=e.target.closest("[data-distr-reload]"); if(drl){ setSync("busy"); loadDistractions().then(()=>{ setSync("on"); render(); toast(distrLoadErr?"Immer noch nicht ladbar":"Ablenkungen geladen ("+distractions.length+")"); }); return; }
@@ -12452,7 +12728,7 @@ async function bootData(){
     console.log("✅ bootData FERTIG");
   }catch(e){
     console.error("❌ bootData FEHLER:",e.message);
-    alert("Anmeldung fehlgeschlagen:\n"+e.message);
+    appAlert("Anmeldung fehlgeschlagen:\n"+e.message);
     setSync("off");
   }
 }
@@ -12463,7 +12739,7 @@ async function signIn(){
   }catch(e){ console.error(e); toast("Anmeldung abgebrochen"); showSignin(); }
 }
 function signOut(){
-  if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){} }
+  if(accessToken){ try{ google.accounts.oauth2.revoke(accessToken,()=>{}); }catch(e){ logErr("stumm", e); } }
   tpReset(); accessToken=null; wsDocs=[]; wsLoaded=false; wsTabOk=false; wsDirty.clear(); wsDeleted.clear(); tasks=[]; logs=[]; gtasks=[]; goalTasks=[]; allOpenGoals=[]; allGTasks=[]; todayCalendarEvents=[];
   localStorage.removeItem("ssid"); spreadsheetId=null;
   $("nav").style.display="none"; $("fab").style.display="none";

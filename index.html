@@ -3686,7 +3686,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v272";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v274";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -3740,7 +3740,7 @@ function tpNorm(d){
     }
     Object.keys(x.occ||{}).slice(0,800).forEach(k=>{
       const e = x.occ[k]; if(!/^\d{4}-\d{2}-\d{2}(#\d{1,2})?$/.test(k) || !e || typeof e!=="object") return;
-      it.occ[k] = {topic:String(e.topic||"").slice(0,2000), hw:String(e.hw||"").slice(0,2000), hwDue:dk(e.hwDue), note:String(e.note||"").slice(0,2000), done:!!e.done, todoId:String(e.todoId||""),
+      it.occ[k] = {topic:String(e.topic||"").slice(0,2000), hw:String(e.hw||"").slice(0,2000), hwDue:dk(e.hwDue), note:String(e.note||"").slice(0,2000), done:!!e.done, todoId:String(e.todoId||""), planNode:String(e.planNode||"").slice(0,60),
         files:(Array.isArray(e.files)?e.files:[]).filter(f=>f && f.id).map(f=>({id:String(f.id), name:String(f.name||"Datei").slice(0,200), kind:["pres","ws","hw"].includes(f.kind)?f.kind:"ws"})).slice(0,30)};
     });
     return it;
@@ -4041,9 +4041,9 @@ function tpListHtml(){
           <div style="flex:0 0 96px;line-height:1.25;font-size:calc(13px*var(--f,1))"><b>${tpHM(q.start)}–${tpHM(Math.min(1440,q.start+q.min))}</b><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.done?"✓ ":""}${esc(it.title)}</div></div>
           <input type="text" data-lf="topic" placeholder="Thema …" value="${esc(o.topic||"")}" style="${inp};flex:1;min-width:0">
           <button class="tp-btn" data-tp="lopen" title="Stunde öffnen: Dateien, ToDo, Notiz, Vor- und Folgestunde" style="flex:0 0 auto">⋯</button></div>
-        <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;align-items:center"><input type="text" data-lf="hw" placeholder="LZA …" value="${esc(o.hw||"")}" style="${inp};flex:1;min-width:120px;padding:6px 8px;font-size:calc(14px*var(--f,1))"><input type="date" data-lf="hwDue" value="${esc(o.hwDue||"")}" title="LZA zu (Zieldatum)" style="${inp};width:auto;padding:6px 8px;font-size:calc(14px*var(--f,1))"></div>
+        <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;align-items:center"><button class="tp-btn" data-tp="lplan" title="Tagesziele und ToDos für diese Stunde festlegen">${o.planNode?"📋 Planung":"📋 Planung strukturieren"}</button><input type="text" data-lf="hw" placeholder="LZA …" value="${esc(o.hw||"")}" style="${inp};flex:1;min-width:120px;padding:6px 8px;font-size:calc(14px*var(--f,1))"><input type="date" data-lf="hwDue" value="${esc(o.hwDue||"")}" title="LZA zu (Zieldatum)" style="${inp};width:auto;padding:6px 8px;font-size:calc(14px*var(--f,1))"></div>
         ${po && po.hw ? `<div class="muted" style="font-size:calc(12px*var(--f,1));margin-top:4px">Letzte LZA${po.hwDue?" (zu "+esc(wsShortDate(po.hwDue))+")":""}: ${esc(po.hw)}</div>` : ""}
-        ${o.files&&o.files.length?`<div style="margin-top:3px;font-size:calc(12px*var(--f,1))">📄 ${o.files.length} ${o.files.length===1?"Datei":"Dateien"}</div>`:""}</div>`;
+        ${o.files&&o.files.length?`<div style="margin-top:5px;font-size:calc(13px*var(--f,1));display:flex;flex-wrap:wrap;gap:4px 12px">${o.files.map(f=>`<a href="https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view" target="_blank" rel="noopener" title="${esc(TP_FKIND[f.kind]||"PDF")}: ${esc(f.name)}" style="color:inherit;text-decoration:underline;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 0">📄 ${esc(f.name)}</a>`).join("")}</div>`:""}</div>`;
     });
   });
   return h;
@@ -4242,7 +4242,7 @@ function tpJobPlace(item, start){
 }
 const TP_WD = [[1,"Mo"],[2,"Di"],[3,"Mi"],[4,"Do"],[5,"Fr"],[6,"Sa"],[0,"So"]];
 const TP_FKIND = {pres:"Präsentation", ws:"Arbeitsblatt", hw:"Lernzeit-Arbeitsblatt"};
-function tpOccNew(){ return {topic:"", hw:"", hwDue:"", note:"", done:false, todoId:"", files:[]}; }
+function tpOccNew(){ return {topic:"", hw:"", hwDue:"", note:"", done:false, todoId:"", planNode:"", files:[]}; }
 function tpIsOcc(it, day){ return tpSlots(it, day).length>0; }
 function tpOccNeighbor(it, key, dir){
   const day = key.slice(0,10), same = tpSlots(it, day).map(x=>x.key), i = same.indexOf(key);
@@ -4393,7 +4393,7 @@ function tpOccOpen(itemId, key){
     <label>Dateien (PDF)</label><div id="tpo_files"></div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><select id="tpo_kind" style="${inp};width:auto;margin:0">${Object.keys(TP_FKIND).map(k=>`<option value="${k}">${TP_FKIND[k]}</option>`).join("")}</select>
       <button type="button" class="tp-btn" id="tpo_up">PDF hinzufügen</button><input type="file" id="tpo_file" accept="application/pdf,.pdf" style="display:none"><span class="muted" id="tpo_busy" style="font-size:12px"></span></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button type="button" class="tp-btn" id="tpo_todo"></button><button type="button" class="tp-btn" id="tpo_skip" style="color:#ff8a8e">Diesen Tag ausfallen lassen</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button type="button" class="tp-btn" id="tpo_plan">📋 Planung strukturieren</button><button type="button" class="tp-btn" id="tpo_todo"></button><button type="button" class="tp-btn" id="tpo_skip" style="color:#ff8a8e">Diesen Tag ausfallen lassen</button></div>
     <div class="modal-actions"><button class="btn-ghost" id="tpo_x">Abbrechen</button><button class="btn-primary" id="tpo_ok">Speichern</button></div></div></div>`);
   const files = ()=>{
     $("tpo_files").innerHTML = o.files.map((f,i)=>`<div class="tp-it"><span>📄</span><span class="tx"><a href="https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view" target="_blank" rel="noopener" style="color:inherit">${esc(f.name)}</a></span><span class="dt">${esc(TP_FKIND[f.kind]||"")}</span><button type="button" class="tp-btn" data-fdel="${i}">×</button></div>`).join("") || `<div class="tp-note" style="padding:2px 0 8px">Noch keine Datei.</div>`;
@@ -4401,7 +4401,7 @@ function tpOccOpen(itemId, key){
   const todoBtn = ()=>{ $("tpo_todo").textContent = hasTodo() ? "ToDo aktualisieren" : "ToDo für diese Stunde anlegen"; };
   files(); todoBtn();
   const read = ()=>{ o.topic = $("tpo_topic").value.trim(); o.hw = $("tpo_hw").value.trim(); o.hwDue = $("tpo_due").value||""; o.note = $("tpo_note").value.trim(); o.done = $("tpo_done").checked; };
-  const store = ()=>{ read(); if(o.topic||o.hw||o.hwDue||o.note||o.done||o.todoId||o.files.length) it.occ[key] = o; else delete it.occ[key]; tpDirty(); };
+  const store = ()=>{ read(); if(o.topic||o.hw||o.hwDue||o.note||o.done||o.todoId||o.planNode||o.files.length) it.occ[key] = o; else delete it.occ[key]; tpDirty(); };
   const hop = d=>{ if(!d) return; store(); $("modalBg").remove(); tp.day = d.slice(0,10); render(); setTimeout(()=>tpOccOpen(itemId, d), 0); };
   $("tpo_prev").onclick = ()=>hop(prevD); $("tpo_next").onclick = ()=>hop(nextD);
   $("tpo_x").onclick = ()=>$("modalBg").remove();
@@ -4426,6 +4426,7 @@ function tpOccOpen(itemId, key){
     }
     todoBtn();
   };
+  $("tpo_plan").onclick = ()=>{ store(); $("modalBg").remove(); tpPlanOpen(itemId, key); };
   $("tpo_skip").onclick = ()=>{
     if(!confirm("Diesen Tag ausfallen lassen? Die Wocheneinträge bleiben gespeichert.")) return;
     if(!it.rep.skip.some(x=>day>=x.from && day<=x.to)) it.rep.skip.push({from:day, to:day, label:""});
@@ -4856,6 +4857,7 @@ function tpAct(a, el){
   else if(a==="padd"){ tpAddFromPool(el.dataset.k, el.dataset.r); }
   else if(a==="badd"){ if(!tp.unlock){ tpLockHint(); return; } const it = tp.data.items.find(x=>x.id===el.dataset.r); if(it) tpJobPlace(it, null); }
   else if(a==="report"){ tpReportOpen(); }
+  else if(a==="lplan"){ const r = el.closest("[data-lk]"); if(r){ const [iid, key] = r.dataset.lk.split("|"); tpPlanOpen(iid, key); } }
   else if(a==="lopen"){ const r = el.closest("[data-lk]"); if(r){ const [iid, key] = r.dataset.lk.split("|"); tpOccOpen(iid, key); } }
   else if(a==="bgo"){
     const it = tp.data.items.find(x=>x.id===el.dataset.r); if(!it||!tpAuto(it)) return;
@@ -4947,7 +4949,7 @@ function tpClick(e){
   }
   if(!tp.unlock){
     const a0 = e.target.closest && e.target.closest("[data-tp]");
-    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report","school","kcal","ksync","drift","driftno","hist","unhide"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
+    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report","school","kcal","ksync","drift","driftno","hist","unhide","lplan"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
     else if(e.target.closest && e.target.closest(".tp-b,#tp_track,.tp-pool")) tpLockHint();
     return;
   }
@@ -4969,7 +4971,7 @@ function tpListStore(e){
   const [iid, key] = row.dataset.lk.split("|"), it = tp.data.items.find(x=>x.id===iid); if(!it) return true;
   const o = it.occ[key] || (it.occ[key] = tpOccNew());
   o[lf] = lf==="hwDue" ? (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)?e.target.value:"") : e.target.value.trim().slice(0,2000);
-  if(!(o.topic||o.hw||o.hwDue||o.note||o.done||o.todoId||o.files.length)) delete it.occ[key];
+  if(!(o.topic||o.hw||o.hwDue||o.note||o.done||o.todoId||o.planNode||o.files.length)) delete it.occ[key];
   tpDirty(); return true;
 }
 function tpInput(e){
@@ -9603,6 +9605,12 @@ main.addEventListener("click", e=>{
     const id = a.dataset.mid; if(wsMore.has(id)) wsMore.delete(id); else wsMore.add(id);
     wsRerender(doc.id); return;
   }
+  if(act==="task-kid"){
+    if(!wsLoaded){ toast("Arbeitsbereich noch nicht geladen"); return; }
+    const hit = wsEnsureTaskNode(a.dataset.kind, a.dataset.ref);
+    if(!hit){ toast("Eintrag nicht gefunden"); return; }
+    wsKidOpen(hit.doc.id, hit.node.id); return;
+  }
   if(act==="task-focus" || act==="task-meta"){
     if(!wsLoaded){ toast("Arbeitsbereich noch nicht geladen"); return; }
     const hit = wsEnsureTaskNode(a.dataset.kind, a.dataset.ref);
@@ -10750,12 +10758,70 @@ function wsImportCandidates(){
   out.sort((a,b)=>(a.day?0:1)-(b.day?0:1) || (a.day<b.day?-1:a.day>b.day?1:0) || a.title.localeCompare(b.title, "de"));
   return out;
 }
+/* ---- Kind-ToDos und Kind-Tagesziele: ein Punkt im Arbeitsbereich bekommt genau eine Ebene verknüpfter Unterpunkte ---- */
+function wsKidOpen(docId, nid){
+  if(document.getElementById("modalBg")) return;
+  const doc = wsGet(docId), r = doc && wsFindNode(doc, nid); if(!r){ toast("Der Eintrag wurde nicht gefunden"); return; }
+  if(r.parent){ toast("Dieser Eintrag ist selbst schon ein Unterpunkt. Es gibt nur eine Ebene Kinder."); return; }
+  const today = todayKey(), p = r.node, pd = (wsLinkDay(p) || (wsIsDate(p.date)?p.date:"")), d0 = pd && pd>=today ? pd : today;
+  const fld = "width:100%;box-sizing:border-box;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px;font-family:inherit";
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal" style="max-height:92vh;overflow:auto">
+    <h2>Kinder anlegen</h2><p class="muted" style="font-size:13px;margin:0 0 8px">Unter: ${esc((wsTitleOf(p)||"(ohne Text)").slice(0,80))}</p>
+    <div id="wk_list" style="margin-bottom:10px"></div>
+    <label>Titel</label><input type="text" id="wk_t" maxlength="200" style="${fld}" placeholder="Was ist zu tun?">
+    <div style="display:flex;gap:8px"><div style="flex:1"><label>Art</label><select id="wk_k" style="${fld}"><option value="goal">Tagesziel</option><option value="todo">ToDo</option></select></div>
+      <div style="flex:1"><label>Datum</label><input type="date" id="wk_d" value="${esc(d0)}" style="${fld}"></div></div>
+    <div class="modal-actions"><button class="btn-ghost" id="wk_x">Fertig</button><button class="btn-primary" id="wk_ok">Anlegen</button></div></div></div>`);
+  const list = ()=>{
+    const rr = wsFindNode(doc, nid), kids = rr ? (rr.node.children||[]) : [];
+    $("wk_list").innerHTML = kids.length ? kids.map(k=>`<div class="tp-it"><span>${k.link?(k.link.kind==="goal"?"🎯":"☑"):"•"}</span><span class="tx">${k.done?"✓ ":""}${esc((wsTitleOf(k)||"").slice(0,80))}</span><span class="dt">${wsLinkDay(k)?esc(wsShortDate(wsLinkDay(k))):""}</span></div>`).join("")
+      : `<div class="muted" style="font-size:13px">Noch keine Kinder.</div>`;
+  };
+  list();
+  const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); render(); };
+  $("wk_x").onclick = close;
+  $("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+  $("wk_ok").onclick = async ()=>{
+    const title = $("wk_t").value.trim(), kind = $("wk_k").value, day = $("wk_d").value;
+    if(!title){ toast("Bitte einen Titel eingeben"); return; }
+    if(!wsIsDate(day)){ toast("Bitte ein Datum wählen"); return; }
+    if(kind==="goal"){
+      if(day<today){ toast("Ein Tagesziel braucht ein heutiges oder späteres Datum"); return; }
+      if(wsGoalCount(day)>=GOAL_MAX){ toast("Maximal "+GOAL_MAX+" Tagesziele pro Tag am "+wsShortDate(day)); return; }
+    }
+    const rr = wsFindNode(doc, nid); if(!rr) return;
+    const ch = wsNewNode(title); ch.date = day; rr.node.children.push(ch); rr.node.collapsed = false; wsTouch(doc);
+    $("wk_ok").disabled = true;
+    try{ await wsApplyMenuCore(docId, ch.id, {date:day, dur:0, dl:"", meta:false, kind, cal:false}); }catch(e){ console.warn(e); }
+    $("wk_ok").disabled = false; $("wk_t").value = ""; list();
+    toast(ch.link ? (kind==="goal"?"Tagesziel":"ToDo")+" angelegt" : "Als Punkt angelegt, die Verknüpfung hat nicht geklappt");
+    $("wk_t").focus();
+  };
+  setTimeout(()=>{ const t = $("wk_t"); if(t) t.focus(); }, 50);
+}
+function tpPlanOpen(itemId, key){            // Stunde: Eintrag im Arbeitsbereich (Auto-Eingang) anlegen und Kinder dazu verwalten
+  if(typeof wsLoaded==="undefined" || !wsLoaded){ toast("Arbeitsbereich noch nicht geladen"); return; }
+  const it = tp.data.items.find(x=>x.id===itemId); if(!it) return;
+  const o = it.occ[key] || tpOccNew(), day = key.slice(0,10), sl = tpSlotByKey(it, key) || {start:0};
+  let hit = o.planNode ? wsFindNodeAnyDoc(o.planNode) : null;
+  if(!hit || hit.head){
+    let doc = wsDocs.find(d=>d.inbox);
+    if(!doc){ doc = wsNewDoc("ToDo-Eingang"); doc.inbox = true; doc.seen = []; const ol0 = wsNewBlock("outline"); ol0.items = []; doc.blocks.push(ol0); wsDocs.push(doc); try{ localStorage.setItem("wsInboxMade", "1"); }catch(e){} }
+    let ol = doc.blocks.find(b=>b.type==="outline"); if(!ol){ ol = wsNewBlock("outline"); ol.items = []; doc.blocks.push(ol); }
+    const n = wsNewNode(it.title+" "+wsShortDate(day)+", "+tpHM(sl.start)+(o.topic?": "+o.topic.split("\n")[0].slice(0,60):"")); n.date = day;
+    ol.items.push(n); wsTouch(doc);
+    o.planNode = n.id; it.occ[key] = o; tpDirty();
+    hit = {doc, node:n};
+  }
+  wsKidOpen(hit.doc.id, hit.node.id);
+}
 /* ---- Fokus und Meta-Projekt für ToDos und Tages-Ziele der ToDo-App (über den verknüpften Punkt im Arbeitsbereich) ---- */
 function wsTaskBtns(kind, ref){
   if(!wsLoaded) return "";
   const hit = wsFindByLink(wsDocs, kind, ref);
   const fo = !!hit && wsFocusHas(hit.doc, hit.node.id), me = !!hit && !!hit.node.meta;
   return `<button class="mini${fo?" on":""}" data-wsact="task-focus" data-kind="${kind}" data-ref="${esc(ref)}" title="${fo?"Fokus aufheben":"In Heute als Fokus anzeigen"}" style="${fo?"color:#b45309;font-weight:700":""}">📌</button>`
+       + `<button class="mini" data-wsact="task-kid" data-kind="${kind}" data-ref="${esc(ref)}" title="Kind-ToDo oder Kind-Tagesziel anlegen">＋</button>`
        + `<button class="mini${me?" on":""}" data-wsact="task-meta" data-kind="${kind}" data-ref="${esc(ref)}" title="${me?"Nicht mehr Meta-Projekt":"Als Meta-Projekt kennzeichnen"}" style="${me?"color:#b45309;font-weight:700":""}">${me?"★":"☆"}</button>`;
 }
 /* verknüpften Punkt holen; gibt es ihn noch nicht, wird er im Auto-Eingang angelegt */
@@ -11401,6 +11467,7 @@ function wsOpenItemMenu(docId, kind, id, scope){
 function wsCmLabel(b){
   const d = b.dataset, t = (b.getAttribute("title")||"").trim(), tx = (b.textContent||"").trim();
   if(b.tagName==="A") return {k:1, label:"🔗 Link öffnen"};
+  if(d.wsact==="task-kid") return {k:3, label:"＋ Kind-ToDo / Kind-Tagesziel anlegen"};
   if(d.wsact==="task-focus") return {k:5, label:"📌 Fokus in Heute an / aus"};
   if(d.wsact==="task-meta") return {k:4, label:"★ Meta-Projekt an / aus"};
   const key = Object.keys(d)[0] || "";

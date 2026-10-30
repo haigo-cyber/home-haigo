@@ -761,6 +761,21 @@ input,textarea{color:var(--ink)}
 .sfgrp{flex:1 1 200px}
 .sfgrp label{gap:4px 6px}
 
+.t3bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:8px 0}
+.t3bar label{display:flex;align-items:center;gap:6px;font-size:.9rem}
+.t3bar select{padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:inherit}
+.t3wrap{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0d0f12}
+.t3wrap canvas{display:block;touch-action:none}
+.t3zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px}
+.t3zoom button{width:38px;height:38px;border-radius:10px;border:1px solid #3a3f48;background:rgba(30,33,39,.92);color:#eee;font-size:22px;line-height:1;cursor:pointer}
+.t3count{margin:6px 0}
+.t3card{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.t3btns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.t3root.full{position:fixed;inset:0;z-index:250;background:var(--bg);display:flex;flex-direction:column;padding:10px;overflow:auto}
+.t3root.full .t3wrap{flex:1;min-height:300px}
+.t3root.full .thead{display:none}
+body.t3fs{overflow:hidden}
+
 </style>
 </head>
 <body>
@@ -790,6 +805,7 @@ input,textarea{color:var(--ink)}
     <button class="tab" role="tab" data-view="full">Volltext</button>
     <button class="tab" role="tab" data-view="time">Zeitleiste</button>
     <button class="tab" role="tab" data-view="rel">Verwandtschaft</button>
+    <button class="tab" role="tab" data-view="d3">3D-Ansicht</button>
     <button class="tab" role="tab" data-view="places">Orte</button>
     <button class="tab" role="tab" data-view="cal">Kalender</button>
     <button class="tab" role="tab" data-view="stats">Statistik</button>
@@ -2095,7 +2111,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "30.10.2026 09:22"; /* BUILD_ID=30.10.2026 09:22 */
+const BUILD = "30.10.2026 09:57"; /* BUILD_ID=30.10.2026 09:57 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -5153,7 +5169,7 @@ ACT.vUnlock = async () => {
 };
 
 /* ============ ANSICHTEN WIE IN TNG: Namen, Suche, Zeitleiste, Verwandtschaft, Orte, Kalender, Statistik, Medien ============ */
-const TNG_VIEWS = ["names", "search", "full", "time", "rel", "places", "cal", "stats", "media"];
+const TNG_VIEWS = ["names", "search", "full", "d3", "time", "rel", "places", "cal", "stats", "media"];
 const hasSide = (v) => ["card", "ped", "desc", "time", "rel"].includes(v);
 const TG = {
   namesMode: "sur", nameSel: null, nameLetter: "", nameSort: "alpha", nameQ: "",
@@ -5178,12 +5194,13 @@ function prow(id, extra) {
 }
 const tHead = (t, sub) => `<div class="thead"><h2>${E(t)}</h2>${sub ? `<div class="hint">${sub}</div>` : ""}</div>`;
 function tngRender(v) {
-  const fn = { names: tNames, search: tSearch, full: tFull, time: tTime, rel: tRel, places: tPlaces, cal: tCal, stats: tStats, media: tMedia }[v];
+  const fn = { names: tNames, search: tSearch, full: tFull, d3: t3Html, time: tTime, rel: tRel, places: tPlaces, cal: tCal, stats: tStats, media: tMedia }[v];
   return `<div class="tng">${fn()}</div>`;
 }
 function tngAfter(v) {
   if (v === "search") searchRun();
   if (v === "full") { ftRun(); const q = $("ft_q"); if (q && !q.value) q.focus(); }
+  if (v === "d3") t3Mount();
   if (v === "places") placesAfter();
   if (v === "media") { hydrateMedia(); mediaEnsure(); }
 }
@@ -6945,6 +6962,7 @@ const CAR_META = {
   src: { t: "Quellen", s: "Alle Quellen der Datei", c: "#7c3a4d", ic: CAR_SVG(`<path d="M12 10h30a6 6 0 0 1 6 6v36H18a6 6 0 0 1-6-6z"/><path d="M12 46a6 6 0 0 1 6-6h30M22 20h18M22 28h12"/>`) },
   names: { t: "Nachnamen", s: "Namen und ihre Häufigkeit", c: "#365f8c", ic: CAR_SVG(`<path d="M6 52 22 12l16 40M12 38h20M46 20h12M46 32h12M46 44h12"/>`) },
   search: { t: "Suche", s: "Personen suchen", c: "#b05a30", ic: CAR_SVG(`<circle cx="27" cy="27" r="15"/><path d="M38 38l16 16"/>`) },
+  d3: { t: "3D-Ansicht", s: "Vorfahren und Nachkommen im Raum", c: "#2f6f9a", ic: CAR_SVG(`<circle cx="32" cy="32" r="5"/><circle cx="14" cy="16" r="4"/><circle cx="50" cy="16" r="4"/><circle cx="14" cy="50" r="4"/><circle cx="50" cy="50" r="4"/><path d="M28 29 17 19M36 29l11-10M28 35 17 47M36 35l11 12"/>`) },
   full: { t: "Volltext", s: "Alles durchsuchen: Notizen, Quellen, Orte", c: "#9a4a2a", ic: CAR_SVG(`<path d="M12 8h30v48H12z"/><path d="M19 18h16M19 26h16M19 34h10"/><circle cx="44" cy="40" r="9"/><path d="M51 47l8 8"/>`) },
   time: { t: "Zeitleiste", s: "Lebenslinien und Ereignisse", c: "#3f7a68", ic: CAR_SVG(`<path d="M5 32h54M14 32V20M30 32v14M46 32V16"/><circle cx="14" cy="16" r="3.5"/><circle cx="30" cy="50" r="3.5"/><circle cx="46" cy="12" r="3.5"/>`) },
   rel: { t: "Verwandtschaft", s: "Wie zwei Personen verwandt sind", c: "#8a4a7c", ic: CAR_SVG(`<circle cx="32" cy="11" r="5"/><circle cx="12" cy="51" r="5"/><circle cx="52" cy="51" r="5"/><path d="M29 15 15 46M35 15l14 31" /><path d="M19 51h26" stroke-dasharray="3 5"/>`) },
@@ -7687,7 +7705,7 @@ document.addEventListener("click", (e) => {
   const t = e.target;
   const area = t.closest("#content, #plist, #info");
   const id = personIdOf(t);
-  const blocked = t.closest("input, textarea, select, label, .ar, .parrows, .treebar, .splbar, .rz, #info .ihead, .abc, .tabs, .top") || (!id && t.closest("button, a, [data-act], summary"));
+  const blocked = t.closest("input, textarea, select, label, .ar, .parrows, .treebar, .splbar, .rz, #info .ihead, .abc, .tabs, .top, .t3wrap") || (!id && t.closest("button, a, [data-act], summary"));
   const now = e.timeStamp;   // Zeitpunkt des Klicks selbst, nicht der Verarbeitung (ein langsamer Neuaufbau verzögert diese)
   const dbl = LASTCLK.t && now - LASTCLK.t < 600 && Math.abs(e.clientX - LASTCLK.x) < 10 && Math.abs(e.clientY - LASTCLK.y) < 10;
   if (dbl && area && !blocked && !S.viewer) {
@@ -7706,7 +7724,7 @@ document.addEventListener("click", (e) => {
 document.addEventListener("dblclick", (e) => {
   if (!S.db || S.viewer || document.querySelector(".ovl")) return;
   const t = e.target;
-  if (!t.closest("#content, #plist, #info") || t.closest("input, textarea, select, label, .ar, .parrows, .treebar, .splbar, .rz, #info .ihead, .abc, .tabs, .top")) return;
+  if (!t.closest("#content, #plist, #info") || t.closest("input, textarea, select, label, .ar, .parrows, .treebar, .splbar, .rz, #info .ihead, .abc, .tabs, .top, .t3wrap")) return;
   if (!personIdOf(t) && t.closest("button, a, [data-act], summary")) return;
   const id = personIdOf(t) || LASTCLK.id || (t.closest("#content") ? S.pid : null);
   if (id) dblOpen(id, t);
@@ -9520,6 +9538,214 @@ ACT.sf = () => {
   return d;
 };
 VIEW_OK.add("sf");
+
+/* ============ 3D-ANSICHT: Vorfahren oben, Nachkommen unten ============ */
+/* Eigene kleine 3D-Darstellung auf Canvas (ohne Bibliothek, läuft offline). Mitte ist die gewählte Person.
+   Vorfahren steigen als Trichter nach oben (Vater- und Mutterlinie je eine Ringhälfte), Nachkommen fächern sich nach unten. */
+const T3 = {
+  cam: { yaw: 0.6, pitch: 0.35, dist: 900, F: 760, ox: 0, oy: 0, cy: 0 },
+  nodes: [], links: [], byId: new Map(), proj: new Map(), hits: [], sel: "", hover: "", cv: null, ctx: null, w: 0, h: 0, raf: 0, ptr: new Map(), moved: false, full: false, cut: false, center: "", ext: 400,
+  opt: (() => { let o = {}; try { o = JSON.parse(lsGet("st.t3opt", "{}")) || {}; } catch (e) {}
+    const n = (v, d) => Number.isInteger(v) && v >= 0 && v <= 8 ? v : d;
+    return { up: n(o.up, 2), down: n(o.down, 2), spouse: o.spouse !== false, sib: !!o.sib, labels: o.labels !== false, floor: o.floor !== false, spin: !!o.spin };
+  })()
+};
+function t3Save() { lsSet("st.t3opt", JSON.stringify(T3.opt)); }
+function t3Build() {
+  const db = S.db, o = T3.opt, nodes = [], links = [], byId = new Map(), MAX = 700;
+  const add = (id, gen, kind, x, y, z) => {
+    if (byId.has(id) || nodes.length >= MAX) { if (nodes.length >= MAX && !byId.has(id)) T3.cut = true; return byId.get(id) || null; }
+    const p = GED.personInfo(db, id); if (!p) return null;
+    const n = { id, gen, kind, x, y, z, sex: p.sex, label: GED.displayName(p.rec), life: (byear(p) || "") + "–" + (dyear(p) || "") };
+    nodes.push(n); byId.set(id, n); return n;
+  };
+  T3.cut = false;
+  const c = S.pid, GAP = 130, R0 = 70, RS = 75;
+  const pos = (g, a) => { const r = g === 0 ? 0 : R0 + RS * (g - 1); return [Math.cos(a) * r, Math.sin(a) * r]; };
+  const center = add(c, 0, "focus", 0, 0, 0);
+  const link = (a, b, kind) => { if (byId.has(a) && byId.has(b)) links.push({ a, b, kind }); };
+  // Vorfahren: Ahnentafel-Position bestimmt den Winkel
+  const up = (id, g, lo, hi) => {
+    if (g >= o.up) return;
+    const par = GED.parentsOf(db, id); if (!par) return;
+    const mid = (lo + hi) / 2;
+    [[par.father || par.husb, lo, mid], [par.mother || par.wife, mid, hi]].forEach(([pid, a0, a1]) => {
+      if (!pid) return;
+      const a = (a0 + a1) / 2, [x, z] = pos(g + 1, a);
+      if (!add(pid, -(g + 1), "anc", x, -GAP * (g + 1), z)) return;
+      link(id, pid, "kid"); up(pid, g + 1, a0, a1);
+    });
+  };
+  up(c, 0, -Math.PI / 2 - Math.PI, -Math.PI / 2 + Math.PI);
+  // Partner und Nachkommen: Winkel nach Zahl der Blätter aufgeteilt
+  const spouses = (id) => GED.personInfo(db, id).fams.map(fid => GED.famInfo(db, fid)).filter(Boolean);
+  const leaves = new Map();
+  const cnt = (id, g) => { const k = g + "|" + id; if (leaves.has(k)) return leaves.get(k); leaves.set(k, 1); let s = 0; if (g < o.down) for (const f of spouses(id)) for (const ch of f.children) s += cnt(ch, g + 1); s = s || 1; leaves.set(k, s); return s; };
+  const down = (id, g, lo, hi, depth) => {
+    if (g >= o.down || depth > 12) return;
+    const kids = []; for (const f of spouses(id)) for (const ch of f.children) kids.push([ch, f]);
+    if (!kids.length) return;
+    const tot = kids.reduce((s, k) => s + cnt(k[0], g + 1), 0); let a0 = lo;
+    for (const [ch, f] of kids) {
+      const w = (hi - lo) * cnt(ch, g + 1) / tot, a = a0 + w / 2, [x, z] = pos(g + 1, a); a0 += w;
+      if (byId.has(ch)) continue;
+      const nd = add(ch, g + 1, "desc", x, GAP * (g + 1), z); if (!nd) continue;
+      link(id, ch, "kid");
+      if (o.spouse) for (const ff of spouses(ch)) { const sp = ff.husb === ch ? ff.wife : ff.husb; if (sp && !byId.has(sp)) { const t = [-Math.sin(a), Math.cos(a)]; if (add(sp, g + 1, "sp", nd.x + t[0] * 46, nd.y, nd.z + t[1] * 46)) link(ch, sp, "marr"); } }
+      down(ch, g + 1, a - w / 2, a + w / 2, depth + 1);
+    }
+  };
+  down(c, 0, -Math.PI, Math.PI, 0);
+  // Partner der Mitte, Geschwister
+  if (o.spouse) { let i = 0; for (const f of spouses(c)) { const sp = f.husb === c ? f.wife : f.husb; if (sp && !byId.has(sp)) { i++; if (add(sp, 0, "sp", 55 * i, 0, 0)) link(c, sp, "marr"); } } }
+  if (o.sib) {
+    const par = GED.parentsOf(db, c), fam = par && GED.famInfo(db, par.fam || (GED.personInfo(db, c).famc[0]));
+    const sibs = fam ? fam.children.filter(x => x !== c) : [];
+    sibs.forEach((s, i) => { const a = Math.PI / 2 + (i - (sibs.length - 1) / 2) * 0.5, [x, z] = [Math.cos(a) * 95, Math.sin(a) * 95]; if (add(s, 0, "sib", x, 0, z)) { for (const pid of [par.father || par.husb, par.mother || par.wife]) if (pid) link(pid, s, "kid"); } });
+  }
+  T3.nodes = nodes; T3.links = links; T3.byId = byId; T3.center = c;
+  T3.ext = Math.max(250, ...nodes.map(n => Math.hypot(n.x, n.z)), ...nodes.map(n => Math.abs(n.y)));
+  if (T3.sel && !byId.has(T3.sel)) T3.sel = "";
+}
+function t3Reset() { const c = T3.cam; c.yaw = 0.6; c.pitch = 0.35; c.ox = 0; c.oy = 0; const ys = T3.nodes.map(n => n.y); c.cy = ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0; c.dist = Math.max(650, T3.ext * 2.7); }
+function t3Html() {
+  const o = T3.opt, opts = (v) => [0, 1, 2, 3, 4, 5, 6].map(i => `<option value="${i}"${i === v ? " selected" : ""}>${i}</option>`).join("");
+  return `<div class="t3root${T3.full ? " full" : ""}" id="t3root">
+    <div class="thead"><h2>3D-Ansicht</h2><div class="hint">Mitte ist <b>${E(pname(S.pid))}</b>. Oben die Vorfahren, unten die Nachkommen. Ziehen dreht, Mausrad zoomt, Umschalt und Ziehen verschiebt, Doppelklick auf eine Person macht sie zur Mitte.</div></div>
+    <div class="t3bar">
+      <label>Vorfahren-Generationen <select id="t3up">${opts(o.up)}</select></label>
+      <label>Nachkommen-Generationen <select id="t3down">${opts(o.down)}</select></label>
+      <label class="t3ck"><input type="checkbox" id="t3sp"${o.spouse ? " checked" : ""}> Partner</label>
+      <label class="t3ck"><input type="checkbox" id="t3sib"${o.sib ? " checked" : ""}> Geschwister</label>
+      <label class="t3ck"><input type="checkbox" id="t3lab"${o.labels ? " checked" : ""}> Beschriftung</label>
+      <label class="t3ck"><input type="checkbox" id="t3floor"${o.floor ? " checked" : ""}> Boden</label>
+      <label class="t3ck"><input type="checkbox" id="t3spin"${o.spin ? " checked" : ""}> Drehen</label>
+      <button class="btn sm" id="t3reset">Ansicht zurücksetzen</button>
+      <button class="btn sm" id="t3full">${T3.full ? "Vollbild beenden" : "Vollbild"}</button>
+    </div>
+    <div class="t3wrap" id="t3wrap"><canvas id="t3cv" aria-label="3D-Ansicht der Familie"></canvas>
+      <div class="t3zoom"><button type="button" id="t3zin" aria-label="Vergrößern">+</button><button type="button" id="t3zout" aria-label="Verkleinern">-</button></div></div>
+    <div class="t3count hint" id="t3count"></div>
+    <div class="t3info" id="t3info"></div></div>`;
+}
+function t3Info() {
+  const box = $("t3info"); if (!box) return;
+  const n = T3.byId.get(T3.sel);
+  if (!n) { box.innerHTML = `<span class="hint">Eine Person anklicken, um Einzelheiten zu sehen.</span>`; return; }
+  const p = GED.personInfo(S.db, n.id), pl = (e) => e ? E([e.date.raw, shortPlace(e.place)].filter(Boolean).join(", ")) : "";
+  box.innerHTML = `<div class="t3card"><b>${E(n.label)}</b> <span class="hint">${lifeHtml(S.db, n.id)}</span>
+    <div class="hint">${p.birt ? "geboren " + pl(p.birt) : ""}${p.deat ? " · gestorben " + pl(p.deat) : ""}</div>
+    <div class="t3btns">${n.id !== T3.center ? `<button class="btn sm" id="t3mid">Zur Mitte machen</button>` : ""}<button class="btn sm" id="t3open">Familienblatt öffnen</button></div></div>`;
+  const m = $("t3mid"); if (m) m.onclick = () => { go(n.id); };
+  $("t3open").onclick = () => { S.view = "card"; go(n.id); };
+}
+function t3Resize() {
+  const cv = T3.cv, wrap = $("t3wrap"); if (!cv || !wrap) return;
+  const w = Math.max(300, wrap.clientWidth), h = T3.full ? Math.max(300, wrap.clientHeight) : Math.max(380, Math.min(640, Math.round(window.innerHeight * 0.62))), dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (!T3.full) wrap.style.height = h + "px"; else wrap.style.height = "";
+  const H = T3.full ? wrap.clientHeight : h;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(H * dpr); cv.style.width = w + "px"; cv.style.height = H + "px";
+  T3.w = w; T3.h = H; T3.ctx = cv.getContext("2d"); T3.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function t3Kick() { if (T3.raf) return; T3.raf = requestAnimationFrame(() => { T3.raf = 0; if (!T3.cv || !T3.cv.isConnected) return; if (T3.opt.spin && !T3.ptr.size) T3.cam.yaw += 0.006; t3Draw(); if (T3.opt.spin) t3Kick(); }); }
+function t3Draw() {
+  const c = T3.ctx; if (!c) return;
+  const W = T3.w, H = T3.h, cam = T3.cam, F = cam.F;
+  const bg = c.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#161a22"); bg.addColorStop(1, "#08090b");
+  c.globalAlpha = 1; c.fillStyle = bg; c.fillRect(0, 0, W, H);
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const P = (x, y, z) => { const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y2 = (y - cam.cy) * cp - z1 * sp, z2 = (y - cam.cy) * sp + z1 * cp + cam.dist; return z2 < 60 ? null : { x: W / 2 + cam.ox + x1 * F / z2, y: H / 2 + cam.oy + y2 * F / z2, s: F / z2, z: z2 }; };
+  T3.proj.clear(); const items = [];
+  for (const n of T3.nodes) { const p = P(n.x, n.y, n.z); if (!p) continue; const it = { n, ...p }; items.push(it); T3.proj.set(n.id, it); }
+  let zmin = Infinity, zmax = -Infinity; items.forEach(i => { zmin = Math.min(zmin, i.z); zmax = Math.max(zmax, i.z); });
+  const zr = Math.max(1, zmax - zmin); items.forEach(i => { i.t = (i.z - zmin) / zr; });
+  if (T3.opt.floor && T3.nodes.length) {   // Gitter in der Ebene der Mitte, Ringe pro Generation
+    c.lineWidth = 1;
+    for (let g = 1; g <= Math.max(T3.opt.up, T3.opt.down); g++) {
+      const r = 70 + 75 * (g - 1); c.strokeStyle = "rgba(120,150,200,.16)"; c.beginPath();
+      for (let k = 0; k <= 48; k++) { const a = k / 48 * 6.2832, p = P(Math.cos(a) * r, 0, Math.sin(a) * r); if (!p) continue; k ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y); }
+      c.stroke();
+    }
+    const a0 = P(0, -130 * T3.opt.up - 40, 0), a1 = P(0, 130 * T3.opt.down + 40, 0);
+    if (a0 && a1) { c.strokeStyle = "rgba(190,205,230,.16)"; c.setLineDash([4, 5]); c.beginPath(); c.moveTo(a0.x, a0.y); c.lineTo(a1.x, a1.y); c.stroke(); c.setLineDash([]); }
+  }
+  for (const l of T3.links) {
+    const a = T3.proj.get(l.a), b = T3.proj.get(l.b); if (!a || !b) continue;
+    const mine = T3.sel && (l.a === T3.sel || l.b === T3.sel), al = 0.8 - 0.5 * (a.t + b.t) / 2;
+    c.lineWidth = Math.max(0.8, Math.min(2.6, (a.s + b.s) / 2 * 1.1)) * (mine ? 1.8 : 1);
+    c.strokeStyle = mine ? "rgba(255,255,255,.85)" : l.kind === "marr" ? `rgba(255,176,32,${al})` : `rgba(150,170,200,${al * 0.7})`;
+    if (l.kind === "marr") c.setLineDash([5, 4]);
+    c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); c.setLineDash([]);
+  }
+  items.sort((a, b) => b.z - a.z); const hits = [], labs = [];
+  for (const it of items) {
+    const n = it.n, s = it.s, r = (n.kind === "focus" ? 18 : 12) * s, col = n.sex === "M" ? "#5b9bd5" : n.sex === "F" ? "#e0789c" : "#9aa2af";
+    c.globalAlpha = 1 - 0.5 * it.t;
+    const gr = c.createRadialGradient(it.x - r * 0.35, it.y - r * 0.35, r * 0.1, it.x, it.y, r * 1.05); gr.addColorStop(0, "#ffffff"); gr.addColorStop(0.25, col); gr.addColorStop(1, n.kind === "anc" ? "#2c5a2f" : n.kind === "desc" ? "#6b5410" : "#34383f");
+    c.beginPath(); c.arc(it.x, it.y, Math.max(3, r), 0, 6.2832); c.fillStyle = gr; c.fill();
+    c.lineWidth = n.kind === "focus" ? 3 : 1.5; c.strokeStyle = n.kind === "focus" ? "#ffd166" : col; c.stroke();
+    if (n.id === T3.sel || n.id === T3.hover) { c.globalAlpha = 1; c.lineWidth = 2.5; c.strokeStyle = "#fff"; c.beginPath(); c.arc(it.x, it.y, Math.max(3, r) + 4, 0, 6.2832); c.stroke(); }
+    hits.push({ id: n.id, x: it.x, y: it.y, r: Math.max(7, r) });
+    if (T3.opt.labels) labs.push({ n, x: it.x + Math.max(3, r) + 5, y: it.y, z: it.z, a: 1 - 0.45 * it.t, pri: n.id === T3.sel || n.id === T3.hover ? 100 : n.kind === "focus" ? 50 : 10 - Math.abs(n.gen), fs: Math.max(10, Math.min(15, 12 * s * (900 / cam.dist) + 3)) });
+  }
+  labs.sort((a, b) => b.pri - a.pri || a.z - b.z);
+  const placed = hits.map(h => ({ x0: h.x - h.r, y0: h.y - h.r, x1: h.x + h.r, y1: h.y + h.r }));
+  c.textBaseline = "middle"; c.lineJoin = "round";
+  for (const L of labs) {
+    const t = L.n.label + (L.pri >= 50 || labs.length < 60 ? "  " + L.n.life : "");
+    c.font = `${L.pri >= 50 ? 700 : 400} ${L.fs}px system-ui,sans-serif`;
+    const w = c.measureText(t).width, h = L.fs * 1.25, x0 = L.x, y0 = L.y - h / 2;
+    if (L.pri < 100 && placed.some(r => x0 < r.x1 && x0 + w > r.x0 && y0 < r.y1 && y0 + h > r.y0)) continue;
+    placed.push({ x0, y0, x1: x0 + w, y1: y0 + h });
+    c.globalAlpha = Math.max(0.6, L.a); c.textAlign = "left"; c.lineWidth = 3.5; c.strokeStyle = "rgba(10,12,16,.92)"; c.strokeText(t, x0, L.y); c.fillStyle = "#f0f2f5"; c.fillText(t, x0, L.y);
+  }
+  c.globalAlpha = 1; T3.hits = hits;
+}
+function t3At(x, y) { for (let i = T3.hits.length - 1; i >= 0; i--) { const h = T3.hits[i]; if (Math.hypot(x - h.x, y - h.y) <= h.r + 3) return h.id; } return ""; }
+function t3Refresh(rebuild) {
+  if (rebuild) t3Build();
+  const k = $("t3count"); if (k) k.textContent = `${T3.nodes.length} Personen sichtbar` + (T3.cut ? " (gekürzt, bitte weniger Generationen wählen)" : "");
+  t3Info(); t3Kick();
+}
+function t3Mount() {
+  const cv = $("t3cv"); if (!cv) return;
+  T3.cv = cv; t3Build(); t3Reset(); t3Resize(); t3Refresh(false);
+  const pt = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const zoom = (f) => { T3.cam.dist = Math.max(120, Math.min(9000, T3.cam.dist * f)); t3Kick(); };
+  cv.addEventListener("pointerdown", (e) => { cv.setPointerCapture(e.pointerId); T3.ptr.set(e.pointerId, { ...pt(e), sx: e.clientX, sy: e.clientY, shift: e.shiftKey }); T3.moved = false; });
+  cv.addEventListener("pointermove", (e) => {
+    const q = T3.ptr.get(e.pointerId), p = pt(e);
+    if (!q) { const id = t3At(p.x, p.y); if (id !== T3.hover) { T3.hover = id; cv.style.cursor = id ? "pointer" : "grab"; t3Kick(); } return; }
+    if (T3.ptr.size === 2) {
+      const [a, b] = [...T3.ptr.values()], d0 = Math.hypot(a.x - b.x, a.y - b.y); q.x = p.x; q.y = p.y;
+      const [a2, b2] = [...T3.ptr.values()], d1 = Math.hypot(a2.x - b2.x, a2.y - b2.y); if (d0 > 0 && d1 > 0) zoom(d0 / d1); T3.moved = true; return;
+    }
+    const dx = p.x - q.x, dy = p.y - q.y; q.x = p.x; q.y = p.y;
+    if (Math.abs(e.clientX - q.sx) + Math.abs(e.clientY - q.sy) > 4) T3.moved = true;
+    if (q.shift || e.shiftKey) { T3.cam.ox += dx; T3.cam.oy += dy; } else { T3.cam.yaw += dx * 0.008; T3.cam.pitch = Math.max(-1.45, Math.min(1.45, T3.cam.pitch + dy * 0.006)); }
+    t3Kick();
+  });
+  const up = (e) => { const had = T3.ptr.has(e.pointerId); T3.ptr.delete(e.pointerId); if (had && !T3.moved && !T3.ptr.size) { const p = pt(e), id = t3At(p.x, p.y); T3.sel = id; t3Info(); t3Kick(); } };
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", (e) => T3.ptr.delete(e.pointerId));
+  cv.addEventListener("dblclick", (e) => { const p = pt(e), id = t3At(p.x, p.y); if (id && id !== T3.center) go(id); });
+  cv.addEventListener("wheel", (e) => { e.preventDefault(); zoom(e.deltaY > 0 ? 1.12 : 1 / 1.12); }, { passive: false });
+  $("t3zin").onclick = () => zoom(1 / 1.25); $("t3zout").onclick = () => zoom(1.25);
+  $("t3reset").onclick = () => { t3Reset(); t3Kick(); };
+  const num = (id, key) => { $(id).onchange = (e) => { T3.opt[key] = +e.target.value; t3Save(); t3Refresh(true); t3Reset(); }; };
+  num("t3up", "up"); num("t3down", "down");
+  const ck = (id, key, rebuild) => { $(id).onchange = (e) => { T3.opt[key] = e.target.checked; t3Save(); t3Refresh(rebuild); }; };
+  ck("t3sp", "spouse", true); ck("t3sib", "sib", true); ck("t3lab", "labels", false); ck("t3floor", "floor", false); ck("t3spin", "spin", false);
+  $("t3full").onclick = () => t3Full(!T3.full);
+  cv.style.cursor = "grab"; cv.style.touchAction = "none";
+}
+function t3Full(on) {
+  T3.full = on; const r = $("t3root"); if (!r) return;
+  r.classList.toggle("full", on); document.body.classList.toggle("t3fs", on);
+  $("t3full").textContent = on ? "Vollbild beenden" : "Vollbild";
+  setTimeout(() => { t3Resize(); t3Kick(); }, 30);
+}
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && T3.full) t3Full(false); });
+window.addEventListener("resize", () => { if (T3.cv && T3.cv.isConnected) { t3Resize(); t3Kick(); } });
 
 </script>
 </body>

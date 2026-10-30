@@ -3686,7 +3686,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v274";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v275";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -4043,6 +4043,7 @@ function tpListHtml(){
           <button class="tp-btn" data-tp="lopen" title="Stunde öffnen: Dateien, ToDo, Notiz, Vor- und Folgestunde" style="flex:0 0 auto">⋯</button></div>
         <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;align-items:center"><button class="tp-btn" data-tp="lplan" title="Tagesziele und ToDos für diese Stunde festlegen">${o.planNode?"📋 Planung":"📋 Planung strukturieren"}</button><input type="text" data-lf="hw" placeholder="LZA …" value="${esc(o.hw||"")}" style="${inp};flex:1;min-width:120px;padding:6px 8px;font-size:calc(14px*var(--f,1))"><input type="date" data-lf="hwDue" value="${esc(o.hwDue||"")}" title="LZA zu (Zieldatum)" style="${inp};width:auto;padding:6px 8px;font-size:calc(14px*var(--f,1))"></div>
         ${po && po.hw ? `<div class="muted" style="font-size:calc(12px*var(--f,1));margin-top:4px">Letzte LZA${po.hwDue?" (zu "+esc(wsShortDate(po.hwDue))+")":""}: ${esc(po.hw)}</div>` : ""}
+        ${tpPlanKidsHtml(o)}
         ${o.files&&o.files.length?`<div style="margin-top:5px;font-size:calc(13px*var(--f,1));display:flex;flex-wrap:wrap;gap:4px 12px">${o.files.map(f=>`<a href="https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view" target="_blank" rel="noopener" title="${esc(TP_FKIND[f.kind]||"PDF")}: ${esc(f.name)}" style="color:inherit;text-decoration:underline;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 0">📄 ${esc(f.name)}</a>`).join("")}</div>`:""}</div>`;
     });
   });
@@ -4390,6 +4391,7 @@ function tpOccOpen(itemId, key){
     <label>LZA zu (Zieldatum)</label><input type="date" id="tpo_due" value="${esc(o.hwDue||"")}" style="${inp}">
     <label>Notiz</label><textarea id="tpo_note" rows="2" style="${inp}">${esc(o.note)}</textarea>
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="tpo_done"${o.done?" checked":""}> Stunde gehalten</label>
+    ${o.planNode?`<label>Planung</label>${tpPlanKidsHtml(o)||'<div class="muted" style="font-size:13px;margin-bottom:8px">Noch keine Tagesziele oder ToDos.</div>'}<div style="height:8px"></div>`:""}
     <label>Dateien (PDF)</label><div id="tpo_files"></div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><select id="tpo_kind" style="${inp};width:auto;margin:0">${Object.keys(TP_FKIND).map(k=>`<option value="${k}">${TP_FKIND[k]}</option>`).join("")}</select>
       <button type="button" class="tp-btn" id="tpo_up">PDF hinzufügen</button><input type="file" id="tpo_file" accept="application/pdf,.pdf" style="display:none"><span class="muted" id="tpo_busy" style="font-size:12px"></span></div>
@@ -10798,6 +10800,12 @@ function wsKidOpen(docId, nid){
     $("wk_t").focus();
   };
   setTimeout(()=>{ const t = $("wk_t"); if(t) t.focus(); }, 50);
+}
+function tpPlanKidsHtml(o){            // Kinder des Planungs-Eintrags einer Stunde (nur Anzeige)
+  if(!o || !o.planNode || typeof wsLoaded==="undefined" || !wsLoaded) return "";
+  const hit = wsFindNodeAnyDoc(o.planNode); if(!hit || hit.head) return "";
+  const kids = hit.node.children || []; if(!kids.length) return "";
+  return `<div style="margin-top:5px;font-size:calc(13px*var(--f,1));line-height:1.45">${kids.map(k=>`<div style="${k.done?"opacity:.6;text-decoration:line-through":""}">${k.link?(k.link.kind==="goal"?"🎯":"☑"):"•"} ${esc((wsTitleOf(k)||"").slice(0,80))}${wsLinkDay(k)?` <span class="muted">${esc(wsShortDate(wsLinkDay(k)))}</span>`:""}${k.done?" ✓":""}</div>`).join("")}</div>`;
 }
 function tpPlanOpen(itemId, key){            // Stunde: Eintrag im Arbeitsbereich (Auto-Eingang) anlegen und Kinder dazu verwalten
   if(typeof wsLoaded==="undefined" || !wsLoaded){ toast("Arbeitsbereich noch nicht geladen"); return; }

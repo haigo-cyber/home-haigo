@@ -2112,7 +2112,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "30.10.2026 14:13"; /* BUILD_ID=30.10.2026 14:13 */
+const BUILD = "30.10.2026 14:28"; /* BUILD_ID=30.10.2026 14:28 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -9569,17 +9569,65 @@ function famSystem(db, id) {
   }
   return { parents, full, half, stepP, stepS };
 }
+/* Weitere Verwandte: Onkel und Tanten, Cousins 1. und 2. Grades, Stiefgroßeltern.
+   Cousins n-ten Grades stammen von Urahnen der Stufe n+1 ab. Es zählt jeweils nur das erste Elternpaar. */
+function famExtra(db, id, maxDeg) {
+  const out = { stepGP: [], uncles: [], cous: { 1: [], 2: [] } };
+  const p = GED.personInfo(db, id); if (!p) return out;
+  const prim = (x, fid) => { const q = GED.personInfo(db, x); return !!q && q.famc[0] === fid; };
+  const parOf = (x) => { const q = GED.personInfo(db, x), f = q && q.famc[0] && GED.famInfo(db, q.famc[0]); return f ? { fid: f.id, ps: [f.husb, f.wife].filter(Boolean) } : null; };
+  const kidsOf = (a) => { const r = []; for (const fid of GED.personInfo(db, a).fams) { const f = GED.famInfo(db, fid); if (!f || (f.husb !== a && f.wife !== a)) continue; for (const ch of f.children) if (prim(ch, fid)) r.push({ id: ch, fid }); } return r; };
+  const anc = new Set(); { let f = [id]; for (let g = 0; g < 4; g++) { const n = []; for (const x of f) { const pr = parOf(x); if (pr) for (const y of pr.ps) if (!anc.has(y)) { anc.add(y); n.push(y); } } f = n; } }
+  const seen = new Set([id]), unc = new Set();
+  { const fs0 = famSystem(db, id); if (fs0) for (const x of fs0.full.concat(fs0.half.map(h => h.id))) seen.add(x); }   // Geschwister und Halbgeschwister nicht zusätzlich als Cousins
+  let level = [{ id, child: null }];
+  for (let g = 1; g <= 3 && level.length; g++) {
+    const next = [];
+    for (const n of level) { const pr = parOf(n.id); if (!pr) continue; for (const a of pr.ps) next.push({ id: a, child: n.id, childFam: pr.fid }); }
+    level = next;
+    if (g < 2 || g > Math.min(3, (maxDeg || 2) + 1)) continue;
+    for (const A of level) {
+      const pathFam = A.childFam;
+      for (const x of kidsOf(A.id)) {
+        if (x.id === A.child || unc.has(g + "|" + x.id)) continue;
+        unc.add(g + "|" + x.id);
+        const half = x.fid !== A.childFam;   // nicht aus derselben Familie wie der eigene Vorfahr
+        if (g === 2) out.uncles.push({ id: x.id, via: A.id, parent: A.child, half });
+        // Nachkommen von x bis zur Ebene 0 (g-1 Schritte)
+        const walk = (cur, depth, chain) => {
+          for (const k of kidsOf(cur)) {
+            if (k.id === id || seen.has(k.id) || anc.has(k.id)) continue;
+            const ch = chain.concat(k.id);
+            if (depth === g - 1) { seen.add(k.id); out.cous[g - 1].push({ id: k.id, anc: A.id, chain: [x.id].concat(ch.slice(0, -1)), half, uncle: x.id }); }
+            else walk(k.id, depth + 1, ch);
+          }
+        };
+        walk(x.id, 1, []);
+      }
+    }
+  }
+  // Stiefgroßeltern: Stiefeltern der Eltern, und Eltern der Stiefeltern
+  const fsMe = famSystem(db, id), par = parOf(id);
+  if (par) for (const P of par.ps) { const fp = famSystem(db, P); if (fp) for (const sp of fp.stepP) if (!out.stepGP.some(z => z.id === sp.id)) out.stepGP.push({ id: sp.id, of: P, kind: "stiefeltern-der-eltern" }); }
+  if (fsMe) for (const sp of fsMe.stepP) { const pr = parOf(sp.id); if (pr) for (const g of pr.ps) if (!out.stepGP.some(z => z.id === g)) out.stepGP.push({ id: g, of: sp.id, kind: "eltern-der-stiefeltern" }); }
+  return out;
+}
 function systemPanel(ids) {
   if (!EXT.on) return "";
   const db = S.db, seen = new Set(), rows = [];
   for (const id of ids) {
     if (!id || seen.has(id) || !GED.personInfo(db, id)) continue; seen.add(id);
-    const fs = famSystem(db, id); if (!fs || !(fs.half.length || fs.stepP.length || fs.stepS.length)) continue;
+    const fs = famSystem(db, id), fx = famExtra(db, id, 2); if (!fs || !(fs.half.length || fs.stepP.length || fs.stepS.length || fx.stepGP.length || fx.cous[1].length || fx.cous[2].length)) continue;
+    const det = (t, arr) => arr.length ? `<details class="godrow"><summary class="hint">${t} (${arr.length})</summary> ${arr.slice(0, 150).map(x => godChip(x.id, x.x)).join("")}${arr.length > 150 ? `<span class="hint"> … und ${arr.length - 150} weitere</span>` : ""}</details>` : "";
     const nm = E(pname(id)), grp = (t, arr) => arr.length ? `<div class="godrow"><span class="hint">${t}</span> ${arr.map(x => godChip(x.id, x.x)).join("")}</div>` : "";
     rows.push(`<div class="tdp"><div class="tdh"><b>${nm}</b></div>
       ${grp("Halbgeschwister:", fs.half.map(h => ({ id: h.id, x: "über " + pname(h.via) + (h.other ? ", Partner/in " + pname(h.other) : "") })))}
       ${grp("Stiefeltern:", fs.stepP.map(s => ({ id: s.id, x: (GED.personInfo(db, s.id).sex === "F" ? "Stiefmutter" : GED.personInfo(db, s.id).sex === "M" ? "Stiefvater" : "Stiefelternteil") + ", Partner/in von " + pname(s.of) })))}
-      ${grp("Stiefgeschwister:", fs.stepS.map(s => ({ id: s.id, x: "Kind von " + pname(s.via) })))}</div>`);
+      ${grp("Stiefgeschwister:", fs.stepS.map(s => ({ id: s.id, x: "Kind von " + pname(s.via) })))}
+      ${grp("Stiefgroßeltern:", fx.stepGP.map(s => ({ id: s.id, x: s.kind === "eltern-der-stiefeltern" ? "Elternteil von " + pname(s.of) : "Stiefelternteil von " + pname(s.of) })))}
+      ${det("Onkel und Tanten", fx.uncles.map(u => ({ id: u.id, x: (u.half ? "Halbgeschwister von " : "Geschwister von ") + pname(u.parent) })))}
+      ${det("Cousins und Cousinen 1. Grades", fx.cous[1].map(c => ({ id: c.id, x: "Kind von " + pname(c.uncle) })))}
+      ${det("Cousins und Cousinen 2. Grades", fx.cous[2].map(c => ({ id: c.id, x: "über " + pname(c.uncle) + ", Urahn " + pname(c.anc) })))}</div>`);
   }
   return rows.length ? `<div class="panel sysp"><h4>Familiensystem: Halb- und Stiefverwandte</h4><div class="tdgrid">${rows.join("")}</div></div>` : "";
 }
@@ -9592,7 +9640,7 @@ const T3 = {
   nodes: [], links: [], byId: new Map(), proj: new Map(), hits: [], sel: "", hover: "", cv: null, ctx: null, w: 0, h: 0, raf: 0, ptr: new Map(), moved: false, full: false, cut: false, center: "", ext: 400,
   opt: (() => { let o = {}; try { o = JSON.parse(lsGet("st.t3opt", "{}")) || {}; } catch (e) {}
     const n = (v, d) => Number.isInteger(v) && v >= 0 && v <= 8 ? v : d;
-    return { up: n(o.up, 2), down: n(o.down, 2), spouse: o.spouse !== false, sib: !!o.sib, ext: !!o.ext, labels: o.labels !== false, floor: o.floor !== false, spin: !!o.spin };
+    return { up: n(o.up, 2), down: n(o.down, 2), spouse: o.spouse !== false, sib: !!o.sib, ext: !!o.ext, gp: !!o.gp, cou: Number.isInteger(o.cou) && o.cou >= 0 && o.cou <= 2 ? o.cou : 0, labels: o.labels !== false, floor: o.floor !== false, spin: !!o.spin };
   })()
 };
 function t3Save() { lsSet("st.t3opt", JSON.stringify(T3.opt)); }
@@ -9610,7 +9658,7 @@ function t3Build() {
   const center = add(c, 0, "focus", 0, 0, 0);
   const link = (a, b, kind) => { if (byId.has(a) && byId.has(b)) links.push({ a, b, kind }); };
   // Vorfahren: Ahnentafel-Position bestimmt den Winkel
-  const UPG = Math.max(o.up, o.ext ? 1 : 0);
+  const UPG = Math.max(o.up, o.ext || o.gp ? 1 : 0, o.gp ? 2 : 0, o.cou ? o.cou + 1 : 0);
   const up = (id, g, lo, hi) => {
     if (g >= UPG) return;
     const par = GED.parentsOf(db, id); if (!par) return;
@@ -9673,6 +9721,41 @@ function t3Build() {
       });
     }
   }
+  if (o.gp || o.cou) {
+    const fx = famExtra(db, c, o.cou || 2), tan = (n) => { const a = Math.atan2(n.z, n.x); return [-Math.sin(a), Math.cos(a)]; };
+    if (o.gp) {
+      fx.stepGP.forEach((g) => {
+        const base = byId.get(g.of);
+        if (g.kind === "stiefeltern-der-eltern") {
+          const gn = byId.get(g.of); if (!gn) return;
+          const t = tan(gn), nd = add(g.id, gn.gen, "stepgp", gn.x + t[0] * 52, gn.y, gn.z + t[1] * 52);
+          if (nd) { nd.rel = "Stiefgroßelternteil: Stiefelternteil von " + pname(g.of); link(g.of, g.id, "marr"); }
+        } else {
+          let sn = byId.get(g.of);
+          if (!sn) { const fsx = famSystem(db, c); const sp = fsx && fsx.stepP.find(x => x.id === g.of); const pn = sp && byId.get(sp.of); if (!pn) return; const t = tan(pn); sn = add(g.of, pn.gen, "step", pn.x + t[0] * 52, pn.y, pn.z + t[1] * 52); if (!sn) return; sn.rel = "Stiefelternteil"; link(sp.of, g.of, "marr"); }
+          const t = tan(sn), nd = add(g.id, sn.gen - 1, "stepgp", sn.x * 1.08 + t[0] * 40, sn.y - GAP * 0.8, sn.z * 1.08 + t[1] * 40);
+          if (nd) { nd.rel = "Stiefgroßelternteil: Elternteil von " + pname(g.of); link(g.of, g.id, "kid"); }
+        }
+      });
+    }
+    if (o.cou) {
+      const list = []; for (let d = 1; d <= o.cou; d++) fx.cous[d].forEach(x => list.push({ ...x, d }));
+      const byA = new Map(); list.forEach(x => { if (!byA.has(x.anc)) byA.set(x.anc, []); byA.get(x.anc).push(x); });
+      for (const [aid, arr] of byA) {
+        const A = byId.get(aid); if (!A) continue;
+        const a0 = Math.atan2(A.z, A.x), R = Math.hypot(A.x, A.z), g = -A.gen, leafAng = new Map();
+        arr.forEach((x, i) => leafAng.set(x.id, a0 + (i - (arr.length - 1) / 2) * Math.min(0.2, 1.6 / Math.max(1, arr.length - 1))));
+        const chainAng = new Map();   // Zwischenpersonen stehen im Mittel ihrer Cousins
+        arr.forEach(x => x.chain.forEach(cid => { const l = chainAng.get(cid) || []; l.push(leafAng.get(x.id)); chainAng.set(cid, l); }));
+        const placeAt = (id, j, ang, kind, rel) => { const r = R * (1 - 0.03 * j) + (j === g ? 40 : 0), nd = add(id, A.gen + j, kind, Math.cos(ang) * r, A.y + GAP * j, Math.sin(ang) * r); if (nd && !nd.rel) nd.rel = rel; return nd; };
+        arr.forEach(x => {
+          x.chain.forEach((cid, k) => { const l = chainAng.get(cid), ang = l.reduce((u, v) => u + v, 0) / l.length; const prevId = k === 0 ? aid : x.chain[k - 1]; const nd = placeAt(cid, k + 1, ang, "rel", k === 0 ? (x.half ? "Halbonkel oder Halbtante bzw. Verwandter über " : "Onkel, Tante oder Verwandter über ") + pname(aid) : "Verwandter in der Seitenlinie"); if (nd && !links.some(l2 => l2.a === prevId && l2.b === cid)) link(prevId, cid, "kid"); });
+          const nd = placeAt(x.id, g, leafAng.get(x.id), x.d === 1 ? "cous1" : "cous2", "Cousin oder Cousine " + x.d + ". Grades, Urahn " + pname(aid) + (x.half ? " (über Halbgeschwister)" : ""));
+          const prev = x.chain[x.chain.length - 1]; if (nd && prev) link(prev, x.id, "kid");
+        });
+      }
+    }
+  }
   T3.nodes = nodes; T3.links = links; T3.byId = byId; T3.center = c;
   T3.ext = Math.max(250, ...nodes.map(n => Math.hypot(n.x, n.z)), ...nodes.map(n => Math.abs(n.y)));
   if (T3.sel && !byId.has(T3.sel)) T3.sel = "";
@@ -9688,6 +9771,8 @@ function t3Html() {
       <label class="t3ck"><input type="checkbox" id="t3sp"${o.spouse ? " checked" : ""}> Partner</label>
       <label class="t3ck"><input type="checkbox" id="t3sib"${o.sib ? " checked" : ""}> Geschwister</label>
       <label class="t3ck" title="Halbgeschwister, Stiefeltern und Stiefgeschwister der Mitte zeigen"><input type="checkbox" id="t3ext"${o.ext ? " checked" : ""}> Halb- und Stiefverwandte</label>
+      <label class="t3ck" title="Stiefeltern der Eltern und Eltern der Stiefeltern"><input type="checkbox" id="t3gp"${o.gp ? " checked" : ""}> Stiefgroßeltern</label>
+      <label>Cousins <select id="t3cou"><option value="0"${o.cou === 0 ? " selected" : ""}>keine</option><option value="1"${o.cou === 1 ? " selected" : ""}>1. Grades</option><option value="2"${o.cou === 2 ? " selected" : ""}>1. und 2. Grades</option></select></label>
       <label class="t3ck"><input type="checkbox" id="t3lab"${o.labels ? " checked" : ""}> Beschriftung</label>
       <label class="t3ck"><input type="checkbox" id="t3floor"${o.floor ? " checked" : ""}> Boden</label>
       <label class="t3ck"><input type="checkbox" id="t3spin"${o.spin ? " checked" : ""}> Drehen</label>
@@ -9754,7 +9839,7 @@ function t3Draw() {
     c.globalAlpha = 1 - 0.5 * it.t;
     const gr = c.createRadialGradient(it.x - r * 0.35, it.y - r * 0.35, r * 0.1, it.x, it.y, r * 1.05); gr.addColorStop(0, "#ffffff"); gr.addColorStop(0.25, col); gr.addColorStop(1, n.kind === "anc" ? "#2c5a2f" : n.kind === "desc" ? "#6b5410" : "#34383f");
     c.beginPath(); c.arc(it.x, it.y, Math.max(3, r), 0, 6.2832); c.fillStyle = gr; c.fill();
-    c.lineWidth = n.kind === "focus" ? 3 : 1.5; c.strokeStyle = n.kind === "focus" ? "#ffd166" : n.kind === "half" ? "#4fd1a5" : n.kind === "step" || n.kind === "stepsib" ? "#c08cf0" : col; if (n.kind === "half" || n.kind === "step" || n.kind === "stepsib") c.lineWidth = 3; c.stroke();
+    c.lineWidth = n.kind === "focus" ? 3 : 1.5; c.strokeStyle = n.kind === "focus" ? "#ffd166" : n.kind === "half" ? "#4fd1a5" : n.kind === "step" || n.kind === "stepsib" || n.kind === "stepgp" ? "#c08cf0" : n.kind === "cous1" ? "#ff9f43" : n.kind === "cous2" ? "#f6e05e" : n.kind === "rel" ? "#8a93a3" : col; if (["half", "step", "stepsib", "stepgp", "cous1", "cous2"].includes(n.kind)) c.lineWidth = 3; c.stroke();
     if (n.id === T3.sel || n.id === T3.hover) { c.globalAlpha = 1; c.lineWidth = 2.5; c.strokeStyle = "#fff"; c.beginPath(); c.arc(it.x, it.y, Math.max(3, r) + 4, 0, 6.2832); c.stroke(); }
     hits.push({ id: n.id, x: it.x, y: it.y, r: Math.max(7, r) });
     if (T3.opt.labels) labs.push({ n, x: it.x + Math.max(3, r) + 5, y: it.y, z: it.z, a: 1 - 0.45 * it.t, pri: n.id === T3.sel || n.id === T3.hover ? 100 : n.kind === "focus" ? 50 : 10 - Math.abs(n.gen), fs: Math.max(10, Math.min(15, 12 * s * (900 / cam.dist) + 3)) });
@@ -9775,7 +9860,7 @@ function t3Draw() {
 function t3At(x, y) { for (let i = T3.hits.length - 1; i >= 0; i--) { const h = T3.hits[i]; if (Math.hypot(x - h.x, y - h.y) <= h.r + 3) return h.id; } return ""; }
 function t3Refresh(rebuild) {
   if (rebuild) t3Build();
-  const k = $("t3count"); if (k) k.textContent = `${T3.nodes.length} Personen sichtbar` + (T3.opt.ext ? ". Grün umrandet: Halbgeschwister, violett: Stiefeltern und Stiefgeschwister" : "") + (T3.cut ? " (gekürzt, bitte weniger Generationen wählen)" : "");
+  const k = $("t3count"); if (k) k.textContent = `${T3.nodes.length} Personen sichtbar` + (T3.opt.ext || T3.opt.gp ? ". Grün umrandet: Halbgeschwister, violett: Stiefverwandte" : "") + (T3.opt.cou ? ". Orange: Cousins 1. Grades" + (T3.opt.cou > 1 ? ", gelb: Cousins 2. Grades" : "") : "") + (T3.cut ? " (gekürzt, bitte weniger Generationen wählen)" : "");
   t3Info(); t3Kick();
 }
 function t3Mount() {
@@ -9805,7 +9890,8 @@ function t3Mount() {
   const num = (id, key) => { $(id).onchange = (e) => { T3.opt[key] = +e.target.value; t3Save(); t3Refresh(true); t3Reset(); }; };
   num("t3up", "up"); num("t3down", "down");
   const ck = (id, key, rebuild) => { $(id).onchange = (e) => { T3.opt[key] = e.target.checked; t3Save(); t3Refresh(rebuild); }; };
-  ck("t3sp", "spouse", true); ck("t3sib", "sib", true); ck("t3ext", "ext", true); ck("t3lab", "labels", false); ck("t3floor", "floor", false); ck("t3spin", "spin", false);
+  ck("t3sp", "spouse", true); ck("t3sib", "sib", true); ck("t3ext", "ext", true); ck("t3gp", "gp", true);
+  $("t3cou").onchange = (e) => { T3.opt.cou = +e.target.value; t3Save(); t3Refresh(true); t3Reset(); }; ck("t3lab", "labels", false); ck("t3floor", "floor", false); ck("t3spin", "spin", false);
   $("t3full").onclick = () => t3Full(!T3.full);
   cv.style.cursor = "grab"; cv.style.touchAction = "none";
 }

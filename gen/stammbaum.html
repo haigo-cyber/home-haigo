@@ -775,6 +775,7 @@ input,textarea{color:var(--ink)}
 .t3root.full .t3wrap{flex:1;min-height:300px}
 .t3root.full .thead{display:none}
 body.t3fs{overflow:hidden}
+.sysp .xc{cursor:pointer}.sysp .xc.M{background:var(--mas);border:1px solid var(--mas-line);border-radius:6px}.sysp .xc.F{background:var(--fem);border:1px solid var(--fem-line);border-radius:6px}.sysp .xc b{font:600 12.5px var(--serif)}.sysp .xc span{color:var(--muted);font-size:11px}
 
 </style>
 </head>
@@ -795,6 +796,7 @@ body.t3fs{overflow:hidden}
   <div class="fstat" id="fstat" hidden></div>
   <div class="tabrow"><div class="tabs" role="tablist" id="tabs">
     <button class="tab" role="tab" data-view="card">Familienblatt</button>
+    <button class="tab" role="tab" data-view="d3">3D-Ansicht</button>
     <button class="tab" role="tab" data-view="split">Geteilt</button>
     <button class="tab" role="tab" data-view="two">Zwei Dateien</button>
     <button class="tab" role="tab" data-view="ped">Vorfahren</button>
@@ -805,7 +807,6 @@ body.t3fs{overflow:hidden}
     <button class="tab" role="tab" data-view="full">Volltext</button>
     <button class="tab" role="tab" data-view="time">Zeitleiste</button>
     <button class="tab" role="tab" data-view="rel">Verwandtschaft</button>
-    <button class="tab" role="tab" data-view="d3">3D-Ansicht</button>
     <button class="tab" role="tab" data-view="places">Orte</button>
     <button class="tab" role="tab" data-view="cal">Kalender</button>
     <button class="tab" role="tab" data-view="stats">Statistik</button>
@@ -1847,11 +1848,11 @@ function renderCard() {
       });
       h += `</tbody></table>`;
     }
-    h += `</div>` + xDesc(f) + patenPanel([f.husb, f.wife]) + todoPanel([f.husb, f.wife]);
+    h += `</div>` + xDesc(f) + systemPanel([f.husb, f.wife]) + patenPanel([f.husb, f.wife]) + todoPanel([f.husb, f.wife]);
   } else {
     h += extHtml(null, S.pid) + `<div class="couple" style="grid-template-columns:1fr">${personBlock(S.pid, null, ctx, p.sex === "F" ? "WIFE" : "HUSB")}</div>`;
   }
-  if (!f) h += patenPanel([S.pid]) + todoPanel([S.pid]);
+  if (!f) h += systemPanel([S.pid]) + patenPanel([S.pid]) + todoPanel([S.pid]);
   if (ctx.list.length) {
     h += `<div class="panel"><h4>Quellen</h4><ol class="fnl">` + ctx.list.map(id => {
       const s = db.get(id), ty = GED.unesc(GED.kval(s, "TYPE"));
@@ -2111,7 +2112,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "30.10.2026 09:57"; /* BUILD_ID=30.10.2026 09:57 */
+const BUILD = "30.10.2026 14:13"; /* BUILD_ID=30.10.2026 14:13 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -9539,6 +9540,50 @@ ACT.sf = () => {
 };
 VIEW_OK.add("sf");
 
+/* ============ FAMILIENSYSTEM: Halbgeschwister, Stiefeltern, Stiefgeschwister ============ */
+/* Halbgeschwister teilen genau ein Elternteil. Stiefeltern sind die anderen Partner eines Elternteils.
+   Stiefgeschwister sind Kinder eines Stiefelternteils, die nicht von einem Elternteil der Person stammen. */
+function famSystem(db, id) {
+  const p = GED.personInfo(db, id); if (!p) return null;
+  const fc = p.famc.slice(0, 1), own = new Set(fc), parents = [], full = [], half = [], stepP = [], stepS = [];   // nur das erste Elternpaar, weitere (Adoption, Pflege) bleiben außen vor
+  for (const fid of fc) { const f = GED.famInfo(db, fid); if (!f) continue; for (const x of [f.husb, f.wife]) if (x && !parents.includes(x)) parents.push(x); for (const ch of f.children) if (ch !== id && !full.includes(ch)) full.push(ch); }
+  const prim = (x, fid) => { const q = GED.personInfo(db, x); return !!q && q.famc[0] === fid; };   // Kind gilt nur in seiner ersten Familie als Kind
+  const known = (x) => x === id || full.includes(x) || half.some(h => h.id === x);
+  for (const par of parents) {
+    for (const fid of GED.personInfo(db, par).fams) {
+      if (own.has(fid)) continue;
+      const f = GED.famInfo(db, fid); if (!f || (f.husb !== par && f.wife !== par)) continue;   // Verweis muss in beide Richtungen stimmen
+      const other = f.husb === par ? f.wife : f.husb;
+      const same = other && parents.includes(other);   // dasselbe Paar in einem zweiten Familiensatz: volle Geschwister
+      for (const ch of f.children) { if (known(ch) || !prim(ch, fid)) continue; if (same) full.push(ch); else half.push({ id: ch, via: par, other }); }
+      if (other && !same && !stepP.some(x => x.id === other)) stepP.push({ id: other, of: par });
+    }
+  }
+  for (const sp of stepP) {
+    for (const fid of GED.personInfo(db, sp.id).fams) {
+      const f = GED.famInfo(db, fid); if (!f || (f.husb !== sp.id && f.wife !== sp.id)) continue;
+      const other = f.husb === sp.id ? f.wife : f.husb;
+      if (other && parents.includes(other)) continue;   // gemeinsame Kinder mit dem Elternteil sind Halbgeschwister
+      for (const ch of f.children) if (!known(ch) && prim(ch, fid) && !stepS.some(x => x.id === ch)) stepS.push({ id: ch, via: sp.id });
+    }
+  }
+  return { parents, full, half, stepP, stepS };
+}
+function systemPanel(ids) {
+  if (!EXT.on) return "";
+  const db = S.db, seen = new Set(), rows = [];
+  for (const id of ids) {
+    if (!id || seen.has(id) || !GED.personInfo(db, id)) continue; seen.add(id);
+    const fs = famSystem(db, id); if (!fs || !(fs.half.length || fs.stepP.length || fs.stepS.length)) continue;
+    const nm = E(pname(id)), grp = (t, arr) => arr.length ? `<div class="godrow"><span class="hint">${t}</span> ${arr.map(x => godChip(x.id, x.x)).join("")}</div>` : "";
+    rows.push(`<div class="tdp"><div class="tdh"><b>${nm}</b></div>
+      ${grp("Halbgeschwister:", fs.half.map(h => ({ id: h.id, x: "über " + pname(h.via) + (h.other ? ", Partner/in " + pname(h.other) : "") })))}
+      ${grp("Stiefeltern:", fs.stepP.map(s => ({ id: s.id, x: (GED.personInfo(db, s.id).sex === "F" ? "Stiefmutter" : GED.personInfo(db, s.id).sex === "M" ? "Stiefvater" : "Stiefelternteil") + ", Partner/in von " + pname(s.of) })))}
+      ${grp("Stiefgeschwister:", fs.stepS.map(s => ({ id: s.id, x: "Kind von " + pname(s.via) })))}</div>`);
+  }
+  return rows.length ? `<div class="panel sysp"><h4>Familiensystem: Halb- und Stiefverwandte</h4><div class="tdgrid">${rows.join("")}</div></div>` : "";
+}
+
 /* ============ 3D-ANSICHT: Vorfahren oben, Nachkommen unten ============ */
 /* Eigene kleine 3D-Darstellung auf Canvas (ohne Bibliothek, läuft offline). Mitte ist die gewählte Person.
    Vorfahren steigen als Trichter nach oben (Vater- und Mutterlinie je eine Ringhälfte), Nachkommen fächern sich nach unten. */
@@ -9547,7 +9592,7 @@ const T3 = {
   nodes: [], links: [], byId: new Map(), proj: new Map(), hits: [], sel: "", hover: "", cv: null, ctx: null, w: 0, h: 0, raf: 0, ptr: new Map(), moved: false, full: false, cut: false, center: "", ext: 400,
   opt: (() => { let o = {}; try { o = JSON.parse(lsGet("st.t3opt", "{}")) || {}; } catch (e) {}
     const n = (v, d) => Number.isInteger(v) && v >= 0 && v <= 8 ? v : d;
-    return { up: n(o.up, 2), down: n(o.down, 2), spouse: o.spouse !== false, sib: !!o.sib, labels: o.labels !== false, floor: o.floor !== false, spin: !!o.spin };
+    return { up: n(o.up, 2), down: n(o.down, 2), spouse: o.spouse !== false, sib: !!o.sib, ext: !!o.ext, labels: o.labels !== false, floor: o.floor !== false, spin: !!o.spin };
   })()
 };
 function t3Save() { lsSet("st.t3opt", JSON.stringify(T3.opt)); }
@@ -9565,8 +9610,9 @@ function t3Build() {
   const center = add(c, 0, "focus", 0, 0, 0);
   const link = (a, b, kind) => { if (byId.has(a) && byId.has(b)) links.push({ a, b, kind }); };
   // Vorfahren: Ahnentafel-Position bestimmt den Winkel
+  const UPG = Math.max(o.up, o.ext ? 1 : 0);
   const up = (id, g, lo, hi) => {
-    if (g >= o.up) return;
+    if (g >= UPG) return;
     const par = GED.parentsOf(db, id); if (!par) return;
     const mid = (lo + hi) / 2;
     [[par.father || par.husb, lo, mid], [par.mother || par.wife, mid, hi]].forEach(([pid, a0, a1]) => {
@@ -9603,6 +9649,30 @@ function t3Build() {
     const sibs = fam ? fam.children.filter(x => x !== c) : [];
     sibs.forEach((s, i) => { const a = Math.PI / 2 + (i - (sibs.length - 1) / 2) * 0.5, [x, z] = [Math.cos(a) * 95, Math.sin(a) * 95]; if (add(s, 0, "sib", x, 0, z)) { for (const pid of [par.father || par.husb, par.mother || par.wife]) if (pid) link(pid, s, "kid"); } });
   }
+  if (o.ext) {
+    const fs = famSystem(db, c);
+    if (fs) {
+      fs.stepP.forEach((sp) => {
+        const pn = byId.get(sp.of); if (!pn) return;
+        const a = Math.atan2(pn.z, pn.x), t = [-Math.sin(a), Math.cos(a)];
+        const nd = add(sp.id, pn.gen, "step", pn.x + t[0] * 52, pn.y, pn.z + t[1] * 52);
+        if (nd) { nd.rel = (nd.sex === "F" ? "Stiefmutter" : nd.sex === "M" ? "Stiefvater" : "Stiefelternteil") + ", Partner/in von " + pname(sp.of); link(sp.of, sp.id, "marr"); }
+      });
+      fs.half.forEach((h, i, arr) => {
+        const a = Math.PI / 2 + 1.1 + (i - (arr.length - 1) / 2) * 0.45 + (arr.length > 1 ? 0 : 0.0), x = Math.cos(a) * 135, z = Math.sin(a) * 135;
+        const nd = add(h.id, 0, "half", x, 0, z);
+        if (nd) { nd.rel = "Halbgeschwister, über " + pname(h.via) + (h.other ? " und " + pname(h.other) : ""); link(h.via, h.id, "kid"); if (h.other && byId.has(h.other)) link(h.other, h.id, "kid"); }
+      });
+      const per = new Map();
+      fs.stepS.forEach((s) => {
+        const sn = byId.get(s.via); if (!sn) return;
+        const k = per.get(s.via) || 0; per.set(s.via, k + 1);
+        const a = Math.atan2(sn.z, sn.x), t = [-Math.sin(a), Math.cos(a)], off = (k - 0.5) * 52;
+        const nd = add(s.id, 0, "stepsib", sn.x * 1.12 + t[0] * off, GAP * 0.0 + 40, sn.z * 1.12 + t[1] * off);
+        if (nd) { nd.rel = "Stiefgeschwister, Kind von " + pname(s.via); link(s.via, s.id, "kid"); }
+      });
+    }
+  }
   T3.nodes = nodes; T3.links = links; T3.byId = byId; T3.center = c;
   T3.ext = Math.max(250, ...nodes.map(n => Math.hypot(n.x, n.z)), ...nodes.map(n => Math.abs(n.y)));
   if (T3.sel && !byId.has(T3.sel)) T3.sel = "";
@@ -9617,6 +9687,7 @@ function t3Html() {
       <label>Nachkommen-Generationen <select id="t3down">${opts(o.down)}</select></label>
       <label class="t3ck"><input type="checkbox" id="t3sp"${o.spouse ? " checked" : ""}> Partner</label>
       <label class="t3ck"><input type="checkbox" id="t3sib"${o.sib ? " checked" : ""}> Geschwister</label>
+      <label class="t3ck" title="Halbgeschwister, Stiefeltern und Stiefgeschwister der Mitte zeigen"><input type="checkbox" id="t3ext"${o.ext ? " checked" : ""}> Halb- und Stiefverwandte</label>
       <label class="t3ck"><input type="checkbox" id="t3lab"${o.labels ? " checked" : ""}> Beschriftung</label>
       <label class="t3ck"><input type="checkbox" id="t3floor"${o.floor ? " checked" : ""}> Boden</label>
       <label class="t3ck"><input type="checkbox" id="t3spin"${o.spin ? " checked" : ""}> Drehen</label>
@@ -9634,7 +9705,7 @@ function t3Info() {
   if (!n) { box.innerHTML = `<span class="hint">Eine Person anklicken, um Einzelheiten zu sehen.</span>`; return; }
   const p = GED.personInfo(S.db, n.id), pl = (e) => e ? E([e.date.raw, shortPlace(e.place)].filter(Boolean).join(", ")) : "";
   box.innerHTML = `<div class="t3card"><b>${E(n.label)}</b> <span class="hint">${lifeHtml(S.db, n.id)}</span>
-    <div class="hint">${p.birt ? "geboren " + pl(p.birt) : ""}${p.deat ? " · gestorben " + pl(p.deat) : ""}</div>
+    ${n.rel ? `<div class="hint">${E(n.rel)}</div>` : ""}<div class="hint">${p.birt ? "geboren " + pl(p.birt) : ""}${p.deat ? " · gestorben " + pl(p.deat) : ""}</div>
     <div class="t3btns">${n.id !== T3.center ? `<button class="btn sm" id="t3mid">Zur Mitte machen</button>` : ""}<button class="btn sm" id="t3open">Familienblatt öffnen</button></div></div>`;
   const m = $("t3mid"); if (m) m.onclick = () => { go(n.id); };
   $("t3open").onclick = () => { S.view = "card"; go(n.id); };
@@ -9683,7 +9754,7 @@ function t3Draw() {
     c.globalAlpha = 1 - 0.5 * it.t;
     const gr = c.createRadialGradient(it.x - r * 0.35, it.y - r * 0.35, r * 0.1, it.x, it.y, r * 1.05); gr.addColorStop(0, "#ffffff"); gr.addColorStop(0.25, col); gr.addColorStop(1, n.kind === "anc" ? "#2c5a2f" : n.kind === "desc" ? "#6b5410" : "#34383f");
     c.beginPath(); c.arc(it.x, it.y, Math.max(3, r), 0, 6.2832); c.fillStyle = gr; c.fill();
-    c.lineWidth = n.kind === "focus" ? 3 : 1.5; c.strokeStyle = n.kind === "focus" ? "#ffd166" : col; c.stroke();
+    c.lineWidth = n.kind === "focus" ? 3 : 1.5; c.strokeStyle = n.kind === "focus" ? "#ffd166" : n.kind === "half" ? "#4fd1a5" : n.kind === "step" || n.kind === "stepsib" ? "#c08cf0" : col; if (n.kind === "half" || n.kind === "step" || n.kind === "stepsib") c.lineWidth = 3; c.stroke();
     if (n.id === T3.sel || n.id === T3.hover) { c.globalAlpha = 1; c.lineWidth = 2.5; c.strokeStyle = "#fff"; c.beginPath(); c.arc(it.x, it.y, Math.max(3, r) + 4, 0, 6.2832); c.stroke(); }
     hits.push({ id: n.id, x: it.x, y: it.y, r: Math.max(7, r) });
     if (T3.opt.labels) labs.push({ n, x: it.x + Math.max(3, r) + 5, y: it.y, z: it.z, a: 1 - 0.45 * it.t, pri: n.id === T3.sel || n.id === T3.hover ? 100 : n.kind === "focus" ? 50 : 10 - Math.abs(n.gen), fs: Math.max(10, Math.min(15, 12 * s * (900 / cam.dist) + 3)) });
@@ -9704,7 +9775,7 @@ function t3Draw() {
 function t3At(x, y) { for (let i = T3.hits.length - 1; i >= 0; i--) { const h = T3.hits[i]; if (Math.hypot(x - h.x, y - h.y) <= h.r + 3) return h.id; } return ""; }
 function t3Refresh(rebuild) {
   if (rebuild) t3Build();
-  const k = $("t3count"); if (k) k.textContent = `${T3.nodes.length} Personen sichtbar` + (T3.cut ? " (gekürzt, bitte weniger Generationen wählen)" : "");
+  const k = $("t3count"); if (k) k.textContent = `${T3.nodes.length} Personen sichtbar` + (T3.opt.ext ? ". Grün umrandet: Halbgeschwister, violett: Stiefeltern und Stiefgeschwister" : "") + (T3.cut ? " (gekürzt, bitte weniger Generationen wählen)" : "");
   t3Info(); t3Kick();
 }
 function t3Mount() {
@@ -9734,7 +9805,7 @@ function t3Mount() {
   const num = (id, key) => { $(id).onchange = (e) => { T3.opt[key] = +e.target.value; t3Save(); t3Refresh(true); t3Reset(); }; };
   num("t3up", "up"); num("t3down", "down");
   const ck = (id, key, rebuild) => { $(id).onchange = (e) => { T3.opt[key] = e.target.checked; t3Save(); t3Refresh(rebuild); }; };
-  ck("t3sp", "spouse", true); ck("t3sib", "sib", true); ck("t3lab", "labels", false); ck("t3floor", "floor", false); ck("t3spin", "spin", false);
+  ck("t3sp", "spouse", true); ck("t3sib", "sib", true); ck("t3ext", "ext", true); ck("t3lab", "labels", false); ck("t3floor", "floor", false); ck("t3spin", "spin", false);
   $("t3full").onclick = () => t3Full(!T3.full);
   cv.style.cursor = "grab"; cv.style.touchAction = "none";
 }

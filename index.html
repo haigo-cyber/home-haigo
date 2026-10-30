@@ -3686,7 +3686,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v275";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v276";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -4428,6 +4428,12 @@ function tpOccOpen(itemId, key){
     }
     todoBtn();
   };
+  const pk = $("modalBg").querySelector("[data-kid]") ? $("modalBg").querySelector("[data-kid]").parentElement : null;
+  if(pk) pk.onclick = e=>{
+    const d = e.target.closest("[data-tp]"); if(!d) return;
+    if(d.dataset.tp==="kdone") tpKidDone(d.dataset.nid, ()=>{ const tmp = document.createElement("div"); tmp.innerHTML = tpPlanKidsHtml(it.occ[key]||o); if(tmp.firstElementChild) pk.innerHTML = tmp.firstElementChild.innerHTML; });
+    else if(d.dataset.tp==="kedit"){ store(); $("modalBg").remove(); tpKidEdit(d.dataset.nid); }
+  };
   $("tpo_plan").onclick = ()=>{ store(); $("modalBg").remove(); tpPlanOpen(itemId, key); };
   $("tpo_skip").onclick = ()=>{
     if(!confirm("Diesen Tag ausfallen lassen? Die Wocheneinträge bleiben gespeichert.")) return;
@@ -4859,6 +4865,8 @@ function tpAct(a, el){
   else if(a==="padd"){ tpAddFromPool(el.dataset.k, el.dataset.r); }
   else if(a==="badd"){ if(!tp.unlock){ tpLockHint(); return; } const it = tp.data.items.find(x=>x.id===el.dataset.r); if(it) tpJobPlace(it, null); }
   else if(a==="report"){ tpReportOpen(); }
+  else if(a==="kdone"){ tpKidDone(el.dataset.nid); }
+  else if(a==="kedit"){ tpKidEdit(el.dataset.nid); }
   else if(a==="lplan"){ const r = el.closest("[data-lk]"); if(r){ const [iid, key] = r.dataset.lk.split("|"); tpPlanOpen(iid, key); } }
   else if(a==="lopen"){ const r = el.closest("[data-lk]"); if(r){ const [iid, key] = r.dataset.lk.split("|"); tpOccOpen(iid, key); } }
   else if(a==="bgo"){
@@ -4951,7 +4959,7 @@ function tpClick(e){
   }
   if(!tp.unlock){
     const a0 = e.target.closest && e.target.closest("[data-tp]");
-    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report","school","kcal","ksync","drift","driftno","hist","unhide","lplan"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
+    if(a0 && ["prev","next","today","set","hd","retry","more","lopen","report","school","kcal","ksync","drift","driftno","hist","unhide","lplan","kdone","kedit"].includes(a0.dataset.tp)) tpAct(a0.dataset.tp, a0);
     else if(e.target.closest && e.target.closest(".tp-b,#tp_track,.tp-pool")) tpLockHint();
     return;
   }
@@ -10805,7 +10813,20 @@ function tpPlanKidsHtml(o){            // Kinder des Planungs-Eintrags einer Stu
   if(!o || !o.planNode || typeof wsLoaded==="undefined" || !wsLoaded) return "";
   const hit = wsFindNodeAnyDoc(o.planNode); if(!hit || hit.head) return "";
   const kids = hit.node.children || []; if(!kids.length) return "";
-  return `<div style="margin-top:5px;font-size:calc(13px*var(--f,1));line-height:1.45">${kids.map(k=>`<div style="${k.done?"opacity:.6;text-decoration:line-through":""}">${k.link?(k.link.kind==="goal"?"🎯":"☑"):"•"} ${esc((wsTitleOf(k)||"").slice(0,80))}${wsLinkDay(k)?` <span class="muted">${esc(wsShortDate(wsLinkDay(k)))}</span>`:""}${k.done?" ✓":""}</div>`).join("")}</div>`;
+  return `<div style="margin-top:5px;font-size:calc(13px*var(--f,1));line-height:1.45">${kids.map(k=>`<div data-kid="${esc(k.id)}" style="display:flex;gap:8px;align-items:center;padding:3px 0"><span data-tp="kdone" data-nid="${esc(k.id)}" role="checkbox" aria-checked="${k.done?"true":"false"}" title="Als erledigt markieren" style="flex:0 0 auto;width:22px;height:22px;border:1.5px solid var(--muted);border-radius:6px;text-align:center;line-height:20px;cursor:pointer;${k.done?"background:var(--accent,#3b82f6);color:#fff;border-color:transparent":""}">${k.done?"✓":""}</span><span data-tp="kedit" data-nid="${esc(k.id)}" title="Bearbeiten" style="flex:1;min-width:0;cursor:pointer;${k.done?"opacity:.6;text-decoration:line-through":""}">${k.link?(k.link.kind==="goal"?"🎯":"☑"):"•"} ${esc((wsTitleOf(k)||"").slice(0,80))}${wsLinkDay(k)?` <span class="muted">${esc(wsShortDate(wsLinkDay(k)))}</span>`:""}</span></div>`).join("")}</div>`;
+}
+function tpKidDone(nid, after){
+  const hit = wsFindNodeAnyDoc(nid); if(!hit || hit.head) return;
+  const doc = hit.doc, n = hit.node;
+  wsGuardDone(doc, n, ()=>{
+    n.done = !n.done; if(n.done) wsFocusDrop(doc, n.id); wsTouch(doc);
+    if(n.link) wsLinkRun(()=>wsPushDone(doc, n));
+    if(after) after(); else render();
+  });
+}
+function tpKidEdit(nid){
+  const hit = wsFindNodeAnyDoc(nid); if(!hit || hit.head) return;
+  wsOpenLinkMenu(hit.doc.id, nid);
 }
 function tpPlanOpen(itemId, key){            // Stunde: Eintrag im Arbeitsbereich (Auto-Eingang) anlegen und Kinder dazu verwalten
   if(typeof wsLoaded==="undefined" || !wsLoaded){ toast("Arbeitsbereich noch nicht geladen"); return; }

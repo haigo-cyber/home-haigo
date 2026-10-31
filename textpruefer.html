@@ -94,6 +94,7 @@ footer{padding:4px 16px 24px;color:var(--mut);font-size:.88rem;max-width:1600px;
   <label><input type="checkbox" id="latexSrc"> Text ist LaTeX-Quelltext</label>
   <input type="text" id="ctx" class="grow" placeholder="Zusatzhinweis, z. B. Mathematik Klasse 5, einfache Sprache" aria-label="Zusatzhinweis für die Prüfung">
   <button class="primary" id="btnCheck">Prüfen</button>
+  <button id="btnPure" title="Kopiert den aktuellen Text ohne Überschriften direkt in die Zwischenablage">Reinen Text kopieren</button>
   <button id="btnBatch">Batch-Ausgabe Text</button>
   <button id="btnTex">Ausgabe LaTeX</button>
 </div>
@@ -169,7 +170,7 @@ footer{padding:4px 16px 24px;color:var(--mut);font-size:.88rem;max-width:1600px;
     <label><input type="radio" name="fmt" value="latex"> Ausgabe LaTeX-Code</label>
   </div>
   <div class="row" id="optBatch">
-    <label><input type="checkbox" id="oProto" checked> Änderungsprotokoll anhängen</label>
+    <label><input type="checkbox" id="oProto"> Änderungsprotokoll anhängen</label>
     <label><input type="checkbox" id="oOpen"> Noch offene Hinweise anhängen</label>
   </div>
   <div class="row" id="optLatex" hidden>
@@ -636,6 +637,7 @@ function recordList() {
   return state.findings.map((f, i) => ({ nr: i + 1, f }));
 }
 function buildBatch(o) {
+  if (!o.proto && !o.open) return state.text;
   const parts = ['ÜBERARBEITETER TEXT\n' + '='.repeat(20) + '\n' + state.text];
   if (o.proto) {
     const acc = state.findings.filter(f => f.status === 'uebernommen');
@@ -690,7 +692,7 @@ function refreshExport() {
   $('#optBatch').hidden = fmt !== 'batch';
   $('#optLatex').hidden = fmt !== 'latex';
   $('#expHint').textContent = fmt === 'batch'
-    ? 'Der überarbeitete Text enthält alle bisher übernommenen Änderungen. Offene Hinweise sind nicht eingearbeitet.'
+    ? 'Ohne Zusatzoptionen ist die Ausgabe der reine überarbeitete Text, ohne Überschriften, zum direkten Einfügen. Er enthält alle bisher übernommenen Änderungen, offene Hinweise sind nicht eingearbeitet.'
     : (settings.latex
       ? 'Der Text ist als LaTeX-Quelltext markiert und wird unverändert übernommen. Der Korrekturbericht benötigt das Paket longtable.'
       : 'Sonderzeichen werden für LaTeX maskiert, gerade Anführungszeichen paarweise in „…“ umgewandelt, Leerzeilen werden zu Absätzen. Bei ungewöhnlichen Unicode-Zeichen LuaLaTeX oder XeLaTeX verwenden.');
@@ -703,6 +705,17 @@ function openExport(fmt) {
   document.querySelector('input[name=fmt][value=' + (fmt || 'batch') + ']').checked = true;
   refreshExport();
   $('#exp').showModal();
+}
+async function copyPure() {
+  syncTextFromEditor();
+  if (!state.text.trim()) { setMsg('Es gibt noch keinen Text zum Kopieren.', 'warn'); return; }
+  try { await navigator.clipboard.writeText(state.text); }
+  catch (e) {
+    const ta = h('textarea', { style: 'position:fixed;opacity:0' }); ta.value = state.text;
+    document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  const open = state.findings.filter(f => f.status === 'offen').length;
+  setMsg('Reiner Text kopiert (' + state.text.length + ' Zeichen).' + (open ? ' Noch ' + open + ' offene Hinweise sind nicht eingearbeitet.' : ''), open ? 'warn' : 'ok');
 }
 async function copyOut() {
   const t = $('#out').value;
@@ -747,6 +760,7 @@ function init() {
     init.t = setTimeout(() => { state.locs = computeLocations(); renderSidebar(); }, 400);
   });
   $('#btnCheck').onclick = runCheck;
+  $('#btnPure').onclick = copyPure;
   $('#btnBatch').onclick = () => openExport('batch');
   $('#btnTex').onclick = () => openExport('latex');
   $('#btnEdit').onclick = () => setMode('edit');

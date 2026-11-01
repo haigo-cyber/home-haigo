@@ -776,6 +776,7 @@ input,textarea{color:var(--ink)}
 .t3root.full .thead{display:none}
 body.t3fs{overflow:hidden}
 .sysp .xc{cursor:pointer}.sysp .xc.M{background:var(--mas);border:1px solid var(--mas-line);border-radius:6px}.sysp .xc.F{background:var(--fem);border:1px solid var(--fem-line);border-radius:6px}.sysp .xc b{font:600 12.5px var(--serif)}.sysp .xc span{color:var(--muted);font-size:11px}
+.xc.u.add,.par .miss{cursor:pointer}.xc.u.add:hover{outline:2px dashed var(--accent,#3a6ea5)}.par .miss{text-decoration:underline dotted}
 
 </style>
 </head>
@@ -1779,7 +1780,7 @@ function personBlock(id, famId, ctx, fallbackRole) {
   h += `<h3><button data-act="go" data-id="${id}"${famId ? ` data-fam="${famId}"` : ""}>${E(GED.displayName(p.rec))}</button>${mark(ctx, GED.kid(p.rec, "NAME") ? GED.kidsOf(GED.kid(p.rec, "NAME"), "SOUR") : [])}</h3>`;
   h += `<div class="sub"><span>${sexSym(p.sex)} ${lifeHtml(db, id)}${E(ageSub(db, id))}</span>${qTotal(db, id)}${relTag(id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
   if (par) {
-    const miss = (role, label) => S.viewer ? "unbekannt" : `unbekannt <button class="btn sm" data-act="parentAdd" data-id="${id}" data-fam="${par.fam}" data-role="${role}" title="${label} wählen oder neu anlegen">${label} eintragen</button>`;
+    const miss = (role, label) => S.viewer ? "unbekannt" : `<span class="miss" data-miss="${role}" data-child="${id}" data-fam="${par.fam}" title="Doppelklick: ${label} eintragen">unbekannt</span> <button class="btn sm" data-act="parentAdd" data-id="${id}" data-fam="${par.fam}" data-role="${role}" title="${label} wählen oder neu anlegen">${label} eintragen</button>`;
     h += `<div class="par">Eltern: ${par.father ? nameBtn(par.father, par.fam) : miss("HUSB", "Vater")} und ${par.mother ? nameBtn(par.mother, par.fam) : miss("WIFE", "Mutter")}</div>`;
   } else {
     h += `<div class="par"><button data-act="addParents" data-id="${id}">Eltern hinzufügen</button></div>`;
@@ -2113,7 +2114,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "01.11.2026 21:08"; /* BUILD_ID=01.11.2026 21:08 */
+const BUILD = "01.11.2026 21:21"; /* BUILD_ID=01.11.2026 21:21 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -2923,13 +2924,17 @@ ACT.addParents = (d) => {
 
 /* Fehlenden Elternteil in der vorhandenen Eltern-Familie ergänzen: bestehende Person wählen oder neu anlegen */
 ACT.parentAdd = (d) => {
-  const db = S.db, role = d.role, famId = d.fam, child = d.id;
-  const f = GED.famInfo(db, famId); if (!f) return;
-  const isF = role === "HUSB";
-  const other = isF ? f.wife : f.husb;
-  const newOne = () => newPersonDlg({ title: isF ? "Vater neu anlegen" : "Mutter neu anlegen", sex: isF ? "M" : "F", surn: isF ? GED.personInfo(db, child).name.surn : "", onOk: (data) => { GED.run(db, isF ? "Vater angelegt" : "Mutter angelegt", tx => { const q = createPerson(tx, data); GED.setSpouse(tx, famId, role, q.xref); }); afterEdit(isF ? "Vater angelegt" : "Mutter angelegt"); } });
-  pickPerson({ title: isF ? "Vater wählen" : "Mutter wählen", exclude: [child, other].filter(Boolean), newLabel: isF ? "Vater neu anlegen" : "Mutter neu anlegen", onNew: newOne, onPick: (pid) => { GED.run(db, "Elternteil gesetzt", tx => GED.setSpouse(tx, famId, role, pid)); afterEdit("Elternteil gesetzt"); } });
+  const db = S.db, role = d.role, child = d.id || d.child, famId = d.fam || "";
+  const f = famId ? GED.famInfo(db, famId) : null;
+  if (!GED.personInfo(db, child)) return;
+  const isF = role === "HUSB", other = f ? (isF ? f.wife : f.husb) : null;
+  const nm = isF ? "Vater" : "Mutter";
+  // Mit vorhandener Eltern-Familie: Person dort eintragen. Ohne: neue Familie mit diesem einen Elternteil anlegen.
+  const put = (tx, pid) => { if (f) GED.setSpouse(tx, famId, role, pid); else { const fam = GED.addFamily(tx, isF ? pid : null, isF ? null : pid); GED.addChild(tx, fam.xref, child); } };
+  const newOne = () => newPersonDlg({ title: nm + " neu anlegen", sex: isF ? "M" : "F", surn: isF ? GED.personInfo(db, child).name.surn : "", onOk: (data) => { GED.run(db, nm + " angelegt", tx => { const q = createPerson(tx, data); put(tx, q.xref); }); afterEdit(nm + " angelegt"); } });
+  pickPerson({ title: nm + " wählen", exclude: [child, other].filter(Boolean), newLabel: nm + " neu anlegen", onNew: newOne, onPick: (pid) => { GED.run(db, "Elternteil gesetzt", tx => put(tx, pid)); afterEdit("Elternteil gesetzt"); } });
 };
+ACT.parentAddDbl = (d) => ACT.parentAdd({ id: d.child, role: d.miss, fam: d.fam });
 
 /* ---------- Person löschen ---------- */
 async function deletePersonFlow(id) {
@@ -7221,8 +7226,11 @@ function lifeHtml(db, id) {
 }
 /* ---------- Erweitertes Familienblatt ---------- */
 const EXT = { on: lsGet("st.ext2", "1") === "1" };
-function xCard(id, sex, role) {
-  if (!id || !GED.personInfo(S.db, id)) return `<span class="xc u" title="${E(role)}">${E(role)} unbekannt</span>`;
+function xCard(id, sex, role, miss) {
+  if (!id || !GED.personInfo(S.db, id)) {
+    const can = miss && miss.child && !S.viewer && GED.personInfo(S.db, miss.child);
+    return can ? `<span class="xc u add" data-miss="${miss.role}" data-child="${miss.child}" data-fam="${miss.fam || ""}" title="Doppelklick: ${E(role)} eintragen">${E(role)} unbekannt</span>` : `<span class="xc u" title="${E(role)}">${E(role)} unbekannt</span>`;
+  }
   const p = GED.personInfo(S.db, id), ls = lifeHtml(S.db, id), ag = personAge(S.db, id);
   return `<button class="xc ${sex}${sideCls(id)}" data-act="go" data-id="${id}" title="${E(role + ": " + GED.displayName(p.rec))}"><b>${E(GED.displayName(p.rec))}</b><span>${ls}${ag && ag.kind === "death" ? " · " + E(ageWord(ag.r, true)) : ""}</span></button>`;
 }
@@ -7232,8 +7240,8 @@ function xSide(id) {
   const par = GED.parentsOf(db, id), fa = par && par.father, mo = par && par.mother;
   const pf = fa ? GED.parentsOf(db, fa) : null, pm = mo ? GED.parentsOf(db, mo) : null;
   return `<div class="xs"><div class="xh">Eltern und Großeltern von <b>${E(GED.displayName(p.rec))}</b></div>
-    <div class="xg">${xCard(pf && pf.father, "M", "Großvater")}${xCard(pf && pf.mother, "F", "Großmutter")}${xCard(pm && pm.father, "M", "Großvater")}${xCard(pm && pm.mother, "F", "Großmutter")}</div>
-    <div class="xg xp"><div>${xCard(fa, "M", "Vater")}</div><div>${xCard(mo, "F", "Mutter")}</div></div></div>`;
+    <div class="xg">${xCard(pf && pf.father, "M", "Großvater", fa && { child: fa, role: "HUSB", fam: pf && pf.fam })}${xCard(pf && pf.mother, "F", "Großmutter", fa && { child: fa, role: "WIFE", fam: pf && pf.fam })}${xCard(pm && pm.father, "M", "Großvater", mo && { child: mo, role: "HUSB", fam: pm && pm.fam })}${xCard(pm && pm.mother, "F", "Großmutter", mo && { child: mo, role: "WIFE", fam: pm && pm.fam })}</div>
+    <div class="xg xp"><div>${xCard(fa, "M", "Vater", { child: id, role: "HUSB", fam: par && par.fam })}</div><div>${xCard(mo, "F", "Mutter", { child: id, role: "WIFE", fam: par && par.fam })}</div></div></div>`;
 }
 function extHtml(f, pid) {
   if (!EXT.on) return "";
@@ -7720,6 +7728,12 @@ document.addEventListener("click", (e) => {
   const blocked = t.closest("input, textarea, select, label, .ar, .parrows, .treebar, .splbar, .rz, #info .ihead, .abc, .tabs, .top, .t3wrap") || (!id && t.closest("button, a, [data-act], summary"));
   const now = e.timeStamp;   // Zeitpunkt des Klicks selbst, nicht der Verarbeitung (ein langsamer Neuaufbau verzögert diese)
   const dbl = LASTCLK.t && now - LASTCLK.t < 600 && Math.abs(e.clientX - LASTCLK.x) < 10 && Math.abs(e.clientY - LASTCLK.y) < 10;
+  const mt = t.closest && t.closest("[data-miss]");
+  if (dbl && mt && !S.viewer && !t.closest(".ovl")) {   // Doppelklick auf einen fehlenden Elternteil: eintragen
+    LASTCLK.t = 0; e.stopPropagation(); e.preventDefault();
+    ACT.parentAddDbl({ child: mt.dataset.child, miss: mt.dataset.miss, fam: mt.dataset.fam });
+    return;
+  }
   if (dbl && area && !blocked && !S.viewer) {
     const target = LASTCLK.id || id || (t.closest("#content") ? S.pid : null);
     LASTCLK.t = 0;
@@ -7737,6 +7751,7 @@ document.addEventListener("dblclick", (e) => {
   if (!S.db || S.viewer || document.querySelector(".ovl")) return;
   const t = e.target;
   if (!t.closest("#content, #plist, #info") || t.closest("input, textarea, select, label, .ar, .parrows, .treebar, .splbar, .rz, #info .ihead, .abc, .tabs, .top, .t3wrap")) return;
+  if (t.closest("[data-miss]")) return;
   if (!personIdOf(t) && t.closest("button, a, [data-act], summary")) return;
   const id = personIdOf(t) || LASTCLK.id || (t.closest("#content") ? S.pid : null);
   if (id) dblOpen(id, t);

@@ -76,6 +76,12 @@ dialog{border:1px solid var(--bd);border-radius:12px;background:var(--card);colo
 dialog::backdrop{background:rgba(0,0,0,.5)}
 dialog textarea{width:100%;min-height:300px;font:14px/1.45 ui-monospace,Menlo,Consolas,monospace;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg)}
 .row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:8px 0}
+#micBar{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--bd);font-size:.92rem;color:var(--mut)}
+#micBar .dot{width:10px;height:10px;border-radius:50%;background:var(--bd);display:inline-block;margin-right:6px}
+#micBar.rec{color:var(--fg)}
+#micBar.rec .dot{background:#d32f2f;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){#micBar.rec .dot{animation:none}}
 footer{padding:4px 16px 24px;color:var(--mut);font-size:.88rem;max-width:1600px;margin:0 auto}
 @media(max-width:980px){.wrap{grid-template-columns:1fr}#side{position:static;max-height:none}#list{max-height:70vh}}
 </style>
@@ -116,10 +122,13 @@ footer{padding:4px 16px 24px;color:var(--mut);font-size:.88rem;max-width:1600px;
       <div class="row" style="margin:0">
         <button class="small" id="btnEdit" aria-pressed="true">Bearbeiten</button>
         <button class="small" id="btnView" aria-pressed="false">Prüfansicht</button>
+        <button class="small" id="btnMic" aria-pressed="false">Einsprechen</button>
         <button class="small" id="btnSample">Beispieltext</button>
         <button class="small" id="btnClear">Leeren</button>
       </div>
     </div>
+    <div id="micBar"><span><span class="dot" aria-hidden="true"></span><span id="micText">Spracheingabe bereit</span></span>
+      <label><input type="checkbox" id="micCmd" autocomplete="off"> Satzzeichen per Sprachbefehl (Punkt, Komma, Fragezeichen, neuer Absatz)</label></div>
     <textarea id="ed" spellcheck="false" placeholder="Text hier einfügen oder eintippen …" aria-label="Text zum Prüfen"></textarea>
     <div id="review" aria-label="Text mit markierten Hinweisen"></div>
   </section>
@@ -140,7 +149,7 @@ footer{padding:4px 16px 24px;color:var(--mut);font-size:.88rem;max-width:1600px;
   </aside>
 </div>
 
-<footer>Der Text geht zur Prüfung in den Chat, den du dafür benutzt. Das gilt auch bei der Datenschutzprüfung: Stehen Klarnamen oder andere personenbezogene Daten im Text, gehen sie mit. Die Hinweise sind Vorschläge der KI und können falsch sein; jede Änderung wird erst nach deinem Klick übernommen.</footer>
+<footer>Der Text geht zur Prüfung in den Chat, den du dafür benutzt. Beim Einsprechen verarbeitet der Browser-Anbieter die Aufnahme (bei Chrome Google). Das gilt auch bei der Datenschutzprüfung: Stehen Klarnamen oder andere personenbezogene Daten im Text, gehen sie mit. Die Hinweise sind Vorschläge der KI und können falsch sein; jede Änderung wird erst nach deinem Klick übernommen.</footer>
 
 <dialog id="man" aria-labelledby="manTitle">
   <h2 id="manTitle" style="margin-top:0">Manuelle Prüfung mit Claude oder Gemini</h2>
@@ -166,18 +175,18 @@ footer{padding:4px 16px 24px;color:var(--mut);font-size:.88rem;max-width:1600px;
 <dialog id="exp" aria-labelledby="expTitle">
   <h2 id="expTitle" style="margin-top:0">Ausgabe</h2>
   <div class="row">
-    <label><input type="radio" name="fmt" value="batch" checked> Batch-Ausgabe Text (Gesamttext auf einmal)</label>
-    <label><input type="radio" name="fmt" value="latex"> Ausgabe LaTeX-Code</label>
+    <label><input type="radio" name="fmt" value="batch" autocomplete="off" checked> Batch-Ausgabe Text (Gesamttext auf einmal)</label>
+    <label><input type="radio" name="fmt" value="latex" autocomplete="off"> Ausgabe LaTeX-Code</label>
   </div>
   <div class="row" id="optBatch">
-    <label><input type="checkbox" id="oProto"> Änderungsprotokoll anhängen</label>
-    <label><input type="checkbox" id="oOpen"> Noch offene Hinweise anhängen</label>
+    <label><input type="checkbox" id="oProto" autocomplete="off"> Änderungsprotokoll anhängen</label>
+    <label><input type="checkbox" id="oOpen" autocomplete="off"> Noch offene Hinweise anhängen</label>
   </div>
   <div class="row" id="optLatex" hidden>
     <label>Umfang
       <select id="oScope"><option value="full">Vollständiges Dokument</option><option value="body">Nur Textkörper</option></select>
     </label>
-    <label><input type="checkbox" id="oReport" checked> Korrekturbericht als Tabelle anhängen</label>
+    <label><input type="checkbox" id="oReport" autocomplete="off" checked> Korrekturbericht als Tabelle anhängen</label>
   </div>
   <p class="hint" id="expHint"></p>
   <textarea id="out" readonly aria-label="Ausgabe"></textarea>
@@ -218,7 +227,7 @@ const CONF = { hoch: 'Sicherheit hoch', mittel: 'Sicherheit mittel', niedrig: 'S
 const SKEY = 'textpruefer.settings.v1', TKEY = 'textpruefer.text.v1';
 const DEFAULTS = {
   scopeRs: true, scopeGr: true, scopeSa: true, scopeCo: false, coDs: true, coUr: true, coSp: true, coRg: false,
-  rules: '', latex: false, context: ''
+  rules: '', latex: false, context: '', micCmd: true
 };
 let settings = Object.assign({}, DEFAULTS);
 function safeGet(st, k) { try { return st.getItem(k); } catch (e) { return null; } }
@@ -703,6 +712,7 @@ function refreshExport() {
 function openExport(fmt) {
   syncTextFromEditor();
   document.querySelector('input[name=fmt][value=' + (fmt || 'batch') + ']').checked = true;
+  $('#oProto').checked = false; $('#oOpen').checked = false; $('#oReport').checked = true; $('#oScope').value = 'full';
   refreshExport();
   $('#exp').showModal();
 }
@@ -730,6 +740,88 @@ function download() {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
+/* ---------- Einsprechen (Spracherkennung des Browsers) ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const mic = { rec: null, on: false, quick: 0, started: 0, inserted: 0 };
+function micStatus(t, rec) { $('#micText').textContent = t; $('#micBar').classList.toggle('rec', !!rec); }
+function dictCommands(t, useCmd) {
+  let x = String(t).trim();
+  if (useCmd) {
+    x = x.replace(/\s*\bneuer Absatz\b\s*/gi, '\n\n').replace(/\s*\bneue Zeile\b\s*/gi, '\n')
+      .replace(/\s*\bFragezeichen\b\s*/gi, '? ').replace(/\s*\bAusrufezeichen\b\s*/gi, '! ')
+      .replace(/\s*\bDoppelpunkt\b\s*/gi, ': ').replace(/\s*\bSemikolon\b\s*/gi, '; ')
+      .replace(/\s*\bKomma\b\s*/gi, ', ').replace(/\s*\bPunkt\b\s*/gi, '. ');
+    x = x.replace(/[ \t]+\n/g, '\n').replace(/ {2,}/g, ' ').replace(/[ \t]+$/, '');
+    x = x.replace(/([.?!]\s+|\n)(\p{Ll})/gu, (m, a, b) => a + b.toUpperCase());
+  }
+  return x;
+}
+function dictInsert(chunk) {
+  if (!chunk) return 0;
+  if (state.mode !== 'edit') setMode('edit');
+  const ed = $('#ed');
+  const start = ed.selectionStart == null ? ed.value.length : ed.selectionStart;
+  const end = ed.selectionEnd == null ? start : ed.selectionEnd;
+  const before = ed.value.slice(0, start);
+  let c = chunk;
+  if (before.trim() === '' || /[.!?]\s*$/.test(before) || /\n\s*$/.test(before)) c = c.charAt(0).toUpperCase() + c.slice(1);
+  if (before.length && !/\s$/.test(before) && !/^[.,;:!?\s]/.test(c)) c = ' ' + c;
+  ed.setRangeText(c, start, end, 'end');
+  ed.dispatchEvent(new Event('input'));
+  return c.length;
+}
+function micStop(msg) {
+  const was = mic.on;
+  mic.on = false;
+  try { if (mic.rec) mic.rec.stop(); } catch (e) { /* ignorieren */ }
+  $('#btnMic').textContent = 'Einsprechen'; $('#btnMic').setAttribute('aria-pressed', 'false');
+  micStatus(msg || (was && mic.inserted ? 'Eingesprochen: ' + mic.inserted + ' Zeichen eingefügt.' : 'Spracheingabe bereit'), false);
+  mic.inserted = 0;
+}
+function micStart() {
+  if (state.mode !== 'edit') setMode('edit');
+  const rec = new SR();
+  rec.lang = 'de-DE'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+  rec.onresult = ev => {
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i], t = r[0].transcript;
+      if (r.isFinal) mic.inserted += dictInsert(dictCommands(t, settings.micCmd));
+      else interim += t;
+    }
+    if (mic.on) micStatus('Aufnahme läuft … ' + (interim.trim() ? '„' + interim.trim() + '“' : 'bitte sprechen'), true);
+  };
+  rec.onerror = ev => {
+    const e = ev && ev.error;
+    if (e === 'no-speech' || e === 'aborted') return;
+    const msgs = {
+      'not-allowed': 'Der Zugriff auf das Mikrofon wurde nicht erlaubt. Bitte in der Adressleiste des Browsers freigeben.',
+      'service-not-allowed': 'Der Browser erlaubt hier keine Spracherkennung.',
+      'audio-capture': 'Es wurde kein Mikrofon gefunden.',
+      'network': 'Die Spracherkennung konnte ihren Dienst nicht erreichen. Sie braucht eine Internetverbindung.'
+    };
+    micStop(msgs[e] || 'Fehler der Spracherkennung: ' + e);
+  };
+  rec.onend = () => {
+    if (!mic.on) return;
+    mic.quick = Date.now() - mic.started < 1500 ? mic.quick + 1 : 0;
+    if (mic.quick >= 3) { micStop('Die Spracherkennung beendet sich immer wieder sofort. Bitte erneut starten.'); return; }
+    try { rec.start(); mic.started = Date.now(); } catch (e) { micStop('Die Spracherkennung konnte nicht neu gestartet werden.'); }
+  };
+  mic.rec = rec; mic.on = true; mic.quick = 0; mic.inserted = 0; mic.started = Date.now();
+  try { rec.start(); } catch (e) { micStop('Die Spracherkennung konnte nicht gestartet werden.'); return; }
+  $('#btnMic').textContent = 'Aufnahme beenden'; $('#btnMic').setAttribute('aria-pressed', 'true');
+  micStatus('Aufnahme läuft … bitte sprechen', true);
+}
+function initMic() {
+  if (!SR) {
+    $('#btnMic').disabled = true;
+    micStatus('Dieser Browser bietet keine Spracherkennung (nach meinem Wissen gehen Chrome, Edge und Safari, Firefox nicht).', false);
+    return;
+  }
+  $('#btnMic').onclick = () => (mic.on ? micStop() : micStart());
+}
+
 /* ---------- Start ---------- */
 const SAMPLE = 'Die Klasse 5c hat am Montag, dem 2. Mai, ein Mathematik-Arbeit geschrieben. Die Klasse besteht aus 26 Kindern, es waren aber 28 Kinder anwesent. Anna rechnete 12 + 15 = 28 und erklärte, das das richtig ist.\n\nAm Dienstag, dem 4. Mai, besprachen wir die Aufgaben. Der Montag davor, der 3. Mai, war ein Feiertag.';
 function bindSettings() {
@@ -738,7 +830,7 @@ function bindSettings() {
     const el = $('#' + id); el.value = settings[k];
     el.addEventListener('input', () => { settings[k] = el.value; saveSettings(); });
   }
-  const checks = { scopeRs: 'scopeRs', scopeGr: 'scopeGr', scopeSa: 'scopeSa', scopeCo: 'scopeCo', coDs: 'coDs', coUr: 'coUr', coSp: 'coSp', coRg: 'coRg', latex: 'latexSrc' };
+  const checks = { scopeRs: 'scopeRs', scopeGr: 'scopeGr', scopeSa: 'scopeSa', scopeCo: 'scopeCo', coDs: 'coDs', coUr: 'coUr', coSp: 'coSp', coRg: 'coRg', latex: 'latexSrc', micCmd: 'micCmd' };
   for (const [k, id] of Object.entries(checks)) {
     const el = $('#' + id); el.checked = !!settings[k];
     el.addEventListener('change', () => { settings[k] = el.checked; saveSettings(); updateCoBox(); });
@@ -760,6 +852,7 @@ function init() {
     init.t = setTimeout(() => { state.locs = computeLocations(); renderSidebar(); }, 400);
   });
   $('#btnCheck').onclick = runCheck;
+  initMic();
   $('#btnPure').onclick = copyPure;
   $('#btnBatch').onclick = () => openExport('batch');
   $('#btnTex').onclick = () => openExport('latex');

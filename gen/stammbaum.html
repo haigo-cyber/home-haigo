@@ -1779,7 +1779,8 @@ function personBlock(id, famId, ctx, fallbackRole) {
   h += `<h3><button data-act="go" data-id="${id}"${famId ? ` data-fam="${famId}"` : ""}>${E(GED.displayName(p.rec))}</button>${mark(ctx, GED.kid(p.rec, "NAME") ? GED.kidsOf(GED.kid(p.rec, "NAME"), "SOUR") : [])}</h3>`;
   h += `<div class="sub"><span>${sexSym(p.sex)} ${lifeHtml(db, id)}${E(ageSub(db, id))}</span>${qTotal(db, id)}${relTag(id)}${p.refn ? `<span>Nr. ${E(p.refn)}</span>` : ""}<span>${E(id.replace(/@/g, ""))}</span>${p.name.nick ? `<span>„${E(p.name.nick)}“</span>` : ""}</div>`;
   if (par) {
-    h += `<div class="par">Eltern: ${par.father ? nameBtn(par.father, par.fam) : "unbekannt"} und ${par.mother ? nameBtn(par.mother, par.fam) : "unbekannt"}</div>`;
+    const miss = (role, label) => S.viewer ? "unbekannt" : `unbekannt <button class="btn sm" data-act="parentAdd" data-id="${id}" data-fam="${par.fam}" data-role="${role}" title="${label} wählen oder neu anlegen">${label} eintragen</button>`;
+    h += `<div class="par">Eltern: ${par.father ? nameBtn(par.father, par.fam) : miss("HUSB", "Vater")} und ${par.mother ? nameBtn(par.mother, par.fam) : miss("WIFE", "Mutter")}</div>`;
   } else {
     h += `<div class="par"><button data-act="addParents" data-id="${id}">Eltern hinzufügen</button></div>`;
   }
@@ -2112,7 +2113,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "31.10.2026 22:08"; /* BUILD_ID=31.10.2026 22:08 */
+const BUILD = "01.11.2026 21:08"; /* BUILD_ID=01.11.2026 21:08 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -2918,6 +2919,16 @@ ACT.addParents = (d) => {
       }
     }
   });
+};
+
+/* Fehlenden Elternteil in der vorhandenen Eltern-Familie ergänzen: bestehende Person wählen oder neu anlegen */
+ACT.parentAdd = (d) => {
+  const db = S.db, role = d.role, famId = d.fam, child = d.id;
+  const f = GED.famInfo(db, famId); if (!f) return;
+  const isF = role === "HUSB";
+  const other = isF ? f.wife : f.husb;
+  const newOne = () => newPersonDlg({ title: isF ? "Vater neu anlegen" : "Mutter neu anlegen", sex: isF ? "M" : "F", surn: isF ? GED.personInfo(db, child).name.surn : "", onOk: (data) => { GED.run(db, isF ? "Vater angelegt" : "Mutter angelegt", tx => { const q = createPerson(tx, data); GED.setSpouse(tx, famId, role, q.xref); }); afterEdit(isF ? "Vater angelegt" : "Mutter angelegt"); } });
+  pickPerson({ title: isF ? "Vater wählen" : "Mutter wählen", exclude: [child, other].filter(Boolean), newLabel: isF ? "Vater neu anlegen" : "Mutter neu anlegen", onNew: newOne, onPick: (pid) => { GED.run(db, "Elternteil gesetzt", tx => GED.setSpouse(tx, famId, role, pid)); afterEdit("Elternteil gesetzt"); } });
 };
 
 /* ---------- Person löschen ---------- */

@@ -777,6 +777,20 @@ input,textarea{color:var(--ink)}
 body.t3fs{overflow:hidden}
 .sysp .xc{cursor:pointer}.sysp .xc.M{background:var(--mas);border:1px solid var(--mas-line);border-radius:6px}.sysp .xc.F{background:var(--fem);border:1px solid var(--fem-line);border-radius:6px}.sysp .xc b{font:600 12.5px var(--serif)}.sysp .xc span{color:var(--muted);font-size:11px}
 .xc.u.add,.par .miss{cursor:pointer}.xc.u.add:hover{outline:2px dashed var(--accent,#3a6ea5)}.par .miss{text-decoration:underline dotted}
+.mgt{width:100%;border-collapse:collapse;font-size:.92em}
+.mgt th,.mgt td{border:1px solid var(--line);padding:5px 8px;vertical-align:top;text-align:left}
+.mgt thead th{position:sticky;top:0;background:var(--bg)}
+.mgt tbody th{width:16%;font-weight:600;white-space:nowrap}
+.mgt td.ok{background:rgba(60,170,100,.14)}
+.mgt td.diff{background:rgba(230,160,40,.2)}
+.mgt td.gap{background:transparent}
+.mgh .mgn{font-size:1.05em;font-weight:700}
+.mgi{padding:1px 0}.mgi.hit{background:rgba(60,170,100,.14);border-radius:4px;padding:1px 4px}
+.mgmark{font-size:.8em;color:#2e9d5f;font-weight:600}
+.mgw{margin:0 0 8px;padding:7px 10px;border-radius:8px;background:rgba(230,160,40,.2);border:1px solid rgba(230,160,40,.5)}
+.mgw.bad{background:rgba(220,60,60,.18);border-color:rgba(220,60,60,.5)}
+.mgw.okk{background:rgba(60,170,100,.14);border-color:rgba(60,170,100,.4)}
+@media(max-width:700px){.mgt{font-size:.82em}.mgt tbody th{white-space:normal}}
 
 </style>
 </head>
@@ -1502,6 +1516,150 @@ body.t3fs{overflow:hidden}
     return n;
   }
 
+
+  /* ---------- Personen verschmelzen ---------- */
+  function nodeText(n) { const o = []; serNode(o, n, 1); return o.join("\n"); }
+  function famcOf(rec) { return rec.kids.filter(k => k.tag === "FAMC").map(k => k.val); }
+  function ancSetRaw(db, id) {
+    const seen = new Set(), todo = [id];
+    while (todo.length) {
+      const r = db.get(todo.pop()); if (!r) continue;
+      for (const fc of famcOf(r)) {
+        const f = db.get(fc); if (!f) continue;
+        for (const k of f.kids) if ((k.tag === "HUSB" || k.tag === "WIFE") && !seen.has(k.val)) { seen.add(k.val); todo.push(k.val); }
+      }
+    }
+    return seen;
+  }
+  /* liefert einen Text, wenn die beiden Personen nicht verschmolzen werden dürfen */
+  function mergeBlockers(db, keepId, dropId) {
+    if (keepId === dropId) return "Das ist dieselbe Person.";
+    const a = db.get(keepId), b = db.get(dropId);
+    if (!a || a.tag !== "INDI" || !b || b.tag !== "INDI") return "Eine der beiden Personen gibt es nicht.";
+    for (const f of db.ofTag("FAM")) {
+      const ids = f.kids.filter(k => k.tag === "HUSB" || k.tag === "WIFE").map(k => k.val);
+      if (ids.includes(keepId) && ids.includes(dropId)) return "Die beiden Personen sind miteinander verheiratet (Familie " + f.xref + "). Das können keine Dubletten sein.";
+    }
+    if (ancSetRaw(db, keepId).has(dropId) || ancSetRaw(db, dropId).has(keepId)) return "Eine der beiden Personen ist Vorfahr der anderen. Das können keine Dubletten sein.";
+    return "";
+  }
+  function replaceRef(n, from, to) { n.kids.forEach(k => { if (k.val === from) k.val = to; replaceRef(k, from, to); }); }
+  function addBeforeChan(rec, node) {
+    const ci = rec.kids.findIndex(k => k.tag === "CHAN");
+    if (ci < 0) rec.kids.push(node); else rec.kids.splice(ci, 0, node);
+  }
+  /* gleiche Knoten (nach Text) innerhalb eines Satzes nur einmal lassen; bei Zeigern nach Tag und Wert */
+  function dedupeKids(rec, tags) {
+    const seen = new Set();
+    rec.kids = rec.kids.filter(k => {
+      if (!tags.includes(k.tag)) return true;
+      const key = k.tag + "|" + (/^@/.test(k.val || "") ? k.val : nodeText(k));
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+  }
+  function unionKids(target, source, skip) {
+    const have = new Set(target.kids.map(nodeText));
+    for (const k of source.kids) {
+      if (skip.includes(k.tag)) continue;
+      const t = nodeText(k);
+      if (have.has(t)) continue;
+      have.add(t); addBeforeChan(target, k);
+    }
+  }
+  function mergeFamilies(tx, keepF, dropF) {
+    const db = tx.db;
+    tx.touch(keepF); tx.touch(dropF);
+    for (const r of db.records) {
+      if (r === dropF || r === keepF || !hasRef(r, dropF.xref)) continue;
+      tx.touch(r); replaceRef(r, dropF.xref, keepF.xref);
+      if (r.tag === "INDI") dedupeKids(r, ["FAMC", "FAMS"]);
+    }
+    for (const role of ["HUSB", "WIFE"]) {
+      if (!keepF.kids.some(k => k.tag === role)) { const n = dropF.kids.find(k => k.tag === role); if (n) { const hi = keepF.kids.findIndex(k => k.tag === "CHIL" || k.tag === "CHAN"); const nn = { tag: n.tag, val: n.val, kids: n.kids }; if (hi < 0) keepF.kids.push(nn); else keepF.kids.splice(hi, 0, nn); } }
+    }
+    for (const n of dropF.kids) if (n.tag === "CHIL" && !keepF.kids.some(k => k.tag === "CHIL" && k.val === n.val)) {
+      const idxs = keepF.kids.map((k, i) => k.tag === "CHIL" ? i : -1).filter(i => i >= 0);
+      const pos = idxs.length ? idxs[idxs.length - 1] + 1 : (keepF.kids.findIndex(k => k.tag === "CHAN") < 0 ? keepF.kids.length : keepF.kids.findIndex(k => k.tag === "CHAN"));
+      keepF.kids.splice(pos, 0, { tag: "CHIL", val: n.val, kids: n.kids });
+    }
+    unionKids(keepF, dropF, ["HUSB", "WIFE", "CHIL", "CHAN", "_UID"]);
+    dedupeKids(keepF, ["HUSB", "WIFE", "CHIL"]);
+    tx.remove(dropF);
+  }
+  /* o: { name, sex, birt, deat } je "keep" oder "drop" = Angabe der zu löschenden Person bevorzugen */
+  function mergePersons(tx, keepId, dropId, o) {
+    o = o || {};
+    const db = tx.db;
+    const bad = mergeBlockers(db, keepId, dropId); if (bad) throw new Error(bad);
+    const K = db.get(keepId), D = db.get(dropId);
+    tx.touch(K); tx.touch(D);
+    const info = { famsMerged: 0 };
+    // Namen: gewählter Hauptname zuerst, alle anderen als weitere Namen
+    const kn = K.kids.filter(k => k.tag === "NAME"), dn = D.kids.filter(k => k.tag === "NAME");
+    if (dn.length) {
+      const first = K.kids.findIndex(k => k.tag === "NAME");
+      const all = [], seen = new Set();
+      for (const n of (o.name === "drop" ? dn.concat(kn) : kn.concat(dn))) { const t = nodeText(n); if (!seen.has(t)) { seen.add(t); all.push(n); } }
+      K.kids = K.kids.filter(k => k.tag !== "NAME");
+      K.kids.splice(first < 0 ? 0 : first, 0, ...all);
+    }
+    // Geschlecht
+    const ks = K.kids.find(k => k.tag === "SEX"), ds = D.kids.find(k => k.tag === "SEX");
+    if (ds && (!ks || (o.sex === "drop" && ks.val !== ds.val))) { if (ks) ks.val = ds.val; else { const ni = K.kids.findIndex(k => k.tag === "NAME"); K.kids.splice(ni + 1, 0, { tag: "SEX", val: ds.val, kids: [] }); } }
+    // Geburt und Tod: bei Abweichung gewinnt die gewählte Angabe, die andere bleibt als eigenes Ereignis erhalten
+    const handled = new Set();
+    for (const tag of ["BIRT", "DEAT"]) {
+      const kb = K.kids.find(k => k.tag === tag), db_ = D.kids.find(k => k.tag === tag);
+      if (!db_) continue;
+      handled.add(db_);
+      if (!kb) { addBeforeChan(K, db_); continue; }
+      if (nodeText(kb) === nodeText(db_)) continue;
+      const loser = o[tag.toLowerCase()] === "drop" ? kb : db_;
+      if (loser === kb) K.kids[K.kids.indexOf(kb)] = db_;
+      const lbl = tag === "BIRT" ? "Geburt" : "Tod";
+      K.kids.splice(K.kids.findIndex(k => k.tag === "CHAN") < 0 ? K.kids.length : K.kids.findIndex(k => k.tag === "CHAN"), 0,
+        { tag: "EVEN", val: "", kids: [{ tag: "TYPE", val: lbl + " (abweichende Angabe)", kids: [] }].concat(loser.kids.filter(k => k.tag !== "TYPE")) });
+    }
+    // Rest vereinigen, was die Person nicht schon hat
+    const skip = ["NAME", "SEX", "FAMC", "FAMS", "CHAN", "_UID"];
+    const have = new Set(K.kids.map(nodeText));
+    for (const k of D.kids) {
+      if (skip.includes(k.tag) || handled.has(k)) continue;
+      const t = nodeText(k); if (have.has(t)) continue;
+      have.add(t); addBeforeChan(K, k);
+    }
+    // Verweise auf die zu löschende Person überall umbiegen
+    const famsD = D.kids.filter(k => k.tag === "FAMS").map(k => k.val), famcD = D.kids.filter(k => k.tag === "FAMC").map(k => k.val);
+    for (const r of db.records) {
+      if (r === D || r === K || !hasRef(r, dropId)) continue;
+      tx.touch(r); replaceRef(r, dropId, keepId);
+      if (r.tag === "FAM") dedupeKids(r, ["HUSB", "WIFE", "CHIL"]);
+    }
+    if (hasRef(K, dropId)) replaceRef(K, dropId, keepId);
+    K.kids = K.kids.filter(k => !(k.tag === "ASSO" && k.val === keepId));
+    famsD.forEach(f => linkPtr(tx, K, "FAMS", f));
+    famcD.forEach(f => linkPtr(tx, K, "FAMC", f));
+    dedupeKids(K, ["FAMC", "FAMS", "ASSO"]);
+    // Familien, die dadurch doppelt sind (gleiche Eltern, gleiches Ehepaar), zusammenführen
+    const groups = (ptrTag, keyOf) => {
+      const m = new Map();
+      for (const k of K.kids.filter(x => x.tag === ptrTag)) {
+        const f = db.get(k.val); if (!f || f.tag !== "FAM") continue;
+        const key = keyOf(f); if (!key) continue;
+        (m.get(key) || m.set(key, []).get(key)).push(f);
+      }
+      return Array.from(m.values()).filter(g => g.length > 1);
+    };
+    const hw = (f) => [f.kids.find(k => k.tag === "HUSB"), f.kids.find(k => k.tag === "WIFE")].map(x => x ? x.val : "");
+    for (const g of groups("FAMS", f => { const [h, w] = hw(f); const other = h === keepId ? w : w === keepId ? h : ""; return other ? "S" + other : ""; }).concat(groups("FAMC", f => { const [h, w] = hw(f); return h || w ? h + "|" + w : ""; }))) {
+      for (let i = 1; i < g.length; i++) if (db.byId.has(g[i].xref) && db.byId.has(g[0].xref)) { mergeFamilies(tx, g[0], g[i]); info.famsMerged++; }
+    }
+    dedupeKids(K, ["FAMC", "FAMS"]);
+    tx.remove(D);
+    return info;
+  }
+
   /* ---------- Prüfung ---------- */
   function check(db) {
     const issues = [];
@@ -1561,7 +1719,7 @@ body.t3fs{overflow:hidden}
     kid, kidsOf, kval, parseName, buildName, nameParts, displayName, parseDate, formatDate,
     personInfo, famInfo, parentsOf, spouseIn, lifeSpan, dateQual, startPerson, mainPerson, setMainPerson, personIndex, searchPersons, ancestors, citationIndex, noteText,
     begin, commit, rollback, run, undo, redo, setKid, addPerson, addFamily, addChild, removeChild, setSpouse, linkPtr, unlinkPtr,
-    deleteRecord, countRefs, check
+    deleteRecord, countRefs, check, mergePersons, mergeBlockers
   };
 });
 
@@ -2114,7 +2272,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "01.11.2026 21:21"; /* BUILD_ID=01.11.2026 21:21 */
+const BUILD = "01.11.2026 21:51"; /* BUILD_ID=01.11.2026 21:51 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -2717,12 +2875,13 @@ function editPerson(id, sect, host) {
         ${evEditorHtml(w, TYPES_INDI, GED.INDI_EVENTS)}${kinEditorHtml(id)}${mediaEditorHtml(w)}${notesEditorHtml(w)}
         <div class="sect"><span>Quellen der Person</span></div>${srcChips(w.srcs, "p", 0)}`;
     },
-    buttons: () => [{ id: "del", label: "Person löschen", cls: "dng" }, { id: "raw", label: "GEDCOM-Text" }, { id: "cancel", label: host ? "Zurücksetzen" : "Abbrechen" }, { id: "save", label: "Speichern", cls: "pri" }],
+    buttons: () => [{ id: "del", label: "Person löschen", cls: "dng" }, { id: "merge", label: "Verschmelzen" }, { id: "raw", label: "GEDCOM-Text" }, { id: "cancel", label: host ? "Zurücksetzen" : "Abbrechen" }, { id: "save", label: "Speichern", cls: "pri" }],
     onInput: dlgInput,
     on: Object.assign(dlgCommon(), kinHandlers(id), {
       cancel: (d) => d.close(),
       raw: async (d) => { if (d.data.changed && !(await confirmDlg({ title: "Formular verwerfen?", text: "Ungespeicherte Eingaben in diesem Fenster gehen verloren.", ok: "Verwerfen" }))) return; d.close(); rawEdit(id); },
       del: async (d) => { if (await deletePersonFlow(id)) d.close(); },
+      merge: async (d) => { if (d.data.changed && !(await confirmDlg({ title: "Formular verwerfen?", text: "Ungespeicherte Eingaben in diesem Fenster gehen verloren.", ok: "Verwerfen" }))) return; d.close(); ACT.merge({ id }); },
       save: (d) => {
         const w = d.data.w;
         try {
@@ -7627,7 +7786,7 @@ function openMenu() {
   if ($("menu")) { $("menu").remove(); return; }
   const m = document.createElement("div");
   m.className = "menu"; m.id = "menu";
-  m.innerHTML = `<button data-m="md">Neue Familienzweige per Markdown anlegen</button><button data-m="mde">Daten per Markdown ergänzen oder löschen</button><button data-m="check">Datenprüfung</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><hr><button data-m="sf">Spezifische Filter</button><button data-m="todo">Forschungsnotizen (${todoCount()} offen)</button><hr><button data-m="export">Als .ged-Datei herunterladen</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="pdf">PDF neben dem Stammbaum lesen</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><hr><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
+  m.innerHTML = `<button data-m="md">Neue Familienzweige per Markdown anlegen</button><button data-m="mde">Daten per Markdown ergänzen oder löschen</button><button data-m="check">Datenprüfung</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><button data-m="merge">Zwei Personen verschmelzen</button><hr><button data-m="sf">Spezifische Filter</button><button data-m="todo">Forschungsnotizen (${todoCount()} offen)</button><hr><button data-m="export">Als .ged-Datei herunterladen</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="pdf">PDF neben dem Stammbaum lesen</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><hr><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
   if (S.viewer) m.querySelectorAll("button[data-m]").forEach(x => { if (!["info", "todo"].includes(x.dataset.m)) x.remove(); });
   m.querySelectorAll("hr").forEach(x => { if (S.viewer) x.remove(); });
   document.body.appendChild(m);
@@ -7635,7 +7794,7 @@ function openMenu() {
   m.addEventListener("click", (e) => {
     const b = e.target.closest("[data-m]"); if (!b) return;
     m.remove(); $("btnMenu").setAttribute("aria-expanded", "false");
-    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, pdf: () => ACT.pdfMenu(), places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), todo: () => ACT.todoAll(), mde: () => ACT.mdEdit(), ahnen: () => ACT.ahnen(), sf: () => ACT.sf() })[b.dataset.m]();
+    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, pdf: () => ACT.pdfMenu(), places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), todo: () => ACT.todoAll(), mde: () => ACT.mdEdit(), ahnen: () => ACT.ahnen(), merge: () => ACT.merge({}), sf: () => ACT.sf() })[b.dataset.m]();
   });
 }
 document.addEventListener("click", (e) => { const m = $("menu"); if (m && !e.target.closest("#menu") && e.target.id !== "btnMenu") { m.remove(); $("btnMenu").setAttribute("aria-expanded", "false"); } });
@@ -9943,6 +10102,152 @@ function t3Full(on) {
 }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && T3.full) t3Full(false); });
 window.addEventListener("resize", () => { if (T3.cv && T3.cv.isConnected) { t3Resize(); t3Kick(); } });
+
+/* ============ PERSONEN VERSCHMELZEN ============ */
+/* Zwei Einträge derselben Person zusammenführen. Person A bleibt erhalten, Person B wird eingefügt und gelöscht.
+   Vorher werden Eltern, Ehepartner, Kinder, Geburt und Tod nebeneinander gezeigt. */
+function mgKey(id) {
+  const p = GED.personInfo(S.db, id); if (!p) return "";
+  return GED.fold(pname(id)) + "|" + (byear(p) || "");
+}
+function mgEv(e) {
+  if (!e) return "";
+  const d = GED.formatDate(e.date.raw), pl = e.place ? shortPlace(e.place) : "";
+  return [d, pl].filter(Boolean).join(", ") || (e.val ? e.val : "Ereignis ohne Angaben");
+}
+function mgPerLine(id) {
+  const p = GED.personInfo(S.db, id); if (!p) return "";
+  const by = byear(p), dy = dyear(p);
+  return E(pname(id)) + (by || dy ? ` <span class="hint">${by || ""}–${dy || ""}</span>` : "");
+}
+function mgInfo(id) {
+  const db = S.db, p = GED.personInfo(db, id), par = GED.parentsOf(db, id);
+  const fams = p.fams.map(fid => {
+    const f = GED.famInfo(db, fid), sp = f.husb === id ? f.wife : f.wife === id ? f.husb : (f.husb || f.wife);
+    return { fid, sp, marr: f.marr ? mgEv(f.marr) : "", kids: f.children.slice() };
+  });
+  const other = p.events.filter(e => !["BIRT", "CHR", "BAPM", "DEAT", "BURI", "CREM"].includes(e.tag));
+  return {
+    id, p, name: pname(id), sex: p.sex || "",
+    birt: mgEv(p.birt), chr: mgEv(p.chr), deat: mgEv(p.deat), buri: mgEv(p.buri),
+    father: par && par.father, mother: par && par.mother, famc: p.famc,
+    fams, kids: [].concat(...fams.map(f => f.kids)),
+    nOther: other.length, nNotes: p.rec.kids.filter(k => k.tag === "NOTE").length,
+    nSrc: p.rec.kids.filter(k => k.tag === "SOUR").length, nMedia: p.rec.kids.filter(k => k.tag === "OBJE").length
+  };
+}
+function mgCheck(a, b) {   // liefert { block, warns, match }
+  const warns = []; let match = 0;
+  const block = GED.mergeBlockers(S.db, a.id, b.id);
+  if (a.sex && b.sex && a.sex !== b.sex) warns.push("Das Geschlecht ist verschieden.");
+  const ya = byear(a.p), yb = byear(b.p);
+  if (ya && yb && Math.abs(ya - yb) > 2) warns.push("Die Geburtsjahre weichen um " + Math.abs(ya - yb) + " Jahre ab.");
+  const da = dyear(a.p), db_ = dyear(b.p);
+  if (da && db_ && Math.abs(da - db_) > 2) warns.push("Die Sterbejahre weichen um " + Math.abs(da - db_) + " Jahre ab.");
+  const same = (x, y) => x && y && (x === y || mgKey(x) === mgKey(y));
+  for (const [x, y, lbl] of [[a.father, b.father, "Väter"], [a.mother, b.mother, "Mütter"]]) {
+    if (x && y) { if (same(x, y)) match++; else warns.push("Die " + lbl + " sind verschiedene Personen (" + pname(x) + " und " + pname(y) + ").") }
+  }
+  const sa = a.fams.map(f => f.sp).filter(Boolean), sb = b.fams.map(f => f.sp).filter(Boolean);
+  sa.forEach(x => { if (sb.some(y => same(x, y))) match++; });
+  a.kids.forEach(x => { if (b.kids.some(y => same(x, y))) match++; });
+  if (a.famc.some(f => b.famc.includes(f))) warns.push("Beide sind als Kinder in derselben Familie eingetragen. Geschwister sind nur dann Dubletten, wenn dieselbe Person doppelt erfasst wurde.");
+  const hasCtx = (a.father || a.mother || sa.length || a.kids.length) && (b.father || b.mother || sb.length || b.kids.length);
+  if (!match && hasCtx && !block) warns.push("Bei Eltern, Ehepartnern und Kindern gibt es keine einzige Übereinstimmung.");
+  return { block, warns, match };
+}
+function mgBody(d) {
+  const A = mgInfo(d.data.a), B = mgInfo(d.data.b), pick = d.data.pick, chk = mgCheck(A, B);
+  d.data.chk = chk;
+  const cls = (x, y) => !x && !y ? "gap" : !x || !y ? "gap" : x === y ? "ok" : "diff";
+  const radio = (field, side, on) => `<input type="radio" name="mg_${field}" value="${side}"${on ? " checked" : ""} title="Diese Angabe übernehmen">`;
+  const row = (label, va, vb, field) => {
+    const c = cls(va, vb), pk = field ? (pick[field] || "keep") : "";
+    const choose = field && c === "diff";
+    const cell = (v, side) => `<td class="${c}">${choose ? `<label>${radio(field, side, pk === side)} ${E(v)}</label>` : E(v) || `<span class="hint">–</span>`}</td>`;
+    return `<tr><th>${label}</th>${cell(va, "keep")}${cell(vb, "drop")}</tr>`;
+  };
+  const same = (x, y) => x && y && (x === y || mgKey(x) === mgKey(y));
+  const person = (x, other) => {
+    if (!x) return `<span class="hint">unbekannt</span>`;
+    const hit = other.some(y => same(x, y));
+    return `<div class="mgi${hit ? " hit" : ""}">${mgPerLine(x)}${hit ? ` <span class="mgmark" title="Kommt auch bei der anderen Person vor">gleich</span>` : ""}</div>`;
+  };
+  const parentRow = (label, x, y) => {
+    const c = !x && !y ? "gap" : !x || !y ? "gap" : same(x, y) ? "ok" : "diff";
+    return `<tr><th>${label}</th><td class="${c}">${x ? mgPerLine(x) : `<span class="hint">unbekannt</span>`}${x && y && same(x, y) ? ` <span class="mgmark">gleich</span>` : ""}</td><td class="${c}">${y ? mgPerLine(y) : `<span class="hint">unbekannt</span>`}${x && y && same(x, y) ? ` <span class="mgmark">gleich</span>` : ""}</td></tr>`;
+  };
+  const spRows = (P, Q) => P.fams.length ? P.fams.map(f => {
+    const hit = f.sp && Q.fams.some(g => same(f.sp, g.sp));
+    return `<div class="mgi${hit ? " hit" : ""}">${f.sp ? mgPerLine(f.sp) : `<span class="hint">Ehepartner unbekannt</span>`}${f.marr ? ` <span class="hint">· verheiratet ${E(f.marr)}</span>` : ""}${f.kids.length ? ` <span class="hint">· ${f.kids.length} Kind${f.kids.length === 1 ? "" : "er"}</span>` : ""}${hit ? ` <span class="mgmark">gleich</span>` : ""}</div>`;
+  }).join("") : `<span class="hint">keine</span>`;
+  const kidRows = (P, Q) => P.kids.length ? P.kids.map(k => person(k, Q.kids)).join("") : `<span class="hint">keine</span>`;
+  const cnt = (x, y) => `<td class="${x === y ? "ok" : "gap"}">${x}</td><td class="${x === y ? "ok" : "gap"}">${y}</td>`;
+  const warn = chk.block ? `<div class="mgw bad"><b>Nicht möglich:</b> ${E(chk.block)}</div>` : "";
+  const warns = chk.warns.map(w => `<div class="mgw">${E(w)}</div>`).join("");
+  const hd = (X, role) => `<th class="mgh">${role}<div class="mgn">${E(X.name)}</div><div class="hint">${E(X.id.replace(/@/g, ""))}</div></th>`;
+  return `${warn}${warns}${!chk.block && !chk.warns.length ? `<div class="mgw okk">${chk.match} Übereinstimmung${chk.match === 1 ? "" : "en"} bei Eltern, Ehepartnern und Kindern.</div>` : ""}
+  <table class="mgt"><thead><tr><th></th>${hd(A, "Person A (bleibt erhalten)")}${hd(B, "Person B (wird eingefügt und gelöscht)")}</tr></thead><tbody>
+  ${row("Name", A.name, B.name, "name")}
+  ${row("Geschlecht", A.sex === "M" ? "männlich" : A.sex === "F" ? "weiblich" : "", B.sex === "M" ? "männlich" : B.sex === "F" ? "weiblich" : "", "sex")}
+  ${row("Geburt", A.birt, B.birt, "birt")}
+  ${row("Taufe", A.chr, B.chr)}
+  ${row("Tod", A.deat, B.deat, "deat")}
+  ${row("Begräbnis", A.buri, B.buri)}
+  ${parentRow("Vater", A.father, B.father)}
+  ${parentRow("Mutter", A.mother, B.mother)}
+  <tr><th>Ehepartner</th><td>${spRows(A, B)}</td><td>${spRows(B, A)}</td></tr>
+  <tr><th>Kinder (${A.kids.length} / ${B.kids.length})</th><td>${kidRows(A, B)}</td><td>${kidRows(B, A)}</td></tr>
+  <tr><th>Weitere Ereignisse</th>${cnt(A.nOther, B.nOther)}</tr>
+  <tr><th>Notizen</th>${cnt(A.nNotes, B.nNotes)}</tr>
+  <tr><th>Quellen</th>${cnt(A.nSrc, B.nSrc)}</tr>
+  <tr><th>Bilder und Dokumente</th>${cnt(A.nMedia, B.nMedia)}</tr>
+  </tbody></table>
+  <p class="hint" style="margin:8px 0 0">Bei abweichenden Angaben wählst du mit dem Auswahlknopf, welche gelten soll. Die andere bleibt als zusätzlicher Name oder als eigenes Ereignis „abweichende Angabe“ erhalten. Alles andere von B (weitere Ereignisse, Notizen, Quellen, Bilder, Eltern, Ehen, Kinder) wird A hinzugefügt, Doppeltes nur einmal. Gleiche Ehepartner und gleiche Elternpaare werden zu einer Familie zusammengeführt.</p>`;
+}
+function mgDlg(a, b) {
+  return openDlg({
+    title: "Zwei Personen verschmelzen", wide: true, noFocus: true,
+    data: { a, b, pick: {} },
+    body: mgBody,
+    buttons: () => [{ id: "swap", label: "A und B tauschen" }, { id: "chA", label: "Person A ändern" }, { id: "chB", label: "Person B ändern" }, { id: "cancel", label: "Abbrechen" }, { id: "go", label: "Verschmelzen", cls: "pri" }],
+    onChange: (d, e) => { const t = e.target; if (t.name && t.name.startsWith("mg_")) d.data.pick[t.name.slice(3)] = t.value; },
+    on: {
+      cancel: (d) => d.close(),
+      swap: (d) => { const x = d.data.a; d.data.a = d.data.b; d.data.b = x; d.data.pick = {}; d.paint(); },
+      chA: (d) => pickPerson({ title: "Person A wählen (bleibt erhalten)", exclude: [d.data.b], onPick: (id) => { d.data.a = id; d.data.pick = {}; d.paint(); } }),
+      chB: (d) => pickPerson({ title: "Person B wählen (wird gelöscht)", exclude: [d.data.a], onPick: (id) => { d.data.b = id; d.data.pick = {}; d.paint(); } }),
+      go: async (d) => {
+        const chk = d.data.chk;
+        if (chk.block) { toast(chk.block); return; }
+        const A = d.data.a, B = d.data.b;
+        const ok = await confirmDlg({
+          title: "Verschmelzen?",
+          text: pname(B) + " (" + B.replace(/@/g, "") + ") wird in " + pname(A) + " (" + A.replace(/@/g, "") + ") aufgenommen und danach gelöscht." +
+            (chk.warns.length ? "\n\nAchtung:\n" + chk.warns.map(w => "· " + w).join("\n") : "") +
+            "\n\nMit „Rückgängig“ kannst du alles in einem Schritt zurücknehmen.",
+          ok: "Verschmelzen", cls: "dng"
+        });
+        if (!ok) return;
+        const pk = d.data.pick;
+        let res;
+        try { res = GED.run(S.db, "Personen verschmelzen", tx => GED.mergePersons(tx, A, B, { name: pk.name, sex: pk.sex, birt: pk.birt, deat: pk.deat })); }
+        catch (e) { toast("Verschmelzen nicht möglich: " + e.message); return; }
+        d.close();
+        S.pid = A; S.fid = setFamFor(A);
+        afterEdit("Personen verschmolzen");
+        toast("Verschmolzen. Mit „Rückgängig“ kannst du es zurücknehmen.");
+      }
+    }
+  });
+}
+ACT.merge = (d) => {
+  if (!needDb()) return;
+  if (S.viewer) { toast("Im Betrachtermodus nicht möglich"); return; }
+  const a = (d && d.id) || S.pid;
+  if (!a || !S.db.get(a)) { toast("Wähle zuerst eine Person"); return; }
+  pickPerson({ title: "Mit welcher Person soll " + pname(a) + " verschmolzen werden?", exclude: [a], onPick: (b) => mgDlg(a, b) });
+};
 
 </script>
 </body>

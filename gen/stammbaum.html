@@ -791,6 +791,10 @@ body.t3fs{overflow:hidden}
 .mgw.bad{background:rgba(220,60,60,.18);border-color:rgba(220,60,60,.5)}
 .mgw.okk{background:rgba(60,170,100,.14);border-color:rgba(60,170,100,.4)}
 @media(max-width:700px){.mgt{font-size:.82em}.mgt tbody th{white-space:normal}}
+.qopt{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0 2px;font-size:.85em}
+.qopt label{cursor:pointer;display:flex;align-items:center;gap:5px}
+.simtag{font-size:.72em;font-weight:600;color:#a76b00;background:rgba(230,160,40,.2);border-radius:5px;padding:0 5px;margin-left:5px;white-space:nowrap}
+.qhelp p{margin:0 0 8px}.qhelp ul{margin:0 0 8px;padding-left:20px}.qhelp code{background:rgba(127,127,127,.18);padding:0 4px;border-radius:4px}
 
 </style>
 </head>
@@ -832,6 +836,7 @@ body.t3fs{overflow:hidden}
     <aside id="side">
       <div class="sbtop">
         <input id="q" type="search" placeholder="Person suchen (Name, Jahr, Ort)" autocomplete="off" aria-label="Person suchen">
+        <div class="qopt"><label title="Findet auch Schreibweisen, die ähnlich klingen, zum Beispiel Meier, Meyer, Mayer oder Katharina, Catharina"><input type="checkbox" id="qfz" checked> ähnlich klingende Namen</label><button class="btn sm ghost" data-act="qhelp" title="Wie man in der Suche Vornamen, Nachnamen und Verwandte verknüpft">Suchhilfe</button></div>
         <div class="abc" id="abc"></div>
       </div>
       <div id="plist" tabindex="0" aria-label="Personenliste"><div class="vs" id="vs"></div></div>
@@ -1061,8 +1066,8 @@ body.t3fs{overflow:hidden}
   function buildName(given, surn, nsfx) {
     return (given || "").trim() + " /" + (surn || "").trim() + "/" + (nsfx ? " " + nsfx.trim() : "");
   }
-  function nameParts(rec) {
-    const n = kid(rec, "NAME");
+  function nameParts(rec, node) {
+    const n = node || kid(rec, "NAME");
     const p = n ? parseName(n.val) : { given: "", surn: "", nsfx: "" };
     const gv = n ? kval(n, "GIVN") : "", sv = n ? kval(n, "SURN") : "";
     return {
@@ -1241,6 +1246,63 @@ body.t3fs{overflow:hidden}
     return first ? first.xref : null;
   }
 
+  /* ---------- Ähnlich klingende Namen: Kölner Phonetik und Tippfehler-Abstand ---------- */
+  function phonetic(word) {
+    const w = fold(word).replace(/[^a-z]/g, "");
+    if (!w) return "";
+    const has = (set, ch) => !!ch && set.includes(ch);
+    let out = "";
+    for (let i = 0; i < w.length; i++) {
+      const c = w[i], prev = i ? w[i - 1] : "", next = w[i + 1] || "";
+      let k;
+      if ("aeijouy".includes(c)) k = "0";
+      else if (c === "h") k = "";
+      else if (c === "b") k = "1";
+      else if (c === "p") k = next === "h" ? "3" : "1";
+      else if (c === "d" || c === "t") k = has("csz", next) ? "8" : "2";
+      else if ("fvw".includes(c)) k = "3";
+      else if ("gkq".includes(c)) k = "4";
+      else if (c === "c") {
+        if (i === 0) k = has("ahkloqrux", next) ? "4" : "8";
+        else k = has("sz", prev) ? "8" : (has("ahkoqux", next) ? "4" : "8");
+      }
+      else if (c === "x") k = has("ckq", prev) ? "8" : "48";
+      else if (c === "l") k = "5";
+      else if (c === "m" || c === "n") k = "6";
+      else if (c === "r") k = "7";
+      else if (c === "s" || c === "z") k = "8";
+      else k = "";
+      out += k;
+    }
+    out = out.replace(/(.)\1+/g, "$1");
+    return out ? out[0] + out.slice(1).replace(/0/g, "") : "";
+  }
+  function lev(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let prev = new Array(b.length + 1), cur = new Array(b.length + 1);
+    for (let j = 0; j <= b.length; j++) prev[j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      cur[0] = i; let best = cur[0];
+      for (let j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (cur[j] < best) best = cur[j];
+      }
+      if (best > max) return max + 1;
+      [prev, cur] = [cur, prev];
+    }
+    return prev[b.length];
+  }
+  /* klingt das Suchwort t (gefaltet) ähnlich wie das Namenswort w (gefaltet)? */
+  function soundsLike(t, w) {
+    if (t.length < 3 || /\d/.test(t)) return false;
+    const ct = phonetic(t), cw = phonetic(w);
+    if (ct.length >= 2 && ct === cw && (ct.length >= 4 || lev(t, w, 2) <= 2)) return true;   // kurze Klangcodes (Meier = Maria) nur mit ähnlicher Schreibung
+    if (ct.length >= 3 && t.length >= 4 && cw.startsWith(ct)) return true;                      // angefangenes Wort, z. B. "Schmi"
+    const max = t.length >= 8 ? 2 : t.length >= 4 ? 1 : 0;
+    return max > 0 && lev(t, w, max) <= max;
+  }
+  const NAMEWORD = (v) => fold(v).split(/[^a-z0-9]+/).filter(Boolean);
+
   /* Liste für die Seitenleiste */
   function personIndex(db) {
     if (db._memo.index) return db._memo.index;
@@ -1248,24 +1310,108 @@ body.t3fs{overflow:hidden}
       const p = personInfo(db, r.xref);
       const by = (p.birt && p.birt.date.y) || (p.chr && p.chr.date.y) || null;
       const dy = (p.deat && p.deat.date.y) || null;
+      const names = kidsOf(r, "NAME").map(n => nameParts(r, n));
+      const given = [], surn = [];
+      names.forEach(n => { given.push(...NAMEWORD(n.given), ...NAMEWORD(n.nick || "")); surn.push(...NAMEWORD(n.surn)); });
+      const places = [p.birt, p.chr, p.deat, p.buri].filter(Boolean).map(e => e.place || "");
       return {
         id: r.xref, sortKey: fold(p.name.surn || "￿") + "|" + fold(p.name.given), by, dy,
         label: displayName(r, "list"),
-        hay: fold([p.name.given, p.name.surn, p.name.nsfx, p.name.nick, p.refn, by || "", p.birt ? p.birt.place : "", p.deat ? p.deat.place : ""].join(" "))
+        given, surn, placeW: NAMEWORD(places.join(" ")),
+        hay: fold([p.name.given, p.name.surn, p.name.nsfx, p.name.nick, p.refn, by || "", p.birt ? p.birt.place : "", p.deat ? p.deat.place : "", names.slice(1).map(n => [n.given, n.surn].join(" ")).join(" ")].join(" "))
       };
     });
     arr.sort((a, b) => a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : (a.by || 9999) - (b.by || 9999));
     db._memo.index = arr;
+    db._memo.idxMap = new Map(arr.map(e => [e.id, e]));
     return arr;
   }
-  function searchPersons(db, q, limit) {
-    const idx = personIndex(db);
-    const terms = fold(q).split(/\s+/).filter(Boolean);
-    if (!terms.length) return limit ? idx.slice(0, limit) : idx;
-    const out = [];
-    for (const e of idx) {
-      if (terms.every(t => e.hay.includes(t))) { out.push(e); if (limit && out.length >= limit) break; }
+  const REL_KEYS = { vater: "father", mutter: "mother", eltern: "parents", partner: "spouse", ehe: "spouse", ehepartner: "spouse", mann: "spouse", frau: "spouse", kind: "kids", kinder: "kids", geschwister: "sibs", verwandt: "any" };
+  const FIELD_KEYS = { vorname: "given", vor: "given", nachname: "surn", nach: "surn", ort: "place" };
+  function relatives(db, id, kind) {
+    const p = personInfo(db, id), out = new Set();
+    const fam = (fid) => famInfo(db, fid);
+    const parents = () => { for (const fid of p.famc) { const f = fam(fid); if (f) { if (f.husb) out.add(f.husb); if (f.wife) out.add(f.wife); } } };
+    if (kind === "father") { for (const fid of p.famc) { const f = fam(fid); if (f && f.husb) out.add(f.husb); } }
+    else if (kind === "mother") { for (const fid of p.famc) { const f = fam(fid); if (f && f.wife) out.add(f.wife); } }
+    else {
+      if (kind === "parents" || kind === "any") parents();
+      if (kind === "spouse" || kind === "any") for (const fid of p.fams) { const f = fam(fid); if (f) { const o = f.husb === id ? f.wife : f.husb; if (o) out.add(o); } }
+      if (kind === "kids" || kind === "any") for (const fid of p.fams) { const f = fam(fid); if (f) f.children.forEach(c => out.add(c)); }
+      if (kind === "sibs" || kind === "any") for (const fid of p.famc) { const f = fam(fid); if (f) f.children.forEach(c => { if (c !== id) out.add(c); }); }
     }
+    out.delete(id);
+    return Array.from(out);
+  }
+  function parseQuery(q) {
+    const groups = [[]];
+    const raw = String(q || "").replace(/[,;]/g, " ").split(/\s+/).filter(Boolean);
+    for (let w of raw) {
+      const lw = fold(w);
+      if (lw === "oder" || lw === "|" || lw === "or") { if (groups[groups.length - 1].length) groups.push([]); continue; }
+      if (lw === "und" || lw === "&" || lw === "+") continue;
+      const g = groups[groups.length - 1];
+      let neg = false;
+      if (w.length > 1 && w[0] === "-" && !/^-\d/.test(w)) { neg = true; w = w.slice(1); }
+      let rel = null, field = "all", t = fold(w);
+      const m = /^([a-zäöüß]+):(.+)$/i.exec(w);
+      if (m) {
+        const k = fold(m[1]);
+        if (REL_KEYS[k]) { rel = REL_KEYS[k]; t = fold(m[2]); }
+        else if (FIELD_KEYS[k]) { field = FIELD_KEYS[k]; t = fold(m[2]); }
+      }
+      if (!t) continue;
+      let re = null;
+      if (/[*?]/.test(t)) re = new RegExp("^" + t.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+      g.push({ t, neg, rel, field, re });
+    }
+    return groups.filter(g => g.length);
+  }
+  /* 1 = trifft genau, 2 = trifft nur dem Klang nach, 0 = trifft nicht */
+  function tokMatch(e, k, fuzzy) {
+    const words = k.field === "given" ? e.given : k.field === "surn" ? e.surn : k.field === "place" ? e.placeW : e.given.concat(e.surn, e.placeW);
+    if (k.re) return words.some(w => k.re.test(w)) ? 1 : 0;
+    if (k.field === "all" ? e.hay.includes(k.t) : words.some(w => w.includes(k.t))) return 1;
+    if (fuzzy && words.some(w => soundsLike(k.t, w))) return 2;
+    return 0;
+  }
+  function groupMatch(db, e, g, fuzzy) {
+    let worst = 1;
+    const idxMap = db._memo.idxMap;
+    const byRel = new Map();
+    for (const k of g) {
+      if (k.neg) { if (tokMatch(e, k, false)) return 0; continue; }
+      if (!k.rel) { const r = tokMatch(e, k, fuzzy); if (!r) return 0; if (r > worst) worst = r; continue; }
+      (byRel.get(k.rel) || byRel.set(k.rel, []).get(k.rel)).push(k);
+    }
+    for (const [kind, toks] of byRel) {
+      let best = 0;
+      for (const rid of relatives(db, e.id, kind)) {
+        const re = idxMap.get(rid); if (!re) continue;
+        let w = 1, okAll = true;
+        for (const k of toks) { const r = tokMatch(re, k, fuzzy); if (!r) { okAll = false; break; } if (r > w) w = r; }
+        if (okAll && (!best || w < best)) best = w;
+        if (best === 1) break;
+      }
+      if (!best) return 0;
+      if (best > worst) worst = best;
+    }
+    return worst;
+  }
+  /* Ergebnis: zuerst genaue Treffer, danach (wenn fuzzy) Treffer nach Klang; out.simFrom = Beginn der Klang-Treffer */
+  function searchPersons(db, q, limit, opts) {
+    const idx = personIndex(db), fuzzy = !!(opts && opts.fuzzy);
+    const groups = parseQuery(q);
+    if (!groups.length) { const all = limit ? idx.slice(0, limit) : idx; return all; }
+    const exact = [], sim = [];
+    for (const e of idx) {
+      let best = 0;
+      for (const g of groups) { const r = groupMatch(db, e, g, fuzzy); if (r && (!best || r < best)) best = r; if (best === 1) break; }
+      if (best === 1) { exact.push(e); if (limit && exact.length >= limit) { exact.simFrom = exact.length; return exact; } }
+      else if (best === 2) sim.push(Object.assign({}, e, { sim: true }));
+    }
+    const out = exact.concat(limit ? sim.slice(0, Math.max(0, limit - exact.length)) : sim);
+    out.simFrom = exact.length;
     return out;
   }
 
@@ -1717,7 +1863,7 @@ body.t3fs{overflow:hidden}
     MON, MON_DE, MON_LONG_DE, INDI_EVENTS, FAM_EVENTS, ORDER_INDI,
     fold, isPtr, esc, unesc, todayGed, decode, detectEol, parseGedcom, parseRecordText, serializeRecord, recordText, exportText,
     kid, kidsOf, kval, parseName, buildName, nameParts, displayName, parseDate, formatDate,
-    personInfo, famInfo, parentsOf, spouseIn, lifeSpan, dateQual, startPerson, mainPerson, setMainPerson, personIndex, searchPersons, ancestors, citationIndex, noteText,
+    personInfo, famInfo, parentsOf, phonetic, soundsLike, parseQuery, spouseIn, lifeSpan, dateQual, startPerson, mainPerson, setMainPerson, personIndex, searchPersons, ancestors, citationIndex, noteText,
     begin, commit, rollback, run, undo, redo, setKid, addPerson, addFamily, addChild, removeChild, setSpouse, linkPtr, unlinkPtr,
     deleteRecord, countRefs, check, mergePersons, mergeBlockers
   };
@@ -1877,13 +2023,16 @@ ACT.card = (d) => { S.view = "card"; go(d.id); };
 
 /* ---------- Seitenleiste mit Suche (nur sichtbare Zeilen werden gezeichnet) ---------- */
 const ROW_H = 64;
+function qFuzzy() { const c = document.getElementById("qfz"); return c ? c.checked : true; }
 function renderList(keepScroll) {
   if (!S.db) return;
   const q = $("q").value;
-  S.listRows = GED.searchPersons(S.db, q);
+  S.listRows = GED.searchPersons(S.db, q, 0, { fuzzy: qFuzzy() });
   $("vs").style.height = (S.listRows.length * ROW_H) + "px";
   $("pcount").textContent = S.listRows.length === GED.personIndex(S.db).length
     ? S.listRows.length + " Personen" : S.listRows.length + " von " + GED.personIndex(S.db).length + " Personen";
+  const nSim = S.listRows.length - (S.listRows.simFrom == null ? S.listRows.length : S.listRows.simFrom);
+  if (nSim > 0) $("pcount").textContent += " (" + nSim + " nur dem Klang nach)";
   $("pcount").innerHTML = E($("pcount").textContent) + ` <span class="yx ylegend" title="Jahreszahlen in dieser Farbe haben kein genaues Datum: nur Jahr, Monat oder ungefähre Angabe">· nur Jahr</span>`;
   if (!keepScroll) $("plist").scrollTop = 0;
   paintRows();
@@ -1902,7 +2051,7 @@ function paintRows() {
     const r = S.listRows[i];
     const p = GED.personInfo(S.db, r.id);
     const yrs = (r.by || r.dy) ? (r.by || "") + "–" + (r.dy || "") : "";
-    html += `<button class="prow${r.id === S.pid ? " on" : ""}${sideCls(r.id)}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pcol"><span class="pr1"><span class="pn">${E(r.label)}</span><span class="py">${lifeHtml(S.db, r.id)}</span>${qTotal(S.db, r.id)}</span><span class="pr2">${bdLine(S.db, r.id, "b", { noBadge: true, cls: "bl" })}${bdLine(S.db, r.id, "d", { noBadge: true, cls: "bl" })}</span>${relTag(r.id, "pr3")}</span></button>`;
+    html += `<button class="prow${r.id === S.pid ? " on" : ""}${sideCls(r.id)}" style="top:${i * ROW_H}px" data-act="go" data-id="${r.id}"><span class="dot ${p.sex}"></span><span class="pcol"><span class="pr1"><span class="pn">${E(r.label)}${r.sim ? ` <span class="simtag" title="Klingt ähnlich wie die Suche">≈ ähnlich</span>` : ""}</span><span class="py">${lifeHtml(S.db, r.id)}</span>${qTotal(S.db, r.id)}</span><span class="pr2">${bdLine(S.db, r.id, "b", { noBadge: true, cls: "bl" })}${bdLine(S.db, r.id, "d", { noBadge: true, cls: "bl" })}</span>${relTag(r.id, "pr3")}</span></button>`;
   }
   vs.innerHTML = html;
 }
@@ -2272,7 +2421,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "01.11.2026 21:51"; /* BUILD_ID=01.11.2026 21:51 */
+const BUILD = "03.11.2026 13:28"; /* BUILD_ID=03.11.2026 13:28 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -2512,11 +2661,11 @@ function choiceDlg(o) {
 function pickPerson(o) {
   return openDlg({
     title: o.title || "Person wählen",
-    body: () => `<input id="pk" type="search" class="fld" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)" placeholder="Name, Jahr oder Ort" autocomplete="off"><div class="pickres" id="pkres"></div>`,
+    body: () => `<input id="pk" type="search" class="fld" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)" placeholder="Name, Jahr oder Ort" autocomplete="off"><div class="hint" style="margin:4px 0 0">${qFuzzy() ? "Ähnlich klingende Namen werden mitgefunden. " : ""}Mit „vater:Johann“, „partner:Maria“ oder „kind:Otto“ suchst du über Verwandte.</div><div class="pickres" id="pkres"></div>`,
     buttons: () => o.newLabel ? [{ id: "new", label: o.newLabel }] : [],
     after: (d) => {
       const fill = () => {
-        const rows = GED.searchPersons(S.db, d.q("#pk").value, 60).filter(r => !(o.exclude || []).includes(r.id));
+        const rows = GED.searchPersons(S.db, d.q("#pk").value, 60, { fuzzy: qFuzzy() }).filter(r => !(o.exclude || []).includes(r.id));
         d.q("#pkres").innerHTML = rows.map(r => `<button data-d="pick" data-id="${r.id}"><span>${E(r.label)}</span><span class="y">${E(r.by || r.dy ? (r.by || "") + "–" + (r.dy || "") : "")}</span></button>`).join("") || `<div class="empty" style="padding:10px">Keine Treffer.</div>`;
       };
       d.q("#pk").addEventListener("input", fill); fill();
@@ -7926,6 +8075,8 @@ document.addEventListener("input", (e) => {
   }
 });
 $("q").addEventListener("input", () => renderList());
+try { $("qfz").checked = localStorage.getItem("st.fuzzy") !== "0"; } catch (e) {}
+$("qfz").addEventListener("change", () => { try { localStorage.setItem("st.fuzzy", $("qfz").checked ? "1" : "0"); } catch (e) {} if (S.db) renderList(); });
 $("plist").addEventListener("scroll", () => { cancelAnimationFrame(paintRows._r); paintRows._r = requestAnimationFrame(paintRows); });
 $("tabs").addEventListener("click", (e) => { const b = e.target.closest(".tab"); if (b && S.db) withSplitGuard(() => { S.view = b.dataset.view; render(); }); });
 $("btnOpen").onclick = () => openLocalPicker();
@@ -9531,6 +9682,11 @@ function sfSet(db, id, gens, up) {   // Vorfahren oder Nachkommen, mit der Perso
   }
   return seen;
 }
+function sfName(v, t) {   // enthält der Name den Suchtext, oder klingt ein Namenswort ähnlich (wenn in der Suchleiste eingeschaltet)?
+  const f = GED.fold(v || "");
+  if (f.includes(t)) return true;
+  return qFuzzy() && f.split(/[^a-z0-9]+/).some(w => w && GED.soundsLike(t, w));
+}
 function sfRun() {
   const db = S.db, c = SF, out = [], nowY = new Date().getFullYear();
   const rel = c.rel && c.relId && db.get(c.relId) ? sfSet(db, c.relId, parseInt(c.relGen, 10) || 0, c.rel === "anc") : null;
@@ -9543,8 +9699,8 @@ function sfRun() {
     const id = r.xref, p = GED.personInfo(db, id); if (!p) continue;
     if (rel && !rel.has(id)) continue;
     if (c.sex && (c.sex === "?" ? (p.sex === "M" || p.sex === "F") : p.sex !== c.sex)) continue;
-    if (given && !GED.fold(p.name.given || "").includes(given)) continue;
-    if (surn && !GED.fold(p.name.surn || "").includes(surn)) continue;
+    if (given && !sfName(p.name.given, given)) continue;
+    if (surn && !sfName(p.name.surn, surn)) continue;
     const by = p.birt && p.birt.date.y, dy = p.deat && p.deat.date.y;
     // Ereignis mit Ort und Jahr (zwei Bedingungen)
     const ex = [];
@@ -9670,7 +9826,7 @@ function sfBody() {
         <label>Offene Forschungsnotiz ${sfSel("sf_todo", c.todo, SF_YN("ja", "nein"))}</label></div>
       <div class="sfgrp"><b>Person</b>
         <label>Geschlecht ${sfSel("sf_sex", c.sex, [["", "egal"], ["M", "männlich"], ["F", "weiblich"], ["?", "unbekannt"]])}</label>
-        <label>Vorname enthält <input id="sf_given" data-f="1" type="search" value="${E(c.given)}"></label>
+        <label>Vorname enthält (auch ähnlich klingend, wenn in der Suchleiste eingeschaltet) <input id="sf_given" data-f="1" type="search" value="${E(c.given)}"></label>
         <label>Nachname enthält <input id="sf_surn" data-f="1" type="search" value="${E(c.surn)}"></label>
         <label>Beruf enthält <input id="sf_occu" data-f="1" type="search" value="${E(c.occu)}"></label>
         <label>Religion enthält <input id="sf_reli" data-f="1" type="search" value="${E(c.reli)}"></label></div>
@@ -10248,6 +10404,27 @@ ACT.merge = (d) => {
   if (!a || !S.db.get(a)) { toast("Wähle zuerst eine Person"); return; }
   pickPerson({ title: "Mit welcher Person soll " + pname(a) + " verschmolzen werden?", exclude: [a], onPick: (b) => mgDlg(a, b) });
 };
+
+/* ---------- Suchhilfe ---------- */
+ACT.qhelp = () => openDlg({
+  title: "So suchst du Personen", noFocus: true,
+  body: () => `<div class="qhelp">
+    <p>Die Suche gilt für die Personenliste links und für die Auswahl von Personen (zum Beispiel bei Eltern, Ehepartnern, Verschmelzen). Alle Wörter müssen zutreffen, die Reihenfolge ist egal: <code>otto meier</code> findet auch „Meier, Otto“.</p>
+    <p><b>Ähnlich klingende Namen</b> (Kästchen unter dem Suchfeld): findet Meier, Meyer, Mayer und Maier, Schmidt, Schmitt und Schmid, Katharina, Catharina und Katarina, auch leichte Tippfehler. Genaue Treffer stehen oben, die Klangtreffer darunter mit „≈ ähnlich“. Jahreszahlen suchen immer genau.</p>
+    <p><b>Oder und ohne:</b> <code>meier oder meyer</code> findet beide. <code>meier -otto</code> findet Meier, aber nicht Otto.</p>
+    <p><b>Platzhalter:</b> <code>rieg*</code> (beliebig viele Zeichen) und <code>m?ier</code> (genau ein Zeichen) wirken auf ganze Namenswörter.</p>
+    <p><b>Nur Vorname, nur Nachname, nur Ort:</b> <code>vorname:otto</code>, <code>nachname:meier</code>, <code>ort:düsseldorf</code>. Gesucht wird auch in weiteren Namen einer Person (zum Beispiel Geburtsname).</p>
+    <p><b>Über Verwandte suchen:</b></p>
+    <ul>
+      <li><code>vater:johann</code> oder <code>mutter:maria</code>: der Vater beziehungsweise die Mutter heißt so</li>
+      <li><code>eltern:</code>, <code>partner:</code> (auch <code>ehe:</code>), <code>kind:</code>, <code>geschwister:</code></li>
+      <li><code>verwandt:</code>: Eltern, Partner, Kinder oder Geschwister</li>
+    </ul>
+    <p>Mehrere Angaben zur selben Verwandtschaft müssen auf dieselbe Person zutreffen: <code>meier vater:johann vater:carl</code> sucht Meier, deren Vater Johann Carl heißt. Beispiel: <code>meier partner:schmidt</code> findet alle Meier, die mit einem Schmidt (oder Schmitt) verheiratet ist.</p>
+  </div>`,
+  buttons: () => [{ id: "close", label: "Schließen" }], on: { close: (d) => d.close() }
+});
+VIEW_OK.add("qhelp");
 
 </script>
 </body>

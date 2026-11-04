@@ -114,6 +114,8 @@
   .speakb { display:inline-flex; align-items:center; gap:0.4rem; }
   .speakb svg { width:1.1rem; height:1.1rem; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
   @media (max-width: 760px) { .ptoggle .lbl { display:none; } }
+  .qin { font-size:1.4rem; width:7rem; padding:.5rem .7rem; border-radius:12px; border:2px solid #5a6270; background:#14161a; color:#fff; text-align:center; }
+  .sgate .pfb.hint { color:#ffd27a; }
   .pgate { border-color:#ffb347 !important; flex-wrap:wrap; }
   .pgate .unum { background:#ffb347 !important; color:#14161a !important; }
   .popts { display:flex; flex-wrap:wrap; gap:0.6rem; margin:0.5rem 0; }
@@ -662,6 +664,7 @@
         <button id="zAll">Alle Schritte zeigen</button>
         <button id="zRestart">Neu starten</button>
         <button class="tab" id="zFine" aria-pressed="false" aria-selected="false" title="Würfel einzeln anklicken und mitzählen">Kleine Schritte: aus</button>
+        <button class="tab" id="zSelf" aria-pressed="false" aria-selected="false" title="Jeden Zwischenschritt selbst lösen, sonst geht es nicht weiter">Selbst lösen: aus</button>
         <label class="opt">Größe <input type="range" id="zSize" min="6" max="18" value="12"></label>
       </div>
       <div class="numrow">
@@ -2231,7 +2234,9 @@ renderStell();
   const COL = { steel: "#5aaee8", green: "#3fb455", red: "#e03a2f", gold: "#3fb455", cnt: "#f5a524" };
   const MAXV = 999;
   let op = "add", S = 10, A = 38, B = 27, shown = 0, steps = [], ueb = false, zrU = null;
-  let fine = false, KS = {}, KW = {}, kn = 0;
+  let fine = false, selfOn = false, SG = null, pq = [], KS = {}, KW = {}, kn = 0;
+  try { selfOn = localStorage.getItem("msw_uez_self") === "1"; } catch (e) { selfOn = false; }
+  const FNE = () => fine || selfOn;
   try { fine = localStorage.getItem("msw_uez_fine") === "1"; } catch (e) { fine = false; }
   const KUNIT = p => p === 0 ? "Würfel" : "Stangen";
   function kwHtml(key) {
@@ -2457,7 +2462,7 @@ renderStell();
 
   function build() {
     if (op === "mul") return buildMul();
-    kn = 0; KW = {};
+    kn = 0; KW = {}; pq = [];
     const out = [];
     const ad = digs(A), bd = digs(B);
     let cols = [[], [], []], sec = [[], [], []];
@@ -2472,13 +2477,15 @@ renderStell();
     // nach jedem Schritt: Markierungen und Ringe weg, Farben bleiben
     const norm = () => { cols = cols.map(c => c.filter(it => !it.mark).map(it => { it.ring = false; return it; })); };
     function snap(t, txt, cls) {
-      out.push({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + tafel(copy(), copySec(), ghF.map(cp), ghB.map(cp)) });
+      out.push({ t: t, cls: cls, pre: selfOn ? pq : [], h: '<div class="utext">' + txt + "</div>" + tafel(copy(), copySec(), ghF.map(cp), ghB.map(cp)) }); pq = [];
       norm();
       ghF = [[], [], []]; ghB = [[], [], []];
     }
     const unitsOfItem = (it, p) => it.m ? it.m : Array(FAC[p]).fill(it.c);
     const kitems = arr => arr.map(it => ({ c: it.c, m: it.m }));
-    const kwStep = (t, txt, spec, cls) => { const key = "k" + (kn++); KW[key] = spec; out.push({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + kwHtml(key) }); };
+    const kwStep = (t, txt, spec, cls) => { const key = "k" + (kn++); KW[key] = spec; out.push({ t: t, cls: cls, kw: key, pre: selfOn ? pq : [], h: '<div class="utext">' + txt + "</div>" + kwHtml(key) }); pq = []; };
+    const Qn = (q, ans, hint) => pq.push({ q: q, ans: ans, kind: "num", hint: hint });
+    const Qy = (q, ans, hint) => pq.push({ q: q, ans: ans, kind: "yn", hint: hint });
     const spA = '<span class="zs">' + A + "</span>";
     const spB = '<span class="' + (op === "add" ? "zg" : "zr") + '">' + B + "</span>";
 
@@ -2488,12 +2495,15 @@ renderStell();
         if (bd[p] > 0) {
           const before = cols[p].length;
           const beforeCls = clsOf(cols[p]);
-          if (fine && p <= 1) {
+          if (FNE() && p <= 1) {
             const U = KUNIT(p);
             if (before > 0) kwStep("Zählen: " + before + " " + NAMES[p], "Ich zähle zuerst, was schon da ist. Klicke jeden " + (p === 0 ? "Würfel" : "Stab") + " einmal an. Er wechselt die Farbe, und oben steht, wie viele ich schon gezählt habe.", { p: p, mode: "count", items: kitems(cols[p]) });
             kwStep("Weiterzählen: " + bd[p] + " dazu", "Jetzt zähle ich weiter. Die " + before + " sind schon gezählt. Klicke nun die " + bd[p] + " grünen " + U + " nacheinander an. Oben steht die Zahl, bei der ich gerade bin." + (before + bd[p] >= 10 ? " Achte darauf, was bei 10 passiert." : ""),
               { p: p, mode: "on", fixed: before, ten: before + bd[p] >= 10, items: kitems(cols[p]).concat(Array.from({ length: bd[p] }, () => ({ c: "green", m: null }))) });
           }
+          if (!(FNE() && p <= 1)) Qn("Wie viele " + NAMES[p] + " liegen oben schon? (hellblau)", before, "Zähle die hellblauen " + NAMES[p] + " im Bild.");
+          Qn("Wie viele " + NAMES[p] + " kommen von unten dazu? (grün)", bd[p], "Zähle die grünen " + NAMES[p] + " unter der Linie.");
+          Qn("Wie viele " + NAMES[p] + " sind das zusammen?", before + bd[p], before + " + " + bd[p] + " = ?");
           for (let i = 0; i < bd[p]; i++) cols[p].push(mkIt("green"));
           sec[p] = [];
           const tot = before + bd[p];
@@ -2502,9 +2512,11 @@ renderStell();
             "Ich lege die " + '<span class="zg">' + bd[p] + "</span> grünen " + NAMES[p] + " von unten zu den " + '<span class="' + beforeCls + '">' + before + "</span> " + ["Einern", "Zehnern", "Hundertern"][p] + " oben dazu. Ich habe jetzt <b>" + tot + "</b> " + NAMES[p] + ". " +
             '<span class="usmall">Mathesprache: <span class="' + beforeCls + '">' + before + "</span> " + AB[p] + ' + <span class="zg">' + bd[p] + "</span> " + AB[p] + " = " + tot + " " + AB[p] + "." + "</span>" +
             (tot >= 10 && p < 2 ? " Das sind mehr als 9 " + NAMES[p] + ". Ich kreise 10 " + NAMES[p] + " ein, die kann ich bündeln." : ""));
+          if (p < 2) Qy("Habe ich 10 oder mehr " + NAMES[p] + "? Kann ich bündeln?", tot >= 10, "Ab 10 " + NAMES[p] + " kann ich bündeln. Ich habe " + tot + ".");
         }
         if (cols[p].length >= 10 && p < 2) {
           ueb = true;
+          Qn("Wie viele " + NAMES[p] + " bündele ich zu 1 " + NAMES[p + 1] + "?", 10, "10 " + NAMES[p] + " sind 1 " + NAMES[p + 1] + ".");
           const ten = cols[p].splice(0, 10);
           ghF[p] = ten.map(it => Object.assign({}, it, { ring: false, mark: false }));
           let units = [];
@@ -2516,13 +2528,16 @@ renderStell();
             " und verschiebe sie in die " + NAMES[p + 1] + "spalte. Jetzt habe ich " + cols[p].length + " " + NAMES[p] + " und " + cols[p + 1].length + " " + NAMES[p + 1] + ". " +
             (mixed ? "Die neue " + MAT[p + 1] + " ist teils hellblau und teils grün, so sieht man, woher ihre Teile kommen. " : "") + "Die hellen Schatten zeigen, wo die " + MATPL[p] + " vorher lagen. " +
             '<span class="usmall">Mathesprache: 10 ' + AB[p] + " = 1 " + AB[p + 1] + "</span>");
-          if (fine && p <= 1 && cols[p].length > 0) kwStep("Rest zählen", "Nach dem Bündeln bleiben ein paar " + KUNIT(p) + " übrig. Ich zähle sie: Klicke jeden einmal an.", { p: p, mode: "count", items: kitems(cols[p]) });
+          Qn("Wie viele " + NAMES[p] + " bleiben übrig?", cols[p].length, "Vorher waren es " + (cols[p].length + 10) + ", zehn habe ich gebündelt.");
+          Qn("Wie viele " + NAMES[p + 1] + " liegen jetzt oben?", cols[p + 1].length, "Zähle die " + NAMES[p + 1] + " in der nächsten Spalte.");
+          if (FNE() && p <= 1 && cols[p].length > 0) kwStep("Rest zählen", "Nach dem Bündeln bleiben ein paar " + KUNIT(p) + " übrig. Ich zähle sie: Klicke jeden einmal an.", { p: p, mode: "count", items: kitems(cols[p]) });
         }
       }
     } else {
       snap("Aufgabe", "Oben liegt die erste Zahl " + spA + " (Minuend: " + zerl(A) + ") in Hellblau. Unter der Trennlinie liegt in Rot die zweite Zahl " + spB + " (Subtrahend: " + zerl(B) + "), die ich wegnehme. Beide Zahlen sind von Anfang an im Bild. Ich fange bei den Einern an.");
       for (let p = 0; p < 3; p++) {
         if (bd[p] === 0) continue;
+        Qy("Oben liegen " + cols[p].length + " " + NAMES[p] + ". Ich will " + bd[p] + " wegnehmen. Reicht das?", cols[p].length >= bd[p], "Vergleiche: " + cols[p].length + " und " + bd[p] + ".");
         if (cols[p].length < bd[p]) {
           let q = p + 1;
           while (q < 3 && cols[q].length === 0) q++;
@@ -2530,6 +2545,7 @@ renderStell();
           ueb = true;
           const have = cols[p].length;
           for (let k = q; k > p; k--) {
+            Qn("Wie viele " + NAMES[k - 1] + " werden aus 1 " + NAMES[k] + " beim Entbündeln?", 10, "1 " + NAMES[k] + " sind 10 " + NAMES[k - 1] + ".");
             const popped = cols[k].pop();
             ghB[k] = [Object.assign({}, popped, { ring: false, mark: false })];
             const un = unitsOfItem(popped, k);
@@ -2543,25 +2559,28 @@ renderStell();
               '<span class="zy">Zehnerübergang (Zehnerunterschreitung):</span> Ich entbündele 1 ' + NAMES[k] + (k === 1 ? ", das heißt: Ich breche die Zehnerstange auf. Aus einer Stange werden 10 Würfel." : ".") + " Ich ersetze die " + MAT[k] + " durch 10 " + MATPL[k - 1] +
               " und verschiebe sie in die " + NAMES[k - 1] + "spalte. Jetzt habe ich " + cols[k].length + " " + NAMES[k] + " und " + cols[k - 1].length + " " + NAMES[k - 1] + ". Der helle Schatten zeigt, wo die " + MAT[k] + " vorher lag. " +
               '<span class="usmall">Mathesprache: 1 ' + AB[k] + " = 10 " + AB[k - 1] + "</span>");
+            Qn("Wie viele " + NAMES[k - 1] + " liegen jetzt oben?", cols[k - 1].length, "Vorher waren es " + (cols[k - 1].length - 10) + ", dazu kommen 10.");
           }
         }
-        if (fine && p <= 1) {
+        if (FNE() && p <= 1) {
           kwStep("Zählen: alle " + NAMES[p], "Jetzt liegen alle " + KUNIT(p) + " bereit" + (ueb ? " (auch die aus der aufgebrochenen " + (p === 0 ? "Zehnerstange" : "Stange") + ")" : "") + ". Ich zähle sie: Klicke jeden einmal an. Er wechselt die Farbe, und oben steht, wie viele ich schon gezählt habe.", { p: p, mode: "count", items: kitems(cols[p]) });
           kwStep("Wegnehmen: " + bd[p] + " anklicken", "Ich nehme " + bd[p] + " " + KUNIT(p) + " weg. Klicke " + bd[p] + " nacheinander an. Sie werden rot, und oben steht, wie viele ich schon weggenommen habe.", { p: p, mode: "take", limit: bd[p], items: kitems(cols[p]) });
         }
         const n = cols[p].length;
+        Qn("Wie viele " + NAMES[p] + " bleiben übrig, wenn ich " + bd[p] + " wegnehme?", n - bd[p], n + " − " + bd[p] + " = ?");
         const beforeMarkCls = null;
         for (let i = n - bd[p]; i < n; i++) cols[p][i].mark = true;
         sec[p] = [];
         snap(bd[p] + " " + NAMES[p] + " wegnehmen",
           "Oben liegen " + num(n, cols[p]) + " " + NAMES[p] + ". Ich nehme " + '<span class="zr">' + bd[p] + "</span> " + NAMES[p] + " weg, das sind die roten und durchgestrichenen Steine. Es bleiben " + num(n - bd[p], cols[p].slice(0, n - bd[p])) + " " + NAMES[p] + ". " +
           '<span class="usmall">Mathesprache: ' + num(n, cols[p]) + " " + AB[p] + " − " + '<span class="zr">' + bd[p] + "</span> " + AB[p] + " = " + num(n - bd[p], cols[p].slice(0, n - bd[p])) + " " + AB[p] + ".</span>");
-        if (fine && p <= 1 && cols[p].length > 0) kwStep("Rest zählen", "Das ist übrig geblieben. Ich zähle den Rest: Klicke jeden " + (p === 0 ? "Würfel" : "Stab") + " einmal an.", { p: p, mode: "count", items: kitems(cols[p]) });
+        if (FNE() && p <= 1 && cols[p].length > 0) kwStep("Rest zählen", "Das ist übrig geblieben. Ich zähle den Rest: Klicke jeden " + (p === 0 ? "Würfel" : "Stab") + " einmal an.", { p: p, mode: "count", items: kitems(cols[p]) });
       }
     }
 
     // Ergebnis mit halbschriftlichen Rechenwegen
     const total = op === "add" ? A + B : A - B;
+    Qn("Wie heißt das Ergebnis? " + A + (op === "add" ? " + " : " − ") + B + " = ?", total, "Lies die Zahl aus den Stellen ab: " + zerl(total).replace(/ und /g, ", ").replace(/, /g, " + "));
     const m = sym();
     const cB = op === "add" ? "zg" : "zr";
     let res = '<div class="zbig"><span class="zs">' + A + '</span> <span class="' + cB + '">' + m + " " + B + "</span> = " + total + "</div>";
@@ -2625,6 +2644,41 @@ renderStell();
     $("zLegend").innerHTML = h;
   }
 
+  function clearSG() { if (SG && SG.parentNode) SG.parentNode.removeChild(SG); SG = null; }
+  function kwDone(key) {
+    const sp = KW[key]; if (!sp) return true;
+    const cl = KS[key] || [], cnt = (sp.fixed || 0) + cl.length;
+    return sp.mode === "take" ? cl.length >= sp.limit : cnt >= sp.items.length;
+  }
+  // Selbsterklärmodus: Fragen vor dem nächsten Schritt, ohne Überspringen
+  function selfGate(host, list, done) {
+    clearSG(); let qi = 0, tries = 0;
+    const box = document.createElement("div"); box.className = "ustep cur pgate sgate"; SG = box;
+    host.parentNode.insertBefore(box, host);
+    const show = () => {
+      const q = list[qi]; tries = 0;
+      box.innerHTML = '<div class="unum">?</div><div class="ubody"><div class="utitle">Selbst lösen: Frage ' + (qi + 1) + " von " + list.length + "</div>" +
+        '<div class="utext">' + q.q + '</div><div class="popts">' +
+        (q.kind === "yn" ? '<button class="popt" data-v="1">Ja</button><button class="popt" data-v="0">Nein</button>'
+          : '<input class="qin" type="text" inputmode="numeric" autocomplete="off" aria-label="Antwort"> <button class="popt" data-ok="1">Prüfen</button>') +
+        '</div><div class="pfb" role="status" aria-live="polite"></div></div>';
+      const fb = box.querySelector(".pfb"), inp = box.querySelector(".qin");
+      const right = () => { fb.className = "pfb ok"; fb.textContent = "Richtig!"; box.querySelectorAll("button,input").forEach(x => { x.disabled = true; });
+        setTimeout(() => { if (SG !== box) return; qi++; if (qi >= list.length) { clearSG(); done(); } else show(); }, 600); };
+      const wrong = () => { tries++; fb.className = "pfb no";
+        fb.textContent = tries >= 4 ? "Die richtige Antwort ist " + (q.kind === "yn" ? (q.ans ? "Ja" : "Nein") : q.ans) + ". Gib sie ein oder klicke sie an." : "Noch nicht. Versuche es noch einmal." + (tries >= 2 && q.hint ? " Hilfe: " + q.hint : ""); };
+      if (q.kind === "yn") box.querySelectorAll("[data-v]").forEach(b => b.addEventListener("click", () => { (b.dataset.v === "1") === q.ans ? right() : wrong(); }));
+      else {
+        const chk = () => { const v = inp.value.replace(/\s/g, ""); if (v === "") return; Number(v) === q.ans ? right() : wrong(); };
+        box.querySelector("[data-ok]").addEventListener("click", chk);
+        inp.addEventListener("keydown", e => { if (e.key === "Enter") chk(); });
+        try { inp.focus(); } catch (e) { /* ohne Fokus */ }
+      }
+    };
+    show();
+    try { box.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) { /* ohne Scroll */ }
+  }
+
   function render() {
     const msg = $("zMsg"), host = $("zSteps");
     const nextB = $("zNext"), backB = $("zBack"), allB = $("zAll");
@@ -2633,7 +2687,8 @@ renderStell();
     $("zB").style.color = op === "add" ? "#5fd06f" : "#ff6b5e"; $("zB").style.borderColor = op === "add" ? "#3fb455" : "#e03a2f";
     $("zOp").className = "mdot " + (op === "add" ? "zg" : op === "sub" ? "zr" : "zp");
     $("zBBox").style.display = op === "mul" ? "none" : "";
-    $("zFine").style.display = op === "mul" ? "none" : ""; $("zFine").textContent = "Kleine Schritte: " + (fine ? "an" : "aus"); $("zFine").setAttribute("aria-pressed", fine ? "true" : "false"); $("zFine").setAttribute("aria-selected", fine ? "true" : "false");
+    $("zSelf").style.display = op === "mul" ? "none" : ""; $("zSelf").textContent = "Selbst lösen: " + (selfOn ? "an" : "aus"); $("zSelf").setAttribute("aria-pressed", selfOn ? "true" : "false"); $("zSelf").setAttribute("aria-selected", selfOn ? "true" : "false");
+    clearSG(); $("zFine").style.display = op === "mul" ? "none" : ""; $("zFine").textContent = "Kleine Schritte: " + (fine ? "an" : "aus"); $("zFine").setAttribute("aria-pressed", fine ? "true" : "false"); $("zFine").setAttribute("aria-selected", fine ? "true" : "false");
     $("zSBox").style.display = op === "mul" ? "flex" : "none";
     [10, 100, 1000].forEach(v => $("zS" + v).setAttribute("aria-selected", S === v ? "true" : "false"));
     $("zMul").setAttribute("aria-selected", op === "mul" ? "true" : "false");
@@ -2666,6 +2721,7 @@ renderStell();
     host.innerHTML = h;
     bindNav(host, "z");
     nextB.disabled = allB.disabled = shown >= steps.length - 1;
+    if (selfOn && op !== "mul") allB.disabled = true;
     backB.disabled = shown <= 0;
   }
 
@@ -2707,10 +2763,20 @@ renderStell();
   $("zA").addEventListener("input", ev => { A = ev.target.value === "" ? NaN : Number(ev.target.value); restart(); });
   $("zB").addEventListener("input", ev => { B = ev.target.value === "" ? NaN : Number(ev.target.value); restart(); });
   $("zSize").addEventListener("input", render);
+  $("zSelf").addEventListener("click", () => { selfOn = !selfOn; try { localStorage.setItem("msw_uez_self", selfOn ? "1" : "0"); } catch (e) { /* ohne Speicher */ } restart(); });
+  const msg0 = t => { const m = $("zMsg"); m.className = "note err"; m.textContent = t; };
   $("zFine").addEventListener("click", () => { fine = !fine; try { localStorage.setItem("msw_uez_fine", fine ? "1" : "0"); } catch (e) { /* ohne Speicher */ } restart(); });
   $("zSteps").addEventListener("click", kwClick);
   window.addEventListener("msk-rescale", render);
-  $("zNext").addEventListener("click", () => { const adv = () => { shown++; render(); }; if (window.Predict && window.Predict.gate($("zSteps"), steps, shown, adv)) return; adv(); });
+  $("zNext").addEventListener("click", () => {
+    const adv = () => { shown++; render(); };
+    if (selfOn && op !== "mul") {
+      const cur = steps[shown], nx = steps[shown + 1];
+      if (cur && cur.kw && !kwDone(cur.kw)) { msg0("Zähle zuerst alle Würfel durch, dann geht es weiter."); return; }
+      if (nx && nx.pre && nx.pre.length) { selfGate($("zSteps"), nx.pre, adv); return; }
+      adv(); return;
+    }
+    if (window.Predict && window.Predict.gate($("zSteps"), steps, shown, adv)) return; adv(); });
   $("zBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   $("zAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("zRestart").addEventListener("click", restart);
@@ -8778,7 +8844,7 @@ document.querySelectorAll(".card").forEach(c => {
   function build(rub) {
     const host = document.getElementById("panel-" + rub), info = RUB[rub], N = 10, TIME = 20, MINT = 5;
     const id = s => rub + s, $ = s => document.getElementById(id(s));
-    let helpOn = store.get("msw_qz_help") === "1", top = "alle", timerOn = store.get("msw_qz_cd") !== "0", expired = false, st = null, Q = null, sel = {}, checked = false, tmr = null, rem = TIME, roundNo = 0, usedJoker = false, boss = false;
+    let helpOn = store.get("msw_qz_help") === "1", top = "alle", timerOn = store.get("msw_qz_cd") !== "0", expired = false, st = null, Q = null, sel = {}, selSeq = [], checked = false, tmr = null, rem = TIME, roundNo = 0, usedJoker = false, boss = false;
     host.style.setProperty("--qa", info.col);
     const TR = 4, TCOL = ["#6cc0f5", "#ff8a65", "#5fd06f"], DEFN = ["Team Blau", "Team Rot", "Team Grün"];
     let teamOn = store.get("msw_qz_team") === "1", teamN = store.get("msw_qz_teamn") === "3" ? 3 : 2, tnames = ["", "", ""];
@@ -8896,14 +8962,14 @@ document.querySelectorAll(".card").forEach(c => {
     }
     function paintHelp() {
       const hb = $("HelpBox"); if (!hb) return;
-      const idx = Object.keys(sel).filter(i => sel[i]).sort((a, b) => a - b);
+      const idx = selSeq.filter(i => sel[i]).reverse();
       if (!idx.length) { hb.innerHTML = '<div class="note">Hilfebilder: Klicke eine Möglichkeit an, dann siehst du sie als Bild aus Würfeln und Stangen.</div>'; return; }
       hb.innerHTML = idx.map(i => { const o = Q.opts[i], pic = qHelpPic(o.p); return pic ? '<div class="qzhelpi"><div class="qzhn">Möglichkeit ' + (Number(i) + 1) + ": " + o.h + "</div>" + pic + "</div>" : ""; }).join("") || '<div class="note">Zu dieser Möglichkeit gibt es kein Bild.</div>';
     }
     const topLabel = t => (info.tops.find(x => x[0] === t) || [0, ""])[1];
     function toggle(i) {
       if (checked) return; const b = stage().querySelector('.qzopt[data-i="' + i + '"]'); if (!b || b.classList.contains("qzgone")) return;
-      sel[i] = !sel[i]; b.setAttribute("aria-pressed", sel[i] ? "true" : "false"); SFX.tick();
+      sel[i] = !sel[i]; selSeq = selSeq.filter(x => x != i); if (sel[i]) selSeq.push(i); b.setAttribute("aria-pressed", sel[i] ? "true" : "false"); SFX.tick();
       $("Check").disabled = !Object.keys(sel).some(x => sel[x]); paintHelp();
     }
     function joker() {

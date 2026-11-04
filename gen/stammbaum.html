@@ -2425,7 +2425,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "03.11.2026 22:17"; /* BUILD_ID=03.11.2026 22:17 */
+const BUILD = "04.11.2026 21:39"; /* BUILD_ID=04.11.2026 21:39 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -2485,7 +2485,7 @@ function renderDescList() {
     const fams = p.fams.filter(f => !path.has(f));
     if (!fams.length) return `<li class="leaf"><span class="dn${sideCls(pid)}">${nm}</span>${bd}</li>`;
     const famLine = (fid, idx) => {
-      if (!DX.sp) return fams.length > 1 ? `<span class="sp">Familie ${idx + 1}</span>` : "";
+      if (DX.m === "off") return fams.length > 1 ? `<span class="sp">Familie ${idx + 1}</span>` : "";
       const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, pid);
       const m = f.marr && f.marr.date.text ? ` <span class="sp">(${E(f.marr.date.text)})</span>` : "";
       return `<span class="sp">⚭</span> ${sp ? `<button class="lk" data-act="dgo" data-id="${sp}">${E(nameOf(sp))}</button> <span class="sp">${lifeHtml(db, sp)}</span>${qTotal(db, sp)} <span class="sp">${E(bdShort(db, sp))}</span>` : '<span class="sp">unbekannt</span>'}${m}`;
@@ -6425,7 +6425,7 @@ const ZOOM = { ped: +lsGet("st.zoomP", 1) || 1, desc: +lsGet("st.zoomD", 1) || 1
 const ZMIN = 0.3, ZMAX = 2;
 /* Zuschaltbar: Ehepartner und Kinder der Hauptperson in der Vorfahrenansicht (PX), Ehepartner in der Nachkommenansicht (DX) */
 const PX = { sp: lsGet("st.pedSp", "0") === "1", kid: lsGet("st.pedKid", "0") === "1" };
-const DX = { sp: lsGet("st.descSp", "1") !== "0" };
+const DX = { m: (() => { const v = lsGet("st.descSpM", ""); if (["off", "line", "box"].includes(v)) return v; return lsGet("st.descSp", "1") === "0" ? "off" : "line"; })() };   // Ehepartner: aus, als Zeile im Kasten, als eigener Kasten
 const PX_MAX = 60;
 function pedExtras() {   // Ehepartner und Kinder der gewählten Person, nach Familie geordnet
   if (!S.db || !(PX.sp || PX.kid)) return [];
@@ -6442,12 +6442,12 @@ function pedXctl() {
   return `<span class="xtog" role="group" aria-label="Zuschalten"><label class="chk" title="Ehepartner der gewählten Person zusätzlich zeigen"><input type="checkbox" id="pxSp"${PX.sp ? " checked" : ""}> Ehepartner</label><label class="chk" title="Kinder der gewählten Person zusätzlich zeigen"><input type="checkbox" id="pxKid"${PX.kid ? " checked" : ""}> Kinder</label></span>`;
 }
 function descXctl() {
-  return `<span class="xtog"><label class="chk" title="Ehepartner in den Kästen und Zeilen ein- oder ausblenden"><input type="checkbox" id="dxSp"${DX.sp ? " checked" : ""}> Ehepartner</label></span>`;
+  return `<label title="Ehepartner ausblenden, als Zeile im Kasten oder (im Baum) als eigener Kasten zeigen">Ehepartner <select id="dxMode">${[["off", "aus"], ["line", "als Zeile"], ["box", "eigener Kasten"]].map(([v, t]) => `<option value="${v}"${DX.m === v ? " selected" : ""}>${t}</option>`).join("")}</select></label>`;
 }
 document.addEventListener("change", (e) => {
   const id = e.target && e.target.id;
   if (id === "pxSp" || id === "pxKid") { PX[id === "pxSp" ? "sp" : "kid"] = e.target.checked; lsSet(id === "pxSp" ? "st.pedSp" : "st.pedKid", e.target.checked ? "1" : "0"); render(); }
-  else if (id === "dxSp") { DX.sp = e.target.checked; lsSet("st.descSp", DX.sp ? "1" : "0"); render(); }
+  else if (id === "dxMode") { DX.m = e.target.value; lsSet("st.descSpM", DX.m); render(); }
 });
 function pedExtraRows() {   // für Liste und Fächer: Zeilen mit Ehepartnern und Kindern
   const db = S.db;
@@ -6625,6 +6625,33 @@ function layoutTree(items, edges, ori, slots) {
 const ARROW = { LR: ["›", "‹"], RL: ["‹", "›"], TB: ["⌄", "⌃"], BT: ["⌃", "⌄"] };   // [zu den Vorfahren/Kindern hin, zurück]
 function boxLines(nm, hasPh, BW, PH) { const tw = BW - 18 - 14 - (hasPh ? PH + 6 : 0); return Math.min(3, Math.max(1, Math.ceil(nm.length * 7.2 / tw))); }
 
+/* ---------- Ehepartner als eigene Kästen: Block aus Person und Ehepartner-Kästen ---------- */
+const SPG = 6;
+function spBlock(ph, shs, ori) {   // Versätze von Person und Ehepartner-Kästen im Block (alle Richtungen: untereinander, bei unten nach oben umgekehrt)
+  const offs = []; let y = 0;
+  if (ori === "BT") { shs.forEach(h => { offs.push(y); y += h + SPG; }); return { person: y, sp: offs, h: y + ph }; }
+  y = ph + SPG; shs.forEach(h => { offs.push(y); y += h + SPG; });
+  return { person: 0, sp: offs, h: shs.length ? y - SPG : ph };
+}
+function spBoxH(GEO, nm) { return GEO.c ? GEO.BH : Math.max(GEO.BH, 9 + boxLines(nm, false, GEO.BW, 40) * 16 + 4 + 15 + 14 + 6); }
+function spBoxHtml(GEO, s, top, left, label) {
+  const st = `left:${left}px;top:${top}px;height:${s.h}px;width:${GEO.BW}px`;
+  if (!s.id) return `<div class="tb empty sx spb${GEO.c ? " tc tc" + GEO.c : ""}" style="${st}">${GEO.c > 2 ? "?" : E(s.nm)}</div>`;
+  const body = GEO.c ? tcInner(GEO.c, s.nm, s.id) : `<span class="tx"><span class="nm">${E(s.nm)}</span><span class="yr">${lifeHtml(S.db, s.id)}</span><span class="pl">${E(label)}</span></span>`;
+  return `<button class="tb sx spb ${s.sex}${sideCls(s.id)}${GEO.c ? " tc tc" + GEO.c : ""}" style="${st}" data-act="pedgo" data-id="${s.id}" title="${E(s.nm)} (${E(label)})\n${E(bdText(S.db, s.id))}">${body}</button>`;
+}
+function spList(id, skip, lineChild) {   // Ehepartner einer Person als Liste von {id,nm,sex,marr}
+  const db = S.db, p = GED.personInfo(db, id), out = [], seen = new Set();
+  for (const fid of p.fams) {
+    const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, id);
+    if (lineChild && f.children.includes(lineChild)) continue;   // die Familie, aus der die Linie weiterläuft, steht schon im Baum
+    if (sp === id || (sp && (sp === skip || seen.has(sp)))) continue;
+    if (sp) seen.add(sp);
+    out.push({ id: sp || null, nm: sp ? nameOf(sp) : "Ehepartner unbekannt", sex: sp ? GED.personInfo(db, sp).sex : "U", marr: f.marr && f.marr.date.text ? f.marr.date.text : "" });
+  }
+  return out;
+}
+
 /* ---------- Vorfahren als Baum ---------- */
 function renderPedTree() {
   const db = S.db, N = S.gens, ori = ORI.ped;
@@ -6632,7 +6659,7 @@ function renderPedTree() {
   treeMediaIdx();
   const GEO = boxGeo(), BW = GEO.BW, BH = GEO.BH, PH = 40, placeholders = new Set();
   anc.forEach((id, k) => { const g = Math.floor(Math.log2(k)); if (g < N - 1 && (anc.has(2 * k) !== anc.has(2 * k + 1))) placeholders.add(anc.has(2 * k) ? 2 * k + 1 : 2 * k); });
-  const ex = pedExtras(), sh = ex.length ? 1 : 0, slots0 = Math.pow(2, N - 1), slots = Math.max(slots0, ex.length), dc = (slots - slots0) / 2;
+  const ex = pedExtras().filter(e => e.kind === "kid"), sh = ex.length ? 1 : 0, slots0 = Math.pow(2, N - 1), slots = Math.max(slots0, ex.length), dc = (slots - slots0) / 2;
   const all = new Set([...anc.keys(), ...placeholders]), info = new Map(), items = [], edges = [];
   all.forEach(k => {
     const g0 = Math.floor(Math.log2(k)), g = g0 + sh, i = k - Math.pow(2, g0), c = (i + 0.5) * slots0 / Math.pow(2, g0) + dc;
@@ -6641,7 +6668,9 @@ function renderPedTree() {
     const lines = boxLines(nm, hit, BW, PH);
     const bl = bdLine(db, id, "b"), dl = bdLine(db, id, "d");
     const rl = relTag(id, "bx"), h = GEO.c ? BH : Math.max(hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (bl ? 14 : 0) + (dl ? 14 : 0) + (rl ? 14 : 0) + 15, BH);
-    info.set(k, { h, hit, nm, bl, dl, rl, id, pi }); items.push({ key: k, g, c, h });
+    const sps = PX.sp ? spList(id, k === 1 ? null : anc.get(k ^ 1), k === 1 ? null : anc.get(k >> 1)).map(s => Object.assign(s, { h: spBoxH(GEO, s.nm) })) : [];
+    const blk = spBlock(h, sps.map(s => s.h), ori);
+    info.set(k, { h, hit, nm, bl, dl, rl, id, pi, sps, blk }); items.push({ key: k, g, c, h: blk.h });
     if (all.has(2 * k)) edges.push([k, 2 * k]); if (all.has(2 * k + 1)) edges.push([k, 2 * k + 1]);
   });
   const exInfo = ex.map((e, i) => {
@@ -6659,7 +6688,8 @@ function renderPedTree() {
       ${GEO.c ? tcInner(GEO.c, nm, e.id) : `<span class="tx"><span class="nm">${E(nm)}</span><span class="yr">${lifeHtml(db, e.id)}</span><span class="pl">${e.kind === "sp" ? "⚭ Ehepartner" : "Kind"}</span></span>`}</button>`;
   });
   all.forEach(k => {
-    const p = L.pos.get(k), f = info.get(k), st = `left:${p.left}px;top:${p.top}px;height:${p.h}px`;
+    const p = L.pos.get(k), f = info.get(k), st = `left:${p.left}px;top:${p.top + (f.blk ? f.blk.person : 0)}px;height:${f.blk ? f.h : p.h}px`;
+    if (f.sps) f.sps.forEach((s, j) => { boxes += spBoxHtml(GEO, s, p.top + f.blk.sp[j], p.left, "⚭ " + (k === 1 ? "Ehepartner" : "weitere Ehe") + (s.marr ? " " + s.marr : "")); });
     if (placeholders.has(k)) { boxes += `<div class="tb empty${GEO.c ? " tc tc" + GEO.c : ""}" style="${st};width:${BW}px">${GEO.c > 2 ? "?" : "unbekannt"}</div>`; return; }
     const ph = f.hit ? `<span class="ph"><img data-mid="${f.hit.id}" alt=""></span>` : "", kin = pedKin(f.id);
     const arL = k === 1 && kin.kids.length ? `<span class="ar" data-act="t_pchild" title="Zum Kind">${ARROW[ori][1]}</span>` : "";
@@ -6684,7 +6714,7 @@ function descNodes(maxDepth, MAXN) {
     const p = GED.personInfo(db, pid), node = { id: pid, p, depth, sp: [], kids: [], more: 0 };
     for (const fid of p.fams.filter(f => !path.has(f))) {
       const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, pid);
-      if (DX.sp) node.sp.push(sp ? { id: sp, nm: nameOf(sp), yrs: bdShort(db, sp) || GED.lifeSpan(db, sp) } : { id: null, nm: "unbekannt", yrs: "" });
+      if (DX.m !== "off") node.sp.push(sp ? { id: sp, nm: nameOf(sp), yrs: bdShort(db, sp) || GED.lifeSpan(db, sp), sex: GED.personInfo(db, sp).sex, marr: f.marr && f.marr.date.text ? f.marr.date.text : "" } : { id: null, nm: "Ehepartner unbekannt", yrs: "", sex: "U", marr: "" });
       if (!f.children.length) continue;
       if (depth >= maxDepth) { node.more += f.children.length; continue; }
       const np = new Set(path); np.add(fid);
@@ -6703,9 +6733,11 @@ function renderDescTree() {
     all.push(n); n.key = all.length - 1;
     n.hit = mainPhotoHit(n.p.rec); n.nm = GED.displayName(n.p.rec);
     const tw = BW - 18 - 14 - (n.hit ? PH + 6 : 0), lines = boxLines(n.nm, n.hit, BW, PH);
-    const sps = n.sp.map(s => Math.max(1, Math.ceil((s.nm.length + s.yrs.length + 3) * 6.4 / tw))).reduce((a, b) => a + b, 0);
+    const boxMode = DX.m === "box", sps = boxMode ? 0 : n.sp.map(s => Math.max(1, Math.ceil((s.nm.length + s.yrs.length + 3) * 6.4 / tw))).reduce((a, b) => a + b, 0);
     n.bl = bdLine(db, n.id, "b"); n.dl = bdLine(db, n.id, "d"); n.rl = relTag(n.id, "bx");
     n.h = GEO.c ? BH : Math.max(n.hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (n.bl ? 14 : 0) + (n.dl ? 14 : 0) + (n.rl ? 14 : 0) + 15 + sps * 14, BH);
+    n.ph = n.h;
+    if (boxMode) { n.sp.forEach(s => { s.h = spBoxH(GEO, s.nm); }); n.blk = spBlock(n.ph, n.sp.map(s => s.h), ori); n.h = n.blk.h; }
     n.kids.forEach(walk);
   })(root);
   let leaf = 0;
@@ -6717,9 +6749,11 @@ function renderDescTree() {
   for (const n of all) {
     const p = L.pos.get(n.key);
     const ph = n.hit ? `<span class="ph"><img data-mid="${n.hit.id}" alt=""></span>` : "";
-    const spl = n.sp.map(s => `<span class="pl sp2">⚭ ${s.id ? `<span class="splk" data-act="pedgo" data-id="${s.id}">${E(s.nm)}</span>` : E(s.nm)}${s.yrs ? " " + E(s.yrs) : ""}</span>`).join("");
+    const boxMode = DX.m === "box";
+    if (boxMode) n.sp.forEach((s, j) => { boxes += spBoxHtml(GEO, s, p.top + n.blk.sp[j], p.left, "⚭ Ehepartner" + (s.marr ? " " + s.marr : "")); });
+    const spl = boxMode ? "" : n.sp.map(s => `<span class="pl sp2">⚭ ${s.id ? `<span class="splk" data-act="pedgo" data-id="${s.id}">${E(s.nm)}</span>` : E(s.nm)}${s.yrs ? " " + E(s.yrs) : ""}</span>`).join("");
     const arR = n.more ? `<span class="ar" data-act="dgo" data-id="${n.id}" title="${n.more} weitere Kinder: diese Person in die Mitte setzen">${ARROW[ori][0]}</span>` : "";
-    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}${sideCls(n.id)}${GEO.c ? " tc tc" + GEO.c : ""}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px;width:${BW}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}${GEO.c && n.sp.length ? "\n⚭ " + E(n.sp.map(s => s.nm).join(", ")) : ""}">${arR}${GEO.c ? tcInner(GEO.c, n.nm, n.id) : `${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${n.rl}${spl}</span>${qTotal(db, n.id)}`}</button>`;
+    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}${sideCls(n.id)}${GEO.c ? " tc tc" + GEO.c : ""}" style="left:${p.left}px;top:${p.top + (boxMode ? n.blk.person : 0)}px;height:${n.ph}px;width:${BW}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}${GEO.c && n.sp.length ? "\n⚭ " + E(n.sp.map(s => s.nm).join(", ")) : ""}">${arR}${GEO.c ? tcInner(GEO.c, n.nm, n.id) : `${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${n.rl}${spl}</span>${qTotal(db, n.id)}`}</button>`;
   }
   const opts = [2, 3, 4, 5, 6, 8].map(n => `<option value="${n}"${n === S.depth ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>

@@ -609,6 +609,31 @@
   .gtab.wide td { font-weight:400; font-size:1rem; }
   .gtab.wide td .ce { font-weight:800; }
 
+  /* ===== Nebensatz: je Satz eine Farbe ===== */
+  .rc0 { --rc:#2fc7c7; } .rc1 { --rc:#b48cff; } .rc2 { --rc:#ff7fa8; }
+  tr.rc td { background:color-mix(in srgb, var(--rc) 14%, transparent); }
+  tr.rc td.vb { border-left:6px solid var(--rc); color:var(--rc); }
+  tr.rc .sw:not(.ok):not(.no) .slot, tr.rc .sw:not(.ok):not(.no) .sin { border-color:var(--rc); }
+  tr.rc .sw:not(.ok):not(.no) .slot.fill { background:color-mix(in srgb, var(--rc) 22%, transparent); }
+  .chips:has(.cgrp) { flex-direction:column; flex-wrap:nowrap; gap:.4rem; }
+  .cgrp { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem .5rem; padding:.35rem .55rem; border-radius:.9rem; border:1px solid color-mix(in srgb, var(--rc) 60%, transparent); background:color-mix(in srgb, var(--rc) 16%, transparent); }
+  .cgrp .gtag { font-size:.8rem; font-weight:800; color:var(--rc); min-width:4.2rem; }
+  .cgrp .chip { font-size:1.15rem; padding:.3rem .85rem; border-color:var(--rc); box-shadow:0 .2rem 0 #070a10; }
+  .cgrp .chip:not(:disabled):hover { border-color:#fff; }
+  .cgrp .chip.st { cursor:default; box-shadow:none; }
+  .cgrp .chip:disabled { opacity:.35; }
+  tr.rc .solw { display:none; }
+  .nsol { margin-top:.35rem; font-weight:800; font-size:.95rem; color:var(--ok); }
+  @media (max-width:1100px), (max-height:800px) {
+    .chips:has(.cgrp) { gap:.3rem; }
+    .cgrp { padding:.2rem .45rem; gap:.25rem .4rem; border-radius:.7rem; }
+    .cgrp .gtag { min-width:0; font-size:.72rem; }
+    .cgrp .chip { font-size:1rem; padding:.14rem .6rem; box-shadow:none; border-width:2px; }
+    body.view-game .tk-dock .chips { margin-bottom:.3rem; }
+  }
+  @media (max-width:1100px) { .cgrp .gtag { display:none; } }
+  @media (max-width:1100px) { .tk-tools .speakb .lbl { display:none; } .tk-tools .speakb { padding:.35rem .55rem; } .tk-dock .tk-act { gap:.35rem; } }
+
 </style>
 </head>
 <body class="view-intro">
@@ -1146,13 +1171,25 @@
       if (new Set(c.map(x => x[0])).size === 3) { rows = c; break; }
     }
     if (!rows.length) rows = [NSR[4], NSR[8], NSR[0]];
-    /* Nur die Wortstellung wird geprüft: Alle Wörter des Nebensatzes sind vorgegeben und müssen geordnet werden. */
-    const slots = [], out = rows.map(r => {
-      const w = r[2], idx = slots.length;
-      w.forEach(x => slots.push(slotOf([x], "t")));
-      return { left: r[0], pieces: [{ t: r[1] }].concat(w.map((x, k) => ({ s: idx + k }))), note: "", hint: "Das konjugierte Verb steht am Ende des Nebensatzes." };
+    /* Nur die Wortstellung wird geprüft: Jeder Satz hat seine Farbe, die Wörter jedes Nebensatzes liegen gemischt in derselben Farbe bereit. */
+    const slots = [], chips = [];
+    const out = rows.map((r, ri) => {
+      const w = [r[0]].concat(r[2]), idx = slots.length, pre = r[1].slice(0, r[1].length - r[0].length).trim();
+      w.forEach(x => slots.push(slotOf([x], "t", { row: ri })));
+      let ws = w.slice(); for (let t = 0; t < 30; t++) { ws = shuf(w); if (ws.join(" ") !== w.join(" ")) break; }
+      ws.forEach(x => chips.push({ id: chips.length, t: x, row: ri }));
+      return { left: "Satz " + (ri + 1), rc: ri, pieces: [{ t: pre }].concat(w.map((x, k) => ({ s: idx + k }))), note: "", hint: "Der Nebensatz beginnt mit dem Einleiter. Das konjugierte Verb steht am Ende." };
     });
-    return { type: "ns", layout: "rows", leftHead: "Einleiter", slots: slots, rows: out, chips: chipsOf(slots, []), title: "Nebensatz: Ordne die Wörter. Das konjugierte Verb steht am Ende." };
+    return { type: "ns", layout: "rows", leftHead: "Satz", slots: slots, rows: out, chips: chips, title: "Baue die drei Nebensätze zusammen: erst der Einleiter, am Ende das konjugierte Verb." };
+  }
+  function nsChipsHtml(T, used, stat) {
+    return [0, 1, 2].map(ri => '<div class="cgrp rc' + ri + '"><span class="gtag">' + esc(T.rows[ri].left) + "</span>" + T.chips.filter(c => c.row === ri).map(c => stat ? '<span class="chip st">' + esc(c.t) + "</span>" : '<button class="chip" data-c="' + c.id + '"' + (used.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("") + "</div>").join("");
+  }
+  const nsRow = (T, i) => T.type === "ns" ? T.slots.findIndex((s, k) => T.fill[k] === null && s.row === T.slots[i].row) : T.fill.indexOf(null);
+  function pickSlot(T, id) {
+    if (T.type !== "ns") return T.fill.indexOf(null);
+    const row = T.chips.find(c => c.id === id).row;
+    return T.slots.findIndex((s, k) => T.fill[k] === null && s.row === row);
   }
   function buildTask() {
     const t = S.mode === "mix" ? pick(["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp", "ns"]) : S.mode;
@@ -1231,19 +1268,20 @@
       tab = '<table class="tk rw"><thead><tr><th>' + T.leftHead + "</th><th>Satz</th></tr></thead><tbody>" + T.rows.map((r, ri_) => {
         const body = r.pieces.map(p => p.s !== undefined ? slotHtml(T.slots[p.s], p.s) : "<span>" + esc(p.t) + "</span>").join(" ");
         const left = T.leftOnce ? (ri_ === 0 ? '<td class="vb" rowspan="' + T.rows.length + '">' + esc(T.leftOnce) + "</td>" : "") : '<td class="vb">' + esc(r.left) + "</td>";
-        return "<tr>" + left + '<td><div class="cellw sent">' + body + (r.note ? ' <span class="noun">' + esc(r.note) + "</span>" : "") + "</div>" + (S.help && r.hint ? '<div class="hint">' + esc(r.hint) + "</div>" : "") + "</td></tr>";
+        return "<tr" + (r.rc !== undefined ? ' class="rc rc' + r.rc + '"' : "") + ">" + left + '<td><div class="cellw sent">' + body + (r.note ? ' <span class="noun">' + esc(r.note) + "</span>" : "") + "</div>" + (S.help && r.hint ? '<div class="hint">' + esc(r.hint) + "</div>" : "") + "</td></tr>";
       }).join("") + "</tbody></table>";
     }
     const lim = +S.lim;
     t.className = "task active"; t.style.setProperty("--c", PCOL[G.cur]);
     t.innerHTML = '<div class="tk-bar"><span class="sym">' + SYM[G.cur] + '</span><span class="who">' + esc(nameOf(G.cur)) + " ist dran</span>" + STEPS + '</div><div class="tk-body"><div class="tk-titlerow"><div class="tk-title">' + esc(T.title) + "</div>" + stakeHtml(T) + '</div><div class="how">' +
-      (wr ? "Schreibe in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.") + "</div>" +
+      (T.type === "ns" ? (wr ? "Schreibe den Nebensatz in der richtigen Reihenfolge in die Felder, mit dem Einleiter am Anfang. Die Wörter in der Farbe des Satzes gehören zu diesem Satz." : "Klicke die Wörter in der Farbe des Satzes an, beginne mit dem Einleiter. Sie füllen die Lücken von links nach rechts.") : wr ? "Schreibe in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.") + "</div>" +
       (lim ? '<div class="tk-timer"><div class="bar"><i id="tkBar"></i></div><span class="sec" id="tkSec">' + lim + " s</span></div>" : "") +
       '<div class="tw">' + tab + "</div>" +
       '<div class="tk-feed" id="tkFeed"></div></div>' +
-      '<div class="tk-dock">' + (wr ? "" : '<div class="chips" id="chips"></div>') +
+      '<div class="tk-dock">' + (wr && T.type !== "ns" ? "" : '<div class="chips" id="chips"></div>') +
       '<div class="tk-act">' + TOOLS + (wr ? "" : '<button id="tkClear">Letzte Eingabe löschen</button>') + '<button class="primary" id="tkCheck">Prüfen</button>' + (RS[G.cur].joker > 0 ? '<button class="jk-btn" id="tkJoker" title="Füllt eine Lücke aus. Die Aufgabe bringt dann nur halbe Punkte.">Tipp-Joker (' + RS[G.cur].joker + ")</button>" : "") + '<button id="tkNext" hidden class="primary">Weiter</button></div></div>';
     setStep(2); t.scrollTop = 0;
+    if (wr && T.type === "ns") $("chips").innerHTML = nsChipsHtml(T, [], true);
     $("tkCheck").onclick = check;
     $("tkNext").onclick = afterTask;
     if ($("tkJoker")) $("tkJoker").onclick = useJoker;
@@ -1252,16 +1290,16 @@
       ins.forEach((el, i) => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (i < ins.length - 1) ins[i + 1].focus(); else check(); } }));
       if (ins[0]) ins[0].focus({ preventScroll: true });
     } else {
-      $("tkClear").onclick = () => { const k = T.fill.map((x, i) => x !== null ? i : -1).filter(i => i >= 0); if (k.length) { T.fill[k[k.length - 1]] = null; renderChips(); } };
+      $("tkClear").onclick = () => { if (T.type === "ns") { while (T.hist && T.hist.length) { const li = T.hist.pop(); if (T.fill[li] !== null) { T.fill[li] = null; renderChips(); return; } } return; } const k = T.fill.map((x, i) => x !== null ? i : -1).filter(i => i >= 0); if (k.length) { T.fill[k[k.length - 1]] = null; renderChips(); } };
       t.querySelectorAll(".slot").forEach(el => { const f = () => { const i = +el.dataset.s; if (!T.done && T.fill[i] !== null) { T.fill[i] = null; renderChips(); } }; el.onclick = f; el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); f(); } }; });
       renderChips();
     }
   }
   function renderChips() {
     const T = G.task, usedIds = T.fill.filter(x => x !== null);
-    $("chips").innerHTML = T.chips.map(c => '<button class="chip" data-c="' + c.id + '"' + (usedIds.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("");
-    $("chips").querySelectorAll(".chip").forEach(b => b.onclick = () => { const i = T.fill.indexOf(null); if (i >= 0 && !T.done) { T.fill[i] = +b.dataset.c; renderChips(); } });
-    $("task").querySelectorAll(".slot").forEach((el, i) => { const id = T.fill[i]; el.textContent = id === null ? "" : T.chips.find(c => c.id === id).t; el.className = "slot" + (id !== null ? " fill" : (i === T.fill.indexOf(null) && !T.done ? " next" : "")); });
+    $("chips").innerHTML = T.type === "ns" ? nsChipsHtml(T, usedIds) : T.chips.map(c => '<button class="chip" data-c="' + c.id + '"' + (usedIds.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("");
+    $("chips").querySelectorAll(".chip").forEach(b => b.onclick = () => { const i = pickSlot(T, +b.dataset.c); if (i >= 0 && !T.done) { T.fill[i] = +b.dataset.c; (T.hist = T.hist || []).push(i); renderChips(); } });
+    $("task").querySelectorAll(".slot").forEach((el, i) => { const id = T.fill[i]; el.textContent = id === null ? "" : T.chips.find(c => c.id === id).t; el.className = "slot" + (id !== null ? " fill" : (i === nsRow(T, i) && !T.done ? " next" : "")); });
     $("tkCheck").disabled = T.done || T.fill.indexOf(null) >= 0;
   }
 
@@ -1279,7 +1317,7 @@
       ins[i].value = T.slots[i].show; ins[i].classList.add("jok"); ins[i].readOnly = true;
     } else {
       const i = T.fill.indexOf(null); if (i < 0) return;
-      const c = T.chips.find(x => x.t === T.slots[i].show && T.fill.indexOf(x.id) < 0); if (!c) return;
+      const c = T.chips.find(x => x.t === T.slots[i].show && T.fill.indexOf(x.id) < 0 && x.row === T.slots[i].row); if (!c) return;
       T.fill[i] = c.id; renderChips();
     }
     T.jok = true; R.joker--; R.jused++; renderScore();
@@ -1331,6 +1369,7 @@
       if (!T.res[i]) w.querySelector(".solw").innerHTML = '<span class="sol">richtig: ' + esc(T.slots[i].show) + "</span>";
     });
     $("task").querySelectorAll(".sin").forEach(e => e.disabled = true);
+    if (T.type === "ns") T.rows.forEach((r, ri) => { if (r.pieces.some(p => p.s !== undefined && !T.res[p.s])) { const cell = $("task").querySelectorAll("tr.rc")[ri].querySelector(".cellw"); cell.insertAdjacentHTML("afterend", '<div class="nsol">richtig: ' + esc(r.pieces[0].t + " " + r.pieces.filter(p => p.s !== undefined).map(p => T.slots[p.s].show).join(" ")) + ".</div>"); } });
     if (S.ans === "click") renderChips();
     const feed = $("tkFeed"), nm = nameOf(G.cur), me = G.cur;
     const lim = +S.lim, R = RS[me], P = PR[me], xp0 = R.xp, parts = [];
@@ -1649,9 +1688,9 @@
         T.slots.forEach(s => parts.push((s.given ? "Gegenwart: " + s.given + ". " : "") + s.pron + ", Lücke."));
       } else {
         if (T.leftOnce) parts.push("Verb: " + T.leftOnce + ".");
-        T.rows.forEach(r => parts.push(((T.leftOnce || T.type === "ns" ? "" : r.left + ": ") + r.pieces.map(p => p.s !== undefined ? "Lücke" : p.t).join(", ") + (S.help && r.hint ? " " + r.hint : "")).replace(/[.?!]?$/, ".")));
+        T.rows.forEach((r, ri) => parts.push(((T.type === "ns" ? "Satz " + (ri + 1) + ": " : T.leftOnce ? "" : r.left + ": ") + r.pieces.map(p => p.s !== undefined ? "Lücke" : p.t).join(", ") + (S.help && r.hint ? " " + r.hint : "")).replace(/[.?!]?$/, ".")));
       }
-      if (S.ans === "click") parts.push("Zur Auswahl: " + T.chips.map(c => c.t).join(", ") + ".");
+      if (T.type === "ns") [0, 1, 2].forEach(ri => parts.push("Wörter für Satz " + (ri + 1) + ": " + T.chips.filter(c => c.row === ri).map(c => c.t).join(", ") + ".")); else if (S.ans === "click") parts.push("Zur Auswahl: " + T.chips.map(c => c.t).join(", ") + ".");
       return spoken(parts.join(" "));
     }
     function feedText() {

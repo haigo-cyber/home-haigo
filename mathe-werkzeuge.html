@@ -165,6 +165,16 @@
   .zx > svg:first-child { display:block; }
   .zxs { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
   .zblock { display:inline-block; }
+  .kw { margin:8px 0 4px; }
+  .kct { font-size:1.9rem; font-weight:700; margin:2px 0 8px; }
+  .kgrid { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end; }
+  .kblk { display:inline-grid; grid-template-columns:repeat(5, auto); gap:6px; align-items:end; justify-items:center; padding:4px; border:2px dashed #4a505a; border-radius:.7rem; }
+  .kcube { position:relative; display:inline-block; line-height:0; border:0; background:none; padding:2px; border-radius:8px; cursor:pointer; min-width:34px; min-height:34px; }
+  .kcube:hover:not(:disabled) { outline:2px solid #f5a524; }
+  .kcube:disabled { cursor:default; }
+  .kcube.ten { outline:3px solid #5fd06f; }
+  .kcube > .kn { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1rem; font-weight:800; line-height:1; color:#fff; text-shadow:0 0 3px #000,0 0 3px #000,0 0 2px #000; pointer-events:none; }
+  .kok { color:#5fd06f; font-weight:700; margin:6px 0 2px; }
   .zring { display:inline-flex; flex-wrap:wrap; gap:5px; align-items:flex-end; border:3px solid #c3c8ce; border-radius:0.824rem; padding:4px 5px; box-shadow:0 0 0 1px rgba(0,0,0,.5); }
   .zs { color:#6cc0f5; font-weight:700; }
   .zp { color:#c89cff; font-weight:700; }
@@ -473,6 +483,9 @@
   .qzcard.boss .qzmeta { color:#f2a900; }
   .qzq { font-size:1.45rem; line-height:1.7; margin:.2rem 0; }
   .qzk { margin:.2rem 0 .2rem; color:var(--muted); font-size:1.05rem; } .qzk b { color:var(--text); }
+  .qzhelp { margin:.2rem 0 .8rem; }
+  .qzhelpi { border:1px solid #2c3037; border-radius:.8rem; padding:.4rem .8rem; margin:.5rem 0; background:rgba(255,255,255,.03); }
+  .qzhn { font-weight:700; margin-top:.2rem; }
   .qzgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(9rem,1fr)); gap:.9rem; margin:.9rem 0 1.1rem; }
   .qzgrid.wide { grid-template-columns:repeat(auto-fill,minmax(18rem,1fr)); }
   .qzopt { position:relative; font-size:1.5rem; font-weight:800; min-height:4.4rem; border-radius:1rem; border:2px solid var(--hair2); background:linear-gradient(180deg,#232a37,#1a202b); box-shadow:0 5px 0 #070a10; transition:transform .08s, box-shadow .08s, border-color .15s, background .15s; }
@@ -648,6 +661,7 @@
         <button id="zNext">Nächster Schritt</button>
         <button id="zAll">Alle Schritte zeigen</button>
         <button id="zRestart">Neu starten</button>
+        <button class="tab" id="zFine" aria-pressed="false" aria-selected="false" title="Würfel einzeln anklicken und mitzählen">Kleine Schritte: aus</button>
         <label class="opt">Größe <input type="range" id="zSize" min="6" max="18" value="12"></label>
       </div>
       <div class="numrow">
@@ -2214,9 +2228,44 @@ renderStell();
   const MAT = ["Einerwürfel", "Zehnerstange", "Hunderterplatte", "Tausenderwürfel"];
   const MATPL = ["Einerwürfel", "Zehnerstangen", "Hunderterplatten", "Tausenderwürfel"];
   const AB = ["E", "Z", "H", "T"];
-  const COL = { steel: "#5aaee8", green: "#3fb455", red: "#e03a2f", gold: "#3fb455" };
+  const COL = { steel: "#5aaee8", green: "#3fb455", red: "#e03a2f", gold: "#3fb455", cnt: "#f5a524" };
   const MAXV = 999;
   let op = "add", S = 10, A = 38, B = 27, shown = 0, steps = [], ueb = false, zrU = null;
+  let fine = false, KS = {}, KW = {}, kn = 0;
+  try { fine = localStorage.getItem("msw_uez_fine") === "1"; } catch (e) { fine = false; }
+  const KUNIT = p => p === 0 ? "Würfel" : "Stangen";
+  function kwHtml(key) {
+    const sp = KW[key], u = parseInt($("zSize").value, 10) * msK(), cl = KS[key] || [], fx = sp.fixed || 0, p = sp.p;
+    const take = sp.mode === "take", cnt = fx + cl.length, N = sp.items.length;
+    const counter = take ? 'Weggenommen: <span class="zr">' + cl.length + "</span> von " + sp.limit : 'Gezählt: <span class="zs">' + cnt + "</span>" + (sp.mode === "count" ? " von " + N : "");
+    const cube = (it, i) => {
+      const pos = cl.indexOf(i), isFx = i < fx;
+      let item = Object.assign({}, it, { ring: false, mark: false }), lab = "";
+      if (isFx) lab = String(i + 1);
+      else if (pos >= 0) { item.c = take ? "red" : "cnt"; item.m = null; lab = String(fx + pos + 1); if (take) lab = String(pos + 1); }
+      const ten = sp.ten && !take && p === 0 && i === 9 && cnt >= 10;
+      return '<button type="button" class="kcube' + (ten ? " ten" : "") + '" data-key="' + key + '" data-i="' + i + '"' + (isFx ? " disabled" : "") +
+        ' aria-label="' + (isFx ? "schon gezählt" : pos >= 0 ? "gezählt, Nummer " + lab : "anklicken zum Zählen") + '">' + stoneHtml(item, p, u) + (lab !== "" ? '<b class="kn">' + lab + "</b>" : "") + "</button>";
+    };
+    let g = "";
+    if (p === 0) { for (let i = 0; i < N; i += 10) g += '<span class="kblk">' + sp.items.slice(i, i + 10).map((it, j) => cube(it, i + j)).join("") + "</span>"; }
+    else g = sp.items.map(cube).join("");
+    const done = take ? cl.length >= sp.limit : cnt >= N;
+    let msg = "";
+    if (sp.ten && !take && cnt >= 10) msg = '<div class="kok">' + (p === 0 ? "10 ist erreicht: Die Reihe ist voll. Zehn Einer sind eine Zehnerstange." : "10 ist erreicht: Zehn Zehner sind eine Hunderterplatte.") + "</div>";
+    else if (done) msg = '<div class="kok">' + (take ? "Das sind alle " + sp.limit + " " + KUNIT(p) + ", die ich wegnehme." : "Fertig: Ich habe " + cnt + " " + KUNIT(p) + " gezählt.") + "</div>";
+    return '<div class="kw" data-key="' + key + '"><div class="kct" aria-live="polite">' + counter + '</div><div class="kgrid">' + g + "</div>" + msg +
+      '<div class="controls" style="margin-top:6px"><button type="button" class="kreset" data-key="' + key + '">Neu zählen</button></div></div>';
+  }
+  function kwClick(ev) {
+    const rs = ev.target.closest(".kreset");
+    if (rs) { delete KS[rs.dataset.key]; const w = rs.closest(".kw"); if (w) w.outerHTML = kwHtml(rs.dataset.key); return; }
+    const b = ev.target.closest(".kcube"); if (!b || b.disabled) return;
+    const key = b.dataset.key, i = Number(b.dataset.i), sp = KW[key]; if (!sp) return;
+    const cl = KS[key] = KS[key] || [], max = sp.mode === "take" ? sp.limit : sp.items.length - (sp.fixed || 0), at = cl.indexOf(i);
+    if (at >= 0) { if (at === cl.length - 1) cl.pop(); } else if (cl.length < max) cl.push(i);
+    const w = b.closest(".kw"); if (w) w.outerHTML = kwHtml(key);
+  }
   const $ = id => document.getElementById(id);
   const digs = v => [v % 10, Math.floor(v / 10) % 10, Math.floor(v / 100) % 10, Math.floor(v / 1000) % 10];
   const sym = () => op === "add" ? "+" : op === "sub" ? "−" : "·";
@@ -2408,6 +2457,7 @@ renderStell();
 
   function build() {
     if (op === "mul") return buildMul();
+    kn = 0; KW = {};
     const out = [];
     const ad = digs(A), bd = digs(B);
     let cols = [[], [], []], sec = [[], [], []];
@@ -2427,6 +2477,8 @@ renderStell();
       ghF = [[], [], []]; ghB = [[], [], []];
     }
     const unitsOfItem = (it, p) => it.m ? it.m : Array(FAC[p]).fill(it.c);
+    const kitems = arr => arr.map(it => ({ c: it.c, m: it.m }));
+    const kwStep = (t, txt, spec, cls) => { const key = "k" + (kn++); KW[key] = spec; out.push({ t: t, cls: cls, h: '<div class="utext">' + txt + "</div>" + kwHtml(key) }); };
     const spA = '<span class="zs">' + A + "</span>";
     const spB = '<span class="' + (op === "add" ? "zg" : "zr") + '">' + B + "</span>";
 
@@ -2436,6 +2488,12 @@ renderStell();
         if (bd[p] > 0) {
           const before = cols[p].length;
           const beforeCls = clsOf(cols[p]);
+          if (fine && p <= 1) {
+            const U = KUNIT(p);
+            if (before > 0) kwStep("Zählen: " + before + " " + NAMES[p], "Ich zähle zuerst, was schon da ist. Klicke jeden " + (p === 0 ? "Würfel" : "Stab") + " einmal an. Er wechselt die Farbe, und oben steht, wie viele ich schon gezählt habe.", { p: p, mode: "count", items: kitems(cols[p]) });
+            kwStep("Weiterzählen: " + bd[p] + " dazu", "Jetzt zähle ich weiter. Die " + before + " sind schon gezählt. Klicke nun die " + bd[p] + " grünen " + U + " nacheinander an. Oben steht die Zahl, bei der ich gerade bin." + (before + bd[p] >= 10 ? " Achte darauf, was bei 10 passiert." : ""),
+              { p: p, mode: "on", fixed: before, ten: before + bd[p] >= 10, items: kitems(cols[p]).concat(Array.from({ length: bd[p] }, () => ({ c: "green", m: null }))) });
+          }
           for (let i = 0; i < bd[p]; i++) cols[p].push(mkIt("green"));
           sec[p] = [];
           const tot = before + bd[p];
@@ -2458,6 +2516,7 @@ renderStell();
             " und verschiebe sie in die " + NAMES[p + 1] + "spalte. Jetzt habe ich " + cols[p].length + " " + NAMES[p] + " und " + cols[p + 1].length + " " + NAMES[p + 1] + ". " +
             (mixed ? "Die neue " + MAT[p + 1] + " ist teils hellblau und teils grün, so sieht man, woher ihre Teile kommen. " : "") + "Die hellen Schatten zeigen, wo die " + MATPL[p] + " vorher lagen. " +
             '<span class="usmall">Mathesprache: 10 ' + AB[p] + " = 1 " + AB[p + 1] + "</span>");
+          if (fine && p <= 1 && cols[p].length > 0) kwStep("Rest zählen", "Nach dem Bündeln bleiben ein paar " + KUNIT(p) + " übrig. Ich zähle sie: Klicke jeden einmal an.", { p: p, mode: "count", items: kitems(cols[p]) });
         }
       }
     } else {
@@ -2486,6 +2545,10 @@ renderStell();
               '<span class="usmall">Mathesprache: 1 ' + AB[k] + " = 10 " + AB[k - 1] + "</span>");
           }
         }
+        if (fine && p <= 1) {
+          kwStep("Zählen: alle " + NAMES[p], "Jetzt liegen alle " + KUNIT(p) + " bereit" + (ueb ? " (auch die aus der aufgebrochenen " + (p === 0 ? "Zehnerstange" : "Stange") + ")" : "") + ". Ich zähle sie: Klicke jeden einmal an. Er wechselt die Farbe, und oben steht, wie viele ich schon gezählt habe.", { p: p, mode: "count", items: kitems(cols[p]) });
+          kwStep("Wegnehmen: " + bd[p] + " anklicken", "Ich nehme " + bd[p] + " " + KUNIT(p) + " weg. Klicke " + bd[p] + " nacheinander an. Sie werden rot, und oben steht, wie viele ich schon weggenommen habe.", { p: p, mode: "take", limit: bd[p], items: kitems(cols[p]) });
+        }
         const n = cols[p].length;
         const beforeMarkCls = null;
         for (let i = n - bd[p]; i < n; i++) cols[p][i].mark = true;
@@ -2493,6 +2556,7 @@ renderStell();
         snap(bd[p] + " " + NAMES[p] + " wegnehmen",
           "Oben liegen " + num(n, cols[p]) + " " + NAMES[p] + ". Ich nehme " + '<span class="zr">' + bd[p] + "</span> " + NAMES[p] + " weg, das sind die roten und durchgestrichenen Steine. Es bleiben " + num(n - bd[p], cols[p].slice(0, n - bd[p])) + " " + NAMES[p] + ". " +
           '<span class="usmall">Mathesprache: ' + num(n, cols[p]) + " " + AB[p] + " − " + '<span class="zr">' + bd[p] + "</span> " + AB[p] + " = " + num(n - bd[p], cols[p].slice(0, n - bd[p])) + " " + AB[p] + ".</span>");
+        if (fine && p <= 1 && cols[p].length > 0) kwStep("Rest zählen", "Das ist übrig geblieben. Ich zähle den Rest: Klicke jeden " + (p === 0 ? "Würfel" : "Stab") + " einmal an.", { p: p, mode: "count", items: kitems(cols[p]) });
       }
     }
 
@@ -2569,6 +2633,7 @@ renderStell();
     $("zB").style.color = op === "add" ? "#5fd06f" : "#ff6b5e"; $("zB").style.borderColor = op === "add" ? "#3fb455" : "#e03a2f";
     $("zOp").className = "mdot " + (op === "add" ? "zg" : op === "sub" ? "zr" : "zp");
     $("zBBox").style.display = op === "mul" ? "none" : "";
+    $("zFine").style.display = op === "mul" ? "none" : ""; $("zFine").textContent = "Kleine Schritte: " + (fine ? "an" : "aus"); $("zFine").setAttribute("aria-pressed", fine ? "true" : "false"); $("zFine").setAttribute("aria-selected", fine ? "true" : "false");
     $("zSBox").style.display = op === "mul" ? "flex" : "none";
     [10, 100, 1000].forEach(v => $("zS" + v).setAttribute("aria-selected", S === v ? "true" : "false"));
     $("zMul").setAttribute("aria-selected", op === "mul" ? "true" : "false");
@@ -2590,7 +2655,7 @@ renderStell();
                       : "Bei dieser Aufgabe gibt es einen Zehnerübergang (Zehnerunterschreitung): Es muss entbündelt werden, eine Stange wird aufgebrochen. ")
       : (op === "add" ? "Bei dieser Aufgabe wird nichts gebündelt, es gibt keinen Zehnerübergang (keine Zehnerüberschreitung). "
                       : "Bei dieser Aufgabe muss nichts entbündelt werden, es gibt keinen Zehnerübergang (keine Zehnerunterschreitung). ")) +
-      "Mit „Nächster Schritt“ geht es weiter, der neueste Schritt steht immer oben.";
+      "Mit „Nächster Schritt“ geht es weiter, der neueste Schritt steht immer oben." + (fine && op !== "mul" ? " Kleinschrittmodus: Klicke die Würfel einzeln an und zähle mit." : "");
     if (shown > steps.length - 1) shown = steps.length - 1;
     let h = "";
     for (let i = shown; i >= 0; i--) {
@@ -2604,7 +2669,7 @@ renderStell();
     backB.disabled = shown <= 0;
   }
 
-  function restart() { shown = 0; render(); if (zrU) zrU.render(); }
+  function restart() { shown = 0; KS = {}; render(); if (zrU) zrU.render(); }
   const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 
   function randomTask() {
@@ -2642,6 +2707,8 @@ renderStell();
   $("zA").addEventListener("input", ev => { A = ev.target.value === "" ? NaN : Number(ev.target.value); restart(); });
   $("zB").addEventListener("input", ev => { B = ev.target.value === "" ? NaN : Number(ev.target.value); restart(); });
   $("zSize").addEventListener("input", render);
+  $("zFine").addEventListener("click", () => { fine = !fine; try { localStorage.setItem("msw_uez_fine", fine ? "1" : "0"); } catch (e) { /* ohne Speicher */ } restart(); });
+  $("zSteps").addEventListener("click", kwClick);
   window.addEventListener("msk-rescale", render);
   $("zNext").addEventListener("click", () => { const adv = () => { shown++; render(); }; if (window.Predict && window.Predict.gate($("zSteps"), steps, shown, adv)) return; adv(); });
   $("zBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
@@ -7720,6 +7787,69 @@ document.querySelectorAll(".card").forEach(c => {
   /* ---------- Bildhilfen fuer die Aufgabenstaemme (ikonische Darstellung) ---------- */
   const QB = "#6cc0f5", QB2 = "#9bd0f3", QG = "#5fd06f", QO = "#ffb347";
   const qsvg = (w, h, label, maxrem) => '<svg viewBox="0 0 ' + w + " " + h + '" style="width:100%;max-width:' + (maxrem || 26) + 'rem;display:block;margin:.5rem 0" role="img" aria-label="' + label + '">';
+
+  /* ---------- Hilfebilder: Material zu einer angeklickten Möglichkeit (Einerwürfel, Zehnerstangen, Hunderterplatten) ---------- */
+  const QR = "#ff6b5e", QT = "#b38cf0", QLN = "rgba(0,0,0,.45)";
+  function qMatBlock(n, col, x0) {
+    let x = x0, s = "";
+    const TH = Math.floor(n / 1000), H = Math.floor(n / 100) % 10, Z = Math.floor(n / 10) % 10, E = n % 10, B = 90;
+    for (let i = 0; i < TH; i++) { s += '<rect x="' + x + '" y="' + (B - 44) + '" width="44" height="44" rx="4" fill="' + QT + '" fill-opacity=".8" stroke="' + QLN + '"/><text x="' + (x + 22) + '" y="' + (B - 17) + '" text-anchor="middle" font-size="13" font-weight="700" fill="#10131a">1000</text>'; x += 48; }
+    for (let i = 0; i < H; i++) {
+      s += '<rect x="' + x + '" y="' + (B - 88) + '" width="88" height="88" fill="' + col + '" fill-opacity=".85" stroke="' + QLN + '"/>';
+      let d = ""; for (let k = 1; k < 10; k++) d += "M" + (x + k * 8.8) + " " + (B - 88) + "v88M" + x + " " + (B - 88 + k * 8.8) + "h88";
+      s += '<path d="' + d + '" stroke="' + QLN + '" stroke-width=".8" fill="none"/>'; x += 92;
+    }
+    for (let i = 0; i < Z; i++) {
+      s += '<rect x="' + x + '" y="' + (B - 88) + '" width="11" height="88" fill="' + col + '" fill-opacity=".9" stroke="' + QLN + '"/>';
+      let d = ""; for (let k = 1; k < 10; k++) d += "M" + x + " " + (B - 88 + k * 8.8) + "h11";
+      s += '<path d="' + d + '" stroke="' + QLN + '" stroke-width=".8" fill="none"/>'; x += 15;
+    }
+    if (E > 0) {
+      if (Z || H || TH) x += 3;
+      for (let i = 0; i < E; i++) { const r = Math.floor(i / 5), c = i % 5; s += '<rect x="' + (x + c * 13) + '" y="' + (B - 11 - r * 13) + '" width="11" height="11" rx="1.5" fill="' + col + '" stroke="' + QLN + '"/>'; }
+      x += Math.min(E, 5) * 13;
+    }
+    const w = Math.max(x - x0, 16);
+    s += '<text x="' + (x0 + w / 2) + '" y="' + (B + 24) + '" text-anchor="middle" font-size="20" font-weight="800" fill="' + col + '">' + n + "</text>";
+    return { s: s, w: w };
+  }
+  // Würfelfeld: Gruppen aus je k Würfeln, nebeneinander (umbrechend)
+  function qMatGroups(groups, k, col, col2, x0, maxW) {
+    const gw = k * 13 + 12; let x = 0, y = 0, s = "", w = 0;
+    for (let g = 0; g < groups; g++) {
+      if (x + gw > maxW && x > 0) { x = 0; y += 15; }
+      for (let i = 0; i < k; i++) s += '<rect x="' + (x0 + x + i * 13) + '" y="' + y + '" width="11" height="11" rx="1.5" fill="' + (g % 2 ? col2 : col) + '" stroke="' + QLN + '"/>';
+      x += gw; w = Math.max(w, x);
+    }
+    return { s: s, w: w - 12, h: y + 11 };
+  }
+  function qHelpPic(p) {
+    p = String(p || "");
+    const m2 = /^(\d+) ([+−·:]) (\d+)$/.exec(p), parts = [];
+    let used = false;
+    if (m2) {
+      const a = Number(m2[1]), b = Number(m2[3]), op = m2[2];
+      if (op === "+" && a + b <= 9999) { parts.push(["blk", a, QB], ["op", "+"], ["blk", b, QG], ["op", "="], ["blk", a + b, QO]); used = true; }
+      else if (op === "−" && b <= a) { parts.push(["blk", a, QB], ["op", "−"], ["blk", b, QR], ["op", "="], ["blk", a - b, QO]); used = true; }
+      else if (op === "·" && a <= 10 && b <= 10 && a >= 1 && b >= 1) { parts.push(["grp", b, a], ["op", "="], ["blk", a * b, QO]); used = true; }
+      else if (op === ":" && b >= 1 && b <= 10 && a % b === 0 && a <= 100) { parts.push(["grp", a / b, b]); used = true; }
+    }
+    if (!used) {
+      const e = p.replace(/−/g, "-").replace(/·/g, "*").replace(/:/g, "/");
+      if (!/^[0-9+\-*/() ]+$/.test(e) || !/[0-9]/.test(e)) return "";
+      let V; try { V = Function('"use strict";return (' + e + ")")(); } catch (er) { return ""; }
+      if (!Number.isInteger(V) || V < 0 || V > 9999) return "";
+      parts.push(["blk", V, QO]);
+    }
+    let x = 4, body = "", H = 120;
+    parts.forEach(pt => {
+      if (pt[0] === "op") { body += '<text x="' + (x + 12) + '" y="68" text-anchor="middle" font-size="32" font-weight="700" fill="#e6e8eb">' + pt[1] + "</text>"; x += 34; }
+      else if (pt[0] === "blk") { const r = qMatBlock(pt[1], pt[2], x); body += r.s; x += r.w + 10; }
+      else { const r = qMatGroups(pt[1], pt[2], QB, QB2, x, 520); body += r.s; x += r.w + 22; H = Math.max(H, r.h + 30); }
+    });
+    const W = Math.max(60, x);
+    return qsvg(W.toFixed(0), H, "Material zur Möglichkeit " + p, Math.min(40, Math.max(9, W / 15))) + body + "</svg>";
+  }
   // N Kaestchen in Zehnerreihen (Fuenfergruppen)
   function qField(N) {
     if (N > 100) return "";
@@ -8572,7 +8702,7 @@ document.querySelectorAll(".card").forEach(c => {
 
   const G = { ein: gEin, geteilt: gGeteilt, uez: gUez, stell: gStell, fl: gFl, swr: gSwr, gl: gGl, kue: gKue, gem: gGem, anteil: gAnteil, addsub: gAddSub, muldiv: gMulDiv, stufe: gStufe, bd: gBd, komma: gKomma, dadd: gDadd, dmul: gDmul, rund: gRunden, gro: gGroessen, ggtk: gGgtKgv, pfz: gPfz, tbr: gTbr, rgz: gRgz, rgr: gRgr, lae: () => gGr("lae"), geld: () => gGr("geld"), gew: () => gGr("gew"), zeit: () => gGr("zeit"), lgs: gLgs, qe: gQe, qgl: gQgl, aeq: GFP.aeq, lf: GFP.lf, lfg: GFP.lfg, lp: GFP.lp, prop: GFP.prop, dreis: GFP.dreis, proz: GFP.proz, zins: GFP.zins, zz: GFP.zz };
   const RUB = {
-    qz1: { t: "Zahlen und Rechenoperationen", arena: "Zahlen-Arena", col: "#7cc4f7", tops: [["ein", "Einmaleins"], ["geteilt", "Geteiltaufgaben"], ["uez", "Zehnerübergang"], ["stell", "Stellenwerte"], ["fl", "Flächenmodell"], ["swr", "Schriftlich rechnen"], ["ggtk", "ggT und kgV"], ["pfz", "Primfaktorzerlegung"], ["tbr", "Teilbarkeitsregeln"], ["rgz", "Große Zahlen runden"], ["rgr", "Runden rückwärts"]] },
+    qz1: { help: true, t: "Zahlen und Rechenoperationen", arena: "Zahlen-Arena", col: "#7cc4f7", tops: [["ein", "Einmaleins"], ["geteilt", "Geteiltaufgaben"], ["uez", "Zehnerübergang"], ["stell", "Stellenwerte"], ["fl", "Flächenmodell"], ["swr", "Schriftlich rechnen"], ["ggtk", "ggT und kgV"], ["pfz", "Primfaktorzerlegung"], ["tbr", "Teilbarkeitsregeln"], ["rgz", "Große Zahlen runden"], ["rgr", "Runden rückwärts"]] },
     qz2: { t: "Brüche", arena: "Bruch-Arena", col: "#c4a1ff", tops: [["anteil", "Anteile am Streifen"], ["gl", "Gleichwertige Brüche"], ["kue", "Brüche kürzen"], ["gem", "Unechte Brüche und gemischte Zahlen"], ["stufe", "Stufenzahlen"], ["addsub", "Addieren und Subtrahieren"], ["muldiv", "Multiplizieren und Dividieren"]] },
     qz3: { t: "Dezimalzahlen", arena: "Komma-Arena", col: "#7fdcae", tops: [["bd", "Brüche und Dezimalzahlen"], ["komma", "Kommaverschiebung"], ["dadd", "Addieren und Subtrahieren"], ["dmul", "Multiplizieren und Dividieren"], ["rund", "Runden am Zahlenstrahl"], ["gro", "Größen und Stellenwerte"], ["lae", "Rechnen mit Längen"], ["geld", "Rechnen mit Geld"], ["gew", "Rechnen mit Gewichten"], ["zeit", "Rechnen mit Zeit"]] },
     qz5: { t: "Funktionen und Prozente", arena: "Funktionen-Arena", col: "#ff8fb1", tops: [["lf", "Lineare Funktionen"], ["lfg", "Graph einer Geraden"], ["lp", "Gerade durch zwei Punkte"], ["prop", "Proportional oder antiproportional"], ["dreis", "Dreisatz"], ["proz", "Prozentrechnung"], ["zins", "Zinsen für ein Jahr"], ["zz", "Zinseszins"]] },
@@ -8648,7 +8778,7 @@ document.querySelectorAll(".card").forEach(c => {
   function build(rub) {
     const host = document.getElementById("panel-" + rub), info = RUB[rub], N = 10, TIME = 20, MINT = 5;
     const id = s => rub + s, $ = s => document.getElementById(id(s));
-    let top = "alle", timerOn = store.get("msw_qz_cd") !== "0", expired = false, st = null, Q = null, sel = {}, checked = false, tmr = null, rem = TIME, roundNo = 0, usedJoker = false, boss = false;
+    let helpOn = store.get("msw_qz_help") === "1", top = "alle", timerOn = store.get("msw_qz_cd") !== "0", expired = false, st = null, Q = null, sel = {}, checked = false, tmr = null, rem = TIME, roundNo = 0, usedJoker = false, boss = false;
     host.style.setProperty("--qa", info.col);
     const TR = 4, TCOL = ["#6cc0f5", "#ff8a65", "#5fd06f"], DEFN = ["Team Blau", "Team Rot", "Team Grün"];
     let teamOn = store.get("msw_qz_team") === "1", teamN = store.get("msw_qz_teamn") === "3" ? 3 : 2, tnames = ["", "", ""];
@@ -8676,13 +8806,14 @@ document.querySelectorAll(".card").forEach(c => {
         '<div class="qzarena">' + info.arena + '</div>' +
         (teamOn ? "" : '<p class="qzlead">10 Aufgaben, 3 Smileys. Bei jedem Fehler wird ein Smiley zum Gespenst. Drei richtige Aufgaben hintereinander wecken ein Gespenst wieder zum Smiley auf. Bei jeder Aufgabe stehen 7 Möglichkeiten da. Finde <b>alle</b> richtigen und drücke „Prüfen“. Die letzte Aufgabe ist der Boss und zählt doppelt.</p>' + rankHtml(loadXp(), rankInfo(loadXp()), rankInfo(loadXp()).pct)) + (timerOn ? '<p class="qzlead">Mit Countdown hast du ' + timeFor() + ' Sekunden pro Aufgabe' + (timeFor() > MINT ? ' (in jeder weiteren Runde eine Sekunde weniger, mindestens ' + MINT + ')' : ' (weniger geht nicht, das ist das Minimum)') + '. Danach gibt es für diese Aufgabe keine Punkte mehr, lösen kannst du sie aber trotzdem.</p>' : '') +
         '<div class="qzsec">Thema</div><div class="controls" id="' + id("Chips") + '">' + [["alle", "Alle Themen"]].concat(info.tops).map(x => '<button class="tab" data-top="' + x[0] + '" aria-selected="' + (x[0] === top) + '">' + x[1] + "</button>").join("") + "</div>" +
-        '<div class="qzsec">Einstellungen</div><div class="controls"><button class="tab" id="' + id("Timer") + '" aria-pressed="' + timerOn + '" aria-selected="' + timerOn + '">Countdown: ' + (timerOn ? "an (" + timeFor() + " s)" : "aus") + '</button><button class="tab" id="' + id("Snd") + '" aria-selected="' + soundOn + '">Ton: ' + (soundOn ? "an" : "aus") + "</button>" + (timerOn && roundNo ? '<button class="tab" id="' + id("CdReset") + '">Countdown wieder auf ' + TIME + ' s</button>' : "") + "</div>" +
+        '<div class="qzsec">Einstellungen</div><div class="controls"><button class="tab" id="' + id("Timer") + '" aria-pressed="' + timerOn + '" aria-selected="' + timerOn + '">Countdown: ' + (timerOn ? "an (" + timeFor() + " s)" : "aus") + '</button><button class="tab" id="' + id("Snd") + '" aria-selected="' + soundOn + '">Ton: ' + (soundOn ? "an" : "aus") + "</button>" + (info.help ? '<button class="tab" id="' + id("HelpT") + '" aria-pressed="' + helpOn + '" aria-selected="' + helpOn + '" title="Zeigt zu jeder angeklickten Möglichkeit ein Bild mit Würfeln und Stangen">Hilfebilder: ' + (helpOn ? "an" : "aus") + "</button>" : "") + (timerOn && roundNo ? '<button class="tab" id="' + id("CdReset") + '">Countdown wieder auf ' + TIME + ' s</button>' : "") + "</div>" +
         teamHtml() + zrqHtml() +
         '<div class="qzbest">' + (best ? "Bestleistung bei „" + topName() + "“: <b>" + best.pts + " Punkte</b> " + stars(best.stars) : "Noch keine Runde bei „" + topName() + "“ gespielt.") + "</div>" +
         (bd.length ? '<div class="qzbadges">' + bd.map(b => '<span class="qzbadge" title="' + BADGES[b][1] + '">' + BADGES[b][0] + "</span>").join("") + "</div>" : "") +
         '<div class="controls qzgo"><button class="qzbig" id="' + id("Go") + '">' + (teamOn ? "Mannschaftsspiel starten" : "Spiel starten") + '</button><button id="' + id("Prac") + '">Üben ohne Punkte</button></div></div>';
       $("Chips").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { top = b.dataset.top; showStart(); }));
       $("Timer").addEventListener("click", () => { timerOn = !timerOn; store.set("msw_qz_cd", timerOn ? "1" : "0"); showStart(); });
+      if ($("HelpT")) $("HelpT").addEventListener("click", () => { helpOn = !helpOn; store.set("msw_qz_help", helpOn ? "1" : "0"); showStart(); });
       $("Snd").addEventListener("click", () => { soundOn = !soundOn; store.set("msw_qz_snd", soundOn ? "1" : "0"); showStart(); SFX.tick(); });
       if ($("CdReset")) $("CdReset").addEventListener("click", () => { roundNo = 0; showStart(); });
       stage().querySelectorAll("[data-zq]").forEach(b => b.addEventListener("click", () => { store.set("msw_zr_qz_" + b.dataset.zq, b.dataset.v); showStart(); }));
@@ -8748,25 +8879,32 @@ document.querySelectorAll(".card").forEach(c => {
     }
     function renderPlay() {
       const g = !st.practice;
-      let h = g ? hudHtml() + pathHtml() + (st.timer ? '<div class="qztime" id="' + id("Tm") + '"><div class="qzbarw"><div id="' + id("Bar") + '"></div></div><span class="qzcdnum" id="' + id("Cd") + '">' + st.T + '</span><span class="qzhint" id="' + id("TmHint") + '">Läuft die Zeit ab, kannst du weiter lösen, bekommst aber keine Punkte mehr.' + (st.team ? "" : " Ein Fehler kostet trotzdem ein Smiley.") + '</span><span class="qzlate" id="' + id("Late") + '" hidden></span></div>' : "") : '<div class="controls" style="margin-bottom:.6rem"><span class="qzbadge">Üben ohne Punkte</span><button id="' + id("Quit") + '">Zurück zum Start</button></div>';
+      let h = g ? hudHtml() + pathHtml() + (st.timer ? '<div class="qztime" id="' + id("Tm") + '"><div class="qzbarw"><div id="' + id("Bar") + '"></div></div><span class="qzcdnum" id="' + id("Cd") + '">' + st.T + '</span><span class="qzhint" id="' + id("TmHint") + '">Läuft die Zeit ab, wird die Lösung gezeigt. Es gibt dann keine Punkte.' + (st.team ? "" : " Ein Smiley wird dann zum Gespenst.") + '</span><span class="qzlate" id="' + id("Late") + '" hidden></span></div>' : "") : '<div class="controls" style="margin-bottom:.6rem"><span class="qzbadge">Üben ohne Punkte</span><button id="' + id("Quit") + '">Zurück zum Start</button></div>';
       h += '<div class="card qzcard' + (boss ? " boss" : "") + '" id="' + id("Card") + '">' +
         '<div class="qzmeta">' + (g ? (st.team ? escT(curName()) + " · Runde " + (Math.floor(st.idx / st.team.n) + 1) + " von " + TR + (boss ? " · BOSSRUNDE, doppelte Punkte" : "") : (boss ? "BOSSAUFGABE · doppelte Punkte" : "Aufgabe " + (st.idx + 1) + " von " + N)) : "Übungsaufgabe") + " · " + topLabel(Q.top) + "</div>" +
         '<div class="utext qzq">' + Q.q + "</div>" +
         '<div class="qzk">' + (Q.k === 1 ? "Genau <b>1</b> Möglichkeit ist richtig." : "Genau <b>" + Q.k + "</b> Möglichkeiten sind richtig. Finde alle.") + "</div>" +
         '<div class="qzgrid' + (Q.kind === "eqs" ? " wide" : "") + '">' + Q.opts.map((o, i) => '<button class="qzopt qzc' + i + '" data-i="' + i + '" aria-pressed="false"><span class="qzn">' + (i + 1) + "</span>" + o.h + "</button>").join("") + "</div>" +
-        '<div class="controls"><button class="qzbig" id="' + id("Check") + '" disabled>Prüfen</button><button id="' + id("Retry") + '" hidden>Nochmal versuchen</button><button class="qzbig" id="' + id("Next") + '" hidden>Weiter</button></div>' +
+        (info.help && helpOn ? '<div class="qzhelp" id="' + id("HelpBox") + '" aria-live="polite"></div>' : "") + '<div class="controls"><button class="qzbig" id="' + id("Check") + '" disabled>Prüfen</button>' + (st.timer ? "" : '<button id="' + id("Show") + '" title="Zeigt die richtigen Möglichkeiten. In der Runde zählt das als Fehler.">Ergebnis zeigen</button>') + '<button id="' + id("Retry") + '" hidden>Nochmal versuchen</button><button class="qzbig" id="' + id("Next") + '" hidden>Weiter</button></div>' +
         '<div id="' + id("Fb") + '" aria-live="polite"></div><div class="qzfloat" id="' + id("Fl") + '"></div></div>';
       stage().innerHTML = h;
       stage().querySelectorAll(".qzopt").forEach(b => b.addEventListener("click", () => toggle(b.dataset.i)));
-      $("Check").addEventListener("click", () => check(false)); $("Next").addEventListener("click", next); $("Retry").addEventListener("click", retry);
+      $("Check").addEventListener("click", () => check(false)); if ($("Show")) $("Show").addEventListener("click", () => check(false, true)); $("Next").addEventListener("click", next); $("Retry").addEventListener("click", retry);
       $("Quit").addEventListener("click", () => { if (!st.practice && st.idx > 0 && !confirm("Runde wirklich beenden?")) return; showStart(); });
       if ($("Joker")) $("Joker").addEventListener("click", joker);
+      paintHelp();
+    }
+    function paintHelp() {
+      const hb = $("HelpBox"); if (!hb) return;
+      const idx = Object.keys(sel).filter(i => sel[i]).sort((a, b) => a - b);
+      if (!idx.length) { hb.innerHTML = '<div class="note">Hilfebilder: Klicke eine Möglichkeit an, dann siehst du sie als Bild aus Würfeln und Stangen.</div>'; return; }
+      hb.innerHTML = idx.map(i => { const o = Q.opts[i], pic = qHelpPic(o.p); return pic ? '<div class="qzhelpi"><div class="qzhn">Möglichkeit ' + (Number(i) + 1) + ": " + o.h + "</div>" + pic + "</div>" : ""; }).join("") || '<div class="note">Zu dieser Möglichkeit gibt es kein Bild.</div>';
     }
     const topLabel = t => (info.tops.find(x => x[0] === t) || [0, ""])[1];
     function toggle(i) {
       if (checked) return; const b = stage().querySelector('.qzopt[data-i="' + i + '"]'); if (!b || b.classList.contains("qzgone")) return;
       sel[i] = !sel[i]; b.setAttribute("aria-pressed", sel[i] ? "true" : "false"); SFX.tick();
-      $("Check").disabled = !Object.keys(sel).some(x => sel[x]);
+      $("Check").disabled = !Object.keys(sel).some(x => sel[x]); paintHelp();
     }
     function joker() {
       if (checked || usedJoker || st.jokers <= 0) return;
@@ -8782,7 +8920,9 @@ document.querySelectorAll(".card").forEach(c => {
     }
     function expire() {
       if (expired || checked) return; expired = true; rem = 0; stopTimer(); paintTimer();
-      const t = $("Tm"); if (t) t.classList.add("out"); const l = $("Late"); if (l) { l.textContent = "Zeit abgelaufen! Du darfst noch lösen, aber es gibt keine Punkte mehr." + (st && !st.team ? " Bei einem Fehler wird trotzdem ein Smiley zum Gespenst." : ""); l.hidden = false; } const hn = $("TmHint"); if (hn) hn.hidden = true; tone([196], 0.25, "square", 0.08);
+      const t = $("Tm"); if (t) t.classList.add("out"); const hn = $("TmHint"); if (hn) hn.hidden = true;
+      const l = $("Late"); if (l) { l.textContent = "Zeit abgelaufen! Hier ist die Lösung."; l.hidden = false; }
+      check(true);
     }
     function startTimer() {
       stopTimer(); rem = st.T; let last = Date.now(); paintTimer();
@@ -8802,17 +8942,17 @@ document.querySelectorAll(".card").forEach(c => {
       $("Str").innerHTML = (st.streak >= 3 ? FLAME : "") + "Serie <b>" + st.streak + "</b>"; $("Str").classList.toggle("hot", st.streak >= 3);
       const p = stage().querySelector(".qzpath"); if (p) p.outerHTML = pathHtml();
     }
-    function check(timeUp) {
+    function check(timeUp, show) {
       if (checked) return; checked = true; stopTimer();
       let hit = 0, bad = 0, miss = 0; const why = [];
       stage().querySelectorAll(".qzopt").forEach(b => {
         const o = Q.opts[b.dataset.i], s = !!sel[b.dataset.i]; b.disabled = true; b.classList.remove("qzgone");
         if (s && o.ok) { b.classList.add("qzok"); hit++; } else if (s && !o.ok) { b.classList.add("qzbad"); bad++; if (o.why) why.push(o); } else if (!s && o.ok) { b.classList.add("qzmiss"); miss++; }
       });
-      const perfect = hit === Q.k && bad === 0 && !timeUp;
+      const perfect = hit === Q.k && bad === 0 && !timeUp && !show;
       let fb = "", pts = 0, revived = false;
       if (st.practice) {
-        fb = '<div class="qzfb ' + (perfect ? "good" : "no") + '"><b>' + (perfect ? "Richtig!" : "Noch nicht ganz.") + "</b> " + (perfect ? "Alle " + Q.k + " richtigen gefunden." : hit + " von " + Q.k + " richtigen gefunden" + (bad ? ", " + bad + " falsche angeklickt" : "") + (miss ? ". Grün gestrichelt sind die, die noch fehlen" : "") + ".") + "</div>";
+        fb = '<div class="qzfb ' + (perfect ? "good" : "no") + '"><b>' + (perfect ? "Richtig!" : show ? "Hier ist die Lösung." : timeUp ? "Die Zeit ist abgelaufen." : "Noch nicht ganz.") + "</b> " + (perfect ? "Alle " + Q.k + " richtigen gefunden." : hit + " von " + Q.k + " richtigen gefunden" + (bad ? ", " + bad + " falsche angeklickt" : "") + (miss ? ". Grün gestrichelt sind die, die noch fehlen" : "") + ".") + "</div>";
         perfect ? SFX.good() : SFX.bad();
         $("Next").hidden = false; $("Next").textContent = "Nächste Aufgabe"; if (!perfect) $("Retry").hidden = false;
       } else {
@@ -8830,11 +8970,11 @@ document.querySelectorAll(".card").forEach(c => {
           SFX.good(); floatText(expired ? "0 Punkte" : "+" + pts, expired ? "late" : "gain"); if (!expired) confetti(stage().querySelector(".qzcard"), boss ? 70 : 18);
           if (revived) { SFX.revive(); burst(HEART(true), "Ein Gespenst ist wieder ein Smiley!"); } else if (!expired && st.streak >= 3) { SFX.fire(); burst(FLAME, "Serie " + st.streak + "!"); }
         } else {
-          st.streak = 0; SFX.bad(); if (!st.team) { st.lives--; st.flash = st.lives; burst(HEART(false), "Ups, ein Gespenst!"); } if (!calm()) { const c = stage().querySelector(".qzcard"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); }
+          st.streak = 0; if (timeUp) st.late++; SFX.bad(); if (!st.team) { st.lives--; st.flash = st.lives; burst(HEART(false), "Ups, ein Gespenst!"); } if (!calm()) { const c = stage().querySelector(".qzcard"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); }
         }
         st.log[st.idx] = { res: perfect ? "ok" : "no", q: Q.q, corr: Q.opts.filter(o => o.ok).map(o => o.h), pts: pts };
-        fb = '<div class="qzfb ' + (perfect ? "good" : "no") + '"><b>' + (perfect ? (expired ? "Richtig! Aber keine Punkte, die Zeit war abgelaufen." : "Richtig! +" + pts + " Punkte" + (st.team ? " für " + escT(curName()) : "")) : st.team ? ((timeUp || expired) ? "Nicht ganz, und die Zeit war schon abgelaufen." : "Nicht ganz.") + " Diesmal keine Punkte für " + escT(curName()) + "." : (timeUp || expired) ? "Nicht ganz, und die Zeit war schon abgelaufen. Ein Smiley wird zum Gespenst." : "Nicht ganz. Ein Smiley wird zum Gespenst.") + "</b> " +
-          (perfect ? (expired ? "" : "(" + lines.join(", ") + ")" + (revived ? " Und ein Gespenst ist wieder ein Smiley." : "")) : hit + " von " + Q.k + " richtigen gefunden" + (bad ? ", " + bad + " falsche angeklickt" : "") + ".") + "</div>";
+        fb = '<div class="qzfb ' + (perfect ? "good" : "no") + '"><b>' + (perfect ? (expired ? "Richtig! Aber keine Punkte, die Zeit war abgelaufen." : "Richtig! +" + pts + " Punkte" + (st.team ? " für " + escT(curName()) : "")) : st.team ? (show ? "Hier ist die Lösung." : (timeUp || expired) ? "Die Zeit ist abgelaufen." : "Nicht ganz.") + " Diesmal keine Punkte für " + escT(curName()) + "." : show ? "Hier ist die Lösung. Ein Smiley wird zum Gespenst." : (timeUp || expired) ? "Die Zeit ist abgelaufen. Ein Smiley wird zum Gespenst." : "Nicht ganz. Ein Smiley wird zum Gespenst.") + "</b> " +
+          (perfect ? (expired ? "" : "(" + lines.join(", ") + ")" + (revived ? " Und ein Gespenst ist wieder ein Smiley." : "")) : (timeUp || show ? "Grün sind die richtigen Möglichkeiten, grün gestrichelt die, die du noch nicht angeklickt hattest." : hit + " von " + Q.k + " richtigen gefunden" + (bad ? ", " + bad + " falsche angeklickt" : "") + ".")) + "</div>";
         if (st.team) { const T = st.team, c = st.idx % T.n; T.streaks[c] = st.streak; T.jokers[c] = st.jokers; T.max[c] = Math.max(T.max[c], st.streak); }
         updateHud();
         const last = st.team ? st.idx >= nQ() - 1 : (st.lives <= 0 || st.idx >= N - 1);
@@ -8842,7 +8982,7 @@ document.querySelectorAll(".card").forEach(c => {
       }
       if (why.length) fb += '<div class="note">' + why.map(o => "<div>" + o.h + ": " + o.why + "</div>").join("") + "</div>";
       fb += '<div class="zeq"><span class="usmall">Erklärung:</span>' + Q.expl + "</div>";
-      $("Fb").innerHTML = fb; $("Check").hidden = true; $("Next").focus({ preventScroll: true });
+      $("Fb").innerHTML = fb; $("Check").hidden = true; if ($("Show")) $("Show").hidden = true; $("Next").focus({ preventScroll: true });
     }
     function retry() { sel = {}; checked = false; renderPlay(); }
     function next() {

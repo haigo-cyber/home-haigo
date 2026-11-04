@@ -654,6 +654,7 @@
           <div class="lhh">Lernhilfen</div>
           <label class="lhrow"><input type="checkbox" id="speakAuto"><span><b>Mitlesen</b><small>Neue Schritte und Fragen werden automatisch vorgelesen.</small></span></label>
           <label class="lhrow"><input type="checkbox" id="predictToggle" checked><span><b>Mitrechnen</b><small>Vor einem Schritt kommt eine Frage mit drei Antworten. Überspringen ist erlaubt.</small></span></label>
+          <label class="lhrow"><input type="checkbox" id="dingToggle" checked><span><b>Ton bei richtiger Antwort</b><small>Ein kurzes Signal, wenn eine Antwort stimmt.</small></span></label>
           <label class="lhrow"><input type="checkbox" id="selfToggle"><span><b>Selbst lösen</b><small>Jeder Zwischenschritt muss gelöst werden, sonst geht es nicht weiter.</small></span></label>
           <div class="lhf">So geht es: Mit „Nächster Schritt“ weiter. Der neueste Schritt steht immer oben.</div>
         </div>
@@ -1116,6 +1117,33 @@ renderView();
 
 
 /* ===== Mitraten: vor jedem nächsten Schritt drei Möglichkeiten, nur eine ist richtig ===== */
+/* ===== Ton bei richtiger Antwort ===== */
+window.Ding = (function () {
+  let AC = null, on = true, n = 0;
+  try { on = localStorage.getItem("mw_ding") !== "0"; } catch (e) { /* Standard an */ }
+  function play() {
+    n++;
+    if (!on) return;
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      if (AC.state === "suspended" && AC.resume) AC.resume();
+      const t0 = AC.currentTime;
+      [[784, 0], [1175, 0.11]].forEach(p => {
+        const o = AC.createOscillator(), g = AC.createGain();
+        o.type = "sine"; o.frequency.value = p[0];
+        g.gain.setValueAtTime(0.0001, t0 + p[1]);
+        g.gain.exponentialRampToValueAtTime(0.22, t0 + p[1] + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + p[1] + 0.34);
+        o.connect(g); g.connect(AC.destination); o.start(t0 + p[1]); o.stop(t0 + p[1] + 0.38);
+      });
+    } catch (e) { /* kein Ton möglich */ }
+  }
+  play.set = v => { on = !!v; try { localStorage.setItem("mw_ding", on ? "1" : "0"); } catch (e) { /* egal */ } };
+  play.isOn = () => on;
+  play.count = () => n;
+  return play;
+})();
+
 window.Predict = (function () {
   let on = true;
   try { if (localStorage.getItem("mw_predict") === "0") on = false; } catch (e) {}
@@ -1207,7 +1235,7 @@ window.Predict = (function () {
         const fb = box.querySelector(".pfb"), inp = box.querySelector(".qin");
         const chk = () => {
           const v = inp.value.replace(/\s/g, ""); if (v === "") return;
-          if (Math.abs(pf(v) - q.ans) < 1e-9) { fb.className = "pfb ok"; fb.textContent = "Richtig!"; box.querySelectorAll("button,input").forEach(x => { if (!x.classList.contains("speakb")) x.disabled = true; }); setTimeout(() => { if (gates.get(host) === box) nextQ(); }, 600); }
+          if (Math.abs(pf(v) - q.ans) < 1e-9) { fb.className = "pfb ok"; fb.textContent = "Richtig!"; window.Ding(); box.querySelectorAll("button,input").forEach(x => { if (!x.classList.contains("speakb")) x.disabled = true; }); setTimeout(() => { if (gates.get(host) === box) nextQ(); }, 600); }
           else { tries++; fb.className = "pfb no"; fb.textContent = tries >= 4 ? "Die richtige Antwort ist " + String(q.ans).replace(".", ",") + ". Gib sie ein." : "Noch nicht. Versuche es noch einmal." + (tries >= 2 ? " Hilfe: " + q.hint : ""); say(fb.textContent); }
         };
         box.querySelector("[data-ok]").addEventListener("click", chk);
@@ -1222,7 +1250,7 @@ window.Predict = (function () {
           const o = opts[+b.dataset.i];
           if (o.ok) {
             b.classList.add("good"); box.querySelectorAll(".popt").forEach(x => { x.disabled = true; });
-            fb.className = "pfb ok"; fb.textContent = "Richtig!";
+            fb.className = "pfb ok"; fb.textContent = "Richtig!"; window.Ding();
             setTimeout(() => { if (gates.get(host) === box) nextQ(); }, 500);
           } else { b.classList.add("bad"); b.disabled = true; fb.className = "pfb no"; fb.textContent = o.why; say(o.why); }
         }));
@@ -1259,6 +1287,7 @@ function markNav() {
 document.addEventListener("DOMContentLoaded", () => {
   markNav();
   const btn = document.getElementById("lhBtn"), pn = document.getElementById("lhPanel"), nn = document.getElementById("lhN"); if (!btn || !pn) return;
+  const dg = document.getElementById("dingToggle"); if (dg) { dg.checked = window.Ding.isOn(); dg.addEventListener("change", () => { window.Ding.set(dg.checked); if (dg.checked) window.Ding(); }); }
   const ids = ["speakAuto", "predictToggle", "selfToggle"];
   const upd = () => { let n = 0; ids.forEach(i => { const e = document.getElementById(i); if (e && e.checked) n++; }); nn.textContent = String(n); nn.hidden = n === 0; };
   const close = () => { pn.hidden = true; btn.setAttribute("aria-expanded", "false"); };
@@ -2864,7 +2893,7 @@ renderStell();
           : '<input class="qin" type="text" inputmode="numeric" autocomplete="off" aria-label="Antwort"> <button class="popt" data-ok="1">Prüfen</button>') +
         '</div><div class="pfb" role="status" aria-live="polite"></div></div><div class="unav">' + window.Predict.speakBtn + "</div>";
       const fb = box.querySelector(".pfb"), inp = box.querySelector(".qin");
-      const right = () => { fb.className = "pfb ok"; fb.textContent = "Richtig!"; box.querySelectorAll("button,input").forEach(x => { x.disabled = true; });
+      const right = () => { fb.className = "pfb ok"; fb.textContent = "Richtig!"; window.Ding(); box.querySelectorAll("button,input").forEach(x => { x.disabled = true; });
         setTimeout(() => { if (SG !== box) return; qi++; if (qi >= list.length) { clearSG(); done(); } else show(); }, 600); };
       const wrong = () => { tries++; fb.className = "pfb no";
         fb.textContent = tries >= 4 ? "Die richtige Antwort ist " + (q.kind === "yn" ? (q.ans ? "Ja" : "Nein") : q.ans) + ". Gib sie ein oder klicke sie an." : "Noch nicht. Versuche es noch einmal." + (tries >= 2 && q.hint ? " Hilfe: " + q.hint : ""); };
@@ -6405,7 +6434,7 @@ renderStell();
         tot = 1; const c = $("duChain"), n = S.items.length; let good = S.chain.length === n, why = "";
         if (!good) why = "Es fehlen noch Zahlen in deiner Reihenfolge.";
         else for (let k = 0; k < n - 1 && good; k++) { const a = S.items[S.chain[k]], b = S.items[S.chain[k + 1]], r = a.key < b.key ? "<" : a.key > b.key ? ">" : "="; if (r === ">") { good = false; why = "Die Zahl " + a.html.replace(/<[^>]+>/g, "") + " ist größer als " + b.html.replace(/<[^>]+>/g, "") + ". Sie muss weiter rechts stehen."; } else if (S.signs[k] !== r) { good = false; why = "Zwischen " + a.html.replace(/<[^>]+>/g, "") + " und " + b.html.replace(/<[^>]+>/g, "") + " gehört das Zeichen " + r + "."; } }
-        if (good) ok = 1; markEl(c, good); msg.textContent = good ? "Richtig sortiert!" : why;
+        if (good) ok = 1; markEl(c, good); msg.textContent = good ? "Richtig sortiert!" : why; if (good) window.Ding();
         if (good && mode === "o") { S.shown = true; renderOrd(); markEl($("duChain"), true); }
       } else if (mode === "f" || mode === "t") body.querySelectorAll(".du-in").forEach(inp => { tot++; const g = inCheck(inp); if (g) ok++; inp.style.borderColor = g ? "#5fd06f" : "#ff6b5e"; });
       else if (mode === "z") body.querySelectorAll(".du-item").forEach(el => { const t = S.items[+el.dataset.i], vs = [...el.querySelectorAll("input")].map(i => pdc(i.value)); tot++; let good = vs.every(d => d); if (good) { const A = pdc(f2(t.a, t.dd)), B = pdc(f2(t.b, t.dd)); good = vs.every(d => cmpD(A, d) < 0 && cmpD(d, B) < 0) && new Set(vs.map(dTxt).map(s => scOf(pdc(s)).toString())).size === 3; } if (good) ok++; markEl(el, good); });
@@ -7307,6 +7336,7 @@ renderStell();
     function wtPick(i) {
       const op = WT.opts[i]; if (!op || WT.done) return;
       if (!op.ok) { WT.wrong++; WT.fb = op.fb; WT.fbOk = false; op.used = true; wtRender(); return; }
+      window.Ding();
       const st = WT.s, o = op.o, r = o.r;
       let ns;
       if (o.k === "box") ns = { lx: qsub(st.lx, r), lk: st.lk, rx: qsub(st.rx, r), rk: st.rk };

@@ -2231,7 +2231,21 @@ let fromGoalOps = [];
 function fromParse(cur){ const p = /^[~^-]/.test(cur) ? cur[0] : ""; return {p, d:p ? cur.slice(1) : cur}; }
 function fromOwn(t){ return String(t.id).startsWith("gf_") ? String(t.id).slice(3) : t.id; }
 /* Zählung für Tageszähler, Serie und Punkte: ein geplanter Termin und die zugehörige Gewohnheit/Ablenkung am selben Tag zählen zusammen einmal */
+/* Unterrichtsstunden: jede in der Tagesstruktur abgehakte Stunde zählt einmal im Tageszähler, in der Serie und bei den Punkten, ab dem Tag der Einführung (tp.data.lcFrom) */
+let _lsRev = 0, _lsCache = null, _lsCacheKey = "";
+function lessonLogs(){
+  const d = tp.data; if(!d || !d.lcFrom || !Array.isArray(d.items)) return [];
+  const ck = _lsRev+"|"+d.lcFrom+"|"+d.items.length;
+  if(_lsCache && _lsCacheKey===ck) return _lsCache;
+  const out = [];
+  d.items.forEach(it=>{ Object.keys(it.occ||{}).forEach(k=>{ const o = it.occ[k]; const day = k.slice(0,10); if(o && o.done && day>=d.lcFrom) out.push({itemId:"ls:"+it.id+":"+k, date:day, doneAt:""}); }); });
+  _lsCache = out; _lsCacheKey = ck; return out;
+}
 function logsForCount(){
+  const base = logsForCountBase(), ls = lessonLogs();
+  return ls.length ? base.concat(ls) : base;
+}
+function logsForCountBase(){
   const by = new Map();
   tasks.forEach(t=>{ if(!t.fromId) return; const own = fromOwn(t);
     logs.forEach(l=>{ if(l.itemId===own){ if(!by.has(t.fromId)) by.set(t.fromId, new Set()); by.get(t.fromId).add(l.date); } }); });
@@ -2671,6 +2685,25 @@ function goalCard(t){
     </div>
   </div>`;
 }
+/* Heute-Ansicht: die Unterrichtsstunden des Tages aus der Tagesstruktur, mit Häkchen (gleiche Markierung wie in der Struktur) */
+function todayLessonsHtml(){
+  if(!tp.data){
+    if(!tp.loading && !tp.err && typeof accessToken!=="undefined" && accessToken) tpLoad().then(()=>{ if(view==="today") render(); }).catch(e=>logErr("Stunden laden", e));
+    return "";
+  }
+  if(!tp.data.lcFrom){ tp.data.lcFrom = todayKey(); tpDirty(); }
+  const day = todayKey(), rows = [];
+  tp.data.items.forEach(it=>tpSlots(it, day).forEach(({q,key})=>rows.push({it, q, key, o:it.occ[key]||{}})));
+  if(!rows.length) return "";
+  rows.sort((a,b)=>a.q.start-b.q.start || String(a.it.title).localeCompare(String(b.it.title)));
+  const open = rows.filter(r=>!r.o.done), done = rows.filter(r=>r.o.done);
+  const card = r=>{ const end = Math.min(1440, r.q.start+r.q.min), on = !!r.o.done;
+    return `<div class="card${on?' done':''}" style="border-left:4px solid ${esc(r.it.color||'#6b7280')}" data-lsrow="${esc(r.it.id)}|${esc(r.key)}">
+      <div class="check${on?' on':''}" data-lsck="${esc(r.it.id)}|${esc(r.key)}">${checkSvg()}</div>
+      <div class="body"><div class="title">${esc(r.it.title)}</div><div class="sub">${tpHM(r.q.start)}–${end>=1440?"24:00":tpHM(end)}${r.o.topic?" · "+esc(String(r.o.topic).split("\n")[0].slice(0,80)):""}</div></div>
+    </div>`; };
+  return `<div class="section-title">🏫 Stunden heute (${done.length} von ${rows.length})</div>`+open.map(card).join("")+done.map(card).join("");
+}
 function goalTaskCard(g, sortable){
   const grip = (sortable && !g.completed) ? `<div class="g-grip" data-ggrip="${g.id}" title="Ziehen zum Sortieren">⠿</div>` : "";
   return `<div class="card${g.completed?' done':''}" style="border-left:4px solid var(--amber)"${grip?` data-gid="${g.id}"`:""}>
@@ -3084,6 +3117,7 @@ function render(){
     const tasks=active.filter(t=>t.type!=="goal" && isDue(t,new Date()));
     const sorted=sortTasksForToday(tasks, key);
     let h=wsBriefBtnHtml()+hudHtml();
+    h+=todayLessonsHtml();
     h+=wsUrgentDeadlinesHtml();
     h+=wsTodayHtml();
     h+=wsMetaTodayHtml();
@@ -3934,7 +3968,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v279";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v280";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -3950,7 +3984,7 @@ const tpPad = n=>String(n).padStart(2,"0");
 const tpHM = m=>tpPad(Math.floor(m/60)%24)+":"+tpPad(m%60);
 const tpCl = (v,a,b)=>Math.max(a,Math.min(b,v));
 const tpInt = (v,a,b,d)=>{ v = Math.floor(Number(v)); return Number.isFinite(v) ? tpCl(v,a,b) : d; };
-function tpDefault(){ return {v:1, settings:{from:6,to:22,snap:15,pph:120,ab:{on:false,ref:""}}, days:{}, jdays:{}, items:[], breaks:[]}; }
+function tpDefault(){ return {v:1, lcFrom:"", settings:{from:6,to:22,snap:15,pph:120,ab:{on:false,ref:""}}, days:{}, jdays:{}, items:[], breaks:[]}; }
 function tpNorm(d){
   const o = tpDefault();
   if(!d || typeof d!=="object") return o;
@@ -3969,6 +4003,7 @@ function tpNorm(d){
     if(bl.length) dst[k] = {blocks:bl};
   });
   parse(d.days, o.days); parse(d.jdays, o.jdays);
+  o.lcFrom = /^\d{4}-\d{2}-\d{2}$/.test(String(d.lcFrom||"")) ? String(d.lcFrom) : "";
   o.metaOff = {}; Object.keys((d.metaOff && typeof d.metaOff==='object') ? d.metaOff : {}).slice(-3000).forEach(k=>{ if(/^.+\|\d{4}-\d{2}-\d{2}$/.test(k)) o.metaOff[k] = d.metaOff[k] ? 1 : 0; });
   const dk = v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||"")) ? String(v) : "";
   o.items = (Array.isArray(d.items)?d.items:[]).map(x=>{
@@ -4069,10 +4104,10 @@ async function tpLoad(){
     if(ok){
       const blob = await wsDriveFetch(id);
       let parsed = null; try{ parsed = JSON.parse(await blob.text()); }catch(e){ throw new Error("Datei Tagesstruktur.json ist nicht lesbar"); }
-      tp.data = tpNorm(parsed); tp.fileId = id; try{ localStorage.setItem("tpFileId", id); }catch(e){ logErr("stumm", e); }
+      tp.data = tpNorm(parsed); _lsRev++; tp.fileId = id; try{ localStorage.setItem("tpFileId", id); }catch(e){ logErr("stumm", e); }
       tpRestoreBreaks();
     }else{
-      tp.data = tpDefault(); tp.fileId = "";     // Datei wird beim ersten Speichern angelegt
+      tp.data = tpDefault(); _lsRev++; tp.fileId = "";     // Datei wird beim ersten Speichern angelegt
     }
   }catch(e){
     tp.err = String(e.message||e).slice(0,200); tp.data = null;
@@ -4161,7 +4196,7 @@ async function tpHist(){
   }catch(err){ const i = $h("th_info"); if(i) i.textContent = "Versionsliste nicht verfügbar. Grund: "+String(err.message||err).slice(0,300)+" (Datei-Nr. "+String(tp.fileId).slice(0,8)+"…)"; console.warn("Versionsliste:", err); }
 }
 function tpDirty(){
-  tp.pending = true; clearTimeout(tp.saveT);
+  _lsRev++; tp.pending = true; clearTimeout(tp.saveT);
   tp.saveT = setTimeout(tpSave, 1200);
 }
 function tpMerge(remote){
@@ -4178,6 +4213,7 @@ function tpMerge(remote){
       });
     });
   });
+  if(remote.lcFrom && (!tp.data.lcFrom || remote.lcFrom<tp.data.lcFrom)) tp.data.lcFrom = remote.lcFrom;
   tp.data.metaOff = tp.data.metaOff || {}; Object.keys(remote.metaOff||{}).forEach(k=>{ if(!(k in tp.data.metaOff)) tp.data.metaOff[k] = remote.metaOff[k] ? 1 : 0; });
   (remote.breaks||[]).forEach(br=>{ if(!tp.deleted.has(br.id) && !tp.data.breaks.some(x=>x.id===br.id)) tp.data.breaks.push(br); });
   (remote.items||[]).forEach(it=>{
@@ -5258,6 +5294,14 @@ function tpChange(e){
   main.addEventListener("pointerup", tpUp);
   main.addEventListener("pointercancel", tpUp);
   main.addEventListener("click", tpClick);
+  main.addEventListener("click", e=>{
+    if(view!=="today") return;
+    const ck = e.target.closest && e.target.closest("[data-lsck]"), row = !ck && e.target.closest && e.target.closest("[data-lsrow]");
+    const v = ck ? ck.dataset.lsck : row ? row.dataset.lsrow : ""; if(!v) return;
+    const [itemId, key] = v.split("|"); const it = tp.data && tp.data.items.find(x=>x.id===itemId); if(!it) return;
+    if(ck){ const o = it.occ[key] || (it.occ[key] = tpOccNew()); o.done = !o.done; tpDirty(); render(); }
+    else tpOccOpen(itemId, key);
+  });
   main.addEventListener("input", tpInput);
   main.addEventListener("change", tpChange);
   main.addEventListener("keydown", e=>{

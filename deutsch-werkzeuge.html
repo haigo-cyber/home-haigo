@@ -603,6 +603,11 @@
   .gd-box { width:min(54rem, 100%); max-height:100%; overflow:auto; background:var(--bg); border:1px solid var(--hair2); border-radius:1.2rem; padding:.9rem 1rem 1rem; box-shadow:0 1.5rem 4rem rgba(0,0,0,.7); }
   .gd-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:.5rem; color:var(--muted); font-weight:700; }
   .gd-box .gram { border:0; padding:.3rem .4rem; background:none; }
+  .gtab.wide { max-width:none; font-size:1rem; }
+  .gtab.wide th, .gtab.wide td { text-align:left; }
+  .gtab.wide tbody th { white-space:nowrap; color:var(--qa); }
+  .gtab.wide td { font-weight:400; font-size:1rem; }
+  .gtab.wide td .ce { font-weight:800; }
 
 </style>
 </head>
@@ -685,6 +690,7 @@
               <option value="kd">Kasus: Verben mit Dativ und Akkusativ</option>
               <option value="wp">Kasus: Wechselpräpositionen (wo? wohin?)</option>
               <option value="fp">Kasus: Präpositionen mit festem Kasus</option>
+              <option value="ns">Nebensatz: Verb am Ende (dass, weil, obwohl ...)</option>
               <option value="mix">Alles gemischt</option>
             </select></label>
           <label>Antworten
@@ -912,7 +918,7 @@
 
   /* ---------- Einstellungen ---------- */
   const DEFS = { mode: "pre", ans: "click", lim: "0", vb: "reg", help: false, snd: true, n1: "Spieler 1", n2: "Spieler 2" };
-  const MODES = ["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp", "mix"];
+  const MODES = ["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp", "ns", "mix"];
   let S = Object.assign({}, DEFS);
   try { Object.assign(S, JSON.parse(LS.get("msd_ttt_v2") || "{}")); } catch (e) { /* Standardwerte */ }
   if (MODES.indexOf(S.mode) < 0) S.mode = "pre";
@@ -957,7 +963,7 @@
     ["blitz", "Blitzmerker", "Richtig mit über 70 Prozent der Zeit übrig", P => P.stat.blitz >= 1],
     ["win", "Rundensieger", "Eine Runde gewonnen", P => P.stat.wins >= 1], ["win5", "Fünf Siege", "5 Runden gewonnen", P => P.stat.wins >= 5],
     ["clean", "Saubere Runde", "Eine Runde ohne Fehler gewonnen", P => P.stat.clean >= 1], ["come", "Comeback", "Eine Runde nach mindestens 2 Fehlern gewonnen", P => P.stat.come >= 1],
-    ["diag", "Diagonalkönig", "Mit einer Diagonale gewonnen", P => P.stat.diag >= 1], ["all", "Alleskönner", "In allen 8 Aufgabenarten richtig gelöst", P => Object.keys(P.stat.types).length >= 8],
+    ["diag", "Diagonalkönig", "Mit einer Diagonale gewonnen", P => P.stat.diag >= 1], ["all", "Alleskönner", "In allen 9 Aufgabenarten richtig gelöst", P => Object.keys(P.stat.types).length >= 9],
     ["konj", "Konjugations-Profi", "10 Konjugations-Aufgaben richtig", P => P.stat.konj >= 10], ["klam", "Klammer-Profi", "10 Verbklammer-Aufgaben richtig", P => P.stat.vk >= 10], ["kasus", "Kasus-Knacker", "10 Kasus-Aufgaben richtig", P => P.stat.kasus >= 10],
     ["mis", "Missionar", "3 Missionen erfüllt", P => P.stat.missions >= 3],
     ["l3", "Level 3", "Level 3 erreicht", P => lvlOf(P.xp) >= 3], ["l5", "Level 5", "Level 5 erreicht", P => lvlOf(P.xp) >= 5], ["l8", "Level 8", "Level 8 erreicht", P => lvlOf(P.xp) >= 8]
@@ -1102,9 +1108,55 @@
     });
     return { type: "fp", layout: "rows", leftHead: "Präposition", slots: slots, rows: rows, chips: chipsOf(slots, shuf(ARTS).slice(0, 3)), title: "Setze den richtigen Artikel ein. Die Präposition bestimmt den Kasus." };
   }
+
+  const NSR = [
+    ["dass", "Ich weiß, dass du heute ___ ___.", ["Geburtstag", "hast"], "habt"],
+    ["dass", "Der Lehrer sagt, dass wir leise ___ ___.", ["sein", "sollen"], "soll"],
+    ["dass", "Ich glaube, dass es morgen ___ ___.", ["Regen", "gibt"], "geben"],
+    ["dass", "Ich weiß, dass er jeden Tag früh ___ ___.", ["früh", "aufsteht"], "steht"],
+    ["weil", "Ich bleibe zu Hause, weil ich ___ ___.", ["krank", "bin"], "ist"],
+    ["weil", "Er kommt zu spät, weil der Bus ___ ___.", ["Verspätung", "hat"], "haben"],
+    ["weil", "Sie lacht, weil der Film so ___ ___.", ["lustig", "ist"], "bist"],
+    ["weil", "Wir freuen uns, weil der Zug ___ ___.", ["pünktlich", "ankommt"], "kommt"],
+    ["obwohl", "Wir gehen spazieren, obwohl es ___ ___.", ["stark", "regnet"], "regnen"],
+    ["obwohl", "Er spielt draußen, obwohl er ___ ___.", ["müde", "ist"], "bin"],
+    ["obwohl", "Sie lernt weiter, obwohl sie schon viel ___ ___.", ["gelernt", "hat"], "habe"],
+    ["wenn", "Ich freue mich, wenn du mich ___ ___.", ["bald", "besuchst"], "besucht"],
+    ["wenn", "Du kannst gehen, wenn du ___ ___.", ["fertig", "bist"], "sind"],
+    ["wenn", "Ich nehme einen Schirm mit, wenn es ___ ___.", ["draußen", "regnet"], "regnest"],
+    ["ob", "Ich weiß nicht, ob er ___ ___.", ["heute", "kommt"], "kommen"],
+    ["ob", "Sie fragt, ob wir ___ ___.", ["Zeit", "haben"], "hat"],
+    ["damit", "Ich lerne viel, damit ich ___ ___.", ["Erfolg", "habe"], "hast"],
+    ["damit", "Er spart Geld, damit er ein Fahrrad ___ ___.", ["kaufen", "kann"], "kannst"],
+    ["bevor", "Wir essen, bevor wir ___ ___.", ["Fußball", "spielen"], "spielt"],
+    ["bevor", "Putz dir die Zähne, bevor du ___ ___.", ["schlafen", "gehst"], "geht"],
+    ["nachdem", "Er ruht sich aus, nachdem er ___ ___.", ["gearbeitet", "hat"], "haben"],
+    ["nachdem", "Wir gehen nach Hause, nachdem wir ___ ___.", ["gegessen", "haben"], "hat"],
+    ["während", "Ich höre Musik, während ich ___ ___.", ["Hausaufgaben", "mache"], "machst"],
+    ["während", "Sie liest, während sie auf den Bus ___ ___.", ["lange", "wartet"], "warten"],
+    ["als", "Es regnete, als wir am ___ ___.", ["Bahnhof", "ankamen"], "kamen"],
+    ["als", "Er schlief ein, als er ___ ___.", ["müde", "wurde"], "wurden"],
+    ["falls", "Ruf mich an, falls du ___ ___.", ["Hilfe", "brauchst"], "braucht"]
+  ];
+  function buildNs() {
+    let rows = [];
+    for (let t = 0; t < 60; t++) {
+      const c = [fresh("ns", NSR, x => x[1]), fresh("ns", NSR, x => x[1]), fresh("ns", NSR, x => x[1])];
+      if (new Set(c.map(x => x[0])).size === 3) { rows = c; break; }
+    }
+    if (!rows.length) rows = [NSR[4], NSR[8], NSR[0]];
+    const slots = [], out = rows.map(r => {
+      const parts = r[1].split("___"), idx = slots.length;
+      slots.push(slotOf([r[2][0]], "t")); slots.push(slotOf([r[2][1]], "t"));
+      return { left: r[0], pieces: [{ t: parts[0].trim() }, { s: idx }, { s: idx + 1 }], note: "", hint: "Nebensatz: Das konjugierte Verb steht am Ende." };
+    });
+    const own = new Set(); slots.forEach(s => own.add(s.show));
+    const dist = Array.from(new Set(rows.map(r => r[3]))).filter(x => !own.has(x)).slice(0, 2);
+    return { type: "ns", layout: "rows", leftHead: "Einleiter", slots: slots, rows: out, chips: chipsOf(slots, dist), title: "Nebensatz: Setze die Wörter ein. Das konjugierte Verb steht am Ende des Nebensatzes." };
+  }
   function buildTask() {
-    const t = S.mode === "mix" ? pick(["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp"]) : S.mode;
-    return t === "kas" ? buildKas() : t === "kd" ? buildKd() : t === "wp" ? buildWp() : t === "fp" ? buildFp() : (t === "vk1" || t === "vk2") ? buildVk(t) : buildConj(t);
+    const t = S.mode === "mix" ? pick(["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp", "ns"]) : S.mode;
+    return t === "ns" ? buildNs() : t === "kas" ? buildKas() : t === "kd" ? buildKd() : t === "wp" ? buildWp() : t === "fp" ? buildFp() : (t === "vk1" || t === "vk2") ? buildVk(t) : buildConj(t);
   }
 
   /* ---------- Zeichnen ---------- */
@@ -1133,7 +1185,7 @@
   function renderSetSum() {
     const g = id => { const e = $(id); return e.options[e.selectedIndex] ? e.options[e.selectedIndex].textContent : ""; };
     const el = $("sumChips"); if (!el) return;
-    el.innerHTML = [g("sMode"), g("sAns"), g("sLim")].concat(S.mode === "kas" || S.mode === "kd" || S.mode === "wp" || S.mode === "fp" ? [] : [g("sVb")]).map(t => "<span>" + esc(t) + "</span>").join("");
+    el.innerHTML = [g("sMode"), g("sAns"), g("sLim")].concat(S.mode === "kas" || S.mode === "kd" || S.mode === "wp" || S.mode === "fp" || S.mode === "ns" ? [] : [g("sVb")]).map(t => "<span>" + esc(t) + "</span>").join("");
   }
   function renderBoard() {
     const idle = !G.over && !G.task;
@@ -1288,7 +1340,7 @@
       const w = winnerOf(G.board);
       SFX.good();
       SK[me]++; R.rs++; R.ok++; P.stat.correct++; P.stat.maxS = Math.max(P.stat.maxS, SK[me]); P.stat.types[T.type] = 1;
-      if (T.type === "pre" || T.type === "prt") P.stat.konj++; else if (T.type === "vk1" || T.type === "vk2") P.stat.vk++; else P.stat.kasus++;
+      if (T.type === "pre" || T.type === "prt") P.stat.konj++; else if (T.type === "vk1" || T.type === "vk2") P.stat.vk++; else if (T.type === "ns") P.stat.ns = (P.stat.ns || 0) + 1; else P.stat.kasus++;
       const mult = Math.min(3, 1 + 0.5 * (SK[me] - 1)), base = 10 + 5 * T.slots.length, tb = lim ? Math.round(10 * T.frac) : 0;
       let gain = Math.round((base + tb) * mult); if (T.jok) gain = Math.round(gain / 2);
       if (lim && T.frac > 0.7) P.stat.blitz++;
@@ -1510,22 +1562,36 @@
       { p: cD("Dativ") + ": <b>aus, bei, mit, nach, von, zu</b>" },
       { ex: [{ l: "Dativ", c: "D", h: "Sie kommt aus " + cD("dem Haus") + "." }, { l: "Dativ", c: "D", h: "Ich wohne bei " + cD("der Oma") + "." }, { l: "Dativ", c: "D", h: "Ich spiele mit " + cD("dem Freund") + "." }] },
       ARTTAB
+    ] },
+    { k: "nebensatz", n: "Nebensatz", t: "Nebensatz: Das Verb steht am Ende", b: [
+      { p: "Ein Nebensatz beginnt mit einem <b>Einleiter</b>. Das ist ein Wort wie <b>dass, weil, obwohl, wenn, ob, damit, bevor, nachdem, während, als</b>. Zwischen Hauptsatz und Nebensatz steht ein Komma." },
+      { p: "Im Nebensatz steht das konjugierte Verb ganz am " + cE("Ende") + "." },
+      { ex: [{ l: "Hauptsatz", c: "N", h: "Ich " + cE("bin") + " krank." }, { l: "Nebensatz", c: "A", h: "Ich bleibe zu Hause, weil ich krank " + cE("bin") + "." }] },
+      { p: "Bei zwei Verben steht das konjugierte Verb ganz am Schluss. Trennbare Verben werden im Nebensatz nicht getrennt." },
+      { ex: [{ l: "Zwei Verben", c: "A", h: "Sie ist müde, obwohl sie viel geschlafen " + cE("hat") + "." }, { l: "Trennbar", c: "A", h: "Ich freue mich, dass der Zug pünktlich " + cE("ankommt") + "." }, { l: "Vergleich", c: "N", h: "Der Zug " + cE("kommt") + " pünktlich " + cP("an") + "." }] },
+      { tbl: { head: ["Einleiter", "Bedeutung", "Beispiel"], rows: [
+        ["dass", "Inhalt", "Ich weiß, dass du Hunger " + cE("hast") + "."], ["weil", "Grund", "Ich bleibe hier, weil es " + cE("regnet") + "."], ["obwohl", "Gegengrund", "Wir gehen raus, obwohl es " + cE("regnet") + "."],
+        ["wenn", "Bedingung", "Du kannst gehen, wenn du fertig " + cE("bist") + "."], ["ob", "Frage ohne Fragewort", "Ich frage, ob er " + cE("kommt") + "."], ["damit", "Ziel", "Ich lerne, damit ich eine gute Note " + cE("bekomme") + "."],
+        ["bevor, nachdem, während, als", "Zeit", "Ich esse, bevor ich Hausaufgaben " + cE("mache") + "."]] } },
+      { p: "Steht der Nebensatz am Anfang, ist er das erste Satzglied. Danach folgt gleich das Verb vom Hauptsatz: Weil ich krank bin, " + cE("bleibe") + " ich zu Hause." },
+      { tip: "Nach dem Einleiter kommt zuerst das Subjekt. Das konjugierte Verb wartet bis zum Schluss." }
     ] }
   ];
   const GBY = {}; GRAM.forEach(g => { GBY[g.k] = g; });
-  const TASKGRAM = { pre: "gegenwart", prt: "praeteritum", vk1: "verbklammer", vk2: "verbklammer", kas: "kasusverben", kd: "dativakk", wp: "wechsel", fp: "festprep" };
+  const TASKGRAM = { ns: "nebensatz", pre: "gegenwart", prt: "praeteritum", vk1: "verbklammer", vk2: "verbklammer", kas: "kasusverben", kd: "dativakk", wp: "wechsel", fp: "festprep" };
   const stripH = html => { const d = document.createElement("div"); d.innerHTML = html; return d.textContent; };
   const ARTROWS = [["männlich", "der Hund", "der", "den", "dem"], ["weiblich", "die Katze", "die", "die", "der"], ["sächlich", "das Pferd", "das", "das", "dem"]];
   function blockHtml(b) {
     if (b.p) return '<p class="gp">' + b.p + "</p>";
     if (b.tip) return '<div class="gtip"><b>Merke:</b> ' + b.tip + "</div>";
     if (b.ex) return '<div class="gexs' + (b.row ? " row" : "") + '">' + b.ex.map(e => '<div class="gex">' + (e.l ? '<span class="gl g' + e.c + '">' + e.l + "</span>" : "") + e.h + "</div>").join("") + "</div>";
+    if (b.tbl) return '<table class="gtab wide"><thead><tr>' + b.tbl.head.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" + b.tbl.rows.map(r => "<tr>" + r.map((c, i) => (i === 0 ? "<th>" : "<td>") + c + (i === 0 ? "</th>" : "</td>")).join("") + "</tr>").join("") + "</tbody></table>";
     if (b.tab) return '<table class="gtab"><thead><tr><th></th><th class="gN">Nominativ<small>wer? was?</small></th><th class="gA">Akkusativ<small>wen? was?</small></th><th class="gD">Dativ<small>wem?</small></th></tr></thead><tbody>' +
       ARTROWS.map(r => "<tr><th>" + r[0] + "<small>" + r[1] + "</small></th><td class=\"gN\">" + r[2] + '</td><td class="gA">' + r[3] + '</td><td class="gD">' + r[4] + "</td></tr>").join("") + "</tbody></table>";
     return "";
   }
   const gramHtml = g => '<div class="gram"><div class="gram-h"><h2>' + esc(g.t) + '</h2><button class="speakb" data-speak="1" aria-label="Erklärung vorlesen">' + SPK + "<span>Vorlesen</span></button></div>" + g.b.map(blockHtml).join("") + "</div>";
-  const gramSay = g => g.t + ". " + g.b.map(b => b.p ? stripH(b.p) : b.tip ? "Merke: " + stripH(b.tip) : b.tab ? "Die Artikel. Männlich: der, den, dem. Weiblich: die, die, der. Sächlich: das, das, dem." : b.ex ? b.ex.map(e => (e.l ? e.l + ". " : "") + stripH(e.h)).join(" ") : "").join(" ");
+  const gramSay = g => g.t + ". " + g.b.map(b => b.p ? stripH(b.p) : b.tip ? "Merke: " + stripH(b.tip) : b.tbl ? b.tbl.rows.map(r => r.map(stripH).join(". ")).join(" ") : b.tab ? "Die Artikel. Männlich: der, den, dem. Weiblich: die, die, der. Sächlich: das, das, dem." : b.ex ? b.ex.map(e => (e.l ? e.l + ". " : "") + stripH(e.h)).join(" ") : "").join(" ");
 
   /* Erklärung als Fenster im Spiel (die Zeit läuft währenddessen nicht weiter) */
   let dlgKey = "faelle", gramSel = LS.get("msd_gram") || "faelle";
@@ -1583,7 +1649,7 @@
         T.slots.forEach(s => parts.push((s.given ? "Gegenwart: " + s.given + ". " : "") + s.pron + ", Lücke."));
       } else {
         if (T.leftOnce) parts.push("Verb: " + T.leftOnce + ".");
-        T.rows.forEach(r => parts.push((T.leftOnce ? "" : r.left + ": ") + r.pieces.map(p => p.s !== undefined ? "Lücke" : p.t).join(", ") + (S.help && r.hint ? " " + r.hint + "." : "")));
+        T.rows.forEach(r => parts.push(((T.leftOnce || T.type === "ns" ? "" : r.left + ": ") + r.pieces.map(p => p.s !== undefined ? "Lücke" : p.t).join(", ") + (S.help && r.hint ? " " + r.hint : "")).replace(/[.?!]?$/, ".")));
       }
       if (S.ans === "click") parts.push("Zur Auswahl: " + T.chips.map(c => c.t).join(", ") + ".");
       return spoken(parts.join(" "));

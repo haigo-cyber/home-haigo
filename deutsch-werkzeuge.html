@@ -1699,9 +1699,14 @@
       if (!fh) return spoken(f.textContent);
       return spoken(fh.textContent + ". " + (sols.length ? "Richtig wäre: " + sols.join(", ") + ". " : "") + (fs ? fs.textContent : ""));
     }
+    function nsDoneText(T) {
+      const sent = T.rows.map((r, ri) => "Satz " + (ri + 1) + ": " + r.pieces[0].t + " " + r.pieces.filter(p => p.s !== undefined).map(p => T.slots[p.s].show).join(" ") + ".");
+      return spoken((T.res.every(Boolean) ? "Richtig." : "Nicht ganz richtig.") + " Das sind die richtigen Sätze. " + sent.join(" "));
+    }
     function gameText() {
       const T = G.task;
       if (T && !T.done) return taskText(T);
+      if (T && T.done && T.type === "ns") return nsDoneText(T);
       if (T && T.done) { const f = feedText(); if (f) return f; }
       const b = $("task").querySelector(".tk-body"); if (!b) return "";
       const end = b.querySelector(".endmsg");
@@ -1723,8 +1728,14 @@
       return "i|" + G.cur + "|" + G.over + "|" + G.rounds;
     }
     function onChange() {
-      if (!auto || !supported) return; clearTimeout(tmr);
-      tmr = setTimeout(() => { const sg = signature(); if (!sg || sg === lastSig) return; lastSig = sg; const t = currentText(); if (t) say(t); }, 350);
+      if (!supported) return;
+      const T = G.task, nsEnd = !!(T && T.type === "ns" && T.done && !T.said && CURTOPIC === "ttt" && document.body.classList.contains("view-game"));
+      if (!auto && !nsEnd) return; clearTimeout(tmr);
+      tmr = setTimeout(() => {
+        if (nsEnd && G.task === T && T.done && !T.said) { T.said = true; lastSig = signature(); const t = gameText(); if (t) say(t); return; }
+        if (!auto) return;
+        const sg = signature(); if (!sg || sg === lastSig) return; lastSig = sg; const t = currentText(); if (t) say(t);
+      }, 350);
     }
     function init() {
       const bt = $("speakBtn"), sp = $("speakStop"), au = $("speakAuto"), rg = $("spdR"), rv = $("spdVal");

@@ -1326,6 +1326,7 @@ window.Predict = (function () {
       const a = pf(m[1]), b = pf(m[3]), c = pf(m[4]), o = m[2]; let v;
       if (o === "+") v = a + b; else if (o === "−" || o === "-") v = a - b; else if (o === ":") v = b ? a / b : NaN; else v = a * b;
       if (!isFinite(v) || Math.abs(v - c) > 1e-9 || seen[m[0]] || tc.indexOf(m[0]) >= 0) continue;
+      if ((o === "+" && (a === 0 || b === 0)) || ((o === "−" || o === "-") && b === 0) || ((o === "·" || o === "*" || o === "×") && (a <= 1 || b <= 1)) || (o === ":" && (b === 1 || a === 0))) continue;
       seen[m[0]] = 1;
       const sy = o === "-" ? "−" : (o === "*" || o === "×") ? "·" : o;
       const qq = "Rechne: " + m[1] + " " + sy + " " + m[3] + " = ?";
@@ -1340,15 +1341,14 @@ window.Predict = (function () {
     if (others.length < 2) return null; shuffle(others);
     return { kind: "mcq", head: "Welcher Schritt kommt als Nächstes?", opts: [{ h: t, ok: true, why: "" }].concat(others.slice(0, 2).map(h => ({ h: h, ok: false, why: "Das ist ein anderer Schritt. Sieh dir das Bild an: Was muss als Nächstes passieren?" }))) };
   }
+  /* Pro Schritt höchstens EINE Frage: erst die Frage zum Bild, sonst eine leichte Rechnung, sonst das Ergebnis. Keine Fragen nach der Reihenfolge der Schritte. */
   function makeList(steps, shown) {
-    const n = steps[shown + 1], list = [], m = make(steps, shown);
+    const n = steps[shown + 1], m = make(steps, shown);
     if (m) m.kind = "mcq";
+    if (m && n.q) return [m];
     const e = self ? eqs(steps[shown], n) : [];
-    if (m && n.q) list.push(m);
-    e.forEach(x => list.push(x));
-    if (m && !n.q) list.push(m);
-    if (self && !list.length) { const t = titleQ(steps, shown); if (t) list.push(t); }
-    return list;
+    if (e.length) return [e[0]];
+    return m ? [m] : [];
   }
   const SPK = '<button class="speakb" data-speak="1" aria-label="Frage vorlesen"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4 4 0 010 6M19 6.5a8 8 0 010 11"/></svg>Vorlesen</button>';
   const say = t => { try { if (window.Sprache && window.Sprache.auto && window.Sprache.auto()) window.Sprache.say(window.Sprache.spoken(t)); } catch (e) { /* ohne Sprache */ } };

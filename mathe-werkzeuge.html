@@ -9638,6 +9638,7 @@ renderStell();
       });
       return h + "</table></div>";
     }
+    const pz = (n, e) => ({ n: n, z: n ? e : 0 });
     const pvRow = items => '<div class="pvr">' + items.map(it => '<div class="pvc"><div class="pvcap">' + it[0] + "</div>" + it[1] + "</div>").join("") + "</div>";
     const nz = v => { const t = String(v).replace(/0+$/, ""); return t ? { n: t, z: String(v).length - t.length } : { n: "0", z: 0 }; };
     /* Zahl als Summe ihrer Stellenwerte, rechtsbuendig untereinander */
@@ -9701,16 +9702,9 @@ renderStell();
         '<div class="zbig">' + A + " : " + M + "</div>" + pvRow([[A + " zerlegt", zst(pA, "a", A)]]), undefined, undefined,
         wQ("Wie zerlege ich " + A + " in Stellenwerte?", pA.map(x => x.v).join(" + "), [[digs(A).join(" + "), "Die Ziffern haben einen Stellenwert, die Zahlen sind größer. Hier fehlen die Nullen."], [pA.map((x, i) => i === 0 ? x.v * 10 : x.v).join(" + "), "Die erste Ziffer ist zu groß gewählt. Sie steht in der " + PN[pA[0].e] + "-Stelle."]])));
 
-      /* Stufenweise abziehen, stellengerecht: 861 - 700 = 161 ... */
-      const dstuf = upto => {
-        const rows = [{ n: A, c: "a" }]; let left = A;
-        for (let k = 0; k <= upto; k++) {
-          const x = st[k]; if (!x.qd) continue; const sub = x.qd * M * P10(x.e); left -= sub;
-          rows.push(Object.assign({ c: "b", op: "−", dim: k < upto, lab: k === upto ? x.qd + " · " + M + (x.e ? " und " + x.e + " Null" + (x.e > 1 ? "en" : "") + " dran" : "") : "" }, { n: x.qd * M, z: x.e }));
-          rows.push({ n: left, c: "t", rule: true, dim: k < upto, lab: k === upto ? "Rest" : "" });
-        }
-        return '<div class="zbig">' + A + " : " + M + " = " + (st.slice(0, upto + 1).reduce((a, y) => a + y.piece, 0) || "…") + "</div>" + pv(rows);
-      };
+      /* nur der aktuelle Teilschritt, stellengerecht (noch nicht das Normalverfahren) */
+      const dloc = i => { const x = st[i], M10 = M * P10(x.e);
+        return pv([Object.assign({ c: "a", lab: x.prev ? "Rest " + x.prev + " + " + x.d * P10(x.e) : "" }, nz(x.part)), Object.assign({ c: "b", op: "−", lab: x.qd + " · " + M10 }, nz(x.qd * M10)), Object.assign({ c: "r", op: "=", rule: true, lab: "Rest" }, nz(x.rest))]); };
       /* Normalverfahren, stellengerecht: Ziffern, Nullen weg, Rest mit naechster Ziffer */
       const dnorm = () => {
         const rows = [{ n: A, c: "a" }];
@@ -9726,7 +9720,7 @@ renderStell();
         const body = x.qd === 0 ? "Das größte Vielfache von " + M + " in " + PN[x.e] + "-Schritten, das in " + x.part + " passt, ist 0 (denn 1 mal " + M10 + " ist " + M10 + ", das ist mehr als " + x.part + "). Es kommt also 0 heraus, und " + T(x.part, "zr") + " bleibt als Rest." : "Ich suche das größte Vielfache von " + M + " in " + PN[x.e] + "-Schritten, das in " + x.part + " passt: " + x.qd + " mal " + M10 + " = " + x.qd * M10 + ". Das passt, denn " + x.qd * M10 + " ist nicht größer als " + x.part + ". Der Rest ist " + x.part + " − " + x.qd * M10 + " = " + T(x.rest, "zr") + ".";
         const goodS = x.piece + " Rest " + x.rest, wr = [[(x.qd + 1) * P10(x.e) + " Rest 0", "Das ist zu groß: " + (x.qd + 1) + " mal " + M10 + " ist " + (x.qd + 1) * M10 + ", mehr als " + x.part + "."], [x.piece + " Rest " + (x.rest ? x.rest / 10 : M), x.rest ? "Der Rest muss als Stellenwert bleiben, hier " + x.rest + ", nicht " + x.rest / 10 + "." : "Hier geht es auf: Der Rest ist 0."], [x.piece / (x.piece ? 10 : 1) + " Rest " + x.rest, "Die Stufenzahl stimmt nicht. Hier wird in " + PN[x.e] + "-Schritten geteilt: " + x.piece + " passt zur " + PN[x.e] + "-Stelle."]];
         out.push(step(PN[x.e] + ": " + head, (i > 0 ? "Zum Rest " + (x.prev) + " nehme ich die nächste Stelle " + T(x.d * P10(x.e), "zs") + " dazu. " : "") + body + " Also " + T(head + " = " + goodS, "zo") + ".",
-          '<div class="zbig">' + head + " = " + x.piece + " Rest " + x.rest + "</div>" + dstuf(i), undefined, undefined,
+          '<div class="zbig">' + head + " = " + x.piece + " Rest " + x.rest + "</div>" + dloc(i), undefined, undefined,
           wQ("Wie groß ist " + x.part + " : " + M + " (in " + PN[x.e] + "-Schritten)?", goodS, wr)));
       });
       const sums = st.filter(x => x.piece).map(x => x.piece);
@@ -9765,17 +9759,17 @@ renderStell();
         '<div class="zbig">' + A + " − " + B + "</div>" + pvRow([[A + " zerlegt", zst(pA, "a", A)], [B + " zerlegt", zst(pB, "b", B)]])));
       const q0 = bad.length ? bad[0] : null;
       out.push(step("Geht das Abziehen?", bad.length ? "Ich prüfe jede Stelle. " + T(PN[bad[0]] + ": " + dA[bad[0]] + " − " + dB[bad[0]], "zr") + " geht <b>nicht</b>, denn oben stehen weniger " + PN[bad[0]] + " als unten. " + (bad.length > 1 ? "Das Gleiche passiert in der " + bad.slice(1).map(e => PN[e]).join("-, ") + "-Stelle. " : "") + "Darum muss ich <b>tauschen</b> (entbündeln): Ich nehme einen Wert aus der nächsten Stelle und tausche ihn in zehn kleinere Einheiten." : "Ich prüfe jede Stelle: Oben steht immer mindestens so viel wie unten. Ich muss nichts tauschen und kann direkt abziehen.",
-        dtb(hi, [{ lab: "Minuend", f: e => '<span class="cs">' + dA[e] + "</span>" }, { lab: "− Subtrahend", f: e => '<span class="cg">' + dB[e] + "</span>" }, { lab: "geht das?", cls: "dres", f: e => dA[e] < dB[e] ? '<span class="cr csm">geht nicht</span>' : '<span class="csm">geht</span>' }]), undefined, undefined,
+        pvRow(Array.from({ length: hi + 1 }, (_, e) => e).map(e => [PN[e], pv([Object.assign({ c: "a" }, pz(dA[e], e)), Object.assign({ c: "b", op: "−", lab: dA[e] < dB[e] ? '<span style="color:#ff6b5e">geht nicht</span>' : "geht" }, pz(dB[e], e))])])), undefined, undefined,
         q0 !== null ? wQ("Geht " + dA[q0] + " − " + dB[q0] + " in der " + PN[q0] + "-Spalte?", "nein, " + dA[q0] + " ist kleiner als " + dB[q0], [["ja, das ergibt " + (dB[q0] - dA[q0]), "Es wird " + dB[q0] + " von " + dA[q0] + " abgezogen, nicht umgekehrt. Es sind zu wenige da."], ["ja, das ergibt −" + (dB[q0] - dA[q0]), "Mit natürlichen Zahlen geht das nicht. Darum tauscht man vorher."]]) : wQ("Muss ich bei " + A + " − " + B + " tauschen?", "nein", [["ja, immer", "Nur wenn oben in einer Stelle weniger steht als unten."], ["ja, bei den Einern", "Bei den Einern steht oben mindestens so viel wie unten."]])));
       ev.forEach((x, i) => {
         out.push(step("Tauschen: 1 " + PN[x.from] + " → 10 " + PN[x.to], "Ich tausche <b>1 " + PN[x.from] + "</b> gegen <b>10 " + PN[x.to] + "</b>. Der Minuend bleibt dabei derselbe Wert, er ist nur anders aufgeschrieben: " + T(val(x.before), "zs") + " = " + T(val(x.after), "zo") + ". Jetzt habe ich in der " + PN[x.to] + "-Stelle " + T(x.after[x.to], "zo") + " statt " + x.before[x.to] + ".",
-          dtb(hi, [{ lab: "Minuend vorher", f: e => '<span class="cs">' + x.before[e] + "</span>" }, { lab: "Tausch", f: e => e === x.from ? '<span class="cr csm">−1</span>' : e === x.to ? '<span class="co csm">+10</span>' : "" }, { lab: "Minuend nachher", cls: "dres", f: e => '<span class="' + (e === x.from || e === x.to ? "co" : "cs") + '">' + x.after[e] + "</span>" }]) + line("Tausch:", "1 " + PN[x.from] + " = 10 " + PN[x.to]), undefined, undefined,
+          pvRow([["vorher", pv(x.before.map((m, e) => e).reverse().filter(e => x.before[e]).map((e, i) => Object.assign({ c: "a", op: i ? "+" : "" }, pz(x.before[e], e))).concat([Object.assign({ c: "t", op: "=", rule: true }, nz(A))]))], ["nachher", pv(x.after.map((m, e) => e).reverse().filter(e => x.after[e]).map((e, i) => Object.assign({ c: e === x.from || e === x.to ? "r" : "a", op: i ? "+" : "" }, pz(x.after[e], e))).concat([Object.assign({ c: "t", op: "=", rule: true }, nz(A))]))]]) + line("Tausch:", "1 " + PN[x.from] + " = 10 " + PN[x.to]), undefined, undefined,
           wQ("Wie viele " + PN[x.to] + " sind es nach dem Tauschen?", N(x.after[x.to]), [["10", "Die " + x.before[x.to] + " " + PN[x.to] + ", die schon da waren, bleiben erhalten. Die 10 kommen dazu."], [N(x.before[x.to]), "Durch das Tauschen kommen 10 " + PN[x.to] + " dazu."], [N(x.after[x.to] + 1), "Es kommen genau 10 dazu, nicht 11."]])));
       });
       const fin = ev.length ? ev[ev.length - 1].after : dA, res = []; for (let e = 0; e <= hi; e++) res.push(fin[e] - dB[e]);
       const ke = ev.length ? ev[ev.length - 1].to : 0;
       out.push(step("Stelle für Stelle abziehen", "Jetzt geht jede Stelle. " + (ev.length ? "Ich rechne mit dem getauschten Minuenden " + T(val(fin), "zo") + ". " : "") + "Das Ergebnis ist die Summe der Stellen: " + T(res.map((d, e) => d * P10(e)).filter(x => x).reverse().join(" + ") || "0", "zo") + " = " + T(R, "zo") + ".",
-        dtb(hi, [{ lab: ev.length ? "Minuend (getauscht)" : "Minuend", f: e => '<span class="' + (fin[e] !== dA[e] ? "co" : "cs") + '">' + fin[e] + "</span>" }, { lab: "− Subtrahend", f: e => '<span class="cg">' + dB[e] + "</span>" }, { lab: "Differenz", cls: "dres", f: e => '<span class="co">' + res[e] + "</span>" }]) + '<div class="zbig">' + A + " − " + B + " = " + R + "</div>", undefined, undefined,
+        pvRow(Array.from({ length: hi + 1 }, (_, e) => e).map(e => [PN[e], pv([Object.assign({ c: "a" }, pz(fin[e], e)), Object.assign({ c: "b", op: "−" }, pz(dB[e], e)), Object.assign({ c: "r", op: "=", rule: true }, pz(res[e], e))])])) + '<div class="zbig">' + A + " − " + B + " = " + R + "</div>", undefined, undefined,
         wQ(PN[ke] + ": " + fin[ke] + " − " + dB[ke] + " = ?", N(res[ke]), [[N(fin[ke] + dB[ke]), "Es wird abgezogen, nicht addiert."], [N(Math.abs(dB[ke] - fin[ke]) === res[ke] ? res[ke] + 1 : Math.abs(dB[ke] - fin[ke])), "Die kleinere Zahl wird von der größeren abgezogen. Oben steht " + fin[ke] + ", unten " + dB[ke] + "."]])));
       const tb = (() => { let h = '<div class="dtw"><table class="dtab"><thead><tr><th class="dl"></th>'; for (let e = hi; e >= 0; e--) h += "<th>" + PA[e] + "</th>"; h += "</tr></thead><tbody>";
         const row = (lab, f, cls) => { let r = '<tr class="' + (cls || "") + '"><th class="dl">' + lab + "</th>"; for (let e = hi; e >= 0; e--) r += "<td>" + (f(e) || "") + "</td>"; return r + "</tr>"; };

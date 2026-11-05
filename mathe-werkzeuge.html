@@ -9642,7 +9642,7 @@ renderStell();
     const pvRow = items => '<div class="pvr">' + items.map(it => '<div class="pvc"><div class="pvcap">' + it[0] + "</div>" + it[1] + "</div>").join("") + "</div>";
     const nz = v => { const t = String(v).replace(/0+$/, ""); return t ? { n: t, z: String(v).length - t.length } : { n: "0", z: 0 }; };
     /* Zahl als Summe ihrer Stellenwerte, rechtsbuendig untereinander */
-    const zst = (p, c, whole) => pv(p.map((x, i) => ({ n: x.d, z: x.e, c: c, op: i ? "+" : "" })).concat([{ n: whole, c: c, op: "=", rule: true }]));
+    const zst = (p, c, whole) => '<div class="zbig" style="color:' + PVC[c] + '">' + whole + " = " + p.map(x => x.v).join(" + ") + "</div>";
     /* Tabelle mit Spaltenkoepfen (E, Z, H ...) */
     function dtb(top, rows) {
       let h = '<div class="dtw"><table class="dtab"><thead><tr><th class="dl"></th>'; for (let e = top; e >= 0; e--) h += "<th>" + PA[e] + "</th>"; h += "</tr></thead><tbody>";
@@ -9654,7 +9654,7 @@ renderStell();
       const A = V.a, B = V.b, S = A + B, out = [], pA = partsOf(A), pB = partsOf(B), hi = Math.max(String(A).length, String(B).length) - 1, hiS = String(S).length - 1;
       const sf = T(A, "zs") + " + " + T(B, "zg"), zt = (p, cls) => p.map(x => T(x.v, cls)).join(" + ");
       out.push(step("Aufgabe: Zerlegen", "Ich rechne " + sf + ". Zuerst <b>zerlege</b> ich beide Zahlen in ihre Stellenwerte: " + T(A, "zs") + " = " + zt(pA, "zs") + " und " + T(B, "zg") + " = " + zt(pB, "zg") + ". Dann sieht die Aufgabe so aus: " + zt(pA, "zs") + " + " + zt(pB, "zg") + ".",
-        '<div class="zbig">' + A + " + " + B + "</div>" + pvRow([[A + " zerlegt", zst(pA, "a", A)], [B + " zerlegt", zst(pB, "b", B)]]) + '<div class="zbig">' + zt(pA, "zs") + " + " + zt(pB, "zg") + "</div>", undefined, undefined,
+        '<div class="zbig">' + A + " + " + B + "</div>" + zst(pA, "a", A) + zst(pB, "b", B) + '<div class="zbig">' + zt(pA, "zs") + " + " + zt(pB, "zg") + "</div>", undefined, undefined,
         (() => { const q = pA.find(x => x.e > 0) || pB.find(x => x.e > 0); if (!q) return undefined; const n = pA.includes(q) ? A : B; return wQ("Welchen Wert hat die Ziffer " + q.d + " in der Zahl " + n + "?", N(q.v), [[N(q.d), "Die Ziffer steht in der " + PN[q.e] + "-Stelle. Dort ist sie " + q.v + " wert, nicht nur " + q.d + "."], [N(q.v * 10), "Das ist zu viel. Die Ziffer steht in der " + PN[q.e] + "-Stelle, nicht eine Stelle weiter links."]]); })()));
       const pairs = []; for (let e = 0; e <= hi; e++) { const a = pA.find(x => x.e === e), b = pB.find(x => x.e === e); if (a || b) pairs.push({ e: e, a: a ? a.v : 0, b: b ? b.v : 0, da: a ? a.d : 0, db: b ? b.d : 0 }); }
       const lines = pairs.map(p => p.a + " + " + p.b + " = " + (p.a + p.b));
@@ -9699,7 +9699,7 @@ renderStell();
       for (let e = hi; e >= 0; e--) { const d = Number(s[hi - e]), part = rest + d * P10(e), qd = Math.floor(part / (M * P10(e))), piece = qd * P10(e), nr = part - qd * M * P10(e); st.push({ e: e, d: d, prev: rest, part: part, qd: qd, piece: piece, rest: nr }); rest = nr; qtot += piece; }
       const Q = qtot, R = rest;
       out.push(step("Aufgabe: Zerlegen", "Ich rechne " + sf + ". Ich <b>zerlege</b> den Dividenden in Stellenwerte: " + T(A, "zs") + " = " + pA.map(x => T(x.v, "zs")).join(" + ") + ". Dann teile ich nacheinander: erst die größte Stelle, dann die nächste. Was beim Teilen <b>übrig bleibt</b> (der Rest), nehme ich zur nächsten Stelle mit.",
-        '<div class="zbig">' + A + " : " + M + "</div>" + pvRow([[A + " zerlegt", zst(pA, "a", A)]]), undefined, undefined,
+        '<div class="zbig">' + A + " : " + M + "</div>" + zst(pA, "a", A), undefined, undefined,
         wQ("Wie zerlege ich " + A + " in Stellenwerte?", pA.map(x => x.v).join(" + "), [[digs(A).join(" + "), "Die Ziffern haben einen Stellenwert, die Zahlen sind größer. Hier fehlen die Nullen."], [pA.map((x, i) => i === 0 ? x.v * 10 : x.v).join(" + "), "Die erste Ziffer ist zu groß gewählt. Sie steht in der " + PN[pA[0].e] + "-Stelle."]])));
 
       /* nur der aktuelle Teilschritt, stellengerecht (noch nicht das Normalverfahren) */
@@ -9756,7 +9756,7 @@ renderStell();
       for (let e = 0; e < hi; e++) if (md[e] < dB[e]) borrow(e);
       const bad = []; for (let e = 0; e <= hi; e++) if (dA[e] < dB[e]) bad.push(e);
       out.push(step("Aufgabe: Zerlegen", "Ich rechne " + sf + ". Ich zerlege beide Zahlen in Stellenwerte: " + T(A, "zs") + " = " + pA.map(x => x.v).join(" + ") + " und " + T(B, "zr") + " = " + pB.map(x => x.v).join(" + ") + ". Dann ziehe ich <b>Stelle für Stelle</b> ab: Einer von Einern, Zehner von Zehnern und so weiter.",
-        '<div class="zbig">' + A + " − " + B + "</div>" + pvRow([[A + " zerlegt", zst(pA, "a", A)], [B + " zerlegt", zst(pB, "b", B)]])));
+        '<div class="zbig">' + A + " − " + B + "</div>" + zst(pA, "a", A) + zst(pB, "b", B)));
       const q0 = bad.length ? bad[0] : null;
       out.push(step("Geht das Abziehen?", bad.length ? "Ich prüfe jede Stelle. " + T(PN[bad[0]] + ": " + dA[bad[0]] + " − " + dB[bad[0]], "zr") + " geht <b>nicht</b>, denn oben stehen weniger " + PN[bad[0]] + " als unten. " + (bad.length > 1 ? "Das Gleiche passiert in der " + bad.slice(1).map(e => PN[e]).join("-, ") + "-Stelle. " : "") + "Darum muss ich <b>tauschen</b> (entbündeln): Ich nehme einen Wert aus der nächsten Stelle und tausche ihn in zehn kleinere Einheiten." : "Ich prüfe jede Stelle: Oben steht immer mindestens so viel wie unten. Ich muss nichts tauschen und kann direkt abziehen.",
         pvRow(Array.from({ length: hi + 1 }, (_, e) => e).map(e => [PN[e], pv([Object.assign({ c: "a" }, pz(dA[e], e)), Object.assign({ c: "b", op: "−", lab: dA[e] < dB[e] ? '<span style="color:#ff6b5e">geht nicht</span>' : "geht" }, pz(dB[e], e))])])), undefined, undefined,

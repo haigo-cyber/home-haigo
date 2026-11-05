@@ -9607,19 +9607,60 @@ renderStell();
       return '<div class="snv ' + (mode === "an" ? "an go" : "st") + '" style="width:' + ((hi + 1) * 1.2) + "em;height:" + (rows * 1.5) + 'em">' + h + "</div>";
     }
     const replay = '<button type="button" class="ghost" style="margin:.3rem 0" onclick="var s=this.previousElementSibling;s.classList.remove(\'go\');void s.offsetWidth;s.classList.add(\'go\')">Noch einmal abspielen</button>';
+
+    /* ---- Stellengerechte Spalten: pv(rows) = Zahlen rechtsbuendig untereinander, Ziffer fuer Ziffer in eigener Spalte ---- */
+    (function () { if (document.getElementById("snvCss2")) return; const s = document.createElement("style"); s.id = "snvCss2"; s.textContent =
+      ".pv{border-collapse:collapse;font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.3rem 0}" +
+      ".pv td{padding:0;height:1.45em;text-align:center}" +
+      ".pv td.dg{width:1.05em}.pv td.op{width:1.5em;text-align:right;padding-right:.25em;color:#8a93a3;font-weight:600}" +
+      ".pv td.lb{text-align:left;font-size:.82rem;font-weight:500;color:#8a93a3;padding-left:.8rem;white-space:nowrap}" +
+      ".pv td.hd{font-size:.8rem;font-weight:600;color:#8a93a3;height:1.4em}" +
+      ".pv tr.rl td.dg{border-top:3px solid #3a82f7}" +
+      ".pvr{display:flex;flex-wrap:wrap;gap:.6rem 1.8rem;align-items:flex-start;margin:.3rem 0}" +
+      ".pvc{min-width:0}.pvcap{font-size:.85rem;color:#8a93a3;font-weight:600;margin-bottom:.1rem}" +
+      ".pvw{overflow-x:auto;max-width:100%}";
+      document.head.appendChild(s); })();
+    const PVC = { a: "#6cc0f5", b: "#5fd06f", r: "#ffb347", x: "#ff6b5e", t: "inherit" };
+    function pv(rows, o) {
+      o = o || {};
+      const W = Math.max.apply(null, rows.map(r => String(r.n).length + (r.z || 0)).concat([o.W || 0]));
+      let h = '<div class="pvw"><table class="pv">';
+      if (o.hdr) { h += '<tr><td class="op"></td>'; for (let k = W - 1; k >= 0; k--) h += '<td class="hd dg">' + (PA[k] || "") + "</td>"; h += "<td></td></tr>"; }
+      rows.forEach(r => {
+        const sn = String(r.n), len = sn.length + (r.z || 0), pad = W - len - (r.sh || 0);
+        h += "<tr" + (r.rule ? ' class="rl"' : "") + '><td class="op">' + (r.op || "") + "</td>";
+        for (let k = 0; k < W; k++) {
+          const j = k - pad; let ch = "", col = PVC[r.c || "a"];
+          if (j >= 0 && j < sn.length) ch = sn[j]; else if (j >= sn.length && j < len) { ch = "0"; col = PVC.r; }
+          h += '<td class="dg" style="color:' + col + (r.dim ? ";opacity:.5" : "") + '">' + ch + "</td>";
+        }
+        h += '<td class="lb">' + (r.lab || "") + "</td></tr>";
+      });
+      return h + "</table></div>";
+    }
+    const pvRow = items => '<div class="pvr">' + items.map(it => '<div class="pvc"><div class="pvcap">' + it[0] + "</div>" + it[1] + "</div>").join("") + "</div>";
+    const nz = v => { const t = String(v).replace(/0+$/, ""); return t ? { n: t, z: String(v).length - t.length } : { n: "0", z: 0 }; };
+    /* Zahl als Summe ihrer Stellenwerte, rechtsbuendig untereinander */
+    const zst = (p, c, whole) => pv(p.map((x, i) => ({ n: x.d, z: x.e, c: c, op: i ? "+" : "" })).concat([{ n: whole, c: c, op: "=", rule: true }]));
+    /* Tabelle mit Spaltenkoepfen (E, Z, H ...) */
+    function dtb(top, rows) {
+      let h = '<div class="dtw"><table class="dtab"><thead><tr><th class="dl"></th>'; for (let e = top; e >= 0; e--) h += "<th>" + PA[e] + "</th>"; h += "</tr></thead><tbody>";
+      rows.forEach(r => { h += '<tr class="' + (r.cls || "") + '"><th class="dl">' + r.lab + "</th>"; for (let e = top; e >= 0; e--) h += "<td>" + (r.f(e) || "") + "</td>"; h += "</tr>"; });
+      return h + "</tbody></table></div>";
+    }
     /* ---- Addieren ---- */
     function buildAd(V) {
       const A = V.a, B = V.b, S = A + B, out = [], pA = partsOf(A), pB = partsOf(B), hi = Math.max(String(A).length, String(B).length) - 1, hiS = String(S).length - 1;
       const sf = T(A, "zs") + " + " + T(B, "zg"), zt = (p, cls) => p.map(x => T(x.v, cls)).join(" + ");
       out.push(step("Aufgabe: Zerlegen", "Ich rechne " + sf + ". Zuerst <b>zerlege</b> ich beide Zahlen in ihre Stellenwerte: " + T(A, "zs") + " = " + zt(pA, "zs") + " und " + T(B, "zg") + " = " + zt(pB, "zg") + ". Dann sieht die Aufgabe so aus: " + zt(pA, "zs") + " + " + zt(pB, "zg") + ".",
-        '<div class="zbig">' + A + " + " + B + "</div>" + '<div class="zbig">= ' + zt(pA, "zs") + " + " + zt(pB, "zg") + "</div>", undefined, undefined,
+        '<div class="zbig">' + A + " + " + B + "</div>" + pvRow([[A + " zerlegt", zst(pA, "a", A)], [B + " zerlegt", zst(pB, "b", B)]]) + '<div class="zbig">' + zt(pA, "zs") + " + " + zt(pB, "zg") + "</div>", undefined, undefined,
         (() => { const q = pA.find(x => x.e > 0) || pB.find(x => x.e > 0); if (!q) return undefined; const n = pA.includes(q) ? A : B; return wQ("Welchen Wert hat die Ziffer " + q.d + " in der Zahl " + n + "?", N(q.v), [[N(q.d), "Die Ziffer steht in der " + PN[q.e] + "-Stelle. Dort ist sie " + q.v + " wert, nicht nur " + q.d + "."], [N(q.v * 10), "Das ist zu viel. Die Ziffer steht in der " + PN[q.e] + "-Stelle, nicht eine Stelle weiter links."]]); })()));
       const pairs = []; for (let e = 0; e <= hi; e++) { const a = pA.find(x => x.e === e), b = pB.find(x => x.e === e); if (a || b) pairs.push({ e: e, a: a ? a.v : 0, b: b ? b.v : 0, da: a ? a.d : 0, db: b ? b.d : 0 }); }
       const lines = pairs.map(p => p.a + " + " + p.b + " = " + (p.a + p.b));
       const qp = pairs.find(p => p.e > 0 && p.a && p.b) || pairs[0];
       const wr = [[N(qp.da + qp.db), "Hier fehlen die Nullen. " + qp.a + " und " + qp.b + " sind Zahlen mit " + PN[qp.e] + "-Wert."], [N((qp.a + qp.b) * 10), "Das ist zu viel. " + qp.a + " + " + qp.b + " ergibt " + (qp.a + qp.b) + "."], [N(qp.a + qp.b + P10(qp.e)), "Hier wurde ein " + PN[qp.e] + " zu viel dazugezählt."]];
       out.push(step("① Gleiche Stellen zusammen", "Ich addiere die Teile, die zum <b>gleichen Stellenwert</b> gehören, zuerst die Einer, dann die Zehner und so weiter. Wo bei einer Zahl nichts steht, denke ich mir " + T("0", "zr") + ".",
-        pairs.map(p => line(PN[p.e] + ":", T(p.a, "zs") + " + " + T(p.b, "zg") + " = " + T(p.a + p.b, "zo"))).join(""), undefined, undefined,
+        pvRow(pairs.map(p => [PN[p.e], pv([Object.assign({ c: p.a ? "a" : "t", dim: !p.a }, p.a ? { n: p.da, z: p.e } : { n: 0 }), Object.assign({ c: p.b ? "b" : "t", op: "+", dim: !p.b }, p.b ? { n: p.db, z: p.e } : { n: 0 }), Object.assign({ c: "r", op: "=", rule: true }, nz(p.a + p.b))])])), undefined, undefined,
         wQ("Was ergibt " + qp.a + " + " + qp.b + "?", N(qp.a + qp.b), wr)));
       const items = []; pairs.forEach(p => { if (p.a) items.push({ d: p.da, e: p.e, w: 0 }); if (p.b) items.push({ d: p.db, e: p.e, w: 1 }); });
       const tot = pairs.reduce((s, p) => s + p.a + p.b, 0);
@@ -9657,29 +9698,49 @@ renderStell();
       for (let e = hi; e >= 0; e--) { const d = Number(s[hi - e]), part = rest + d * P10(e), qd = Math.floor(part / (M * P10(e))), piece = qd * P10(e), nr = part - qd * M * P10(e); st.push({ e: e, d: d, prev: rest, part: part, qd: qd, piece: piece, rest: nr }); rest = nr; qtot += piece; }
       const Q = qtot, R = rest;
       out.push(step("Aufgabe: Zerlegen", "Ich rechne " + sf + ". Ich <b>zerlege</b> den Dividenden in Stellenwerte: " + T(A, "zs") + " = " + pA.map(x => T(x.v, "zs")).join(" + ") + ". Dann teile ich nacheinander: erst die größte Stelle, dann die nächste. Was beim Teilen <b>übrig bleibt</b> (der Rest), nehme ich zur nächsten Stelle mit.",
-        '<div class="zbig">' + A + " : " + M + "</div>" + '<div class="zbig">' + A + " = " + pA.map(x => x.v).join(" + ") + "</div>", undefined, undefined,
+        '<div class="zbig">' + A + " : " + M + "</div>" + pvRow([[A + " zerlegt", zst(pA, "a", A)]]), undefined, undefined,
         wQ("Wie zerlege ich " + A + " in Stellenwerte?", pA.map(x => x.v).join(" + "), [[digs(A).join(" + "), "Die Ziffern haben einen Stellenwert, die Zahlen sind größer. Hier fehlen die Nullen."], [pA.map((x, i) => i === 0 ? x.v * 10 : x.v).join(" + "), "Die erste Ziffer ist zu groß gewählt. Sie steht in der " + PN[pA[0].e] + "-Stelle."]])));
+
+      /* Stufenweise abziehen, stellengerecht: 861 - 700 = 161 ... */
+      const dstuf = upto => {
+        const rows = [{ n: A, c: "a" }]; let left = A;
+        for (let k = 0; k <= upto; k++) {
+          const x = st[k]; if (!x.qd) continue; const sub = x.qd * M * P10(x.e); left -= sub;
+          rows.push(Object.assign({ c: "b", op: "−", dim: k < upto, lab: k === upto ? x.qd + " · " + M + (x.e ? " und " + x.e + " Null" + (x.e > 1 ? "en" : "") + " dran" : "") : "" }, { n: x.qd * M, z: x.e }));
+          rows.push({ n: left, c: "t", rule: true, dim: k < upto, lab: k === upto ? "Rest" : "" });
+        }
+        return '<div class="zbig">' + A + " : " + M + " = " + (st.slice(0, upto + 1).reduce((a, y) => a + y.piece, 0) || "…") + "</div>" + pv(rows);
+      };
+      /* Normalverfahren, stellengerecht: Ziffern, Nullen weg, Rest mit naechster Ziffer */
+      const dnorm = () => {
+        const rows = [{ n: A, c: "a" }];
+        st.forEach((x, k) => {
+          rows.push({ n: x.qd * M, c: "b", op: "−", sh: hi - k, lab: x.qd + " · " + M });
+          rows.push({ n: k < hi ? x.rest / P10(x.e) * 10 + st[k + 1].d : x.rest / P10(x.e), c: "t", rule: true, sh: k < hi ? hi - k - 1 : 0, lab: k < hi ? "↓ nächste Ziffer " + st[k + 1].d : "Rest" });
+        });
+        return pv(rows);
+      };
       st.forEach((x, i) => {
         const pt = x.prev ? "(" + x.prev + " + " + x.d * P10(x.e) + ")" : N(x.part), M10 = M * P10(x.e);
         const head = x.prev ? pt + " : " + M + " = " + x.part + " : " + M : x.part + " : " + M;
         const body = x.qd === 0 ? "Das größte Vielfache von " + M + " in " + PN[x.e] + "-Schritten, das in " + x.part + " passt, ist 0 (denn 1 mal " + M10 + " ist " + M10 + ", das ist mehr als " + x.part + "). Es kommt also 0 heraus, und " + T(x.part, "zr") + " bleibt als Rest." : "Ich suche das größte Vielfache von " + M + " in " + PN[x.e] + "-Schritten, das in " + x.part + " passt: " + x.qd + " mal " + M10 + " = " + x.qd * M10 + ". Das passt, denn " + x.qd * M10 + " ist nicht größer als " + x.part + ". Der Rest ist " + x.part + " − " + x.qd * M10 + " = " + T(x.rest, "zr") + ".";
         const goodS = x.piece + " Rest " + x.rest, wr = [[(x.qd + 1) * P10(x.e) + " Rest 0", "Das ist zu groß: " + (x.qd + 1) + " mal " + M10 + " ist " + (x.qd + 1) * M10 + ", mehr als " + x.part + "."], [x.piece + " Rest " + (x.rest ? x.rest / 10 : M), x.rest ? "Der Rest muss als Stellenwert bleiben, hier " + x.rest + ", nicht " + x.rest / 10 + "." : "Hier geht es auf: Der Rest ist 0."], [x.piece / (x.piece ? 10 : 1) + " Rest " + x.rest, "Die Stufenzahl stimmt nicht. Hier wird in " + PN[x.e] + "-Schritten geteilt: " + x.piece + " passt zur " + PN[x.e] + "-Stelle."]];
         out.push(step(PN[x.e] + ": " + head, (i > 0 ? "Zum Rest " + (x.prev) + " nehme ich die nächste Stelle " + T(x.d * P10(x.e), "zs") + " dazu. " : "") + body + " Also " + T(head + " = " + goodS, "zo") + ".",
-          '<div class="zbig">' + head + " = " + x.piece + " Rest " + x.rest + "</div>" + line("Bisher:", st.slice(0, i + 1).map(y => y.piece).filter(y => y).join(" + ") + (st.slice(0, i + 1).some(y => y.piece) ? " = " + st.slice(0, i + 1).reduce((a, y) => a + y.piece, 0) : "noch 0")), undefined, undefined,
+          '<div class="zbig">' + head + " = " + x.piece + " Rest " + x.rest + "</div>" + dstuf(i), undefined, undefined,
           wQ("Wie groß ist " + x.part + " : " + M + " (in " + PN[x.e] + "-Schritten)?", goodS, wr)));
       });
       const sums = st.filter(x => x.piece).map(x => x.piece);
       out.push(step("Die Teilergebnisse addieren", "Jetzt addiere ich die Teilergebnisse: " + T(sums.length ? sums.join(" + ") : "0", "zo") + " = " + T(Q, "zo") + (R ? " Rest " + T(R, "zr") : ". Es bleibt kein Rest") + ". Also ist " + T(A + " : " + M + " = " + Q + (R ? " Rest " + R : ""), "zo") + ".",
-        '<div class="zbig">' + A + " : " + M + " = " + Q + (R ? " Rest " + R : "") + "</div>", undefined, undefined,
+        pv(st.filter(x => x.piece).map((x, i) => Object.assign({ c: i % 2 ? "b" : "a", op: i ? "+" : "" }, nz(x.piece))).concat([Object.assign({ c: "r", op: "=", rule: true }, nz(Q))])) + '<div class="zbig">' + A + " : " + M + " = " + Q + (R ? " Rest " + R : "") + "</div>", undefined, undefined,
         wQ("Wie lautet das Ergebnis von " + A + " : " + M + "?", Q + (R ? " Rest " + R : ""), [[(Q + (R ? 1 : 10)) + (R ? " Rest " + R : ""), "Die Teilergebnisse " + (sums.join(" + ") || "0") + " ergeben zusammen " + Q + "."], [Q + " Rest " + (R || M), R ? "Der Rest ist " + R + "." : "Es geht auf, also bleibt kein Rest."]])));
       const dl = st.map(x => PN[x.e] + ": " + (x.prev ? (x.prev / P10(x.e)) + " " + PN[x.e] + " Rest, dazu " + x.d + " = " : "") + (x.part / P10(x.e)) + " : " + M + " = " + x.qd + " Rest " + x.rest / P10(x.e));
       const s1 = st.find((x, i) => i > 0 && x.prev);
       out.push(step("→ Das Normalverfahren", "Ich schreibe nur noch die Ziffern und lasse die <b>Nullen weg</b>. " + "Der Rest wird dabei in die kleinere Einheit getauscht: 1 " + PN[Math.min((s1 ? s1.e : 0) + 1, 5)] + " Rest sind 10 " + PN[s1 ? s1.e : 0] + ", dazu kommt die nächste Ziffer. So rechnet man beim schriftlichen Dividieren Stelle für Stelle:",
-        st.map(x => line(PN[x.e] + ":", (x.prev ? T(x.prev / P10(x.e), "zr") + " " + PN[x.e] + " vom Rest, dazu " + T(x.d, "zs") + " → " : "") + T(x.part / P10(x.e), "zs") + " : " + M + " = " + T(x.qd, "zo") + " Rest " + T(x.rest / P10(x.e), "zr"))).join("") + '<div class="zbig">' + A + " : " + M + " = " + st.map(x => x.qd).join("").replace(/^0+(?=\d)/, "") + (R ? " Rest " + R : "") + "</div>", undefined, undefined,
+        dnorm() + '<div class="zbig">' + A + " : " + M + " = " + st.map(x => x.qd).join("").replace(/^0+(?=\d)/, "") + (R ? " Rest " + R : "") + "</div>", undefined, undefined,
         s1 ? wQ("Wie sieht " + (s1.prev + " + " + s1.d * P10(s1.e)).replace(/^/, "(").replace(/$/, ")") + " : " + M + " ohne die Nullen aus?", (s1.part / P10(s1.e)) + " : " + M, [[s1.d + " : " + M, "Der Rest " + s1.prev / P10(s1.e) + " vom Schritt davor wurde vergessen. Er wird in die kleinere Einheit getauscht und mitgenommen."], [s1.prev / P10(s1.e) + " + " + s1.d + " : " + M, "Hier gilt Punkt vor Strich nicht. Die ganze Zahl " + s1.part / P10(s1.e) + " wird geteilt."]]) : undefined));
       const pr = sums.map(x => x * M);
       out.push(step("Probe", "<b>Probe:</b> Ich multipliziere die Teilergebnisse mit " + M + ": " + (sums.length ? sums.map(x => x + " · " + M + " = " + x * M).join("; ") : "0") + ". Zusammen: " + (pr.length ? pr.join(" + ") : "0") + (R ? " und dazu der Rest " + R : "") + " ergibt " + A + ". Das ist wieder der Dividend " + T(A, "zs") + ".",
-        line("Zerlegt:", (pr.length ? pr.join(" + ") : "0") + (R ? " + " + R : "") + " = " + A) + line("Umkehraufgabe:", Q + " · " + M + (R ? " + " + R : "") + " = " + A), "good"));
+        pv(pr.map((v, i) => Object.assign({ c: i % 2 ? "b" : "a", op: i ? "+" : "" }, nz(v))).concat(R ? [{ n: R, c: "x", op: "+", lab: "Rest" }] : []).concat([Object.assign({ c: "r", op: "=", rule: true }, nz(A))])) + line("Umkehraufgabe:", Q + " · " + M + (R ? " + " + R : "") + " = " + A), "good"));
       return out;
     }
     /* ---- Stapel aus rechtsbündigen Zahlen: rows = [{s, z, col, hide}] ---- */
@@ -9701,20 +9762,20 @@ renderStell();
       for (let e = 0; e < hi; e++) if (md[e] < dB[e]) borrow(e);
       const bad = []; for (let e = 0; e <= hi; e++) if (dA[e] < dB[e]) bad.push(e);
       out.push(step("Aufgabe: Zerlegen", "Ich rechne " + sf + ". Ich zerlege beide Zahlen in Stellenwerte: " + T(A, "zs") + " = " + pA.map(x => x.v).join(" + ") + " und " + T(B, "zr") + " = " + pB.map(x => x.v).join(" + ") + ". Dann ziehe ich <b>Stelle für Stelle</b> ab: Einer von Einern, Zehner von Zehnern und so weiter.",
-        '<div class="zbig">' + A + " − " + B + "</div>" + '<div class="zbig">' + A + " = " + val(dA) + "</div>" + '<div class="zbig">' + B + " = " + val(dB) + "</div>"));
+        '<div class="zbig">' + A + " − " + B + "</div>" + pvRow([[A + " zerlegt", zst(pA, "a", A)], [B + " zerlegt", zst(pB, "b", B)]])));
       const q0 = bad.length ? bad[0] : null;
       out.push(step("Geht das Abziehen?", bad.length ? "Ich prüfe jede Stelle. " + T(PN[bad[0]] + ": " + dA[bad[0]] + " − " + dB[bad[0]], "zr") + " geht <b>nicht</b>, denn oben stehen weniger " + PN[bad[0]] + " als unten. " + (bad.length > 1 ? "Das Gleiche passiert in der " + bad.slice(1).map(e => PN[e]).join("-, ") + "-Stelle. " : "") + "Darum muss ich <b>tauschen</b> (entbündeln): Ich nehme einen Wert aus der nächsten Stelle und tausche ihn in zehn kleinere Einheiten." : "Ich prüfe jede Stelle: Oben steht immer mindestens so viel wie unten. Ich muss nichts tauschen und kann direkt abziehen.",
-        Array.from({ length: hi + 1 }, (_, i) => hi - i).map(e => line(PN[e] + ":", dA[e] + " − " + dB[e] + (dA[e] < dB[e] ? "  geht nicht" : "  geht"))).join(""), undefined, undefined,
+        dtb(hi, [{ lab: "Minuend", f: e => '<span class="cs">' + dA[e] + "</span>" }, { lab: "− Subtrahend", f: e => '<span class="cg">' + dB[e] + "</span>" }, { lab: "geht das?", cls: "dres", f: e => dA[e] < dB[e] ? '<span class="cr csm">geht nicht</span>' : '<span class="csm">geht</span>' }]), undefined, undefined,
         q0 !== null ? wQ("Geht " + dA[q0] + " − " + dB[q0] + " in der " + PN[q0] + "-Spalte?", "nein, " + dA[q0] + " ist kleiner als " + dB[q0], [["ja, das ergibt " + (dB[q0] - dA[q0]), "Es wird " + dB[q0] + " von " + dA[q0] + " abgezogen, nicht umgekehrt. Es sind zu wenige da."], ["ja, das ergibt −" + (dB[q0] - dA[q0]), "Mit natürlichen Zahlen geht das nicht. Darum tauscht man vorher."]]) : wQ("Muss ich bei " + A + " − " + B + " tauschen?", "nein", [["ja, immer", "Nur wenn oben in einer Stelle weniger steht als unten."], ["ja, bei den Einern", "Bei den Einern steht oben mindestens so viel wie unten."]])));
       ev.forEach((x, i) => {
         out.push(step("Tauschen: 1 " + PN[x.from] + " → 10 " + PN[x.to], "Ich tausche <b>1 " + PN[x.from] + "</b> gegen <b>10 " + PN[x.to] + "</b>. Der Minuend bleibt dabei derselbe Wert, er ist nur anders aufgeschrieben: " + T(val(x.before), "zs") + " = " + T(val(x.after), "zo") + ". Jetzt habe ich in der " + PN[x.to] + "-Stelle " + T(x.after[x.to], "zo") + " statt " + x.before[x.to] + ".",
-          '<div class="zbig">' + val(x.before) + "</div>" + '<div class="zbig">= ' + val(x.after) + "</div>" + line("Tausch:", "1 " + PN[x.from] + " = 10 " + PN[x.to]), undefined, undefined,
+          dtb(hi, [{ lab: "Minuend vorher", f: e => '<span class="cs">' + x.before[e] + "</span>" }, { lab: "Tausch", f: e => e === x.from ? '<span class="cr csm">−1</span>' : e === x.to ? '<span class="co csm">+10</span>' : "" }, { lab: "Minuend nachher", cls: "dres", f: e => '<span class="' + (e === x.from || e === x.to ? "co" : "cs") + '">' + x.after[e] + "</span>" }]) + line("Tausch:", "1 " + PN[x.from] + " = 10 " + PN[x.to]), undefined, undefined,
           wQ("Wie viele " + PN[x.to] + " sind es nach dem Tauschen?", N(x.after[x.to]), [["10", "Die " + x.before[x.to] + " " + PN[x.to] + ", die schon da waren, bleiben erhalten. Die 10 kommen dazu."], [N(x.before[x.to]), "Durch das Tauschen kommen 10 " + PN[x.to] + " dazu."], [N(x.after[x.to] + 1), "Es kommen genau 10 dazu, nicht 11."]])));
       });
       const fin = ev.length ? ev[ev.length - 1].after : dA, res = []; for (let e = 0; e <= hi; e++) res.push(fin[e] - dB[e]);
       const ke = ev.length ? ev[ev.length - 1].to : 0;
       out.push(step("Stelle für Stelle abziehen", "Jetzt geht jede Stelle. " + (ev.length ? "Ich rechne mit dem getauschten Minuenden " + T(val(fin), "zo") + ". " : "") + "Das Ergebnis ist die Summe der Stellen: " + T(res.map((d, e) => d * P10(e)).filter(x => x).reverse().join(" + ") || "0", "zo") + " = " + T(R, "zo") + ".",
-        Array.from({ length: hi + 1 }, (_, i) => hi - i).map(e => line(PN[e] + ":", fin[e] + " − " + dB[e] + " = " + res[e])).join("") + '<div class="zbig">' + A + " − " + B + " = " + R + "</div>", undefined, undefined,
+        dtb(hi, [{ lab: ev.length ? "Minuend (getauscht)" : "Minuend", f: e => '<span class="' + (fin[e] !== dA[e] ? "co" : "cs") + '">' + fin[e] + "</span>" }, { lab: "− Subtrahend", f: e => '<span class="cg">' + dB[e] + "</span>" }, { lab: "Differenz", cls: "dres", f: e => '<span class="co">' + res[e] + "</span>" }]) + '<div class="zbig">' + A + " − " + B + " = " + R + "</div>", undefined, undefined,
         wQ(PN[ke] + ": " + fin[ke] + " − " + dB[ke] + " = ?", N(res[ke]), [[N(fin[ke] + dB[ke]), "Es wird abgezogen, nicht addiert."], [N(Math.abs(dB[ke] - fin[ke]) === res[ke] ? res[ke] + 1 : Math.abs(dB[ke] - fin[ke])), "Die kleinere Zahl wird von der größeren abgezogen. Oben steht " + fin[ke] + ", unten " + dB[ke] + "."]])));
       const tb = (() => { let h = '<div class="dtw"><table class="dtab"><thead><tr><th class="dl"></th>'; for (let e = hi; e >= 0; e--) h += "<th>" + PA[e] + "</th>"; h += "</tr></thead><tbody>";
         const row = (lab, f, cls) => { let r = '<tr class="' + (cls || "") + '"><th class="dl">' + lab + "</th>"; for (let e = hi; e >= 0; e--) r += "<td>" + (f(e) || "") + "</td>"; return r + "</tr>"; };
@@ -9738,10 +9799,10 @@ renderStell();
       const mk = (() => { let h = '<div class="dtw"><table class="dtab"><thead><tr><th class="dl">·</th>' + pB.map(x => '<th class="zg">' + x.v + "</th>").join("") + "</tr></thead><tbody>"; pA.forEach(a => { h += '<tr><th class="dl zs">' + a.v + "</th>" + pB.map(b => '<td class="co">' + a.v * b.v + "</td>").join("") + "</tr>"; }); return h + "</tbody></table></div>"; })();
       const all = []; pA.forEach(a => pB.forEach(b => all.push(a.v * b.v)));
       const q1 = pA.find(a => a.e > 0) || pA[0], q2 = pB.find(b => b.e > 0) || pB[0];
-      out.push(step("Das Malkreuz", "Zuerst rechne ich ganz ausführlich: Ich zerlege <b>beide</b> Zahlen. Jede Zelle ist eine Teilaufgabe, zum Beispiel " + T(q1.v + " · " + q2.v + " = " + q1.v * q2.v, "zo") + ". Alle Teilprodukte zusammen: " + all.join(" + ") + " = " + T(R, "zo") + ".", mk + line("Summe:", all.join(" + ") + " = " + R), undefined, undefined,
+      out.push(step("Das Malkreuz", "Zuerst rechne ich ganz ausführlich: Ich zerlege <b>beide</b> Zahlen. Jede Zelle ist eine Teilaufgabe, zum Beispiel " + T(q1.v + " · " + q2.v + " = " + q1.v * q2.v, "zo") + ". Alle Teilprodukte zusammen: " + all.join(" + ") + " = " + T(R, "zo") + ".", mk + pvRow([["Alle Teilprodukte untereinander", pv(all.map((v, i) => Object.assign({ c: i % 2 ? "b" : "a", op: i ? "+" : "" }, nz(v))).concat([Object.assign({ c: "r", op: "=", rule: true }, nz(R))]))]]), undefined, undefined,
         wQ("Was ergibt " + q1.v + " · " + q2.v + "?", N(q1.v * q2.v), [[N(q1.d * q2.d), "Hier fehlen die Nullen. " + q1.v + " und " + q2.v + " haben Nullen hinten, die mitgerechnet werden."], [N(q1.v * q2.v * 10), "Hier ist eine Null zu viel. Zähle die Nullen von " + q1.v + " und " + q2.v + " zusammen."]])));
       const pq = prods.find(x => x.e > 0) || prods[0];
-      out.push(step("Kürzer: Teilprodukte pro Ziffer", "Das geht kürzer. Ich zerlege nur den zweiten Faktor und multipliziere die ganze Zahl " + T(A, "zs") + " mit jeder Stelle: " + prods.map(x => T(A + " · " + x.v + " = " + x.full, prods.indexOf(x) % 2 ? "zg" : "zs")).join(", ") + ". Die Nullen kommen vom Stellenwert.", prods.map(x => line(PN[x.e] + ":", A + " · " + x.v + " = " + x.full)).join(""), undefined, undefined,
+      out.push(step("Kürzer: Teilprodukte pro Ziffer", "Das geht kürzer. Ich zerlege nur den zweiten Faktor und multipliziere die ganze Zahl " + T(A, "zs") + " mit jeder Stelle: " + prods.map(x => T(A + " · " + x.v + " = " + x.full, prods.indexOf(x) % 2 ? "zg" : "zs")).join(", ") + ". Die Nullen kommen vom Stellenwert.", pv(prods.map((x, i) => ({ n: x.p, z: x.e, c: i % 2 ? "b" : "a", lab: A + " · " + x.v }))), undefined, undefined,
         wQ("Was ergibt " + A + " · " + pq.v + "?", N(pq.full), [[N(pq.p), "Hier fehlen die Nullen: " + pq.v + " ist " + pq.d + " mal 10" + (pq.e > 1 ? " hoch " + pq.e : "") + ". Die Nullen kommen hinten dazu."], [N(pq.full * 10), "Hier ist eine Null zu viel. " + pq.v + " hat " + pq.e + " Null" + (pq.e === 1 ? "" : "en") + "."]])));
       const rows = prods.map((x, i) => ({ s: String(x.p), z: x.e, col: COLR[i % 2] }));
       out.push(step("Untereinander schreiben", "Ich schreibe die Teilprodukte <b>rechtsbündig untereinander</b> und addiere sie: " + prods.map(x => x.full).join(" + ") + " = " + T(R, "zo") + ". Die orangen Nullen sind die Nullen vom Stellenwert.", stk(rows, R) + line("Rechnung:", prods.map(x => x.full).join(" + ") + " = " + R), undefined, undefined,

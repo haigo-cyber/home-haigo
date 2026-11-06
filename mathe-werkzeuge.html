@@ -823,6 +823,7 @@
         <button id="uBack">Schritt zurück</button>
         <button id="uNext">Nächster Schritt</button>
         <button id="uAll">Alle Schritte zeigen</button>
+        <button class="tab" id="uShort" aria-pressed="false" title="Nur Aufgabe, Kernschritt und Ergebnis zeigen">Kurzerklärung: aus</button>
         <button id="uRestart">Neu starten</button>
       </div>
       <div class="inputs" id="uInputs"></div>
@@ -841,6 +842,7 @@
         <button id="zBack">Schritt zurück</button>
         <button id="zNext">Nächster Schritt</button>
         <button id="zAll">Alle Schritte zeigen</button>
+        <button class="tab" id="zShort" aria-pressed="false" title="Nur Aufgabe, Kernschritt und Ergebnis zeigen">Kurzerklärung: aus</button>
         <button id="zRestart">Neu starten</button>
         <button class="tab" id="zFine" aria-pressed="false" aria-selected="false" title="Würfel einzeln anklicken und mitzählen">Kleine Schritte: aus</button>
         <button class="tab" id="zSelf" aria-pressed="false" aria-selected="false" title="Jeden Zwischenschritt selbst lösen, sonst geht es nicht weiter">Selbst lösen: aus</button>
@@ -905,6 +907,7 @@
         <button id="brBack">Schritt zurück</button>
         <button id="brNext">Nächster Schritt</button>
         <button id="brAll">Alle Schritte zeigen</button>
+        <button class="tab" id="brShort" aria-pressed="false" title="Nur Aufgabe, Kernschritt und Ergebnis zeigen">Kurzerklärung: aus</button>
         <button id="brRestart">Neu starten</button>
         <label class="opt">Größe <input type="range" id="brSize" min="8" max="20" value="14"></label>
       </div>
@@ -931,6 +934,7 @@
         <button id="baBack">Schritt zurück</button>
         <button id="baNext">Nächster Schritt</button>
         <button id="baAll">Alle Schritte zeigen</button>
+        <button class="tab" id="baShort" aria-pressed="false" title="Nur Aufgabe, Kernschritt und Ergebnis zeigen">Kurzerklärung: aus</button>
         <button id="baRestart">Neu starten</button>
         <label class="opt">Größe <input type="range" id="baSize" min="8" max="24" value="14"></label>
       </div>
@@ -964,6 +968,7 @@
         <button id="gdBack">Schritt zurück</button>
         <button id="gdNext">Nächster Schritt</button>
         <button id="gdAll">Alle Schritte zeigen</button>
+        <button class="tab" id="gdShort" aria-pressed="false" title="Nur Aufgabe, Kernschritt und Ergebnis zeigen">Kurzerklärung: aus</button>
         <button id="gdRestart">Neu starten</button>
         <label class="opt">Größe <input type="range" id="gdSize" min="14" max="38" value="24"></label>
       </div>
@@ -1039,6 +1044,38 @@
 </div>
 
 <script>
+/* Stellengerecht untereinander: Ergebnisse rechtsbuendig, Einer unter Einer (bei Dezimalzahlen Komma unter Komma).
+   rows: {l: Beschriftung, a, o, b (Operanden) ODER lhs (freier Term), r: Ergebnis, n: Zusatz} */
+function eqStack(rows) {
+  const td = (st, c, x) => "<td" + (c ? ' colspan="' + c + '"' : "") + ' style="' + st + '">' + x + "</td>";
+  return '<table class="eqs" style="border-collapse:collapse;font-size:1.2rem;line-height:1.7;font-variant-numeric:tabular-nums;margin:.2rem 0">' + rows.map(r =>
+    "<tr>" + td("text-align:right;padding-right:.8em;font-size:.9rem;color:#8a93a3;white-space:nowrap", 0, r.l || "") +
+    (r.lhs !== undefined ? td("text-align:left", 3, r.lhs) : td("text-align:right", 0, r.a) + td("text-align:center;padding:0 .3em;color:#8a93a3", 0, r.o) + td("text-align:right", 0, r.b)) +
+    td("text-align:center;padding:0 .35em;color:#8a93a3", 0, "=") + td("text-align:right;font-weight:700", 0, r.r) + td("text-align:left;padding-left:.7em;font-size:.9rem;color:#8a93a3", 0, r.n || "") + "</tr>").join("") + "</table>";
+}
+/* Kurzerklaerung: nur Aufgabe, Kernschritt(e) und Ergebnis; der Zustand gilt fuer alle Rubriken */
+window.MWShort = (function () {
+  let on = false; try { on = localStorage.getItem("mw_short") === "1"; } catch (e) { on = false; }
+  const ls = [];
+  return { isOn: () => on, set: v => { on = !!v; try { localStorage.setItem("mw_short", on ? "1" : "0"); } catch (e) { /* egal */ } ls.forEach(f => f()); }, onChange: f => { ls.push(f); },
+    sync: function (pre) { const b = document.getElementById(pre + "Short"); if (b) { b.textContent = "Kurzerklärung: " + (on ? "an" : "aus"); b.setAttribute("aria-pressed", on ? "true" : "false"); b.setAttribute("aria-selected", on ? "true" : "false"); } },
+    wire: function (pre, again) { const b = document.getElementById(pre + "Short"); if (b) b.addEventListener("click", () => this.set(!on)); ls.push(again); },
+    shorten: function (steps) {
+      const n = steps.length; if (n <= 3) return steps;
+      const aux = /^(Probe|Überschlag|Merk|Kontroll|Mathesprache|Warum|Regel|Hinweis|Zusammenfassung|Wortspeicher|Rückblick)/i;
+      const m = n >= 7 ? 2 : 1, keep = new Set([0, n - 1]), KEY = /Normalverfahren|Rechenweg|Lösungsweg|Kernaufgabe|Formel|Satz des/i;
+      steps.forEach((st, j) => { if (j > 0 && j < n - 1 && keep.size < 2 + m && KEY.test(String(st.t || "").replace(/<[^>]*>/g, ""))) keep.add(j); });
+      for (let k = 1; k <= m && keep.size < 2 + m; k++) {
+        let i = Math.round(k * (n - 1) / (m + 1)); const cand = [i, i - 1, i + 1, i - 2, i + 2].filter(j => j > 0 && j < n - 1 && !keep.has(j));
+        const good = cand.find(j => !aux.test(String(steps[j].t || "").replace(/<[^>]*>/g, "").trim())); if (good !== undefined) keep.add(good); else if (cand.length) keep.add(cand[0]);
+      }
+      return steps.filter((_, i) => keep.has(i));
+    } };
+})();
+function alEq(t, r) { /* "9 · 8" + Ergebnis: Einer unter Einer */
+  const m = String(t).match(/^(\d+) ([·:]) (\d+)$/), ib = (w, x) => '<span style="display:inline-block;min-width:' + w + 'ch;text-align:right">' + x + "</span>";
+  return m ? ib(2, m[1]) + " " + m[2] + " " + ib(2, m[3]) + " = " + ib(3, r) : t + " = " + r;
+}
 const COLORS = ["#e4572e","#2e86ab","#3fa34d","#f2a900","#8e5bd1","#d6336c","#1aa6a6","#7a5c3e"];
 const MAXN = 100, MAXFRAC = 8, LIMIT = 100;
 let fracs = [];
@@ -2595,6 +2632,7 @@ renderStell();
     msg.className = "note";
     msg.textContent = "Gehe die Schritte nacheinander durch. Mit „Nächster Schritt“ wird der nächste Gedanke aufgedeckt, der neueste Schritt steht immer oben.";
     steps = build();
+    if (window.MWShort.isOn()) steps = window.MWShort.shorten(steps); window.MWShort.sync("u");
     if (shown > steps.length - 1) shown = steps.length - 1;
     let h = "";
     for (let i = shown; i >= 0; i--) {   // neuester Schritt zuerst
@@ -2614,6 +2652,7 @@ renderStell();
   document.getElementById("uBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   document.getElementById("uAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   document.getElementById("uRestart").addEventListener("click", restart);
+  window.MWShort.wire("u", () => { shown = 0; render(); });
   document.getElementById("uRandom").addEventListener("click", () => {
     const pool = [2, 4, 5, 8, 16, 20, 25, 40, 50, 125, 3, 6, 7, 12, 15, 18];
     const n = pool[Math.floor(Math.random() * pool.length)];
@@ -3105,6 +3144,7 @@ renderStell();
       return;
     }
     steps = build();
+    if (window.MWShort.isOn()) steps = window.MWShort.shorten(steps); window.MWShort.sync("z");
     msg.className = "note";
     msg.textContent = op === "mul" ? "Beim Multiplizieren mit einer Stufenzahl wird jeder Stein gegen den nächstgrößeren getauscht und rutscht eine Spalte nach links." : (ueb
       ? (op === "add" ? "Bei dieser Aufgabe gibt es einen Zehnerübergang (Zehnerüberschreitung): Es müssen Stellen gebündelt werden. "
@@ -3182,6 +3222,7 @@ renderStell();
   $("zBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   $("zAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("zRestart").addEventListener("click", restart);
+  window.MWShort.wire("z", () => { shown = 0; render(); });
   $("zRandom").addEventListener("click", () => {
     const t = randomTask();
     A = t[0];
@@ -3414,6 +3455,7 @@ renderStell();
     const nb = $("brNext"), bb = $("brBack"), ab = $("brAll");
     if (pr) { msg.className = "note err"; msg.textContent = pr; host.innerHTML = ""; nb.disabled = bb.disabled = ab.disabled = true; return; }
     steps = carryPic(op === "zahl" ? buildZahl() : op === "bb" ? buildBB() : op === "dz" ? buildDZ() : buildDB());
+    if (window.MWShort.isOn()) steps = window.MWShort.shorten(steps); window.MWShort.sync("br");
     msg.className = "note";
     msg.textContent = NOTE[op] + "";
     if (shown > steps.length - 1) shown = steps.length - 1;
@@ -3456,6 +3498,7 @@ renderStell();
   $("brBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   $("brAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("brRestart").addEventListener("click", () => { shown = 0; render(); });
+  window.MWShort.wire("br", () => { shown = 0; render(); });
   $("brRandom").addEventListener("click", random);
   setOp("zahl");
 })();
@@ -3621,6 +3664,7 @@ renderStell();
       ' &nbsp; <i class="zsw" style="background:' + COL.orange + '"></i>Ergebnis &nbsp; <i class="zsw" style="background:#fff;height:4px;width:18px"></i>dicke weiße Linie: Hier wird vergröbert (Teile zusammenfassen = kürzen) oder verfeinert (Teile teilen = erweitern)</div>';
     if (pr) { msg.className = "note err"; msg.textContent = pr; host.innerHTML = ""; nb.disabled = bb.disabled = ab.disabled = true; return; }
     steps = carryPic(build());
+    if (window.MWShort.isOn()) steps = window.MWShort.shorten(steps); window.MWShort.sync("ba");
     msg.className = "note";
     msg.textContent = "Schritte: Aufgabe, wenn möglich kürzen (vergröbern), wenn nötig auf einen gemeinsamen Nenner erweitern (verfeinern), " + (op === "add" ? "addieren" : "subtrahieren") + ", Ergebnis.";
     if (shown > steps.length - 1) shown = steps.length - 1;
@@ -3658,6 +3702,7 @@ renderStell();
   $("baBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   $("baAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("baRestart").addEventListener("click", () => { shown = 0; render(); });
+  window.MWShort.wire("ba", () => { shown = 0; render(); });
   $("baRandom").addEventListener("click", random);
   setOp("add");
 })();
@@ -3929,6 +3974,7 @@ renderStell();
       return;
     }
     steps = op === "mul" ? buildMul() : op === "ver" ? buildVer() : buildAuf();
+    if (window.MWShort.isOn()) steps = window.MWShort.shorten(steps); window.MWShort.sync("gd");
     msg.className = "note";
     msg.textContent = NOTE[op] + "";
     if (shown > steps.length - 1) shown = steps.length - 1;
@@ -3959,6 +4005,7 @@ renderStell();
   $("gdBack").addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
   $("gdAll").addEventListener("click", () => { shown = steps.length - 1; render(); });
   $("gdRestart").addEventListener("click", () => { shown = 0; render(); });
+  window.MWShort.wire("gd", () => { shown = 0; render(); });
   $("gdRandom").addEventListener("click", random);
   ["Erk", "Aufg", "Zs"].forEach(k => $("gd_v" + k).addEventListener("click", () => { view = k === "Aufg" ? "aufg" : k === "Zs" ? "zs" : "erk"; shown = 0; inputs(); render(); }));
   window.__gd = { setView: v => { view = v; inputs(); render(); }, setOp: setOp, setV: (a, b) => { V.a = a; V.b = b; inputs(); render(); } };
@@ -4125,7 +4172,7 @@ renderStell();
     $("panel-" + id).innerHTML =
       '<div class="card">' +
       (modes ? '<div class="controls" style="margin-bottom:12px">' + modes.map((m, i) => '<button class="tab" id="' + pre + "_" + m[0] + '" aria-selected="' + (i === 0) + '">' + m[1] + "</button>").join("") + "</div>" : "") +
-      '<div class="controls" style="margin-bottom:12px"><button id="' + pre + 'Random">Zufallsaufgabe</button><button id="' + pre + 'Back">Schritt zurück</button><button id="' + pre + 'Next">Nächster Schritt</button><button id="' + pre + 'All">Alle Schritte zeigen</button><button id="' + pre + 'Restart">Neu starten</button></div>' +
+      '<div class="controls" style="margin-bottom:12px"><button id="' + pre + 'Random">Zufallsaufgabe</button><button id="' + pre + 'Back">Schritt zurück</button><button id="' + pre + 'Next">Nächster Schritt</button><button id="' + pre + 'All">Alle Schritte zeigen</button><button class="tab" id="' + pre + 'Short" aria-pressed="false" title="Nur Aufgabe, Kernschritt und Ergebnis zeigen">Kurzerklärung: aus</button><button id="' + pre + 'Restart">Neu starten</button></div>' +
       '<div class="numrow" id="' + pre + 'Row"></div><p class="note" id="' + pre + 'Msg"></p></div><div id="' + pre + 'Steps"></div><div class="card" id="' + pre + 'Leg" hidden></div>' +
       '<div class="card"><div class="ktitle">Wortspeicher</div>' + ws.map(w => '<div class="zeq"><span class="usmall">' + w[0] + "</span>" + w[1] + "</div>").join("") + "</div>";
   }
@@ -4137,6 +4184,8 @@ renderStell();
       const r = o.build();
       if (typeof r === "string") { msg.className = "note err"; msg.textContent = r; host.innerHTML = ""; host.dataset.r = ""; nb().disabled = bb().disabled = ab().disabled = true; return; }
       steps = (typeof o.carry === "function" ? o.carry() : o.carry) === false ? r : carryPic(r); msg.className = "note";
+      if (window.MWShort.isOn()) steps = window.MWShort.shorten(steps);
+      window.MWShort.sync(o.pre);
       msg.textContent = o.note() + "";
       if (shown > steps.length - 1) shown = steps.length - 1;
       let h = "";
@@ -4155,6 +4204,7 @@ renderStell();
     bb().addEventListener("click", () => { shown = Math.max(0, shown - 1); render(); });
     ab().addEventListener("click", () => { shown = steps.length - 1; render(); });
     $(o.pre + "Restart").addEventListener("click", () => { shown = 0; render(); });
+    window.MWShort.wire(o.pre, () => { shown = 0; render(); });
     window.addEventListener("msk-rescale", render);
     return { render: render, reset: () => { shown = 0; } };
   }
@@ -4653,8 +4703,9 @@ renderStell();
       if (useRect) {
         const rf = rectField(qa, qb);
         out.push(step("Rechteckfeld", "Ich zeichne ein Rechteck mit den Seitenlängen " + T(fmt(A, pa), "zs") + " und " + T(fmt(B, pb), "zg") + ". Die Fläche ist das Ergebnis. Ich zerlege jede Seite in Einer und Zehntel. Dadurch entstehen " + rf.parts.length + (rf.parts.length === 1 ? " Teilfläche" : " Teilflächen") + ".", '<div class="dsvgw">' + rf.svg + "</div>"));
-        let li = "";
-        rf.parts.forEach(pt => { const unit = pt.key === "II" ? "Einer" : (pt.key === "FF" ? "Hundertstel" : "Zehntel"); li += line(sw(COLR[pt.key]) + " Teilaufgabe:", pt.lab + " = " + fmtS(pt.val, S) + (pt.key === "FF" ? " (" + Math.round(pt.xw * 10) * Math.round(pt.yw * 10) + " Hundertstel)" : pt.key === "II" ? "" : " (" + Math.round(pt.val / P10(S - 1)) + " Zehntel)")); });
+        let li = ""; const tl = [];
+        rf.parts.forEach(pt => { const unit = pt.key === "II" ? "Einer" : (pt.key === "FF" ? "Hundertstel" : "Zehntel"); tl.push({ l: sw(COLR[pt.key]) + " Teilaufgabe:", lhs: pt.lab, r: fmtS(pt.val, S), n: pt.key === "FF" ? "(" + Math.round(pt.xw * 10) * Math.round(pt.yw * 10) + " Hundertstel)" : pt.key === "II" ? "" : "(" + Math.round(pt.val / P10(S - 1)) + " Zehntel)" }); });
+        li += eqStack(tl);
         const sum = rf.parts.reduce((s, x) => s + x.val, 0);
         li += line("Zusammenzählen:", rf.parts.map(x => fmtS(x.val, S)).join(" + ") + " = " + T(fmtS(sum, S), "zo"));
         out.push(step("Die Teilaufgaben", "Ich rechne jede Teilfläche einzeln. " + (rf.parts.some(x => x.key === "FF") ? "Zehntel mal Zehntel gibt Hundertstel: Die kleinen Kästchen (rot) sind Hundertstel von den Einern. " : "") + "Dann zähle ich alle Teilprodukte zusammen.", li));
@@ -4854,7 +4905,7 @@ renderStell();
       rr += line("Probe:", "Die Umkehraufgabe: " + gr(R) + " " + (add ? "−" : "+") + " " + gr(B) + " = " + gr(A));
       if (add) {
         const tp = []; for (let e = top; e >= 0; e--) tp.push([dg(A, e) * P10(e), dg(B, e) * P10(e)]);
-        rr += line("Halbschriftlich stellenweise:", tp.map(x => gr(x[0]) + " + " + gr(x[1]) + " = " + gr(x[0] + x[1])).join("; ") + ". Alle Teilsummen zusammen: " + gr(R) + ".");
+        rr += line("Halbschriftlich stellenweise:", "") + eqStack(tp.map(x => ({ a: gr(x[0]), o: "+", b: gr(x[1]), r: gr(x[0] + x[1]) }))) + line("Alle Teilsummen zusammen:", gr(R));
         if (cols.some(c => c.cout)) rr += line("Lang- und Kurzschreibweise:", "Die kleinen Überträge in der Tabelle sind die Kurzschreibweise. In der Langschreibweise stehen die Teilsummen der Stellen untereinander und werden zum Schluss addiert. Beide Schreibweisen führen zum selben Ergebnis.");
       } else if (cols.some(c => c.cout)) {
         rr += line("Warum darfst du die Zahlen so verändern?", "Beim Entbündeln wird der Minuend nur anders geschrieben: 1 Zehner ist so viel wie 10 Einer. Sein Wert bleibt gleich. Das ist die erste Technik. Als zweite Technik kann man erweitern: Man macht den Minuenden um 10 größer und den Subtrahenden in der nächsthöheren Stelle um 1 größer. Beide Zahlen wachsen um gleich viel, darum bleibt die Differenz unverändert.");
@@ -5021,7 +5072,7 @@ renderStell();
       out.push(step("Die Malaufgabe", "Ich starte mit der Malaufgabe " + sm + ". Im Bild sind es " + a + " Reihen mit je " + b + " Kästchen. Zusammen sind es " + N + " Kästchen.", qgrid(a, b, true) + cap(a + " Reihen, " + b + " Kästchen in jeder Reihe")));
       out.push(step("Erste Geteiltaufgabe: Verteilen", "Ich verteile die " + N + " Kästchen gerecht auf " + T(a, "zs") + " Reihen. Jede Reihe bekommt " + T(b, "zo") + " Kästchen. Also ist " + N + " : " + a + " = " + b + ".", qgrid(a, b, true) + '<div class="zbig">' + N + " : " + T(a, "zs") + " = " + T(b, "zo") + "</div>"));
       if (!sq) out.push(step("Zweite Geteiltaufgabe: Aufteilen", "Ich packe immer " + T(b, "zg") + " Kästchen zusammen. Das ergibt " + T(a, "zo") + " Packungen. Also ist " + N + " : " + b + " = " + a + ".", qgrid(a, b, true) + '<div class="zbig">' + N + " : " + T(b, "zg") + " = " + T(a, "zo") + "</div>"));
-      let res = line("Malaufgabe:", a + " · " + b + " = " + N) + line("Geteiltaufgabe:", N + " : " + a + " = " + b) + (sq ? "" : line("Geteiltaufgabe:", N + " : " + b + " = " + a));
+      let res = eqStack([{ l: "Malaufgabe:", a: a, o: "·", b: b, r: N }, { l: "Geteiltaufgabe:", a: N, o: ":", b: a, r: b }].concat(sq ? [] : [{ l: "Geteiltaufgabe:", a: N, o: ":", b: b, r: a }]));
       out.push(step("Ergebnis", sq ? "Weil beide Zahlen gleich sind, gibt es nur eine Geteiltaufgabe. Kennst du die Malaufgabe, kennst du auch die Geteiltaufgabe." : "Aus einer Malaufgabe werden zwei Geteiltaufgaben. Kennst du die Malaufgabe, kennst du auch beide Geteiltaufgaben.", res, "good", sq ? N + " : " + a + " = " + b : N + " : " + a + " = " + b + " und " + N + " : " + b + " = " + a));
       return out;
     }
@@ -5030,9 +5081,9 @@ renderStell();
       if (a === null || b === null) return "Bitte zwei Zahlen von 1 bis 10 eingeben.";
       const N = a * b, out = [], sq = a === b;
       out.push(step("Eine Familie", T(a, "zs") + ", " + T(b, "zg") + " und " + T(N, "zo") + " gehören zusammen. " + (sq ? "Weil " + a + " und " + b + " gleich sind, lassen sich zwei Aufgaben bilden." : "Daraus lassen sich immer vier Aufgaben bilden."), '<div class="zbig">' + T(a, "zs") + " · " + T(b, "zg") + " = " + T(N, "zo") + "</div>" + qgrid(a, b, true)));
-      out.push(step("Die Malaufgaben", sq ? "Die Malaufgabe heißt " + a + " · " + a + " = " + N + "." : "Ich kann die Zahlen tauschen: " + a + " · " + b + " = " + N + " und " + b + " · " + a + " = " + N + ". Das Rechteck hat nur eine andere Lage.", sq ? line("Mal:", a + " · " + b + " = " + N) : line("Mal:", a + " · " + b + " = " + N) + line("Mal (getauscht):", b + " · " + a + " = " + N)));
-      out.push(step("Die Geteiltaufgaben", sq ? "Die Umkehraufgabe heißt " + N + " : " + a + " = " + a + "." : "Ich kehre um: " + N + " : " + a + " = " + b + " und " + N + " : " + b + " = " + a + ".", sq ? line("Geteilt:", N + " : " + a + " = " + a) : line("Geteilt:", N + " : " + a + " = " + b) + line("Geteilt:", N + " : " + b + " = " + a)));
-      let res = '<div class="gfam"><div>' + a + " · " + b + " = " + N + "</div>" + (sq ? "" : "<div>" + b + " · " + a + " = " + N + "</div>") + "<div>" + N + " : " + a + " = " + b + "</div>" + (sq ? "" : "<div>" + N + " : " + b + " = " + a + "</div>") + "</div>";
+      out.push(step("Die Malaufgaben", sq ? "Die Malaufgabe heißt " + a + " · " + a + " = " + N + "." : "Ich kann die Zahlen tauschen: " + a + " · " + b + " = " + N + " und " + b + " · " + a + " = " + N + ". Das Rechteck hat nur eine andere Lage.", eqStack([{ l: "Mal:", a: a, o: "·", b: b, r: N }].concat(sq ? [] : [{ l: "Mal (getauscht):", a: b, o: "·", b: a, r: N }]))));
+      out.push(step("Die Geteiltaufgaben", sq ? "Die Umkehraufgabe heißt " + N + " : " + a + " = " + a + "." : "Ich kehre um: " + N + " : " + a + " = " + b + " und " + N + " : " + b + " = " + a + ".", eqStack(sq ? [{ l: "Geteilt:", a: N, o: ":", b: a, r: a }] : [{ l: "Geteilt:", a: N, o: ":", b: a, r: b }, { l: "Geteilt:", a: N, o: ":", b: b, r: a }])));
+      let res = eqStack([{ a: a, o: "·", b: b, r: N }].concat(sq ? [] : [{ a: b, o: "·", b: a, r: N }], [{ a: N, o: ":", b: a, r: b }], sq ? [] : [{ a: N, o: ":", b: b, r: a }]));
       out.push(step("Ergebnis", "Die Aufgabenfamilie von " + a + ", " + b + " und " + N + ":", res, "good", sq ? "2 Aufgaben" : "4 Aufgaben"));
       return out;
     }
@@ -5047,7 +5098,7 @@ renderStell();
     }
     function buildKu() {
       if (!tasks) tasks = newTasks();
-      const grid = sol => '<div class="gkun">' + tasks.map(x => "<div>" + x[0] + " = " + (sol ? T(x[1], "zo") : '<span class="gbl"></span>') + "</div>").join("") + "</div>";
+      const grid = sol => '<div class="gkun">' + tasks.map(x => "<div>" + alEq(x[0], sol ? T(x[1], "zo") : '<span class="gbl"></span>') + "</div>").join("") + "</div>";
       return [step("Kunterbunt: Mal- und Geteiltaufgaben", "Löse die Aufgaben. Denke an die Umkehraufgabe: Kennst du die Malaufgabe, kennst du auch die Geteiltaufgabe.", grid(false)), step("Lösungen", "So sieht es mit den Ergebnissen aus.", grid(true), "good", "Lösungen")];
     }
     const sp = stepper({ pre: pre, build: () => mode === "sp" ? buildSp() : mode === "um" ? buildUm() : mode === "fa" ? buildFa() : buildKu(),
@@ -5168,7 +5219,7 @@ renderStell();
       out.push(step("Aufgabe", "Ich kenne " + sf + " = " + T(N, "zo") + " schon.", qg(a, b, same(CA)) + cap(a + (a === 1 ? " Reihe" : " Reihen") + ": " + N + " Kästchen")));
       if (canD) out.push(step("Verdoppeln", "Bei " + (2 * a) + " · " + b + " sind es doppelt so viele Reihen. Dann ist auch das Ergebnis doppelt so groß: " + N + " + " + N + " = " + (2 * N) + ".", qg(2 * a, b, r => r < a ? CA : CL) + '<div class="zbig">' + a + " · " + b + " = " + N + ' <span class="usmall">verdoppelt</span> ' + (2 * a) + " · " + b + " = " + T(2 * N, "zo") + "</div>"));
       if (canH) out.push(step("Halbieren", "Umgekehrt geht es auch: die Hälfte der Reihen, die Hälfte vom Ergebnis. Bei " + (a / 2) + " · " + b + " sind es nur " + (a / 2) + " Reihen. " + N + " : 2 = " + (N / 2) + ".", qg(a, b, r => r < a / 2 ? CA : null) + '<div class="zbig">' + a + " · " + b + " = " + N + ' <span class="usmall">halbiert</span> ' + (a / 2) + " · " + b + " = " + T(N / 2, "zo") + "</div>"));
-      out.push(step("Ergebnis", "Verdoppeln und halbieren sind Umkehrungen voneinander. Die Reihenzahl und das Ergebnis ändern sich immer gleich.", line("Verdoppelt:", canD ? (2 * a) + " · " + b + " = " + (2 * N) : "nicht möglich (mehr als 10 Reihen)") + line("Halbiert:", canH ? (a / 2) + " · " + b + " = " + (N / 2) : "nicht möglich (ungerade Reihenzahl)"), "good", "d:" + (canD ? 2 * N : "-") + "|h:" + (canH ? N / 2 : "-")));
+      out.push(step("Ergebnis", "Verdoppeln und halbieren sind Umkehrungen voneinander. Die Reihenzahl und das Ergebnis ändern sich immer gleich.", eqStack([].concat(canD ? [{ l: "Verdoppelt:", a: 2 * a, o: "·", b: b, r: 2 * N }] : [], canH ? [{ l: "Halbiert:", a: a / 2, o: "·", b: b, r: N / 2 }] : [])) + (canD ? "" : line("Verdoppelt:", "nicht möglich (mehr als 10 Reihen)")) + (canH ? "" : line("Halbiert:", "nicht möglich (ungerade Reihenzahl)")), "good", "d:" + (canD ? 2 * N : "-") + "|h:" + (canH ? N / 2 : "-")));
       return out;
     }
     function buildTa() {
@@ -5204,7 +5255,7 @@ renderStell();
       if (b === null) return "Bitte eine Zahl von 1 bis 10 eingeben.";
       const out = [], R = k => k * b, nm = ["", "Einser", "Zweier", "Dreier", "Vierer", "Fünfer", "Sechser", "Siebener", "Achter", "Neuner", "Zehner"][b];
       out.push(step("Aufgabe", "Ich lerne die " + T(nm + "reihe", "zg") + ". Jede Aufgabe hat " + b + " Kästchen in der Reihe. Ich beginne mit den Kernaufgaben: 1, 2, 5 und 10 Reihen.", qg(1, b, same(CA)) + cap("1 Reihe: " + b + " Kästchen")));
-      out.push(step("Die Kernaufgaben", "Diese vier Aufgaben kenne ich: 1 · " + b + " = " + R(1) + ", 2 · " + b + " = " + R(2) + ", 5 · " + b + " = " + R(5) + ", 10 · " + b + " = " + R(10) + ".", [1, 2, 5, 10].map(k => line(k + " · " + b + " =", T(R(k), "zs"))).join("")));
+      out.push(step("Die Kernaufgaben", "Diese vier Aufgaben kenne ich: 1 · " + b + " = " + R(1) + ", 2 · " + b + " = " + R(2) + ", 5 · " + b + " = " + R(5) + ", 10 · " + b + " = " + R(10) + ".", eqStack([1, 2, 5, 10].map(k => ({ a: k, o: "·", b: b, r: T(R(k), "zs") })))));
       const rows = [
         [3, "Kern plus 1 Reihe: 2 · " + b + " + 1 · " + b + " = " + R(2) + " + " + R(1)],
         [4, "Verdoppeln: 2 · " + b + " ist " + R(2) + ", doppelt so viel: " + R(2) + " + " + R(2)],
@@ -5213,8 +5264,8 @@ renderStell();
         [8, "Kern minus 2 Reihen: 10 · " + b + " − 2 · " + b + " = " + R(10) + " − " + R(2)],
         [9, "Kern minus 1 Reihe: 10 · " + b + " − 1 · " + b + " = " + R(10) + " − " + R(1)]
       ];
-      out.push(step("Die anderen Aufgaben ableiten", "Alle übrigen Aufgaben leite ich aus den Kernaufgaben ab: dazu, weg oder verdoppeln.", rows.map(x => line(x[0] + " · " + b + " =", x[1] + " = " + T(R(x[0]), "zo"))).join("")));
-      const col = ks => ks.map(k => "<div>" + k + " · " + b + " = " + T(R(k), KERN.includes(k) ? "zs" : "zo") + "</div>").join("");
+      out.push(step("Die anderen Aufgaben ableiten", "Alle übrigen Aufgaben leite ich aus den Kernaufgaben ab: dazu, weg oder verdoppeln.", eqStack(rows.map(x => ({ l: x[0] + " · " + b + ":", lhs: x[1], r: T(R(x[0]), "zo") })))));
+      const col = ks => eqStack(ks.map(k => ({ a: k, o: "·", b: b, r: T(R(k), KERN.includes(k) ? "zs" : "zo") })));
       const all = []; for (let k = 1; k <= 10; k++) all.push(R(k));
       out.push(step("Die Reihe komplett", "Jede Zahl in der Reihe ist " + b + " mehr als die Zahl davor. Blau sind die Kernaufgaben, orange die abgeleiteten.", '<div class="gfam"><div>' + col([1, 3, 5, 7, 9]) + "</div><div>" + col([2, 4, 6, 8, 10]) + "</div></div>" + line("Reihe:", all.join(", ")), "good", all.join(",")));
       return out;
@@ -5226,7 +5277,7 @@ renderStell();
     }
     function buildKu() {
       if (!tasks) tasks = newTasks();
-      const grid = sol => '<div class="gkun">' + tasks.map(x => "<div>" + x[0] + " = " + (sol ? T(x[1], "zo") : '<span class="gbl"></span>') + "</div>").join("") + "</div>";
+      const grid = sol => '<div class="gkun">' + tasks.map(x => "<div>" + alEq(x[0], sol ? T(x[1], "zo") : '<span class="gbl"></span>') + "</div>").join("") + "</div>";
       return [step("Kunterbunt: Malaufgaben", "Löse die Aufgaben. Suche zuerst die Kernaufgabe in der Nähe, tausche oder verdopple.", grid(false)), step("Lösungen", "So sieht es mit den Ergebnissen aus.", grid(true), "good", "Lösungen")];
     }
     const BUILD = { ru: buildRu, ab: buildAb, vh: buildVh, ta: buildTa, zs: buildZs, re: buildRe, ku: buildKu };
@@ -9618,6 +9669,8 @@ renderStell();
       });
       return h + "</table>";
     };
+    /* Gleichungen untereinander: Zahlen rechtsbuendig, Einer unter Einer */
+    const eqt = rows => '<table style="border-collapse:collapse;font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.3rem 0">' + rows.map(r => '<tr><td style="text-align:right;padding-right:.8em;font-size:.9rem;font-weight:500;color:#8a93a3;white-space:nowrap">' + r.l + '</td><td style="text-align:right">' + r.a + '</td><td style="text-align:center;padding:0 .35em;color:#8a93a3">' + r.o + '</td><td style="text-align:right">' + r.b + '</td><td style="text-align:center;padding:0 .35em;color:#8a93a3">=</td><td style="text-align:right">' + r.r + "</td></tr>").join("") + "</table>";
     /* ---- Addieren ---- */
     function buildAd(V) {
       const A = V.a, B = V.b, S = A + B, out = [], pA = partsOf(A), pB = partsOf(B), hi = Math.max(String(A).length, String(B).length) - 1, hiS = String(S).length - 1;
@@ -9630,7 +9683,7 @@ renderStell();
       const qp = pairs.find(p => p.e > 0 && p.a && p.b) || pairs[0];
       const wr = [[N(qp.da + qp.db), "Hier fehlen die Nullen. " + qp.a + " und " + qp.b + " sind Zahlen mit " + PN[qp.e] + "-Wert."], [N((qp.a + qp.b) * 10), "Das ist zu viel. " + qp.a + " + " + qp.b + " ergibt " + (qp.a + qp.b) + "."], [N(qp.a + qp.b + P10(qp.e)), "Hier wurde ein " + PN[qp.e] + " zu viel dazugezählt."]];
       out.push(step("① Gleiche Stellen zusammen", "Ich addiere die Teile, die zum <b>gleichen Stellenwert</b> gehören, zuerst die Einer, dann die Zehner und so weiter. Wo bei einer Zahl nichts steht, denke ich mir " + T("0", "zr") + ".",
-        pairs.map(p => line(PN[p.e] + ":", T(p.a, "zs") + " + " + T(p.b, "zg") + " = " + T(p.a + p.b, "zo"))).join(""), undefined, undefined,
+        eqt(pairs.map(p => ({ l: PN[p.e] + ":", a: T(p.a, "zs"), o: "+", b: T(p.b, "zg"), r: T(p.a + p.b, "zo") }))), undefined, undefined,
         wQ("Was ergibt " + qp.a + " + " + qp.b + "?", N(qp.a + qp.b), wr)));
       const items = []; pairs.forEach(p => { if (p.a) items.push({ d: p.da, e: p.e, w: 0 }); if (p.b) items.push({ d: p.db, e: p.e, w: 1 }); });
       const tot = pairs.reduce((s, p) => s + p.a + p.b, 0);
@@ -9725,7 +9778,7 @@ renderStell();
       const fin = ev.length ? ev[ev.length - 1].after : dA, res = []; for (let e = 0; e <= hi; e++) res.push(fin[e] - dB[e]);
       const ke = ev.length ? ev[ev.length - 1].to : 0;
       out.push(step("Stelle für Stelle abziehen", "Jetzt geht jede Stelle. " + (ev.length ? "Ich rechne mit dem getauschten Minuenden " + T(val(fin), "zo") + ". " : "") + "Das Ergebnis ist die Summe der Stellen: " + T(res.map((d, e) => d * P10(e)).filter(x => x).reverse().join(" + ") || "0", "zo") + " = " + T(R, "zo") + ".",
-        Array.from({ length: hi + 1 }, (_, i) => hi - i).map(e => line(PN[e] + ":", fin[e] + " − " + dB[e] + " = " + res[e])).join("") + '<div class="zbig">' + A + " − " + B + " = " + R + "</div>", undefined, undefined,
+        eqt(Array.from({ length: hi + 1 }, (_, i) => hi - i).map(e => ({ l: PN[e] + ":", a: fin[e], o: "−", b: dB[e], r: res[e] }))) + '<div class="zbig">' + A + " − " + B + " = " + R + "</div>", undefined, undefined,
         wQ(PN[ke] + ": " + fin[ke] + " − " + dB[ke] + " = ?", N(res[ke]), [[N(fin[ke] + dB[ke]), "Es wird abgezogen, nicht addiert."], [N(Math.abs(dB[ke] - fin[ke]) === res[ke] ? res[ke] + 1 : Math.abs(dB[ke] - fin[ke])), "Die kleinere Zahl wird von der größeren abgezogen. Oben steht " + fin[ke] + ", unten " + dB[ke] + "."]])));
       const tb = (() => { let h = '<div class="dtw"><table class="dtab"><thead><tr><th class="dl"></th>'; for (let e = hi; e >= 0; e--) h += "<th>" + PA[e] + "</th>"; h += "</tr></thead><tbody>";
         const row = (lab, f, cls) => { let r = '<tr class="' + (cls || "") + '"><th class="dl">' + lab + "</th>"; for (let e = hi; e >= 0; e--) r += "<td>" + (f(e) || "") + "</td>"; return r + "</tr>"; };
@@ -9752,7 +9805,7 @@ renderStell();
       out.push(step("Das Malkreuz", "Zuerst rechne ich ganz ausführlich: Ich zerlege <b>beide</b> Zahlen. Jede Zelle ist eine Teilaufgabe, zum Beispiel " + T(q1.v + " · " + q2.v + " = " + q1.v * q2.v, "zo") + ". Alle Teilprodukte zusammen: " + all.join(" + ") + " = " + T(R, "zo") + ".", mk + line("Summe:", all.join(" + ") + " = " + R), undefined, undefined,
         wQ("Was ergibt " + q1.v + " · " + q2.v + "?", N(q1.v * q2.v), [[N(q1.d * q2.d), "Hier fehlen die Nullen. " + q1.v + " und " + q2.v + " haben Nullen hinten, die mitgerechnet werden."], [N(q1.v * q2.v * 10), "Hier ist eine Null zu viel. Zähle die Nullen von " + q1.v + " und " + q2.v + " zusammen."]])));
       const pq = prods.find(x => x.e > 0) || prods[0];
-      out.push(step("Kürzer: Teilprodukte pro Ziffer", "Das geht kürzer. Ich zerlege nur den zweiten Faktor und multipliziere die ganze Zahl " + T(A, "zs") + " mit jeder Stelle: " + prods.map(x => T(A + " · " + x.v + " = " + x.full, prods.indexOf(x) % 2 ? "zg" : "zs")).join(", ") + ". Die Nullen kommen vom Stellenwert.", prods.map(x => line(PN[x.e] + ":", A + " · " + x.v + " = " + x.full)).join(""), undefined, undefined,
+      out.push(step("Kürzer: Teilprodukte pro Ziffer", "Das geht kürzer. Ich zerlege nur den zweiten Faktor und multipliziere die ganze Zahl " + T(A, "zs") + " mit jeder Stelle: " + prods.map(x => T(A + " · " + x.v + " = " + x.full, prods.indexOf(x) % 2 ? "zg" : "zs")).join(", ") + ". Die Nullen kommen vom Stellenwert.", eqt(prods.map(x => ({ l: PN[x.e] + ":", a: A, o: "·", b: x.v, r: x.full }))), undefined, undefined,
         wQ("Was ergibt " + A + " · " + pq.v + "?", N(pq.full), [[N(pq.p), "Hier fehlen die Nullen: " + pq.v + " ist " + pq.d + " mal 10" + (pq.e > 1 ? " hoch " + pq.e : "") + ". Die Nullen kommen hinten dazu."], [N(pq.full * 10), "Hier ist eine Null zu viel. " + pq.v + " hat " + pq.e + " Null" + (pq.e === 1 ? "" : "en") + "."]])));
       const rows = prods.map((x, i) => ({ s: String(x.p), z: x.e, col: COLR[i % 2] }));
       out.push(step("Untereinander schreiben", "Ich schreibe die Teilprodukte <b>rechtsbündig untereinander</b> und addiere sie: " + prods.map(x => x.full).join(" + ") + " = " + T(R, "zo") + ". Die orangen Nullen sind die Nullen vom Stellenwert.", stk(rows, R) + line("Rechnung:", prods.map(x => x.full).join(" + ") + " = " + R), undefined, undefined,

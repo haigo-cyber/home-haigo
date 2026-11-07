@@ -37,8 +37,14 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(360px,1fr) mi
 .ln.gap{margin-top:8px}
 .ln:hover{background:#222833}
 .ln .cnt{display:flex;flex-wrap:wrap;align-items:center;gap:4px;flex:1;min-width:0}
-.chip{color:var(--mut);font:11px ui-monospace,Consolas,"Liberation Mono",monospace;white-space:pre;max-width:190px;overflow:hidden;text-overflow:ellipsis;background:var(--chip);border-radius:4px;padding:1px 5px;flex:none}
-.chip.cmd{max-width:none;flex:1 1 auto}
+.chip{color:var(--mut);font:11px ui-monospace,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;background:var(--chip);border-radius:4px;padding:1px 5px;flex:0 1 auto}
+.chip.cmd{flex:1 1 auto}
+body.nowrap .chip{white-space:pre;overflow-wrap:normal;max-width:190px;overflow:hidden;text-overflow:ellipsis;flex:none}
+body.nowrap .chip.cmd{max-width:none;flex:1 1 auto}
+textarea{white-space:pre-wrap;overflow-wrap:anywhere}
+body.nowrap textarea{white-space:pre;overflow-wrap:normal}
+body.nowrap #src{white-space:pre;overflow-wrap:normal}
+.wrapbtn.on{border-color:var(--ac);color:var(--ac2)}
 .ln .fld,.ln .rawin{min-width:12ch;padding:5px 8px;border:1px solid var(--bdi);border-radius:6px;font:inherit;line-height:1.35;width:0;background:var(--inp);color:var(--tx)}
 .ln textarea.fld{resize:none;overflow:hidden;display:block}
 .ln .rawin{flex:1;background:var(--inp);color:var(--tx);font:13px ui-monospace,Consolas,"Liberation Mono",monospace;width:auto;resize:none;overflow:hidden;display:block;line-height:1.4}
@@ -139,6 +145,7 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
 <body>
 <header class="top">
   <h1>Seifferts LaTeX-Schnelleditor</h1>
+  <button class="btn wrapbtn" id="btnWrapAll" type="button" title="Automatischer Zeilenumbruch in allen Textfeldern, Befehlszeilen und im Quelltext ein- oder ausschalten"></button>
   <div class="grp"><label for="tplSel">Vorlage</label><select id="tplSel"></select>
     <button class="btn" id="btnLoad" title="Eine .tex-Vorlage von deinem Rechner laden (oder hier ins Fenster ziehen)">Datei laden …</button>
     <button class="btn" id="btnKeep" title="Die geladene Vorlage im Browser merken, damit sie in der Liste steht">Vorlage merken</button>
@@ -1590,6 +1597,7 @@ function updateButtons() {
 /* ---------- Editor ---------- */
 function chipText(s, mode) {
   s = s.replace(/\s+/g, ' ').trim();
+  if (S.wrap !== false) return s;
   const L = 26;
   if (s.length <= L) return s;
   if (mode === 'lead') return '…' + s.slice(-L);
@@ -1946,17 +1954,23 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 }));
 function applyWrap() {
   const on = S.wrap !== false;
-  $('#src').style.whiteSpace = on ? 'pre-wrap' : 'pre';
-  $('#src').style.overflowWrap = on ? 'anywhere' : 'normal';
-  $('#btnWrap').textContent = 'Zeilenumbruch: ' + (on ? 'an' : 'aus');
-  $('#btnWrap').setAttribute('aria-pressed', on ? 'true' : 'false');
+  document.body.classList.toggle('nowrap', !on);
+  [$('#btnWrap'), $('#btnWrapAll')].forEach(b => {
+    b.textContent = 'Zeilenumbruch: ' + (on ? 'an' : 'aus');
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.classList.toggle('on', on);
+  });
+  if (S.doc) { renderEditor(); }
 }
 try { S.wrap = localStorage.getItem('lse_wrap') !== '0'; } catch (e) { S.wrap = true; }
-$('#btnWrap').addEventListener('click', () => {
+function toggleWrap() {
+  commitIfChanged();
   S.wrap = S.wrap === false;
   try { localStorage.setItem('lse_wrap', S.wrap ? '1' : '0'); } catch (e) { /* nicht kritisch */ }
   applyWrap();
-});
+}
+$('#btnWrap').addEventListener('click', toggleWrap);
+$('#btnWrapAll').addEventListener('click', toggleWrap);
 applyWrap();
 window.addEventListener('resize', () => { if (S.doc) { fitPage(); document.querySelectorAll('#lines .fld, #lines .rawin').forEach(grow); } });
 

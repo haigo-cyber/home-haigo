@@ -158,7 +158,7 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
 <body>
 <header class="top">
   <h1>Seifferts LaTeX-Schnelleditor</h1>
-  <span class="ver" id="ver" title="Version dieser Datei: zeigt, ob du die aktuelle Fassung geöffnet hast">Version 2.0 · 07.11.2026 18:39</span>
+  <span class="ver" id="ver" title="Version dieser Datei: zeigt, ob du die aktuelle Fassung geöffnet hast">Version 2.1 · 07.11.2026 18:59</span>
   <button class="btn wrapbtn" id="btnWrapAll" type="button" title="Nur die Anzeige im Tool: lange Texte umbrechen oder in einer Zeile lassen. Der Zeilenumbruch im PDF wird mit dem Knopf ↵ oder Umschalt+Enter gesetzt."></button>
   <div class="grp"><label for="tplSel">Vorlage</label><select id="tplSel"></select>
     <button class="btn" id="btnLoad" title="Eine .tex-Vorlage von deinem Rechner laden (oder hier ins Fenster ziehen)">Datei laden …</button>
@@ -459,6 +459,7 @@ const UB_DEF = '% Automatischer Zeilenumbruch in festen Boxen (vom LaTeX-Schnell
   '\t\\else\n' +
   '\t\t\\makebox[#1][#2]{#3}%\n' +
   '\t\\fi}\n\n';
+const EM_DEF = '% Text nie über den Rand laufen lassen (vom LaTeX-Schnelleditor)\n\\emergencystretch=3em\n\n';
 function closesEarly(t) {
   let d = 0;
   for (let i = 0; i < t.length; i++) {
@@ -485,8 +486,13 @@ function serialize(doc, opts) {
   const body = bodyOut(doc, opts);
   let head = doc.head;
   const TAGB = '\\begin{document}';
-  if (opts && opts.autoBreak && body.indexOf('\\umbruchbox{') >= 0 && head.indexOf('\\umbruchbox') < 0 && head.slice(-TAGB.length) === TAGB) {
-    head = head.slice(0, head.length - TAGB.length) + UB_DEF + TAGB;
+  if (opts && opts.autoBreak && head.slice(-TAGB.length) === TAGB) {
+    let extra = '';
+    if (body.indexOf('\\umbruchbox{') >= 0 && head.indexOf('\\umbruchbox') < 0) extra += UB_DEF;
+    /* Ohne Dehnungsreserve lässt LaTeX bei langen fetten Zeilen (Themenzeilen, Überschriften) den Text
+       über den rechten Rand hinausragen, statt umzubrechen. */
+    if (!/\\emergencystretch|\\sloppy/.test(head)) extra += EM_DEF;
+    if (extra) head = head.slice(0, head.length - TAGB.length) + extra + TAGB;
   }
   return head + body + doc.tail;
 }

@@ -64,6 +64,7 @@ body.nowrap #src{white-space:pre;overflow-wrap:normal}
 .ln .tg{border:0;background:transparent;color:var(--tx);font-size:15px;width:24px;flex:none;border-radius:5px;padding:2px}
 .ln .tg:hover{background:var(--hov)}
 .ln .bcnt{color:var(--mut);font-size:11px;white-space:nowrap;flex:none}
+.grow{flex:1}
 .btn.sm{padding:3px 8px;font-size:12px}
 #tmenu{position:fixed;z-index:60;min-width:230px;background:#232a36;border:1px solid #3b465a;border-radius:9px;padding:5px;box-shadow:0 8px 28px rgba(0,0,0,.55)}
 #tmenu .mh{color:var(--mut);font-size:11px;padding:3px 8px 4px}
@@ -139,6 +140,16 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 dialog textarea{background:var(--inp);color:var(--tx);width:100%;height:220px;font:13px ui-monospace,Consolas,monospace;padding:8px;border:1px solid var(--bdi);border-radius:6px}
 dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
 #drop{display:none;position:fixed;inset:0;background:rgba(110,160,255,.12);border:3px dashed var(--ac);z-index:60;align-items:center;justify-content:center;font-size:20px;color:var(--ac2);pointer-events:none}
+#printArea{display:none}
+@media print{
+  @page{size:A4;margin:0}
+  html,body{height:auto!important;overflow:visible!important;background:#fff!important}
+  body.printing>*:not(#printArea){display:none!important}
+  body.printing #printArea{display:block!important}
+  #printArea .pg{box-shadow:none!important;width:210mm!important;min-height:296mm!important;margin:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #printArea #page{transform:none!important;width:210mm!important}
+  #printArea .imgph{visibility:hidden!important}
+}
 @media (max-width:900px){main{grid-template-columns:1fr;grid-auto-rows:minmax(420px,auto)}body{height:auto}}
 input::placeholder,textarea::placeholder{color:var(--ph)}
 ::-webkit-scrollbar{width:12px;height:12px}::-webkit-scrollbar-thumb{background:#3a4252;border-radius:8px;border:3px solid var(--panel)}::-webkit-scrollbar-track{background:transparent}
@@ -147,7 +158,7 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
 <body>
 <header class="top">
   <h1>Seifferts LaTeX-Schnelleditor</h1>
-  <span class="ver" id="ver" title="Version dieser Datei: zeigt, ob du die aktuelle Fassung geöffnet hast">Version 1.9 · 07.11.2026 10:28</span>
+  <span class="ver" id="ver" title="Version dieser Datei: zeigt, ob du die aktuelle Fassung geöffnet hast">Version 2.0 · 07.11.2026 18:39</span>
   <button class="btn wrapbtn" id="btnWrapAll" type="button" title="Nur die Anzeige im Tool: lange Texte umbrechen oder in einer Zeile lassen. Der Zeilenumbruch im PDF wird mit dem Knopf ↵ oder Umschalt+Enter gesetzt."></button>
   <div class="grp"><label for="tplSel">Vorlage</label><select id="tplSel"></select>
     <button class="btn" id="btnLoad" title="Eine .tex-Vorlage von deinem Rechner laden (oder hier ins Fenster ziehen)">Datei laden …</button>
@@ -174,7 +185,7 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
   </section>
   <section class="pane" id="pvPane">
     <div class="hdr"><div class="tabs"><button class="tab on" data-tab="pv">Vorschau</button><button class="tab" data-tab="src">LaTeX-Quelltext</button></div>
-      <span class="small" id="pvHint">Näherung, nicht pixelgleich mit dem PDF</span><button class="btn sm" id="btnWrap" type="button" hidden title="Lange Zeilen im Quelltext umbrechen oder in einer Zeile lassen"></button></div>
+      <span class="small" id="pvHint">Näherung, nicht pixelgleich mit dem PDF</span><span class="grow"></span><button class="btn sm" id="btnPrint" type="button" title="Die Vorschau drucken oder im Druckdialog als PDF speichern. Dafür braucht man kein LaTeX.">Vorschau drucken / als PDF</button><button class="btn sm" id="btnWrap" type="button" hidden title="Lange Zeilen im Quelltext umbrechen oder in einer Zeile lassen"></button></div>
     <div class="scroll" id="pvBody"><div id="pageWrap"><div id="page"></div></div></div>
     <textarea id="src" readonly spellcheck="false" hidden></textarea>
     <div id="pvNote"></div>
@@ -200,6 +211,7 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
   <div id="gGrid"></div>
   <div class="row"><label class="btn" for="gFile">Andere Datei wählen …</label><input type="file" id="gFile" accept="image/png,image/jpeg" hidden><button class="btn" id="gCancel" type="button">Abbrechen</button></div>
 </dialog>
+<div id="printArea"></div>
 <div id="toast"></div>
 <div id="drop">Datei hier ablegen (.tex-Vorlage oder Logo)</div>
 <script>
@@ -2009,6 +2021,34 @@ function renderPreview() {
   $('#pvNote').textContent = notes.join('  ·  ');
   $('#pvNote').style.display = notes.length ? '' : 'none';
 }
+/* ---------- Vorschau drucken (für Kolleginnen und Kollegen ohne LaTeX) ---------- */
+let printTitle = null;
+function preparePrint() {
+  const src = $('#page');
+  if (!src || !src.firstChild) return false;
+  const area = $('#printArea');
+  area.innerHTML = '<div id="page">' + src.innerHTML + '</div>';
+  document.body.classList.add('printing');
+  if (printTitle === null) printTitle = document.title;
+  document.title = fileBase();
+  return true;
+}
+function cleanupPrint() {
+  document.body.classList.remove('printing');
+  $('#printArea').textContent = '';
+  if (printTitle !== null) { document.title = printTitle; printTitle = null; }
+}
+window.addEventListener('beforeprint', () => { if (S.doc) { renderPreview(); preparePrint(); } });
+window.addEventListener('afterprint', cleanupPrint);
+$('#btnPrint').addEventListener('click', () => {
+  if (!S.doc) return;
+  commitIfChanged();
+  renderPreview();
+  const pg = $('#page .pg');
+  if (document.querySelector('#page .imgph')) toast('Das Logo fehlt in der Vorschau und bleibt im Ausdruck leer. Mit „Logo für Vorschau wählen …“ kannst du es vorher laden.');
+  else if (pg && pg.offsetHeight > 1126) toast('Der Inhalt ist länger als eine Seite. Die Seitenumbrüche im Ausdruck können von denen im LaTeX-PDF abweichen.');
+  window.print();
+});
 function fitPage() {
   const body = $('#pvBody'), page = $('#page'), wrap = $('#pageWrap');
   const avail = body.clientWidth - 20;

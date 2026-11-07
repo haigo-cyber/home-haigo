@@ -44,6 +44,8 @@ body.nowrap .chip.cmd{max-width:none;flex:1 1 auto}
 textarea{white-space:pre-wrap;overflow-wrap:anywhere}
 body.nowrap textarea{white-space:pre;overflow-wrap:normal}
 body.nowrap #src{white-space:pre;overflow-wrap:normal}
+.ver{font:600 12px ui-monospace,Consolas,"Liberation Mono",monospace;color:var(--ac2);background:#1f2b45;border:1px solid var(--bandbd);border-radius:6px;padding:3px 8px;white-space:nowrap}
+.acts button.brk{color:var(--ac2);font-weight:700}
 .wrapbtn.on{border-color:var(--ac);color:var(--ac2)}
 .ln .fld,.ln .rawin{min-width:12ch;padding:5px 8px;border:1px solid var(--bdi);border-radius:6px;font:inherit;line-height:1.35;width:0;background:var(--inp);color:var(--tx)}
 .ln textarea.fld{resize:none;overflow:hidden;display:block}
@@ -145,7 +147,8 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
 <body>
 <header class="top">
   <h1>Seifferts LaTeX-Schnelleditor</h1>
-  <button class="btn wrapbtn" id="btnWrapAll" type="button" title="Automatischer Zeilenumbruch in allen Textfeldern, Befehlszeilen und im Quelltext ein- oder ausschalten"></button>
+  <span class="ver" id="ver" title="Version dieser Datei: zeigt, ob du die aktuelle Fassung geöffnet hast">Version 1.9 · 07.11.2026 10:28</span>
+  <button class="btn wrapbtn" id="btnWrapAll" type="button" title="Nur die Anzeige im Tool: lange Texte umbrechen oder in einer Zeile lassen. Der Zeilenumbruch im PDF wird mit dem Knopf ↵ oder Umschalt+Enter gesetzt."></button>
   <div class="grp"><label for="tplSel">Vorlage</label><select id="tplSel"></select>
     <button class="btn" id="btnLoad" title="Eine .tex-Vorlage von deinem Rechner laden (oder hier ins Fenster ziehen)">Datei laden …</button>
     <button class="btn" id="btnKeep" title="Die geladene Vorlage im Browser merken, damit sie in der Liste steht">Vorlage merken</button>
@@ -160,11 +163,12 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
   <section class="pane" id="edPane">
     <div class="hdr"><h2>Bearbeiten</h2>
       <label class="opt"><input type="checkbox" id="optEsc" checked> Sonderzeichen absichern (&amp; % # _ $)</label>
+      <label class="opt" title="Lange Texte in Boxen fester Breite (zum Beispiel die Zeile mit Kind) brechen im PDF um, statt über den Rand zu laufen. Kurze Texte sehen aus wie vorher."><input type="checkbox" id="optBreak" checked> Automatischer Zeilenumbruch im PDF</label>
       <label class="opt"><input type="checkbox" id="optCmd"> Befehlszeilen zeigen</label>
       <span class="opt" id="themeBar" hidden><button class="btn sm" id="btnColl" title="Alle Themen einklappen, um sie leichter zu sortieren">Themen einklappen</button> <button class="btn sm" id="btnExp">Alle aufklappen</button></span>
     </div>
     <div class="scroll"><div id="lines"></div>
-      <div class="hint">Enter in einem Feld legt darunter eine neue Zeile an, Pfeil hoch und runter wechselt die Zeile. Alle Änderungen lassen sich mit Rückgängig zurückholen.</div>
+      <div class="hint">Enter in einem Feld legt darunter eine neue Zeile an. Umschalt+Enter (oder der Knopf ↵) setzt einen Zeilenumbruch in den Text, im PDF beginnt dort eine neue Zeile. Pfeil hoch und runter wechselt die Zeile. Alle Änderungen lassen sich mit Rückgängig zurückholen.</div>
     </div>
     <div id="warns"></div>
   </section>
@@ -430,9 +434,50 @@ function segOut(sg, opts) {
   if (sg.k === 'x' && sg.edited && !sg.raw && opts && opts.autoEscape) return escSpecial(sg.v);
   return sg.v;
 }
-function unitOut(u, opts) { return u.segs.map(s => segOut(s, opts)).join(''); }
+/* ---------- Automatischer Zeilenumbruch in festen Boxen ----------
+   \makebox mit fester Breite bricht nie um. Steht ein Textfeld darin, wird die Box beim Ausgeben
+   durch \umbruchbox ersetzt: kurzer Text bleibt wie bisher, langer Text bricht in einer Box
+   von 60 Prozent der Zeilenbreite um. */
+const UB_DEF = '% Automatischer Zeilenumbruch in festen Boxen (vom LaTeX-Schnelleditor)\n' +
+  '\\newlength{\\umbruchbreite}\n' +
+  '\\newcommand{\\umbruchbox}[3]{%\n' +
+  '\t\\settowidth{\\umbruchbreite}{#3}%\n' +
+  '\t\\ifdim\\umbruchbreite>0.6\\linewidth\n' +
+  '\t\t\\parbox[t]{0.6\\linewidth}{\\if#2c\\centering\\fi\\if#2l\\raggedright\\fi\\if#2r\\raggedleft\\fi #3}%\n' +
+  '\t\\else\n' +
+  '\t\t\\makebox[#1][#2]{#3}%\n' +
+  '\t\\fi}\n\n';
+function closesEarly(t) {
+  let d = 0;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '{') d++; else if (c === '}') { d--; if (d < 0) return true; }
+  }
+  return false;
+}
+function autoBreakOut(u, opts) {
+  const parts = u.segs.map(sg => segOut(sg, opts));
+  return parts.map((t, i) => {
+    if (u.segs[i].k !== 's' || !u.segs.slice(i + 1).some(x => x.k === 'x')) return t;
+    return t.replace(/\\makebox\[([^\]]*)\]\[([lcrs])\]\{/g, (m, w, a, off) =>
+      closesEarly(t.slice(off + m.length)) ? m : '\\umbruchbox{' + w + '}{' + a + '}{');
+  }).join('');
+}
+function unitOut(u, opts) {
+  if (opts && opts.autoBreak && !u.raw && hasFields(u)) return autoBreakOut(u, opts);
+  return u.segs.map(s => segOut(s, opts)).join('');
+}
 function bodyOut(doc, opts) { return doc.units.map(u => unitOut(u, opts)).join('\n'); }
-function serialize(doc, opts) { return doc.head + bodyOut(doc, opts) + doc.tail; }
+function serialize(doc, opts) {
+  const body = bodyOut(doc, opts);
+  let head = doc.head;
+  const TAGB = '\\begin{document}';
+  if (opts && opts.autoBreak && body.indexOf('\\umbruchbox{') >= 0 && head.indexOf('\\umbruchbox') < 0 && head.slice(-TAGB.length) === TAGB) {
+    head = head.slice(0, head.length - TAGB.length) + UB_DEF + TAGB;
+  }
+  return head + body + doc.tail;
+}
 function serializeFile(doc, opts) {
   const t = serialize(doc, opts);
   return doc.eol === '\r\n' ? t.replace(/\n/g, '\r\n') : t;
@@ -1132,6 +1177,18 @@ const PV = (function () {
       skipWS();
       flushT();
 
+      /* \umbruchbox (Automatischer Zeilenumbruch des Editors): kurz wie makebox, lang als umbrechende Box */
+      if (name === 'umbruchbox') {
+        const wb = self.len(readArg(), st); const al = (readArg().trim() || 'c').charAt(0); const arg = readArg();
+        const maxW = 0.6 * self.textwidthPx();
+        if (self.measure(arg) > maxW) {
+          const pre = al === 'c' ? '\\centering ' : (al === 'r' ? '\\raggedleft ' : (al === 'l' ? '\\raggedright ' : ''));
+          self.addItem(C, st, { t: 'mp', w: maxW, blocks: sub(pre + arg, st).blocks });
+        } else {
+          self.addItem(C, st, { t: 'box', w: wb, pos: al, frame: false, items: inlineItems(arg, st) });
+        }
+        continue;
+      }
       /* Benutzer-Makros zuerst */
       if (self.macros[name]) {
         const mac = self.macros[name];
@@ -1551,7 +1608,7 @@ function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.c
 
 const S = {
   doc: null, tplName: '', original: '', undo: [], redo: [], last: '',
-  opts: { autoEscape: true }, showCmd: false, rawEdit: null, focus: null, dirty: false,
+  opts: { autoEscape: true, autoBreak: true }, showCmd: false, rawEdit: null, focus: null, dirty: false,
   collapsed: new Set(), theme: null, blocks: [], assetUrls: {}, imgStatus: {}, dir: null, dirOk: false, dirSupport: !!window.showDirectoryPicker, tab: 'pv'
 };
 
@@ -1627,6 +1684,26 @@ function markField(inp, seg) {
 }
 
 function grow(t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }
+/* Harter Zeilenumbruch (\\) im Text: an der Cursorposition des Feldes einfügen */
+function insertBreak(inp) {
+  const a = inp.selectionStart, b = inp.selectionEnd, v = inp.value;
+  const next = v.charAt(b);
+  const ins = '\\\\' + (next === '' || /\s/.test(next) ? '' : ' ');
+  inp.value = v.slice(0, a) + ins + v.slice(b);
+  const pos = a + ins.length;
+  inp.setSelectionRange(pos, pos);
+  inp.dispatchEvent(new Event('input', { bubbles: true }));
+  inp.dispatchEvent(new Event('change', { bubbles: true }));
+  inp.focus();
+}
+function breakInRow(u) {
+  const row = document.querySelector('#lines .ln[data-id="' + u.id + '"]');
+  const flds = row ? Array.from(row.querySelectorAll('.fld')) : [];
+  if (!flds.length) return;
+  const inp = flds.find(x => x === S.lastFld) || flds[0];
+  if (inp !== S.lastFld) { const l = inp.value.length; inp.setSelectionRange(l, l); }
+  insertBreak(inp);
+}
 function makeField(u, seg, f) {
   const inp = el('textarea', 'fld');
   inp.rows = 1; inp.value = seg.v; inp.lang = 'de'; inp.spellcheck = true;
@@ -1638,7 +1715,9 @@ function makeField(u, seg, f) {
     seg.v = inp.value; seg.edited = true; S.dirty = true; markField(inp, seg); grow(inp); schedulePreview();
   });
   inp.addEventListener('change', () => commitIfChanged());
+  inp.addEventListener('focus', () => { S.lastFld = inp; });
   inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && ev.shiftKey && !ev.ctrlKey && !ev.altKey) { ev.preventDefault(); insertBreak(inp); return; }
     if (ev.key === 'Enter' && !ev.shiftKey && !ev.ctrlKey && !ev.altKey) {
       ev.preventDefault();
       commitIfChanged();
@@ -1709,6 +1788,7 @@ function rowActions(u) {
     })
   );
   a.append(btn('▣', 'Grafik aus dem Ordner content darunter einfügen', () => { commitIfChanged(); openImgDialog(u); }));
+  if (hasFields(u)) a.append(btn('↵', 'Zeilenumbruch im Text einfügen (an der Cursorposition im Feld, auch mit Umschalt+Enter). Im PDF beginnt dort eine neue Zeile.', () => breakInRow(u), 'brk'));
   if (hasFields(u)) a.append(btn('≡＋', 'Mehrere Zeilen darunter einfügen (eine pro Zeile, auch aus Excel)', run(() => openBulk(u.id))));
   a.append(
     btn('⧉', 'Zeile duplizieren', run(() => { const c = opDuplicate(S.doc, idxOf(u.id)); commit(); S.focus = { id: c.id, f: 0 }; renderAll(); })),
@@ -1725,6 +1805,7 @@ function blockActions(u, b) {
     btn('▲', 'Ganzes Thema mit allen Zeilen nach oben', run(() => { if (opBlockMove(S.doc, S.theme, u.id, -1)) { commit(); S.focus = { id: u.id, f: 0 }; renderAll(); } })),
     btn('▼', 'Ganzes Thema mit allen Zeilen nach unten', run(() => { if (opBlockMove(S.doc, S.theme, u.id, 1)) { commit(); S.focus = { id: u.id, f: 0 }; renderAll(); } })),
     btn('＋', 'Zeile in diesem Thema oder neues Thema einfügen', ev => openTypeMenu(ev.currentTarget, u, true)),
+    btn('↵', 'Zeilenumbruch im Text einfügen (an der Cursorposition im Feld, auch mit Umschalt+Enter). Im PDF beginnt dort eine neue Zeile.', () => breakInRow(u), 'brk'),
     btn('▣', 'Grafik aus dem Ordner content unter der Themenzeile einfügen', () => { commitIfChanged(); openImgDialog(u); }),
     btn('⧉', 'Ganzes Thema mit allen Zeilen duplizieren', run(() => { const c = opBlockDuplicate(S.doc, S.theme, u.id); if (c) { commit(); S.focus = { id: c.id, f: 0 }; renderAll(); } })),
     btn('</>', 'LaTeX der Themenzeile direkt bearbeiten', run(() => { S.rawEdit = u.id; renderEditor(); const r = document.querySelector('#lines .rawin'); if (r) r.focus(); })),
@@ -1956,7 +2037,7 @@ function applyWrap() {
   const on = S.wrap !== false;
   document.body.classList.toggle('nowrap', !on);
   [$('#btnWrap'), $('#btnWrapAll')].forEach(b => {
-    b.textContent = 'Zeilenumbruch: ' + (on ? 'an' : 'aus');
+    b.textContent = 'Anzeige umbrechen: ' + (on ? 'an' : 'aus');
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.classList.toggle('on', on);
   });
@@ -2152,6 +2233,13 @@ $('#btnReset').addEventListener('click', () => {
 /* ---------- Optionen, Dateiname ---------- */
 $('#btnColl').addEventListener('click', () => { S.blocks.forEach(b => S.collapsed.add(b.id)); renderEditor(); });
 $('#btnExp').addEventListener('click', () => { S.collapsed = new Set(); renderEditor(); });
+try { if (localStorage.getItem('lse_autobreak') === '0') { S.opts.autoBreak = false; $('#optBreak').checked = false; } } catch (e) { /* nicht kritisch */ }
+$('#optBreak').addEventListener('change', ev => {
+  S.opts.autoBreak = ev.target.checked; S.dirty = true;
+  try { localStorage.setItem('lse_autobreak', ev.target.checked ? '1' : '0'); } catch (e) { /* nicht kritisch */ }
+  renderAll();
+  toast(ev.target.checked ? 'Automatischer Zeilenumbruch im PDF ist an.' : 'Automatischer Zeilenumbruch im PDF ist aus. Lange Texte in festen Boxen laufen dann über den Rand.');
+});
 $('#optEsc').addEventListener('change', ev => { S.opts.autoEscape = ev.target.checked; renderAll(); });
 $('#optCmd').addEventListener('change', ev => { S.showCmd = ev.target.checked; renderEditor(); });
 function updateNameSize() {

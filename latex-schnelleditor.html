@@ -1,0 +1,2009 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seifferts LaTeX-Schnelleditor</title>
+<style>
+:root{color-scheme:dark;--ac:#6ea0ff;--ac2:#9bbcff;--pri:#3565c6;--pri2:#2d5ab5;--bg:#12151a;--panel:#1b1f26;--panel2:#232831;--inp:#14171c;--hov:#2a3140;--chip:#2a2f39;--bd:#343b48;--bdi:#5a6479;--ph:#8089a0;--band:#1c2a44;--bandh:#21314f;--bandbd:#3b5c99;--tx:#e6e9ef;--mut:#9aa3b2;--ok:#5fd38a;--warn:#f5b45c;--err:#ff8a80}
+*{box-sizing:border-box}
+input[type=checkbox]{accent-color:var(--ac)}
+html,body{height:100%}
+body{margin:0;font:14px/1.4 system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--tx);background:var(--bg);display:flex;flex-direction:column}
+button{font:inherit;cursor:pointer}
+.top{background:var(--panel);border-bottom:1px solid var(--bd);padding:8px 14px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center}
+.top h1{font-size:16px;margin:0 6px 0 0;white-space:nowrap}
+.grp{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.grp label{color:var(--mut)}
+select,input[type=text]{font:inherit;padding:5px 8px;border:1px solid var(--bdi);border-radius:6px;background:var(--inp);color:var(--tx)}
+.btn{border:1px solid var(--bd);background:var(--panel2);border-radius:6px;padding:5px 10px;color:var(--tx)}
+.btn:hover{background:var(--hov);border-color:#4a5568}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:#fff;font-weight:600}
+.btn.pri:hover{background:var(--pri2)}
+.btn:disabled{opacity:.45;cursor:default}
+.small{font-size:12px;color:var(--mut)}
+.ok{color:var(--ok)} .bad{color:var(--err)} .warnc{color:var(--warn)}
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(360px,1fr) minmax(360px,1.05fr);gap:12px;padding:12px 14px}
+.pane{background:var(--panel);border:1px solid var(--bd);border-radius:10px;display:flex;flex-direction:column;min-height:0;min-width:0}
+.pane>.hdr{padding:8px 12px;border-bottom:1px solid var(--bd);display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center}
+.pane>.hdr h2{font-size:14px;margin:0}
+.pane .scroll{flex:1;min-height:0;overflow:auto;padding:8px 10px}
+.tabs{display:flex;gap:4px}
+.tab{border:1px solid transparent;background:transparent;padding:4px 10px;border-radius:6px;color:var(--mut)}
+.tab.on{background:#2a3550;color:var(--ac2);font-weight:600}
+.opt{display:flex;align-items:center;gap:5px;font-size:13px}
+/* Editor */
+.ln{display:flex;align-items:center;gap:6px;padding:3px 4px;border-radius:7px}
+.ln.gap{margin-top:8px}
+.ln:hover{background:#222833}
+.ln .cnt{display:flex;flex-wrap:wrap;align-items:center;gap:4px;flex:1;min-width:0}
+.chip{color:var(--mut);font:11px ui-monospace,Consolas,"Liberation Mono",monospace;white-space:pre;max-width:190px;overflow:hidden;text-overflow:ellipsis;background:var(--chip);border-radius:4px;padding:1px 5px;flex:none}
+.chip.cmd{max-width:none;flex:1 1 auto}
+.ln .fld,.ln input.rawin{min-width:12ch;padding:5px 8px;border:1px solid var(--bdi);border-radius:6px;font:inherit;line-height:1.35;width:0;background:var(--inp);color:var(--tx)}
+.ln textarea.fld{resize:none;overflow:hidden;display:block}
+.ln input.rawin{flex:1;background:var(--inp);color:var(--tx);font:13px ui-monospace,Consolas,"Liberation Mono",monospace;width:auto}
+.ln .fld:focus,.ln input.rawin:focus{outline:2px solid var(--ac);outline-offset:-1px;border-color:var(--ac)}
+.ln .fld.bad{border-color:var(--err);background:#3a1f21}
+.ln.thema{background:var(--band);border:1px solid var(--bandbd);border-radius:8px;padding:6px 6px;margin-top:10px}
+.ln.thema:hover{background:var(--bandh)}
+.ln.thema .fld{font-weight:600}
+.ln.thema .cnt{flex-wrap:nowrap;align-items:flex-start}
+.ln.thema .chip{display:none}
+.ln.thema .cnt .fld:nth-of-type(1){flex:0 0 13ch}
+.ln.thema .cnt .fld:nth-of-type(2){flex:1 1 20ch}
+.ln.thema .cnt .fld:nth-of-type(3){flex:0 0 12ch}
+.ln.inblk{margin-left:14px;border-left:2px solid var(--bandbd);border-radius:0 7px 7px 0}
+.ln .tg{border:0;background:transparent;color:var(--tx);font-size:15px;width:24px;flex:none;border-radius:5px;padding:2px}
+.ln .tg:hover{background:var(--hov)}
+.ln .bcnt{color:var(--mut);font-size:11px;white-space:nowrap;flex:none}
+.btn.sm{padding:3px 8px;font-size:12px}
+#tmenu{position:fixed;z-index:60;min-width:230px;background:#232a36;border:1px solid #3b465a;border-radius:9px;padding:5px;box-shadow:0 8px 28px rgba(0,0,0,.55)}
+#tmenu .mh{color:var(--mut);font-size:11px;padding:3px 8px 4px}
+#tmenu button{display:flex;justify-content:space-between;gap:16px;width:100%;text-align:left;border:0;background:transparent;color:var(--tx);padding:6px 8px;border-radius:6px;font-size:13px}
+#tmenu button:hover{background:var(--hov)}
+#tmenu .ms{color:var(--mut);font-size:11px}
+.acts{display:flex;gap:1px;opacity:.55;flex:none}
+.ln:hover .acts,.ln:focus-within .acts{opacity:1}
+.acts button{border:0;background:transparent;padding:3px 6px;border-radius:5px;color:var(--tx);font-size:13px;line-height:1.2}
+.acts button:hover{background:var(--hov)}
+.acts button.del:hover{background:#4a2326;color:var(--err)}
+.empty{color:var(--mut);padding:18px}
+.hint{font-size:12px;color:var(--mut);padding:6px 4px 2px}
+#warns{padding:0 12px 8px;font-size:12px;color:var(--err)}
+/* Vorschau */
+#pvBody{background:#0d0f13}
+#pageWrap{margin:0 auto}
+#page{width:794px}
+.pg{position:relative;background:#fff;color:#000;font-family:"Latin Modern Roman","LM Roman 12","CMU Serif","Computer Modern",Georgia,"Times New Roman",serif;font-size:16px;box-shadow:0 2px 14px rgba(0,0,0,.7)}
+.pg .hd,.pg .ft{position:absolute;display:flex;align-items:flex-end}
+.pg .hd>div,.pg .ft>div{flex:1;display:flex;white-space:pre}
+.pg .hl{justify-content:flex-start;align-items:flex-end}
+.pg .hc{justify-content:center;align-items:baseline}
+.pg .hr{justify-content:flex-end;align-items:baseline}
+.pg .rule{position:absolute;background:#000}
+.pg .p{margin:0}
+.pg .p.fx{display:flex;align-items:baseline}
+.pg .mb{display:inline-flex;align-items:baseline;white-space:pre}
+.pg .mb.fr{border:1px solid #000;padding:2px}
+.pg .sq{display:inline-block;width:.72em;height:.72em;border:1px solid #000;vertical-align:baseline}
+.pg .hfill{flex:1 1 0;min-width:0}
+.pg .hrulefill{flex:1 1 0;border-bottom:.6px solid #000;align-self:flex-end;margin-bottom:.3em}
+.pg .dotfill{flex:1 1 0;min-width:1em;height:4px;align-self:flex-end;margin-bottom:.2em;background-image:radial-gradient(circle,#000 .9px,transparent 1.2px);background-size:7px 4px;background-repeat:repeat-x;background-position:0 100%}
+.pg .imgph{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;border:1px dashed #c33;color:#c33;font:11px/1.2 system-ui,sans-serif;text-align:center;overflow:hidden}
+.pg .mp{display:inline-block;vertical-align:top}
+.pg .pbk{border-top:1px dashed #999;color:#999;font:11px system-ui,sans-serif;text-align:center;margin:8px 0}
+.pg .ls{margin:0;padding-left:1.6em}
+.pg .tb{border-collapse:collapse}
+.pg .tb td{padding:2px 8px;vertical-align:top}
+.pg .tb.vl td{border-left:1px solid #000;border-right:1px solid #000}
+.pg .tb tr.tl td{border-top:1px solid #000}
+.pg .tb td .p{text-align:inherit!important}
+.pg .tb.btm tr:last-child td{border-bottom:1px solid #000}
+.pg .dm{text-align:center;margin:8px 0}
+.pg pre{margin:6px 0;font:13px/1.3 ui-monospace,monospace;white-space:pre-wrap}
+#pvNote{font-size:12px;color:var(--mut);padding:6px 12px 8px;border-top:1px solid var(--bd)}
+#src{width:100%;height:100%;border:0;resize:none;font:12px/1.45 ui-monospace,Consolas,"Liberation Mono",monospace;padding:10px;background:var(--inp);color:var(--tx);white-space:pre;overflow:auto}
+/* Fuß */
+.bar{background:var(--panel);border-top:1px solid var(--bd);padding:8px 14px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.bar .rem{flex:1 1 320px;font-size:13px}
+.bar .rem b{font-weight:600}
+#toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#3a4354;border:1px solid #4a5568;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:80vw;z-index:50}
+#toast.show{opacity:1}
+#toast.err{background:#8f2b26;border-color:#c0443d}
+dialog{background:var(--panel);color:var(--tx);border:1px solid var(--bd);border-radius:12px;padding:16px;max-width:560px;width:92vw}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog textarea{background:var(--inp);color:var(--tx);width:100%;height:220px;font:13px ui-monospace,Consolas,monospace;padding:8px;border:1px solid var(--bdi);border-radius:6px}
+dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+#drop{display:none;position:fixed;inset:0;background:rgba(110,160,255,.12);border:3px dashed var(--ac);z-index:60;align-items:center;justify-content:center;font-size:20px;color:var(--ac2);pointer-events:none}
+@media (max-width:900px){main{grid-template-columns:1fr;grid-auto-rows:minmax(420px,auto)}body{height:auto}}
+input::placeholder,textarea::placeholder{color:var(--ph)}
+::-webkit-scrollbar{width:12px;height:12px}::-webkit-scrollbar-thumb{background:#3a4252;border-radius:8px;border:3px solid var(--panel)}::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Seifferts LaTeX-Schnelleditor</h1>
+  <div class="grp"><label for="tplSel">Vorlage</label><select id="tplSel"></select>
+    <button class="btn" id="btnLoad" title="Eine .tex-Vorlage von deinem Rechner laden (oder hier ins Fenster ziehen)">Datei laden …</button>
+    <button class="btn" id="btnKeep" title="Die geladene Vorlage im Browser merken, damit sie in der Liste steht">Vorlage merken</button>
+    <button class="btn" id="btnForget" title="Die gewählte gemerkte Vorlage aus der Liste entfernen">Vergessen</button>
+    <input type="file" id="fileIn" accept=".tex,text/plain,text/x-tex" hidden>
+  </div>
+  <div class="grp"><label for="fname">Dateiname</label><input type="text" id="fname" size="22" placeholder="z. B. Tim"><span class="small">.tex</span></div>
+  <div class="grp"><button class="btn" id="btnDir"></button><span class="small" id="dirStat"></span>
+    <button class="btn" id="btnLogo" hidden>Logo für Vorschau wählen …</button><input type="file" id="logoIn" accept="image/*" hidden></div>
+</header>
+<main>
+  <section class="pane" id="edPane">
+    <div class="hdr"><h2>Bearbeiten</h2>
+      <label class="opt"><input type="checkbox" id="optEsc" checked> Sonderzeichen absichern (&amp; % # _ $)</label>
+      <label class="opt"><input type="checkbox" id="optCmd"> Befehlszeilen zeigen</label>
+      <span class="opt" id="themeBar" hidden><button class="btn sm" id="btnColl" title="Alle Themen einklappen, um sie leichter zu sortieren">Themen einklappen</button> <button class="btn sm" id="btnExp">Alle aufklappen</button></span>
+    </div>
+    <div class="scroll"><div id="lines"></div>
+      <div class="hint">Enter in einem Feld legt darunter eine neue Zeile an, Pfeil hoch und runter wechselt die Zeile. Alle Änderungen lassen sich mit Rückgängig zurückholen.</div>
+    </div>
+    <div id="warns"></div>
+  </section>
+  <section class="pane" id="pvPane">
+    <div class="hdr"><div class="tabs"><button class="tab on" data-tab="pv">Vorschau</button><button class="tab" data-tab="src">LaTeX-Quelltext</button></div>
+      <span class="small" id="pvHint">Näherung, nicht pixelgleich mit dem PDF</span></div>
+    <div class="scroll" id="pvBody"><div id="pageWrap"><div id="page"></div></div></div>
+    <textarea id="src" readonly spellcheck="false" hidden></textarea>
+    <div id="pvNote"></div>
+  </section>
+</main>
+<footer class="bar">
+  <button class="btn" id="btnUndo" disabled>↶ Rückgängig</button>
+  <button class="btn" id="btnRedo" disabled>↷ Wiederholen</button>
+  <button class="btn" id="btnReset" title="Zurück zur Vorlage, wie sie geladen wurde">Zurücksetzen</button>
+  <div class="rem" id="remind"></div>
+  <button class="btn" id="btnCopy">LaTeX kopieren</button>
+  <button class="btn pri" id="btnSave">Als .tex speichern</button>
+</footer>
+<dialog id="dlg">
+  <h3 style="margin:0 0 6px">Mehrere Zeilen einfügen</h3>
+  <p class="small" style="margin:0 0 8px">Eine Zeile pro Eintrag. Hat die Zeile mehrere Textfelder, trennst du sie mit Tabulator (so kommt es aus Excel oder Tabellen). Die neuen Zeilen entstehen unter der gewählten Zeile.</p>
+  <textarea id="dlgText" placeholder="M6c 0602 R004AB&#10;M6c 0602 R004LZA"></textarea>
+  <div class="row"><button class="btn" id="dlgCancel">Abbrechen</button><button class="btn pri" id="dlgOk">Einfügen</button></div>
+</dialog>
+<div id="toast"></div>
+<div id="drop">Datei hier ablegen (.tex-Vorlage oder Logo)</div>
+<script>
+const BUILTINS = [{"name": "Lernplan mit Themen", "text": "% !TeX program = pdflatex\n\\documentclass[a4paper,12pt]{article}\n\n\\usepackage[utf8]{inputenc}\n\\usepackage[T1]{fontenc}\n\\usepackage[ngerman]{babel}\n\\usepackage{lmodern}\n\\usepackage[margin=2cm,includehead]{geometry}\n\\usepackage{graphicx}\n\\usepackage{fancyhdr}\n\\usepackage{amssymb}\n\\usepackage{xstring}\n\\usepackage{url}\n\n% Feste Breiten der Kästchen-Spalten\n\\newlength{\\kastenA}\n\\settowidth{\\kastenA}{\\fontsize{24}{24}\\selectfont$\\square$}\n\n% Eine Zeile des Lernplans: Kontrollkästchen, Titel, Punkte\n\\newcommand{\\lernplanzeile}[1]{%\n\t\\vspace{0.15cm}\n\t\\noindent\n\t\\makebox[\\kastenA][c]{\\raisebox{-0.15em}{\\fontsize{24}{24}\\selectfont$\\square$}}%\n\t\\hspace{0.4em}%\n\t{\\fontsize{14}{16}\\selectfont #1\\ \\dotfill}%\n\t\\par\n}\n\n\n% Aufgabenzeile (eingerückt, kleiner) für Aufgaben\n\\newcommand{\\lernplanaufgabe}[1]{%\n\t\\vspace{0.1cm}\n\t\\noindent\\hspace{1.2cm}%\n\t\\makebox[\\kastenA][c]{\\raisebox{-0.15em}{\\fontsize{18}{18}\\selectfont$\\square$}}%\n\t\\hspace{0.4em}%\n\t{\\fontsize{12}{14}\\selectfont #1\\ \\dotfill}%\n\t\\par\n}\n\n% Themenzeile für eine Einheit (fett, ohne Kästchen) mit Zeitangabe\n\\newcommand{\\lernplanthema}[3]{%\n\t\\vspace{0.2cm}\n\t\\noindent{\\fontsize{12}{14}\\selectfont\\textbf{#1\\ #2}\\ (ca.\\ #3)}\\par\n}\n\n% Hinweis ohne Kästchen (eingerückt, kursiv)\n\\newcommand{\\lernplanhinweis}[1]{%\n\t\\vspace{0.1cm}\n\t\\noindent\\hspace{1.2cm}\\begin{minipage}[t]{\\dimexpr\\linewidth-1.2cm\\relax}\\fontsize{10}{12}\\selectfont\\itshape #1\\end{minipage}\\par\n}\n\n\\pagestyle{fancy}\n\\fancyhf{}\n\\lhead{\\includegraphics[height=1cm]{./EvT.png}}\n\\newcommand{\\dateiname}{\\StrSubstitute{\\jobname}{\"}{}}\n\\rhead{\\fontsize{24pt}{28pt}\\selectfont\\textbf{\\dateiname}\\ \\fontsize{10}{12}\\selectfont | SFT}\n\\renewcommand{\\headrulewidth}{0.4pt}\n\\geometry{top=0.4cm, bottom=1.5cm, headsep=0.5cm, headheight=1.3cm}\n\\cfoot{\\thepage}\n\n\\setlength{\\parindent}{0pt}\n\n\\begin{document}\n\t\n\t\\noindent\\fontsize{20}{24}\\selectfont\\textbf{6c Dezimalzahlen - Mathematik}\\par\n\t\\vspace{0.3cm}\n\t\n\t\\noindent\\fontsize{14}{16}\\selectfont\\textbf{Lernplan}\\par\n\t\\vspace{0.3cm}\n\t\n\t\\noindent\n\t\\makebox[\\kastenA][c]{\\fontsize{12}{14}\\selectfont Kind}\\par\n\t\n\t\\lernplanthema{0602 R001}{Grundvorstellung der Verfeinerung des Zahlenstrahls aufbauen}{3 bis 4 Std.}\n\t\\lernplanzeile{M6c 0602 R001AB}\n\t\\lernplanzeile{M6c 0602 R001LZA}\n\t\\lernplanhinweis{Zum Üben: Zahlenstrahl-Zoom, \\url{mathetoolbar.de/mathlets/zahlenstrahl-zoom.html}}\n\t\n\t\\lernplanthema{0602 R002}{Verfeinerten Zahlenstrahl mit Stellenwerttafel verknüpfen}{3 Std.}\n\t\\lernplanzeile{M6c 0602 R002AB}\n\t\\lernplanzeile{M6c 0602 R002LZA}\n\t\n\t\\lernplanthema{0602 R003}{Grundvorstellung für Dezimalzahlen auf den Stellenwert x runden}{1 Std.}\n\t\\lernplanzeile{M6c 0602 R003AB und LZA}\n\t\\lernplanaufgabe{mw5: E8, O6}\n\t\\lernplanaufgabe{LS: Aufgaben 1, 2, 4, 7}\n\t\\lernplanaufgabe{LS S. 50: Aufgaben 1, 2, 3, 7}\n\t\\lernplanhinweis{Runden heißt: Suche auf dem Zahlenstrahl den nächstgelegenen Stellenwert x. Liegt die Zahl genau in der Mitte, wird aufgerundet.}\n\t\n\t\\lernplanthema{0602 R004}{Schriftliche Division mit Dezimalzahlen}{3 Std.}\n\t\\lernplanaufgabe{LS II.3: Aufgaben 1, 2, 3, 4, 5}\n\t\\lernplanaufgabe{Wichtige Aufgabe: II.3 Nr. 15}\n\t\\lernplanhinweis{Wenn die Division nicht aufgeht, tauschst du wie in MSK. Beispiel 1 : 3: Die 3 passt nicht in die 1, also tauschst du ein Ganzes in zehn Zehntel. Übe zuerst allein, was der Periodenstrich bedeutet.}\n\t\n\t\\lernplanthema{0602 R005}{Volumeneinheiten, Flächeneinheiten, Begründung für die Spaltenzahl wiederholen}{3 Std.}\n\t\\lernplanaufgabe{LS II.4: Aufgaben 1, 2, 3, 4, 5, 6, 7, 8, 9}\n\t\\lernplanhinweis{Begründe die Spaltenzahl in den Flächen- und Volumentabellen mit dem Quadrat- bzw.\\ Würfelbild. Die Bedeutung der Stellenwerte hängt von der gewählten Einheit ab. Beispiele: 12,03 km: Die 2 ist der Kilometer-Einer. 8,2 m in km: Die 8 ist der Meter-Einer, du musst bis zum Kilometer-Einer auffüllen, um die Größe in km anzugeben.}\n\t\n\t\\vspace{0.1cm}\n\t\\lernplanzeile{Übungsplan für die Klassenarbeit am 4.12.2026}\n\t\n\\end{document}"}, {"name": "Lernplan einfach", "text": "% !TeX program = lualatex\n\\documentclass[a4paper,12pt]{article}\n\n\\usepackage[T1]{fontenc}\n\\usepackage[ngerman]{babel}\n\\usepackage{lmodern}\n\\usepackage[margin=2cm,includehead]{geometry}\n\\usepackage{graphicx}\n\\usepackage{fancyhdr}\n\\usepackage{amssymb}\n\\usepackage{xstring}\n\\usepackage{tikz}\n\n% Rechteckiges Kästchen im Verhältnis 2:1 (Breite:Höhe) für Paraphen\n\\newcommand{\\paraphenkaestchen}{\\raisebox{-0.15em}{\\begin{tikzpicture}\\draw (0,0) rectangle (1.0,0.5);\\end{tikzpicture}}}\n\n% Feste Breiten der Kästchen-Spalten\n\\newlength{\\kastenA}\n\\settowidth{\\kastenA}{\\fontsize{24}{24}\\selectfont$\\square$}\n\\newlength{\\kastenB}\n\\setlength{\\kastenB}{1cm}\n\n% Eine Zeile des Lernplans: Kontrollkästchen, Titel, Punkte, zwei Paraphenkästchen\n\\newcommand{\\lernplanzeile}[1]{%\n\t\\vspace{0.3cm}\n\t\\noindent\n\t\\makebox[\\kastenA][c]{\\raisebox{-0.15em}{\\fontsize{24}{24}\\selectfont$\\square$}}%\n\t\\hspace{0.4em}%\n\t{\\fontsize{14}{16}\\selectfont #1\\ \\dotfill\\ }%\n\t\\hspace{0.5em}\\makebox[\\kastenB][c]{\\paraphenkaestchen}\\hspace{0.5em}\\makebox[\\kastenB][c]{\\paraphenkaestchen}\\par\n}\n\n\\pagestyle{fancy}\n\\fancyhf{}\n\\lhead{\\includegraphics[height=1cm]{./EvT.png}}\n\\newcommand{\\dateiname}{\\StrSubstitute{\\jobname}{\"}{}}\n\\rhead{\\fontsize{24pt}{28pt}\\selectfont\\textbf{\\dateiname}\\ \\fontsize{10}{12}\\selectfont | SFT}\n\\renewcommand{\\headrulewidth}{0.4pt}\n\\geometry{top=0.4cm, headsep=0.5cm, headheight=1.3cm}\n\\cfoot{\\thepage}\n\n\\setlength{\\parindent}{0pt}\n\n\\begin{document}\n\n\\noindent\\fontsize{14}{16}\\selectfont\\textbf{Lernplan}\\par\n\\vspace{0.3cm}\n\n\\noindent\n\\makebox[\\kastenA][c]{\\fontsize{12}{14}\\selectfont Kind}%\n\\hfill\n\\makebox[\\kastenB][c]{\\fontsize{12}{14}\\selectfont SB/MPT}%\n\\hspace{0.5em}%\n\\makebox[\\kastenB][c]{\\fontsize{12}{14}\\selectfont SoL}\\par\n\n\\lernplanzeile{M6c 0602 R001AB}\n\\lernplanzeile{M6c 0602 R001LZA}\n\\lernplanzeile{M6c 0602 R002AB}\n\\lernplanzeile{M6c 0602 R002LZA}\n\\lernplanzeile{M6c 0602 R003AB und LZA}\n\n\\end{document}\n"}];
+/* ===================================================================
+   KERN: Einlesen, Zerlegen in Textfelder, Zeilenoperationen, Ausgabe
+   (kein DOM, reine Logik)
+   =================================================================== */
+'use strict';
+
+/* Befehle, deren Klammerinhalte reine Steuerung sind (nie als Text anbieten) */
+const LAYOUT_CMDS = new Set(('documentclass usepackage begin end fontsize hspace vspace hskip vskip kern rule ' +
+  'includegraphics setlength addtolength settowidth setcounter addtocounter newcommand renewcommand providecommand ' +
+  'def let label ref pageref eqref cite input include color definecolor pagecolor geometry pagestyle thispagestyle ' +
+  'newlength newcounter bibliography bibliographystyle vphantom hphantom phantom cline lstset tikzset ' +
+  'usetikzlibrary newenvironment renewenvironment hypersetup selectlanguage setmainfont setsansfont newpage ' +
+  'clearpage pagebreak nopagebreak linebreak hline arraystretch').split(' '));
+
+/* Befehle, bei denen nur bestimmte Klammergruppen (Zählung ab 0) Text sind */
+const GROUP_POLICY = {
+  textcolor: [1], colorbox: [1], fcolorbox: [2], multicolumn: [2], multirow: [2], parbox: [1],
+  raisebox: [1], scalebox: [1], rotatebox: [1], resizebox: [2], href: [1], foreignlanguage: [1],
+  hyperlink: [1], hypertarget: [1]
+};
+
+/* Befehle, die mitten im Text stehen und Teil des Textes bleiben (Sonderzeichen, Anführungszeichen ...) */
+const GLYPH_CMDS = new Set(('ss SS glqq grqq glq grq flqq frqq dq ldots dots textbackslash textasciitilde textasciicircum ' +
+  'euro texteuro textendash textemdash textbullet copyright pounds dag ddag S P o O ae AE oe OE aa AA l L i j ' +
+  'LaTeX TeX today textellipsis textquotedblleft textquotedblright degree textdegree textregistered texttrademark ' +
+  'checkmark').split(' '));
+
+/* Umgebungen, deren Inhalt nie als Text angeboten wird */
+const RAW_ENVS = ['tikzpicture', 'verbatim', 'lstlisting', 'minted', 'align', 'align*', 'equation', 'equation*',
+  'gather', 'gather*', 'multline', 'multline*', 'eqnarray', 'eqnarray*', 'displaymath', 'math', 'pgfpicture',
+  'filecontents', 'filecontents*'];
+
+let _uid = 1;
+const newId = () => _uid++;
+const cloneJSON = o => JSON.parse(JSON.stringify(o));
+
+/* ---------- Zerlegung einer Zeile in Struktur (s) und Textfelder (x) ---------- */
+
+function isTextCore(t) {
+  if (!/[A-Za-z0-9À-ɏ]/.test(t)) return false;
+  if (/^[-+]?(\d+\.?\d*|\.\d+)\s*(pt|em|ex|cm|mm|in|bp|sp|pc|dd|cc|mu|px)$/.test(t.trim())) return false;
+  return true;
+}
+
+function groupEditable(name, idx) {
+  if (LAYOUT_CMDS.has(name)) return false;
+  if (GROUP_POLICY[name]) return GROUP_POLICY[name].indexOf(idx) >= 0;
+  return true;
+}
+
+function findClose(line, i, open, close) {
+  let d = 0;
+  for (let j = i + 1; j < line.length; j++) {
+    const c = line[j];
+    if (c === '\\') { j++; continue; }
+    if (c === '{') d++;
+    else if (c === '}') d--;
+    else if (c === close && d <= 0) return j;
+  }
+  return -1;
+}
+
+function tokenizeLine(line, raw) {
+  if (raw) return line === '' ? [] : [{ k: 's', v: line }];
+  const out = [];
+  const n = line.length;
+  let i = 0;
+  const stack = [];
+  let pend = null;
+  let textOwner = null;
+  let buf = '';
+  const pushS = v => {
+    if (!v) return;
+    const l = out[out.length - 1];
+    if (l && l.k === 's') l.v += v; else out.push({ k: 's', v });
+  };
+  const ownerOk = () => stack.length ? stack[stack.length - 1].e : (textOwner ? !LAYOUT_CMDS.has(textOwner) : true);
+  const flush = () => {
+    if (!buf) return;
+    const t = buf; buf = '';
+    const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(t);
+    if (m[2] && ownerOk() && isTextCore(m[2])) {
+      pushS(m[1]);
+      const sg = { k: 'x', v: m[2] };
+      if (stack.length && stack[stack.length - 1].name === 'url') sg.raw = true; // Adressen nie maskieren
+      out.push(sg); pushS(m[3]);
+    }
+    else pushS(t);
+  };
+  while (i < n) {
+    const c = line[i];
+    if (pend && c !== '{' && c !== '[') pend = null;
+    if (c === '%') { flush(); pushS(line.slice(i)); i = n; break; }
+    if (c === '\\') {
+      const re = /\\([A-Za-z@]+)(\*?)/y;
+      re.lastIndex = i;
+      const m = re.exec(line);
+      if (m) {
+        const name = m[1];
+        if (GLYPH_CMDS.has(name)) { buf += m[0]; i += m[0].length; continue; }
+        flush();
+        pushS(m[0]); i += m[0].length;
+        pend = { name, idx: 0 }; textOwner = name;
+        continue;
+      }
+      const d = line[i + 1];
+      if (d === undefined) { buf += '\\'; i++; continue; }
+      if (d === '\\') {
+        flush(); pushS('\\\\'); i += 2; textOwner = null;
+        if (line[i] === '[') { const j = findClose(line, i, '[', ']'); const e = j < 0 ? n - 1 : j; pushS(line.slice(i, e + 1)); i = e + 1; }
+        continue;
+      }
+      if (d === '(' || d === '[') {
+        flush();
+        const close = d === '(' ? '\\)' : '\\]';
+        const j = line.indexOf(close, i + 2);
+        const end = j < 0 ? n : j + 2;
+        pushS(line.slice(i, end)); i = end; textOwner = null;
+        continue;
+      }
+      if (d === ')' || d === ']') { flush(); pushS(line.slice(i, i + 2)); i += 2; continue; }
+      buf += line.slice(i, i + 2); i += 2; continue;
+    }
+    if (c === '{') {
+      flush();
+      if (pend) {
+        const parentE = stack.length ? stack[stack.length - 1].e : true;
+        stack.push({ e: parentE && groupEditable(pend.name, pend.idx), name: pend.name, idx: pend.idx });
+        pend = null;
+      } else {
+        stack.push({ e: stack.length ? stack[stack.length - 1].e : true, name: null, idx: 0 });
+      }
+      pushS('{'); i++; textOwner = null;
+      continue;
+    }
+    if (c === '}') {
+      flush();
+      pushS('}'); i++;
+      const e = stack.pop();
+      pend = (e && e.name) ? { name: e.name, idx: e.idx + 1 } : null;
+      textOwner = null;
+      continue;
+    }
+    if (c === '[' && pend) {
+      const j = findClose(line, i, '[', ']');
+      const e = j < 0 ? n - 1 : j;
+      pushS(line.slice(i, e + 1)); i = e + 1;
+      continue;
+    }
+    if (c === '$') {
+      flush();
+      let end;
+      if (line[i + 1] === '$') { const j = line.indexOf('$$', i + 2); end = j < 0 ? n : j + 2; }
+      else {
+        let j = i + 1;
+        while (j < n) { if (line[j] === '\\') { j += 2; continue; } if (line[j] === '$') break; j++; }
+        end = j >= n ? n : j + 1;
+      }
+      pushS(line.slice(i, end)); i = end; textOwner = null;
+      continue;
+    }
+    if (c === '&') { flush(); pushS('&'); i++; textOwner = null; continue; }
+    buf += c; i++;
+  }
+  flush();
+  return out;
+}
+
+/* ---------- Datei -> Dokument ---------- */
+
+function stripComment(line) { return line.replace(/(^|[^\\])%.*$/, '$1'); }
+
+function rawStateFor(line, st) {
+  const lc = stripComment(line);
+  let raw = st.rawDepth > 0 || st.disp;
+  const re = /\\(begin|end)\{([^}]*)\}/g;
+  let m;
+  while ((m = re.exec(lc))) {
+    if (RAW_ENVS.indexOf(m[2]) >= 0) { raw = true; st.rawDepth += m[1] === 'begin' ? 1 : -1; }
+  }
+  if (st.rawDepth < 0) st.rawDepth = 0;
+  const o = (lc.match(/\\\[/g) || []).length, c = (lc.match(/\\\]/g) || []).length;
+  if (o > c) { st.disp = true; raw = true; }
+  else if (c > o) { raw = true; st.disp = false; }
+  return raw;
+}
+
+function makeUnit(line, raw) {
+  return { id: newId(), segs: tokenizeLine(line, raw), raw: !!raw };
+}
+
+function parseTex(text) {
+  let eol = '\n';
+  if (text.indexOf('\r\n') >= 0) { eol = '\r\n'; text = text.replace(/\r\n/g, '\n'); }
+  const TAG = '\\begin{document}';
+  const b = text.indexOf(TAG);
+  const e = text.lastIndexOf('\\end{document}');
+  if (b < 0 || e < 0 || e < b) throw new Error('In der Datei fehlen \\begin{document} und \\end{document}. Das ist keine vollständige LaTeX-Vorlage.');
+  const headEnd = b + TAG.length;
+  const head = text.slice(0, headEnd), body = text.slice(headEnd, e), tail = text.slice(e);
+  const lines = body.split('\n');
+  const st = { rawDepth: 0, disp: false };
+  const units = lines.map(l => makeUnit(l, rawStateFor(l, st)));
+  if (units.length >= 2) {
+    if (lines[0].trim() === '') units[0].fixed = true;
+    if (lines[lines.length - 1].trim() === '') units[units.length - 1].fixed = true;
+  }
+  return { eol, head, tail, units };
+}
+
+/* ---------- Ausgabe ---------- */
+
+/* Nur Zeichen absichern, die in normalem Text sonst die Kompilierung stören */
+function escSpecial(s) {
+  return s.replace(/(\\[\s\S])|([&%#_$])|(\\$)/g, (m, a, b, c) => a ? a : (b ? '\\' + b : '\\textbackslash{}'));
+}
+function segOut(sg, opts) {
+  if (sg.k === 'x' && sg.edited && !sg.raw && opts && opts.autoEscape) return escSpecial(sg.v);
+  return sg.v;
+}
+function unitOut(u, opts) { return u.segs.map(s => segOut(s, opts)).join(''); }
+function bodyOut(doc, opts) { return doc.units.map(u => unitOut(u, opts)).join('\n'); }
+function serialize(doc, opts) { return doc.head + bodyOut(doc, opts) + doc.tail; }
+function serializeFile(doc, opts) {
+  const t = serialize(doc, opts);
+  return doc.eol === '\r\n' ? t.replace(/\n/g, '\r\n') : t;
+}
+
+function hasFields(u) { return u.segs.some(s => s.k === 'x'); }
+function isBlankUnit(u) { return u.segs.every(s => s.k === 's' && s.v.trim() === ''); }
+function rawOfUnit(u) { return u.segs.map(s => s.v).join(''); }
+
+function braceDelta(s) {
+  let d = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '{') d++; else if (c === '}') d--;
+  }
+  return d;
+}
+
+function checkDoc(doc, opts) {
+  const w = [];
+  doc.units.forEach(u => {
+    u.segs.forEach(s => {
+      if (s.k === 'x' && s.edited) {
+        const t = segOut(s, opts);
+        if (braceDelta(t) !== 0) w.push({ id: u.id, msg: 'Ein Textfeld enthält ungleich viele { und }: „' + t.slice(0, 30) + '“' });
+      }
+    });
+  });
+  return w;
+}
+
+function findImages(doc, opts) {
+  const text = stripCommentsAll(doc.head + '\n' + bodyOut(doc, opts));
+  const re = /\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g;
+  const out = [];
+  let m;
+  while ((m = re.exec(text))) { const p = m[1].trim(); if (out.indexOf(p) < 0) out.push(p); }
+  return out;
+}
+function stripCommentsAll(t) { return t.split('\n').map(stripComment).join('\n'); }
+
+/* ---------- Zeilenoperationen ---------- */
+
+function templateOf(u) {
+  const c = cloneJSON(u);
+  c.id = newId();
+  delete c.fixed;
+  c.segs.forEach(s => { if (s.k === 'x') { s.v = ''; s.edited = true; } });
+  return c;
+}
+function opInsertBelow(doc, idx) {
+  const t = doc.units[idx];
+  const nu = hasFields(t) ? templateOf(t) : { id: newId(), segs: [], raw: false };
+  doc.units.splice(idx + 1, 0, nu);
+  return nu;
+}
+function opDuplicate(doc, idx) {
+  const c = cloneJSON(doc.units[idx]);
+  c.id = newId(); delete c.fixed;
+  doc.units.splice(idx + 1, 0, c);
+  return c;
+}
+function opRemove(doc, idx) { doc.units.splice(idx, 1); }
+function opMove(doc, from, to) { const u = doc.units.splice(from, 1)[0]; doc.units.splice(to, 0, u); }
+function opMoveRelative(doc, idx, dir, isVisible) {
+  let j = idx + dir;
+  while (j >= 0 && j < doc.units.length && !isVisible(doc.units[j])) j += dir;
+  if (j < 0 || j >= doc.units.length) return false;
+  opMove(doc, idx, j);
+  return true;
+}
+function opBulk(doc, idx, text) {
+  const t = doc.units[idx];
+  if (!hasFields(t)) return [];
+  const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+  const made = [];
+  let at = idx;
+  for (const l of lines) {
+    const u = templateOf(t);
+    const cells = l.split('\t');
+    const xs = u.segs.filter(s => s.k === 'x');
+    xs.forEach((s, k) => {
+      if (k === xs.length - 1) s.v = cells.slice(k).join(' ').trim();
+      else s.v = cells[k] !== undefined ? cells[k].trim() : '';
+    });
+    doc.units.splice(++at, 0, u);
+    made.push(u);
+  }
+  return made;
+}
+function opSetRaw(doc, idx, rawLine) {
+  const u = doc.units[idx];
+  u.segs = tokenizeLine(rawLine, u.raw);
+}
+
+
+/* ---------- Zeilenarten (eigene Makros der Vorlage) ---------- */
+function definedMacros(head) {
+  const set = new Set();
+  const re = /\\(?:re|provide)?newcommand\*?\s*(?:\{\\([A-Za-z@]+)\}|\\([A-Za-z@]+))/g;
+  let m;
+  while ((m = re.exec(head))) set.add(m[1] || m[2]);
+  return set;
+}
+function unitMacro(u, macros) {
+  if (!hasFields(u)) return null;
+  const m = /^\s*\\([A-Za-z@]+)/.exec(rawOfUnit(u));
+  return m && macros.has(m[1]) ? m[1] : null;
+}
+
+
+/* ---------- Themenblöcke ----------
+   Ein Block beginnt mit einer Themenzeile und reicht bis zur letzten Textzeile
+   vor dem nächsten Thema. Die Zeilen dazwischen (Leerzeilen, Abstände) bleiben
+   beim Verschieben an ihrer Stelle, damit die Abstände gleich bleiben. */
+function themeMacro(doc) {
+  const macros = definedMacros(doc.head);
+  for (const u of doc.units) {
+    const m = unitMacro(u, macros);
+    if (m && /thema/i.test(m)) return m;
+  }
+  return null;
+}
+function blocksOf(doc, theme) {
+  if (!theme) return [];
+  const macros = definedMacros(doc.head);
+  const U = doc.units, starts = [];
+  U.forEach((u, i) => { if (unitMacro(u, macros) === theme) starts.push(i); });
+  return starts.map((st, k) => {
+    const lim = k + 1 < starts.length ? starts[k + 1] : U.length;
+    let e = lim;
+    while (e > st + 1 && !hasFields(U[e - 1])) e--;
+    return { start: st, end: e, next: lim, id: U[st].id };
+  });
+}
+function cloneUnits(arr) {
+  return arr.map(u => { const c = cloneJSON(u); c.id = newId(); delete c.fixed; return c; });
+}
+function gapFor(U, bl, k) {
+  const own = U.slice(bl[k].end, bl[k].next);
+  if (own.length) return own;
+  if (k > 0) return U.slice(bl[k - 1].end, bl[k - 1].next);
+  return [];
+}
+function insertAfterBlock(doc, bl, k, units) {
+  const U = doc.units, b = bl[k];
+  const hasOwnGap = b.next > b.end;
+  const gap = cloneUnits(gapFor(U, bl, k));
+  if (hasOwnGap) U.splice(b.next, 0, ...units, ...gap);
+  else U.splice(b.end, 0, ...gap, ...units);
+}
+function opBlockMove(doc, theme, id, dir) {
+  const bl = blocksOf(doc, theme);
+  const k = bl.findIndex(b => b.id === id), j = k + dir;
+  if (k < 0 || j < 0 || j >= bl.length) return false;
+  const a = bl[Math.min(k, j)], b = bl[Math.max(k, j)], U = doc.units;
+  const A = U.slice(a.start, a.end), gap = U.slice(a.end, b.start), B = U.slice(b.start, b.end);
+  U.splice(a.start, b.end - a.start, ...B, ...gap, ...A);
+  return true;
+}
+function opBlockDuplicate(doc, theme, id) {
+  const bl = blocksOf(doc, theme), k = bl.findIndex(b => b.id === id);
+  if (k < 0) return null;
+  const copy = cloneUnits(doc.units.slice(bl[k].start, bl[k].end));
+  insertAfterBlock(doc, bl, k, copy);
+  return copy[0];
+}
+function opBlockRemove(doc, theme, id) {
+  const bl = blocksOf(doc, theme), k = bl.findIndex(b => b.id === id);
+  if (k < 0) return 0;
+  const b = bl[k];
+  let from = b.start, to = b.next;
+  if (b.next === b.end && k > 0) { from = bl[k - 1].end; to = b.end; }
+  doc.units.splice(from, to - from);
+  return b.end - b.start;
+}
+function opInsertTypeAfterBlock(doc, theme, id, exemplar) {
+  const bl = blocksOf(doc, theme), k = bl.findIndex(b => b.id === id);
+  if (k < 0) return null;
+  const nu = templateOf(exemplar);
+  insertAfterBlock(doc, bl, k, [nu]);
+  return nu;
+}
+function opInsertType(doc, idx, exemplar) {
+  const nu = templateOf(exemplar);
+  doc.units.splice(idx + 1, 0, nu);
+  return nu;
+}
+/* Zeilenarten: alle eigenen Makros, die im Text mit Feldern vorkommen, je mit einer Beispielzeile */
+function lineTypes(doc) {
+  const macros = definedMacros(doc.head), seen = {}, out = [];
+  doc.units.forEach(u => {
+    const m = unitMacro(u, macros);
+    if (m && !seen[m]) { seen[m] = true; out.push({ macro: m, unit: u, fields: u.segs.filter(s => s.k === 'x').length }); }
+  });
+  return out;
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { tokenizeLine, parseTex, serialize, serializeFile, escSpecial, opInsertBelow, opDuplicate, opRemove, opMove,
+    opMoveRelative, opBulk, opSetRaw, definedMacros, unitMacro, templateOf, themeMacro, blocksOf, opBlockMove, opBlockDuplicate, opBlockRemove, opInsertTypeAfterBlock, opInsertType, lineTypes, cloneUnits, hasFields, isBlankUnit, rawOfUnit, checkDoc, findImages, braceDelta, bodyOut, unitOut, segOut };
+}
+/* ===================================================================
+   VORSCHAU: kleiner LaTeX-Interpreter, der eine Näherung als HTML liefert.
+   Er kennt die häufigen Befehle (Schrift, Boxen, Abstände, Listen, Tabellen,
+   eigene \newcommand-Makros, einfache TikZ-Kästchen). Alles andere wird
+   übersprungen und unten als "nicht dargestellt" gemeldet.
+   =================================================================== */
+const PV = (function () {
+  'use strict';
+  const PXPT = 96 / 72.27, PXCM = 96 / 2.54;
+  const BASE = 12 * PXPT;
+  const SIZES = {
+    tiny: [6, 7], scriptsize: [8, 9.5], footnotesize: [10, 12], small: [10.95, 13.6], normalsize: [12, 14.5],
+    large: [14.4, 18], Large: [17.28, 22], LARGE: [20.74, 25], huge: [24.88, 30], Huge: [29.86, 36]
+  };
+  const SYM = { times: '×', cdot: '·', div: '÷', pm: '±', leq: '≤', le: '≤', geq: '≥', ge: '≥', neq: '≠', ne: '≠', approx: '≈',
+    rightarrow: '→', to: '→', Rightarrow: '⇒', leftarrow: '←', Leftarrow: '⇐', leftrightarrow: '↔', infty: '∞', ldots: '…',
+    dots: '…', cdots: '⋯', alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', pi: 'π', circ: '∘', checkmark: '✓', blacksquare: '■',
+    bullet: '•', colon: ':', quad: ' ', qquad: '  ', triangle: '△', angle: '∠', degree: '°' };
+  const GL = { ss: 'ß', SS: 'SS', glqq: '„', grqq: '“', glq: '‚', grq: '‘', flqq: '«', frqq: '»', dq: '"', ldots: '…', dots: '…',
+    textellipsis: '…', textbackslash: '\\', textasciitilde: '~', textasciicircum: '^', euro: '€', texteuro: '€', textendash: '–',
+    textemdash: '—', textbullet: '•', copyright: '©', pounds: '£', dag: '†', ddag: '‡', S: '§', P: '¶', o: 'ø', O: 'Ø', ae: 'æ',
+    AE: 'Æ', oe: 'œ', OE: 'Œ', aa: 'å', AA: 'Å', l: 'ł', L: 'Ł', i: 'ı', j: 'ȷ', LaTeX: 'LaTeX', TeX: 'TeX', degree: '°',
+    textdegree: '°', textquotedblleft: '“', textquotedblright: '”', textregistered: '®', texttrademark: '™', checkmark: '✓' };
+  const ACC = {
+    '"': { a: 'ä', o: 'ö', u: 'ü', A: 'Ä', O: 'Ö', U: 'Ü', e: 'ë', i: 'ï', E: 'Ë', I: 'Ï' },
+    "'": { a: 'á', e: 'é', i: 'í', o: 'ó', u: 'ú', A: 'Á', E: 'É', I: 'Í', O: 'Ó', U: 'Ú' },
+    '`': { a: 'à', e: 'è', i: 'ì', o: 'ò', u: 'ù', A: 'À', E: 'È', I: 'Ì', O: 'Ò', U: 'Ù' },
+    '^': { a: 'â', e: 'ê', i: 'î', o: 'ô', u: 'û', A: 'Â', E: 'Ê', I: 'Î', O: 'Ô', U: 'Û' },
+    '~': { n: 'ñ', N: 'Ñ', a: 'ã', o: 'õ' }
+  };
+  const DE_SHORT = { a: 'ä', o: 'ö', u: 'ü', A: 'Ä', O: 'Ö', U: 'Ü', s: 'ß', '`': '„', "'": '“', '-': '', '|': '', '"': '"' };
+  const COLORS = { red: '#d00', blue: '#00d', green: '#080', black: '#000', white: '#fff', gray: '#808080', grey: '#808080',
+    orange: '#f80', purple: '#808', yellow: '#cc0', cyan: '#0aa', magenta: '#d0d', brown: '#850' };
+
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const r2 = x => Math.round(x * 100) / 100;
+
+  function readBalanced(s, i) {
+    let d = 0;
+    for (let j = i; j < s.length; j++) {
+      const c = s[j];
+      if (c === '\\') { j++; continue; }
+      if (c === '%') { while (j < s.length && s[j] !== '\n') j++; continue; }
+      if (c === '{') d++;
+      else if (c === '}') { d--; if (d === 0) return j; }
+    }
+    return -1;
+  }
+
+  function Renderer(ctx) {
+    this.ctx = ctx || {};
+    this.macros = {};
+    this.lengths = {};
+    this.unknown = new Set();
+    this.geo = {};
+    this.hf = {};
+    this.depth = 0;
+    this.jobname = (ctx && ctx.jobname) || 'Dateiname';
+    this.fancy = false;
+    this.headrule = 0;
+  }
+  const RP = Renderer.prototype;
+
+  RP.baseStyle = function () {
+    return { size: BASE, lh: 14.5 * PXPT, bold: false, italic: false, sc: false, tt: false, sf: false, color: null, align: null, ul: false };
+  };
+
+  /* ----- Längen ----- */
+  RP.len = function (s, st) {
+    if (s == null) return null;
+    s = String(s).trim();
+    if (/^\\dimexpr/.test(s)) {
+      const expr = s.replace(/^\\dimexpr\s*/, '').replace(/\\relax\s*$/, '').trim();
+      const re = /([+-])?\s*([^+-]+)/g;
+      let mt, sum = 0, any = false;
+      while ((mt = re.exec(expr))) {
+        const v = this.len(mt[2].trim(), st);
+        if (v == null) return null;
+        sum += (mt[1] === '-' ? -1 : 1) * v; any = true;
+      }
+      return any ? sum : null;
+    }
+    const m = /^(-?\d*\.?\d+)?\s*(\\[A-Za-z]+)?\s*(pt|cm|mm|em|ex|in|bp|px|sp|pc)?$/.exec(s);
+    if (!m) return null;
+    const em = st ? st.size : BASE;
+    if (m[2]) {
+      const nm = m[2].slice(1);
+      let base = null;
+      if (nm === 'textwidth' || nm === 'linewidth' || nm === 'columnwidth') base = this.textwidthPx();
+      else if (nm === 'paperwidth') base = 21 * PXCM;
+      else if (nm === 'baselineskip') base = 14.5 * PXPT;
+      else if (this.lengths[nm] != null) base = this.lengths[nm];
+      if (base == null) return null;
+      return (m[1] ? parseFloat(m[1]) : 1) * base;
+    }
+    if (m[1] == null) return null;
+    const v = parseFloat(m[1]);
+    switch (m[3]) {
+      case 'pt': return v * PXPT;
+      case 'cm': return v * PXCM;
+      case 'mm': return v * PXCM / 10;
+      case 'in': return v * 96;
+      case 'bp': return v * 96 / 72;
+      case 'px': return v;
+      case 'sp': return v * PXPT / 65536;
+      case 'pc': return v * 12 * PXPT;
+      case 'em': return v * em;
+      case 'ex': return v * em * 0.43;
+      default: return v;
+    }
+  };
+  RP.geoMargins = function () {
+    const g = this.geo;
+    const m = g.margin != null ? g.margin : 3 * PXCM;
+    const left = g.left != null ? g.left : (g.inner != null ? g.inner : m);
+    const right = g.right != null ? g.right : (g.outer != null ? g.outer : m);
+    const top = g.top != null ? g.top : m;
+    const bottom = g.bottom != null ? g.bottom : m;
+    return { left, right, top, bottom };
+  };
+  RP.textwidthPx = function () { const m = this.geoMargins(); return 21 * PXCM - m.left - m.right; };
+
+  /* ----- Vorspann auswerten ----- */
+  RP.loadPreamble = function (h) {
+    const self = this;
+    const reDef = /\\(newcommand|renewcommand|providecommand)\*?/g;
+    let m;
+    while ((m = reDef.exec(h))) {
+      let p = m.index + m[0].length;
+      while (/\s/.test(h[p] || '')) p++;
+      let name = null;
+      if (h[p] === '{') { const e = readBalanced(h, p); if (e < 0) continue; name = h.slice(p + 1, e).replace(/^\\/, ''); p = e + 1; }
+      else if (h[p] === '\\') { const mm = /^\\([A-Za-z@]+)/.exec(h.slice(p)); if (!mm) continue; name = mm[1]; p += mm[0].length; }
+      else continue;
+      let n = 0, def = null;
+      while (/\s/.test(h[p] || '')) p++;
+      if (h[p] === '[') { const e = h.indexOf(']', p); n = parseInt(h.slice(p + 1, e), 10) || 0; p = e + 1; }
+      while (/\s/.test(h[p] || '')) p++;
+      if (h[p] === '[') { const e = h.indexOf(']', p); def = h.slice(p + 1, e); p = e + 1; }
+      while (/\s/.test(h[p] || '')) p++;
+      if (h[p] !== '{') continue;
+      const e = readBalanced(h, p);
+      if (e < 0) continue;
+      this.macros[name] = { n, def, body: h.slice(p + 1, e) };
+      reDef.lastIndex = e + 1;
+    }
+    this.fancy = /fancyhdr/.test(h);
+    // Geometrie
+    const geoOpts = [];
+    let g;
+    const reG1 = /\\usepackage\s*\[([^\]]*)\]\s*\{geometry\}/g;
+    while ((g = reG1.exec(h))) geoOpts.push(g[1]);
+    const reG2 = /\\geometry\s*\{([^}]*)\}/g;
+    while ((g = reG2.exec(h))) geoOpts.push(g[1]);
+    geoOpts.forEach(o => o.split(',').forEach(kv => {
+      const p = kv.split('=');
+      const k = p[0].trim();
+      if (!k) return;
+      if (p.length === 1) { this.geo[k] = true; return; }
+      const v = this.len(p[1]);
+      if (v != null) this.geo[k] = v;
+    }));
+    // Längen in Reihenfolge
+    const events = [];
+    const reL = /\\(setlength|settowidth)\s*\{\\([A-Za-z@]+)\}\s*\{/g;
+    while ((g = reL.exec(h))) {
+      const e = readBalanced(h, g.index + g[0].length - 1);
+      if (e < 0) continue;
+      events.push({ idx: g.index, kind: g[1], name: g[2], val: h.slice(g.index + g[0].length, e) });
+    }
+    events.forEach(ev => {
+      if (ev.kind === 'setlength') { const v = this.len(ev.val); if (v != null) this.lengths[ev.name] = v; }
+      else this.lengths[ev.name] = this.measure(ev.val);
+    });
+    // Kopf und Fuß: jeweils letzte Angabe
+    ['lhead', 'chead', 'rhead', 'lfoot', 'cfoot', 'rfoot'].forEach(k => {
+      const re = new RegExp('\\\\' + k + '\\s*(?:\\[[^\\]]*\\])?\\s*\\{', 'g');
+      let mm, last = null;
+      while ((mm = re.exec(h))) {
+        const e = readBalanced(h, mm.index + mm[0].length - 1);
+        if (e > 0) last = h.slice(mm.index + mm[0].length, e);
+      }
+      if (last != null) this.hf[k] = last;
+    });
+    const hr = /\\renewcommand\s*\{\\headrulewidth\}\s*\{([^}]*)\}/.exec(h);
+    this.headrule = hr ? (this.len(hr[1]) || 0) : (this.fancy ? 0.4 * PXPT : 0);
+    this.footrule = 0;
+    const fr = /\\renewcommand\s*\{\\footrulewidth\}\s*\{([^}]*)\}/.exec(h);
+    if (fr) this.footrule = this.len(fr[1]) || 0;
+  };
+
+  /* grobe Breitenschätzung für \settowidth */
+  RP.measure = function (src) {
+    const C = { blocks: [], par: null };
+    this.evalStr(src, C, this.baseStyle());
+    const items = C.par || [];
+    let w = 0;
+    const walk = its => its.forEach(it => {
+      if (it.t === 'text') w += it.v.length * it.st.size * 0.5;
+      else if (it.t === 'math') w += (it.sq ? 0.8 : 0.5 * it.plain) * it.st.size;
+      else if (it.t === 'box' || it.t === 'raise') { if (it.w != null) w += it.w; else walk(it.items); }
+      else if (it.t === 'hs') w += it.w;
+    });
+    walk(items);
+    return w;
+  };
+
+  /* ----- Text, Absätze ----- */
+  const styleKey = st => [st.size, st.bold, st.italic, st.sc, st.tt, st.sf, st.color, st.ul].join('|');
+
+  RP.openPar = function (C, st) { if (!C.par) { C.par = []; C.par.align = st.align; } };
+  RP.addItem = function (C, st, item) { this.openPar(C, st); C.par.push(item); };
+  RP.addText = function (C, st, txt) {
+    if (!txt) return;
+    this.openPar(C, st);
+    const items = C.par;
+    const last = items[items.length - 1];
+    if (/^\s+$/.test(txt)) {
+      if (!last) return;
+      if (last.t === 'text' && /\s$/.test(last.v)) return;
+      if (last.t === 'hfill' || last.t === 'br') return;
+      txt = ' ';
+    }
+    if (last && last.t === 'text' && styleKey(last.st) === styleKey(st)) last.v += txt;
+    else items.push({ t: 'text', v: txt, st: Object.assign({}, st) });
+  };
+  RP.endPar = function (C) {
+    if (C.par) {
+      const meaningful = C.par.some(it => !(it.t === 'text' && /^\s*$/.test(it.v)));
+      if (meaningful) C.blocks.push({ t: 'p', items: C.par, align: C.par.align });
+      C.par = null;
+    }
+  };
+  RP.addBlock = function (C, b) { this.endPar(C); C.blocks.push(b); };
+
+  /* ----- Mathe (sehr einfach) ----- */
+  RP.mathHTML = function (m) {
+    let i = 0, out = '', sq = false, plain = 0;
+    const grab = () => {
+      while (/\s/.test(m[i] || '')) i++;
+      if (m[i] === '{') { const e = readBalanced(m, i); const r = m.slice(i + 1, e < 0 ? m.length : e); i = e < 0 ? m.length : e + 1; return r; }
+      if (m[i] === '\\') { const mm = /^\\([A-Za-z]+|.)/.exec(m.slice(i)); i += mm[0].length; return mm[0]; }
+      return m[i++] || '';
+    };
+    const self = this;
+    while (i < m.length) {
+      const c = m[i];
+      if (c === '\\') {
+        const mm = /^\\([A-Za-z]+)/.exec(m.slice(i));
+        if (mm) {
+          const nm = mm[1]; i += mm[0].length;
+          if (nm === 'square' || nm === 'Box') { out += '<span class="sq"></span>'; sq = true; }
+          else if (nm === 'frac') { const a = grab(), b = grab(); out += '(' + self.mathHTML(a).html + ')/(' + self.mathHTML(b).html + ')'; plain += 3; }
+          else if (nm === 'sqrt') { out += '√(' + self.mathHTML(grab()).html + ')'; plain += 3; }
+          else if (nm === 'text' || nm === 'mathrm' || nm === 'textbf' || nm === 'mathbf') { const t = grab(); out += esc(t); plain += t.length; }
+          else if (SYM[nm]) { out += SYM[nm]; plain++; }
+          continue;
+        }
+        const d = m[i + 1] || ''; i += 2;
+        out += esc(d === ',' || d === ';' || d === ' ' ? ' ' : d); plain++;
+        continue;
+      }
+      if (c === '^' || c === '_') {
+        i++; const g = grab();
+        const tag = c === '^' ? 'sup' : 'sub';
+        out += '<' + tag + '>' + self.mathHTML(g).html + '</' + tag + '>'; plain++;
+        continue;
+      }
+      if (c === '{' || c === '}') { i++; continue; }
+      out += esc(c); plain++; i++;
+    }
+    return { html: out, sq, plain };
+  };
+
+  function colorOf(name) { name = (name || '').trim(); if (COLORS[name]) return COLORS[name]; if (/^#[0-9a-f]{3,6}$/i.test(name)) return name; return null; }
+
+  /* ----- Der Auswerter ----- */
+  RP.evalStr = function (s, C, st0) {
+    if (++this.depth > 80) { this.depth--; return; }
+    const self = this;
+    const st = Object.assign({}, st0);
+    let i = 0;
+    const n = s.length;
+    let tb = '';
+    const flushT = () => { if (tb) { self.addText(C, st, tb); tb = ''; } };
+
+    const skipWS = () => {
+      const m = /\s*/y; m.lastIndex = i;
+      const w = m.exec(s)[0];
+      if ((w.match(/\n/g) || []).length < 2) i += w.length;
+    };
+    const readArg = () => {
+      while (i < n && /\s/.test(s[i])) i++;
+      if (i >= n) return '';
+      if (s[i] === '{') {
+        const e = readBalanced(s, i);
+        const r = s.slice(i + 1, e < 0 ? n : e);
+        i = e < 0 ? n : e + 1;
+        return r;
+      }
+      if (s[i] === '\\') {
+        const m = /\\([A-Za-z@]+|.)/y; m.lastIndex = i;
+        const mm = m.exec(s); i += mm[0].length; return mm[0];
+      }
+      return s[i++];
+    };
+    const readOpt = () => {
+      let j = i;
+      while (j < n && /[ \t]/.test(s[j])) j++;
+      if (s[j] !== '[') return null;
+      let d = 0, k = j + 1;
+      for (; k < n; k++) {
+        if (s[k] === '\\') { k++; continue; }
+        if (s[k] === '{') d++; else if (s[k] === '}') d--; else if (s[k] === ']' && d <= 0) break;
+      }
+      const r = s.slice(j + 1, k);
+      i = k + 1;
+      return r;
+    };
+    const readEnv = name => {
+      const re = new RegExp('\\\\(begin|end)\\{' + name.replace(/[*]/g, '\\*') + '\\}', 'g');
+      re.lastIndex = i;
+      let depth = 1, m;
+      while ((m = re.exec(s))) {
+        if (m[1] === 'begin') depth++; else { depth--; if (depth === 0) { const body = s.slice(i, m.index); i = m.index + m[0].length; return body; } }
+      }
+      const body = s.slice(i); i = n; return body;
+    };
+    const sub = (src, st2, keepBlocks) => {
+      const C2 = { blocks: [], par: null };
+      self.evalStr(src, C2, st2 || st);
+      self.endPar(C2);
+      return C2;
+    };
+    const inlineItems = (src, st2) => {
+      const C2 = { blocks: [], par: null };
+      self.evalStr(src, C2, st2 || st);
+      return C2.par ? C2.par.slice() : [];
+    };
+    const setSize = nm => { const z = SIZES[nm]; st.size = z[0] * PXPT; st.lh = z[1] * PXPT; };
+
+    while (i < n) {
+      const c = s[i];
+      if (c === '%') {
+        while (i < n && s[i] !== '\n') i++;
+        if (i < n) { i++; while (i < n && /[ \t]/.test(s[i])) i++; }
+        continue;
+      }
+      if (/\s/.test(c)) {
+        const m = /\s+/y; m.lastIndex = i;
+        const w = m.exec(s)[0]; i += w.length;
+        if ((w.match(/\n/g) || []).length >= 2) { flushT(); self.endPar(C); }
+        else tb += ' ';
+        continue;
+      }
+      if (c === '{') {
+        flushT();
+        const e = readBalanced(s, i);
+        const inner = s.slice(i + 1, e < 0 ? n : e);
+        i = e < 0 ? n : e + 1;
+        self.evalStr(inner, C, st);
+        continue;
+      }
+      if (c === '}') { i++; continue; }
+      if (c === '$') {
+        flushT();
+        let end, src, disp = false;
+        if (s[i + 1] === '$') { const j = s.indexOf('$$', i + 2); end = j < 0 ? n : j; src = s.slice(i + 2, end); i = j < 0 ? n : j + 2; disp = true; }
+        else { let j = i + 1; while (j < n) { if (s[j] === '\\') { j += 2; continue; } if (s[j] === '$') break; j++; } src = s.slice(i + 1, Math.min(j, n)); i = j >= n ? n : j + 1; }
+        const mh = self.mathHTML(src);
+        if (disp) self.addBlock(C, { t: 'math', html: mh.html });
+        else self.addItem(C, st, { t: 'math', html: mh.html, sq: mh.sq, plain: mh.plain, st: Object.assign({}, st) });
+        continue;
+      }
+      if (c === '~') { tb += ' '; i++; continue; }
+      if (c === '-' && s.startsWith('---', i)) { tb += '—'; i += 3; continue; }
+      if (c === '-' && s.startsWith('--', i)) { tb += '–'; i += 2; continue; }
+      if (c === '`' && s[i + 1] === '`') { tb += '“'; i += 2; continue; }
+      if (c === "'" && s[i + 1] === "'") { tb += '”'; i += 2; continue; }
+      if (c === '"' && DE_SHORT[s[i + 1]] !== undefined) { tb += DE_SHORT[s[i + 1]]; i += 2; continue; }
+      if (c === '&' || c === '#') { tb += c; i++; continue; }
+      if (c !== '\\') { tb += c; i++; continue; }
+
+      /* ---- Befehle ---- */
+      const re = /\\([A-Za-z@]+)(\*?)/y; re.lastIndex = i;
+      const mm = re.exec(s);
+      if (!mm) {
+        const d = s[i + 1]; i += 2;
+        if (d === undefined) continue;
+        if ('&%$#_{}'.indexOf(d) >= 0) { tb += d; continue; }
+        if (d === ' ') { tb += ' '; continue; }
+        if (d === ',' || d === ';' || d === ':' || d === '!') { tb += d === '!' ? '' : ' '; continue; }
+        if (d === '-' || d === '/' || d === '|') continue;
+        if (d === '\\') {
+          flushT(); readOpt();
+          if (C.par) C.par.push({ t: 'br' });
+          continue;
+        }
+        if (d === '(' || d === '[') {
+          flushT();
+          const close = d === '(' ? '\\)' : '\\]';
+          const j = s.indexOf(close, i);
+          const src = s.slice(i, j < 0 ? n : j); i = j < 0 ? n : j + 2;
+          const mh = self.mathHTML(src);
+          if (d === '[') self.addBlock(C, { t: 'math', html: mh.html });
+          else self.addItem(C, st, { t: 'math', html: mh.html, sq: mh.sq, plain: mh.plain, st: Object.assign({}, st) });
+          continue;
+        }
+        if (ACC[d]) {
+          let letter = s[i];
+          if (letter === '{') { const e = s.indexOf('}', i); letter = s.slice(i + 1, e); i = e + 1; }
+          else i++;
+          tb += (ACC[d][letter] || letter);
+          continue;
+        }
+        continue;
+      }
+      const name = mm[1];
+      i += mm[0].length;
+      if (GL[name] !== undefined) { tb += GL[name]; if (s[i] === '{' && s[i + 1] === '}') i += 2; else skipWS(); continue; }
+      skipWS();
+      flushT();
+
+      /* Benutzer-Makros zuerst */
+      if (self.macros[name]) {
+        const mac = self.macros[name];
+        const args = [];
+        let k = 0;
+        if (mac.def != null) { const o = readOpt(); args.push(o != null ? o : mac.def); k = 1; }
+        for (; k < mac.n; k++) args.push(readArg());
+        let body = mac.body.replace(/#(\d)/g, (mt, d) => (args[parseInt(d, 10) - 1] != null ? args[parseInt(d, 10) - 1] : ''));
+        self.evalStr(body, C, st);
+        continue;
+      }
+
+      switch (name) {
+        case 'par': self.endPar(C); break;
+        case 'noindent': case 'indent': case 'relax': case 'ignorespaces': case 'selectfont': case 'protect': case 'leavevmode':
+        case 'normalsize': case 'newline': case 'null': case 'strut': case 'allowbreak': case 'hyphenation': case 'sloppy':
+        case 'fussy': case 'maketitle': case 'tableofcontents': case 'thispagestyle': case 'pagestyle': case 'frenchspacing':
+          if (name === 'normalsize') setSize('normalsize');
+          if (name === 'newline' && C.par) C.par.push({ t: 'br' });
+          if (name === 'thispagestyle' || name === 'pagestyle') readArg();
+          break;
+        case 'fontsize': { const a = readArg(), b = readArg(); const A = self.len(a.indexOf('pt') >= 0 ? a : a + 'pt', st), B = self.len(b.indexOf('pt') >= 0 ? b : b + 'pt', st); if (A) st.size = A; if (B) st.lh = B; break; }
+        case 'tiny': case 'scriptsize': case 'footnotesize': case 'small': case 'large': case 'Large': case 'LARGE': case 'huge': case 'Huge': setSize(name); break;
+        case 'bfseries': case 'bf': st.bold = true; break;
+        case 'mdseries': st.bold = false; break;
+        case 'itshape': case 'it': case 'slshape': case 'em': st.italic = true; break;
+        case 'scshape': st.sc = true; break;
+        case 'ttfamily': st.tt = true; break;
+        case 'sffamily': st.sf = true; break;
+        case 'rmfamily': case 'normalfont': st.tt = false; st.sf = false; st.bold = false; st.italic = false; break;
+        case 'centering': st.align = 'center'; self.openPar(C, st); break;
+        case 'raggedright': st.align = 'left'; break;
+        case 'raggedleft': st.align = 'right'; break;
+        case 'color': { const col = colorOf(readArg()); if (col) st.color = col; break; }
+        case 'textbf': case 'textit': case 'emph': case 'textsl': case 'textsc': case 'texttt': case 'textsf': case 'textrm':
+        case 'textnormal': case 'underline': case 'mbox': case 'hbox': case 'textmd': case 'uline': case 'text': case 'mathrm': {
+          const arg = readArg(); const s2 = Object.assign({}, st);
+          if (name === 'textbf') s2.bold = true;
+          else if (name === 'textit' || name === 'emph' || name === 'textsl') s2.italic = !st.italic || name !== 'emph';
+          else if (name === 'textsc') s2.sc = true;
+          else if (name === 'texttt') s2.tt = true;
+          else if (name === 'textsf') s2.sf = true;
+          else if (name === 'underline' || name === 'uline') s2.ul = true;
+          self.evalStr(arg, C, s2);
+          break;
+        }
+        case 'textcolor': { const col = colorOf(readArg()); const arg = readArg(); const s2 = Object.assign({}, st); if (col) s2.color = col; self.evalStr(arg, C, s2); break; }
+        case 'foreignlanguage': case 'hyperlink': readArg(); self.evalStr(readArg(), C, st); break;
+        case 'href': readArg(); self.evalStr(readArg(), C, st); break;
+        case 'url': { const s2 = Object.assign({}, st); s2.tt = true; self.addText(C, s2, readArg()); break; }
+        case 'makebox': case 'framebox': case 'fbox': {
+          let w = null, pos = 'c';
+          if (name !== 'fbox') { const o1 = readOpt(); const o2 = readOpt(); if (o1 != null) w = self.len(o1, st); if (o2 != null) pos = o2.trim() || 'c'; }
+          const arg = readArg();
+          self.addItem(C, st, { t: 'box', w, pos, frame: name !== 'makebox', items: inlineItems(arg, st) });
+          break;
+        }
+        case 'parbox': {
+          readOpt(); const w = self.len(readArg(), st); readOpt();
+          const arg = readArg();
+          self.addItem(C, st, { t: 'mp', w, blocks: sub(arg, st).blocks });
+          break;
+        }
+        case 'raisebox': {
+          const lift = self.len(readArg(), st) || 0; readOpt(); readOpt();
+          const arg = readArg();
+          self.addItem(C, st, { t: 'raise', lift, items: inlineItems(arg, st) });
+          break;
+        }
+        case 'scalebox': case 'rotatebox': readArg(); readOpt(); self.evalStr(readArg(), C, st); break;
+        case 'resizebox': readArg(); readArg(); self.evalStr(readArg(), C, st); break;
+        case 'hfill': self.addItem(C, st, { t: 'hfill' }); break;
+        case 'dotfill': self.addItem(C, st, { t: 'dotfill', st: Object.assign({}, st) }); break;
+        case 'hrulefill': self.addItem(C, st, { t: 'hrule' }); break;
+        case 'hspace': case 'hskip': { const w = self.len(readArg(), st); self.addItem(C, st, { t: 'hs', w: w || 0 }); break; }
+        case 'quad': self.addItem(C, st, { t: 'hs', w: st.size }); break;
+        case 'qquad': self.addItem(C, st, { t: 'hs', w: 2 * st.size }); break;
+        case 'enspace': self.addItem(C, st, { t: 'hs', w: st.size / 2 }); break;
+        case 'vspace': { const h = self.len(readArg(), st) || 0; self.addBlock(C, { t: 'vs', h }); break; }
+        case 'bigskip': self.addBlock(C, { t: 'vs', h: 12 * PXPT }); break;
+        case 'medskip': self.addBlock(C, { t: 'vs', h: 6 * PXPT }); break;
+        case 'smallskip': self.addBlock(C, { t: 'vs', h: 3 * PXPT }); break;
+        case 'newpage': case 'clearpage': case 'pagebreak': self.addBlock(C, { t: 'pb' }); break;
+        case 'section': case 'subsection': case 'subsubsection': case 'chapter': case 'paragraph': {
+          readOpt(); const title = readArg();
+          const lvl = { chapter: 0, section: 1, subsection: 2, subsubsection: 3, paragraph: 4 }[name];
+          const s2 = Object.assign({}, st); s2.bold = true;
+          const z = lvl <= 1 ? SIZES.Large : (lvl === 2 ? SIZES.large : SIZES.normalsize);
+          s2.size = z[0] * PXPT; s2.lh = z[1] * PXPT;
+          self.addBlock(C, { t: 'vs', h: lvl <= 1 ? 14 : 10 });
+          const C2 = sub(title, s2);
+          C2.blocks.forEach(b => C.blocks.push(b));
+          self.addBlock(C, { t: 'vs', h: 6 });
+          break;
+        }
+        case 'item': break;
+        case 'includegraphics': {
+          const o = readOpt(); const path = readArg();
+          let w = null, h = null;
+          if (o) o.split(',').forEach(kv => { const p = kv.split('='); const k = (p[0] || '').trim(); if (k === 'width') w = self.len(p[1], st); if (k === 'height') h = self.len(p[1], st); });
+          self.addItem(C, st, { t: 'img', path: path.trim(), w, h });
+          break;
+        }
+        case 'StrSubstitute': {
+          const a = readArg(), b = readArg(), c2 = readArg();
+          const plain = x => { const C2 = { blocks: [], par: null }; self.evalStr(x, C2, st); return (C2.par || []).map(it => it.t === 'text' ? it.v : '').join(''); };
+          const pa = plain(a), pb = plain(b), pc = plain(c2);
+          self.addText(C, st, pb ? pa.split(pb).join(pc) : pa);
+          break;
+        }
+        case 'jobname': self.addText(C, st, self.jobname); break;
+        case 'thepage': self.addText(C, st, '1'); break;
+        case 'today': self.addText(C, st, new Date().toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })); break;
+        case 'newcommand': case 'renewcommand': case 'providecommand': {
+          let nm = readArg().replace(/^\\/, ''); let nn = 0, def = null;
+          const o = readOpt(); if (o != null) nn = parseInt(o, 10) || 0;
+          const d2 = readOpt(); if (d2 != null) def = d2;
+          const body = readArg();
+          self.macros[nm] = { n: nn, def, body };
+          break;
+        }
+        case 'newlength': readArg(); break;
+        case 'setlength': { const nm = readArg().replace(/^\\/, ''); const v = self.len(readArg(), st); if (v != null) self.lengths[nm] = v; break; }
+        case 'settowidth': { const nm = readArg().replace(/^\\/, ''); self.lengths[nm] = self.measure(readArg()); break; }
+        case 'addtolength': case 'setcounter': case 'addtocounter': readArg(); readArg(); break;
+        case 'label': case 'usepackage': case 'documentclass': case 'definecolor': case 'vphantom': case 'hphantom': case 'phantom': readOpt(); readArg(); if (name === 'definecolor') { readArg(); readArg(); } break;
+        case 'begin': {
+          const env = readArg();
+          self.environment(env, readOpt, readArg, readEnv, sub, inlineItems, C, st);
+          break;
+        }
+        case 'end': readArg(); break;
+        case 'hline': case 'cline': case 'toprule': case 'midrule': case 'bottomrule': if (name === 'cline') readArg(); break;
+        default: self.unknown.add(name);
+      }
+    }
+    flushT();
+    this.depth--;
+  };
+
+  /* ----- Umgebungen ----- */
+  RP.environment = function (env, readOpt, readArg, readEnv, sub, inlineItems, C, st) {
+    const self = this;
+    const star = env.replace(/\*$/, '');
+    if (star === 'itemize' || star === 'enumerate' || star === 'description') {
+      const body = readEnv(env);
+      const parts = [];
+      const re = /\\(begin|end)\{[^}]*\}|\\item\b\s*(\[[^\]]*\])?/g;
+      let depth = 0, last = null, m;
+      while ((m = re.exec(body))) {
+        if (m[0].startsWith('\\begin')) depth++;
+        else if (m[0].startsWith('\\end')) depth--;
+        else if (depth === 0) {
+          if (last) parts.push({ label: last.label, src: body.slice(last.end, m.index) });
+          last = { end: m.index + m[0].length, label: m[2] ? m[2].slice(1, -1) : null };
+        }
+      }
+      if (last) parts.push({ label: last.label, src: body.slice(last.end) });
+      self.addBlock(C, { t: 'list', ordered: star === 'enumerate', desc: star === 'description', items: parts.map(p => ({ label: p.label, blocks: sub(p.src, st).blocks })) });
+      return;
+    }
+    if (star === 'center' || star === 'flushleft' || star === 'flushright' || star === 'quote' || star === 'quotation') {
+      const body = readEnv(env);
+      const s2 = Object.assign({}, st);
+      s2.align = star === 'center' ? 'center' : (star === 'flushright' ? 'right' : 'left');
+      self.endPar(C);
+      sub(body, s2).blocks.forEach(b => C.blocks.push(b));
+      return;
+    }
+    if (star === 'tabular' || star === 'tabularx' || star === 'array' || star === 'longtable' || star === 'tabular*') {
+      readOpt();
+      if (env === 'tabular*' || env === 'tabularx') readArg();
+      const spec = readArg();
+      const body = readEnv(env);
+      self.addBlock(C, self.tableBlock(spec, body, st));
+      return;
+    }
+    if (star === 'minipage') {
+      readOpt();
+      const w = self.len(readArg(), st);
+      const body = readEnv(env);
+      self.addItem(C, st, { t: 'mp', w, blocks: sub(body, st).blocks });
+      return;
+    }
+    if (star === 'tikzpicture') {
+      readOpt();
+      const body = readEnv(env);
+      const rects = [];
+      const re = /\\draw\s*(?:\[[^\]]*\])?\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)\s*rectangle\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/g;
+      let m;
+      while ((m = re.exec(body))) rects.push([+m[1], +m[2], +m[3], +m[4]]);
+      if (!rects.length) self.unknown.add('tikzpicture (außer Rechtecke)');
+      self.addItem(C, st, { t: 'tikz', rects });
+      return;
+    }
+    if (star === 'verbatim' || star === 'lstlisting') {
+      self.addBlock(C, { t: 'pre', text: readEnv(env).replace(/^\n/, '') });
+      return;
+    }
+    if (/^(equation|align|gather|multline|eqnarray|displaymath|math)$/.test(star)) {
+      const body = readEnv(env);
+      self.addBlock(C, { t: 'math', html: self.mathHTML(body.replace(/&/g, ' ').replace(/\\\\/g, '<br>')).html });
+      return;
+    }
+    // sonstige Umgebungen: Inhalt einfach darstellen
+    const body = readEnv(env);
+    self.unknown.add('Umgebung ' + env);
+    self.endPar(C);
+    sub(body, st).blocks.forEach(b => C.blocks.push(b));
+  };
+
+  RP.tableBlock = function (spec, body, st) {
+    const self = this;
+    const cols = [];
+    const parseSpec = sp => {
+      for (let i = 0; i < sp.length; i++) {
+        const c = sp[i];
+        if (c === '|') continue;
+        else if (c === 'l' || c === 'c' || c === 'r') cols.push({ a: c === 'l' ? 'left' : (c === 'c' ? 'center' : 'right'), w: null });
+        else if (c === 'p' || c === 'm' || c === 'b' || c === 'X') {
+          let w = null;
+          if (sp[i + 1] === '{') { const e = readBalanced(sp, i + 1); w = self.len(sp.slice(i + 2, e), st); i = e; }
+          cols.push({ a: 'left', w });
+        }
+        else if (c === '@' || c === '>' || c === '<' || c === '!') { if (sp[i + 1] === '{') { i = readBalanced(sp, i + 1); } }
+        else if (c === '*') {
+          const e1 = readBalanced(sp, i + 1); const cnt = parseInt(sp.slice(i + 2, e1), 10) || 1;
+          const e2 = readBalanced(sp, e1 + 1); const inner = sp.slice(e1 + 2, e2);
+          for (let k = 0; k < cnt; k++) parseSpec(inner);
+          i = e2;
+        }
+      }
+    };
+    parseSpec(spec);
+    // Zeilen und Zellen auf oberster Klammerebene trennen
+    const rows = []; let cur = []; let cell = ''; let d = 0;
+    for (let i = 0; i < body.length; i++) {
+      const c = body[i];
+      if (c === '\\' && body[i + 1] === '\\' && d === 0) { cur.push(cell); rows.push(cur); cur = []; cell = ''; i++; if (body[i + 1] === '[') { const e = body.indexOf(']', i); i = e; } continue; }
+      if (c === '\\') { cell += c + (body[i + 1] || ''); i++; continue; }
+      if (c === '%') { while (i < body.length && body[i] !== '\n') i++; continue; }
+      if (c === '{') d++; else if (c === '}') d--;
+      if (c === '&' && d === 0) { cur.push(cell); cell = ''; continue; }
+      cell += c;
+    }
+    if (cell.trim() !== '' || cur.length) { cur.push(cell); rows.push(cur); }
+    const outRows = rows.map(r => {
+      let top = false;
+      const cells = r.map((src, k) => {
+        let t = src;
+        if (/^\s*\\(hline|toprule|midrule|bottomrule)/.test(t)) { top = true; t = t.replace(/^\s*\\(hline|toprule|midrule|bottomrule)\s*/, ''); }
+        while (/^\s*\\(hline|midrule)/.test(t)) t = t.replace(/^\s*\\(hline|midrule)\s*/, '');
+        const C2 = { blocks: [], par: null };
+        let span = 1;
+        const mc = /^\s*\\multicolumn\{(\d+)\}\{([^}]*)\}\{([\s\S]*)\}\s*$/.exec(t);
+        let al = null;
+        if (mc) { span = parseInt(mc[1], 10); t = mc[3]; al = /c/.test(mc[2]) ? 'center' : (/r/.test(mc[2]) ? 'right' : 'left'); }
+        self.evalStr(t, C2, st);
+        self.endPar(C2);
+        return { blocks: C2.blocks, span, al };
+      });
+      return { cells, top };
+    });
+    // Zeilen, die nur aus \hline bestehen, werden zur Linie der nächsten (oder zur unteren Linie)
+    const cleaned = [];
+    let pendingTop = false, hasBottom = false;
+    outRows.forEach(r => {
+      const empty = r.cells.length === 1 && r.cells[0].blocks.length === 0;
+      if (empty) { if (r.top) pendingTop = true; return; }
+      if (pendingTop) { r.top = true; pendingTop = false; }
+      cleaned.push(r);
+    });
+    if (pendingTop) hasBottom = true;
+    outRows.length = 0; cleaned.forEach(r => outRows.push(r));
+    const vlines = /\|/.test(spec);
+    return { t: 'table', cols, rows: outRows, bottom: hasBottom, vlines };
+  };
+
+  /* ----- HTML-Ausgabe ----- */
+  RP.itemStyle = function (st) {
+    let css = 'font-size:' + r2(st.size) + 'px;';
+    if (st.bold) css += 'font-weight:bold;';
+    if (st.italic) css += 'font-style:italic;';
+    if (st.sc) css += 'font-variant:small-caps;';
+    if (st.tt) css += 'font-family:"Latin Modern Mono","CMU Typewriter Text",monospace;';
+    if (st.sf) css += 'font-family:"Latin Modern Sans","CMU Sans Serif",Arial,sans-serif;';
+    if (st.color) css += 'color:' + st.color + ';';
+    if (st.ul) css += 'text-decoration:underline;';
+    return css;
+  };
+  RP.itemHTML = function (it, flex) {
+    switch (it.t) {
+      case 'text': return '<span style="' + this.itemStyle(it.st) + (flex ? 'white-space:pre;' : '') + '">' + esc(it.v) + '</span>';
+      case 'math': return '<span style="' + this.itemStyle(it.st) + 'font-style:italic;white-space:pre;">' + it.html + '</span>';
+      case 'br': return flex ? '' : '<br>';
+      case 'hfill': return '<span class="hfill"></span>';
+      case 'hrule': return '<span class="hrulefill"></span>';
+      case 'dotfill': return '<span class="dotfill" style="font-size:' + r2(it.st.size) + 'px"></span>';
+      case 'hs': return '<span style="display:inline-block;flex:none;width:' + r2(it.w) + 'px"></span>';
+      case 'box': {
+        const inner = it.items.map(x => this.itemHTML(x, true)).join('');
+        const jc = it.pos === 'l' ? 'flex-start' : (it.pos === 'r' ? 'flex-end' : 'center');
+        return '<span class="mb' + (it.frame ? ' fr' : '') + '" style="' + (it.w != null ? 'width:' + r2(it.w) + 'px;flex:none;' : '') + 'justify-content:' + jc + '">' + inner + '</span>';
+      }
+      case 'raise': return '<span style="position:relative;display:inline-block;top:' + r2(-it.lift) + 'px">' + it.items.map(x => this.itemHTML(x, flex)).join('') + '</span>';
+      case 'mp': return '<span class="mp" style="' + (it.w != null ? 'width:' + r2(it.w) + 'px;' : '') + '">' + this.blocksHTML(it.blocks) + '</span>';
+      case 'tikz': {
+        if (!it.rects.length) return '';
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        it.rects.forEach(r => { x0 = Math.min(x0, r[0], r[2]); x1 = Math.max(x1, r[0], r[2]); y0 = Math.min(y0, r[1], r[3]); y1 = Math.max(y1, r[1], r[3]); });
+        const W = (x1 - x0) * PXCM, H = (y1 - y0) * PXCM, pad = 0.5;
+        let svg = '<svg width="' + r2(W + 2 * pad) + '" height="' + r2(H + 2 * pad) + '" style="display:inline-block;vertical-align:baseline;margin:' + (-pad) + 'px">';
+        it.rects.forEach(r => { svg += '<rect x="' + r2(pad + (Math.min(r[0], r[2]) - x0) * PXCM) + '" y="' + r2(pad + (y1 - Math.max(r[1], r[3])) * PXCM) + '" width="' + r2(Math.abs(r[2] - r[0]) * PXCM) + '" height="' + r2(Math.abs(r[3] - r[1]) * PXCM) + '" fill="none" stroke="#000" stroke-width="0.6"/>'; });
+        return svg + '</svg>';
+      }
+      case 'img': {
+        const url = this.ctx.assets && this.ctx.assets[it.path.replace(/^\.\//, '')];
+        const h = it.h != null ? it.h : null, w = it.w != null ? it.w : null;
+        if (url) return '<img src="' + esc(url) + '" style="' + (h != null ? 'height:' + r2(h) + 'px;' : '') + (w != null ? 'width:' + r2(w) + 'px;' : '') + 'vertical-align:bottom">';
+        return '<span class="imgph" style="width:' + r2(w != null ? w : (h != null ? h * 2.5 : 100)) + 'px;height:' + r2(h != null ? h : 40) + 'px">' + esc(it.path.replace(/^\.\//, '')) + '<br><small>(Logo nicht gefunden)</small></span>';
+      }
+      default: return '';
+    }
+  };
+  RP.parHTML = function (items, align) {
+    const stretch = items.some(x => x.t === 'hfill' || x.t === 'dotfill' || x.t === 'hrule');
+    let lh = 0;
+    items.forEach(x => { if (x.t === 'text' || x.t === 'math') lh = Math.max(lh, x.st.lh || 0); });
+    if (!lh) lh = 14.5 * PXPT;
+    const al = align || 'left';
+    if (stretch) {
+      const jc = al === 'center' ? 'center' : (al === 'right' ? 'flex-end' : 'flex-start');
+      return '<div class="p fx" style="line-height:' + r2(lh) + 'px;justify-content:' + jc + '">' + items.map(x => this.itemHTML(x, true)).join('') + '</div>';
+    }
+    return '<div class="p" style="line-height:' + r2(lh) + 'px;text-align:' + al + '">' + items.map(x => this.itemHTML(x, false)).join('') + '</div>';
+  };
+  RP.blocksHTML = function (blocks) { return blocks.map(b => this.blockHTML(b)).join(''); };
+  RP.blockHTML = function (b) {
+    const self = this;
+    switch (b.t) {
+      case 'vs': return '<div style="height:' + r2(b.h) + 'px"></div>';
+      case 'p': return this.parHTML(b.items, b.align);
+      case 'pb': return '<div class="pbk">Seitenumbruch</div>';
+      case 'pre': return '<pre>' + esc(b.text) + '</pre>';
+      case 'math': return '<div class="dm">' + b.html + '</div>';
+      case 'list': {
+        const tag = b.ordered ? 'ol' : 'ul';
+        return '<' + tag + ' class="ls">' + b.items.map(it => '<li>' + (b.desc && it.label ? '<b>' + esc(it.label) + '</b> ' : '') + self.blocksHTML(it.blocks) + '</li>').join('') + '</' + tag + '>';
+      }
+      case 'table': {
+        let h = '<table class="tb' + (b.vlines ? ' vl' : '') + (b.bottom ? ' btm' : '') + '">';
+        b.rows.forEach((r, ri) => {
+          h += '<tr' + (r.top ? ' class="tl"' : '') + '>';
+          let ci = 0;
+          r.cells.forEach(c => {
+            const col = b.cols[ci] || { a: 'left' };
+            const al = c.al || col.a;
+            h += '<td' + (c.span > 1 ? ' colspan="' + c.span + '"' : '') + ' style="text-align:' + al + (col.w ? ';width:' + r2(col.w) + 'px' : '') + '">' + self.blocksHTML(c.blocks) + '</td>';
+            ci += c.span;
+          });
+          h += '</tr>';
+        });
+        return h + '</table>';
+      }
+      default: return '';
+    }
+  };
+
+  function render(src, ctx) {
+    const R = new Renderer(ctx);
+    const TAG = '\\begin{document}';
+    const b = src.indexOf(TAG), e = src.lastIndexOf('\\end{document}');
+    if (b < 0) return { html: '', unknown: [] };
+    R.loadPreamble(src.slice(0, b));
+    const C = { blocks: [], par: null };
+    R.evalStr(src.slice(b + TAG.length, e < 0 ? src.length : e), C, R.baseStyle());
+    R.endPar(C);
+    const geo = R.geo;
+    const mg = R.geoMargins();
+    const headh = geo.headheight != null ? geo.headheight : 14 * PXPT;
+    const headsep = geo.headsep != null ? geo.headsep : 25 * PXPT;
+    const top = geo.includehead ? mg.top + headh + headsep : mg.top + (R.fancy ? 0 : 0);
+    const headTop = geo.includehead ? mg.top : Math.max(0, mg.top - headh - headsep);
+    const textW = 21 * PXCM - mg.left - mg.right;
+    const hfHTML = key => {
+      if (R.hf[key] == null) return '';
+      const C2 = { blocks: [], par: null };
+      R.evalStr(R.hf[key], C2, R.baseStyle());
+      const items = C2.par || [];
+      return items.map(x => R.itemHTML(x, true)).join('');
+    };
+    let header = '';
+    if (R.fancy && (R.hf.lhead != null || R.hf.chead != null || R.hf.rhead != null)) {
+      header = '<div class="hd" style="left:' + r2(mg.left) + 'px;width:' + r2(textW) + 'px;top:' + r2(headTop) + 'px;height:' + r2(headh) + 'px">' +
+        '<div class="hl">' + hfHTML('lhead') + '</div><div class="hc">' + hfHTML('chead') + '</div><div class="hr">' + hfHTML('rhead') + '</div></div>';
+      if (R.headrule > 0) header += '<div class="rule" style="left:' + r2(mg.left) + 'px;width:' + r2(textW) + 'px;top:' + r2(headTop + headh) + 'px;height:' + r2(Math.max(1, R.headrule)) + 'px"></div>';
+    }
+    let footer = '';
+    if (R.fancy && (R.hf.lfoot != null || R.hf.cfoot != null || R.hf.rfoot != null)) {
+      footer = '<div class="ft" style="left:' + r2(mg.left) + 'px;width:' + r2(textW) + 'px;bottom:' + r2(Math.max(10, mg.bottom - 1.0 * PXCM)) + 'px">' +
+        '<div class="hl">' + hfHTML('lfoot') + '</div><div class="hc">' + hfHTML('cfoot') + '</div><div class="hr">' + hfHTML('rfoot') + '</div></div>';
+    }
+    const html = '<div class="pg" style="width:794px;min-height:1123px;box-sizing:border-box">' + header + footer +
+      '<div class="bd" style="padding:' + r2(top) + 'px ' + r2(mg.right) + 'px ' + r2(mg.bottom) + 'px ' + r2(mg.left) + 'px">' + R.blocksHTML(C.blocks) + '</div></div>';
+    return { html, unknown: Array.from(R.unknown).sort() };
+  }
+
+  return { render, esc };
+})();
+
+if (typeof module !== 'undefined') module.exports = PV;
+/* ===================================================================
+   OBERFLÄCHE
+   =================================================================== */
+const $ = s => document.querySelector(s);
+function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+
+const S = {
+  doc: null, tplName: '', original: '', undo: [], redo: [], last: '',
+  opts: { autoEscape: true }, showCmd: false, rawEdit: null, focus: null, dirty: false,
+  collapsed: new Set(), theme: null, blocks: [], assetUrls: {}, imgStatus: {}, dir: null, dirOk: false, dirSupport: !!window.showDirectoryPicker, tab: 'pv'
+};
+
+/* ---------- Kleinkram ---------- */
+let toastTimer = null;
+function toast(msg, err) {
+  const t = $('#toast');
+  t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, err ? 6000 : 3200);
+}
+function cleanName(n) { return (n || '').replace(/\.tex$/i, '').replace(/[\\/:*?"<>|]/g, '').trim(); }
+function fileBase() { return cleanName($('#fname').value) || 'Dateiname'; }
+function snap() { return JSON.stringify(S.doc.units); }
+function isVisible(u) { return !u.fixed && (S.showCmd || hasFields(u) || S.rawEdit === u.id); }
+function idxOf(id) { return S.doc.units.findIndex(u => u.id === id); }
+
+/* ---------- Rückgängig ---------- */
+function commit() {
+  S.undo.push(S.last);
+  if (S.undo.length > 200) S.undo.shift();
+  S.last = snap(); S.redo = []; S.dirty = true; updateButtons();
+}
+function commitIfChanged() { if (S.doc && snap() !== S.last) commit(); }
+function doUndo() {
+  commitIfChanged();
+  if (!S.undo.length) return;
+  S.redo.push(snap());
+  S.doc.units = JSON.parse(S.undo.pop());
+  S.last = snap(); S.dirty = true; S.rawEdit = null; renderAll();
+}
+function doRedo() {
+  if (!S.redo.length) return;
+  S.undo.push(snap());
+  S.doc.units = JSON.parse(S.redo.pop());
+  S.last = snap(); S.dirty = true; S.rawEdit = null; renderAll();
+}
+function updateButtons() {
+  $('#btnUndo').disabled = !S.undo.length;
+  $('#btnRedo').disabled = !S.redo.length;
+}
+
+/* ---------- Editor ---------- */
+function chipText(s, mode) {
+  s = s.replace(/\s+/g, ' ').trim();
+  const L = 26;
+  if (s.length <= L) return s;
+  if (mode === 'lead') return '…' + s.slice(-L);
+  if (mode === 'end') return s.slice(0, L) + '…';
+  return s.slice(0, 12) + '…' + s.slice(-12);
+}
+function btn(label, title, fn, cls) {
+  const b = el('button', cls || '', label); b.type = 'button'; b.title = title;
+  b.addEventListener('click', ev => { ev.preventDefault(); fn(ev); });
+  return b;
+}
+function focusField(id, f) {
+  const inp = document.querySelector('#lines .fld[data-id="' + id + '"][data-f="' + f + '"]') ||
+    document.querySelector('#lines .fld[data-id="' + id + '"]');
+  if (inp) { inp.focus(); const l = inp.value.length; inp.setSelectionRange(l, l); }
+}
+function moveFocus(row, dir, f) {
+  let r = dir < 0 ? row.previousElementSibling : row.nextElementSibling;
+  while (r && !r.querySelector('.fld')) r = dir < 0 ? r.previousElementSibling : r.nextElementSibling;
+  if (!r) return;
+  const inputs = r.querySelectorAll('.fld');
+  const inp = inputs[Math.min(f, inputs.length - 1)];
+  inp.focus(); const l = inp.value.length; inp.setSelectionRange(l, l);
+}
+function markField(inp, seg) {
+  inp.classList.toggle('bad', braceDelta(segOut(seg, S.opts)) !== 0);
+}
+
+function grow(t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }
+function makeField(u, seg, f) {
+  const inp = el('textarea', 'fld');
+  inp.rows = 1; inp.value = seg.v; inp.lang = 'de'; inp.spellcheck = true;
+  inp.dataset.id = u.id; inp.dataset.f = f;
+  inp.style.flex = '1 1 ' + Math.max(10, Math.min(60, seg.v.length + 3)) + 'ch';
+  markField(inp, seg);
+  inp.addEventListener('input', () => {
+    if (/[\r\n]/.test(inp.value)) { inp.value = inp.value.replace(/[\r\n]+/g, ' '); }
+    seg.v = inp.value; seg.edited = true; S.dirty = true; markField(inp, seg); grow(inp); schedulePreview();
+  });
+  inp.addEventListener('change', () => commitIfChanged());
+  inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && !ev.shiftKey && !ev.ctrlKey && !ev.altKey) {
+      ev.preventDefault();
+      commitIfChanged();
+      const nu = opInsertBelow(S.doc, idxOf(u.id));
+      commit(); S.focus = { id: nu.id, f }; renderAll();
+    } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      const multi = inp.clientHeight > 34;
+      const atEdge = ev.key === 'ArrowUp' ? inp.selectionStart === 0 : inp.selectionEnd === inp.value.length;
+      if (!multi || atEdge) { ev.preventDefault(); moveFocus(inp.closest('.ln'), ev.key === 'ArrowUp' ? -1 : 1, f); }
+    }
+  });
+  return inp;
+}
+
+/* ---------- Menü: Zeilenart wählen ---------- */
+const TYPE_NAMES = { thema: 'Thema', zeile: 'Zeile', aufgabe: 'Aufgabe', hinweis: 'Hinweis' };
+function typeLabel(macro) {
+  const k = macro.toLowerCase().replace(/^lernplan/, '');
+  if (TYPE_NAMES[k]) return TYPE_NAMES[k];
+  return k.charAt(0).toUpperCase() + k.slice(1);
+}
+function closeMenu() { const m = document.getElementById('tmenu'); if (m) m.remove(); }
+document.addEventListener('mousedown', ev => { const m = document.getElementById('tmenu'); if (m && !m.contains(ev.target)) closeMenu(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeMenu(); });
+function openTypeMenu(anchor, u, isBlockHead) {
+  closeMenu();
+  const types = lineTypes(S.doc);
+  const m = el('div'); m.id = 'tmenu';
+  m.append(el('div', 'mh', isBlockHead ? 'Einfügen' : 'Darunter einfügen'));
+  const add = (label, sub, fn) => {
+    const b = el('button', null, label); if (sub) b.append(el('span', 'ms', sub));
+    b.addEventListener('click', () => { closeMenu(); commitIfChanged(); fn(); });
+    m.append(b);
+  };
+  types.forEach(t => {
+    const isTheme = t.macro === S.theme;
+    if (isBlockHead && isTheme) {
+      add('Neues Thema (nach diesem Block)', t.fields + ' Felder', () => {
+        const nu = opInsertTypeAfterBlock(S.doc, S.theme, u.id, t.unit); commit(); S.focus = { id: nu.id, f: 0 }; renderAll();
+      });
+    } else {
+      add(typeLabel(t.macro), t.fields + (t.fields === 1 ? ' Feld' : ' Felder'), () => {
+        const nu = opInsertType(S.doc, idxOf(u.id), t.unit); commit(); S.focus = { id: nu.id, f: 0 }; renderAll();
+      });
+    }
+  });
+  if (hasFields(u) && !isBlockHead) add('Gleiche Art wie diese Zeile', null, () => {
+    const nu = opInsertBelow(S.doc, idxOf(u.id)); commit(); S.focus = { id: nu.id, f: 0 }; renderAll();
+  });
+  document.body.append(m);
+  const r = anchor.getBoundingClientRect();
+  const w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + 'px';
+  m.style.top = (r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+}
+
+function rowActions(u) {
+  const a = el('div', 'acts');
+  const run = fn => () => { commitIfChanged(); fn(); };
+  a.append(
+    btn('▲', 'Eine Zeile nach oben', run(() => { if (opMoveRelative(S.doc, idxOf(u.id), -1, isVisible)) { commit(); S.focus = { id: u.id, f: 0 }; renderAll(); } })),
+    btn('▼', 'Eine Zeile nach unten', run(() => { if (opMoveRelative(S.doc, idxOf(u.id), 1, isVisible)) { commit(); S.focus = { id: u.id, f: 0 }; renderAll(); } })),
+    btn('＋', 'Leere Zeile darunter einfügen (bei mehreren Zeilenarten: Art wählen)', ev => {
+      commitIfChanged();
+      if (lineTypes(S.doc).length > 1) { openTypeMenu(ev.currentTarget, u, false); return; }
+      const nu = opInsertBelow(S.doc, idxOf(u.id)); commit(); S.focus = { id: nu.id, f: 0 }; renderAll();
+    })
+  );
+  if (hasFields(u)) a.append(btn('≡＋', 'Mehrere Zeilen darunter einfügen (eine pro Zeile, auch aus Excel)', run(() => openBulk(u.id))));
+  a.append(
+    btn('⧉', 'Zeile duplizieren', run(() => { const c = opDuplicate(S.doc, idxOf(u.id)); commit(); S.focus = { id: c.id, f: 0 }; renderAll(); })),
+    btn('</>', 'LaTeX dieser Zeile direkt bearbeiten', run(() => { S.rawEdit = u.id; renderEditor(); const r = document.querySelector('#lines input.rawin'); if (r) { r.focus(); } })),
+    btn('✕', 'Zeile löschen', run(() => { opRemove(S.doc, idxOf(u.id)); commit(); renderAll(); }), 'del')
+  );
+  return a;
+}
+
+function blockActions(u, b) {
+  const a = el('div', 'acts');
+  const run = fn => () => { commitIfChanged(); fn(); };
+  a.append(
+    btn('▲', 'Ganzes Thema mit allen Zeilen nach oben', run(() => { if (opBlockMove(S.doc, S.theme, u.id, -1)) { commit(); S.focus = { id: u.id, f: 0 }; renderAll(); } })),
+    btn('▼', 'Ganzes Thema mit allen Zeilen nach unten', run(() => { if (opBlockMove(S.doc, S.theme, u.id, 1)) { commit(); S.focus = { id: u.id, f: 0 }; renderAll(); } })),
+    btn('＋', 'Zeile in diesem Thema oder neues Thema einfügen', ev => openTypeMenu(ev.currentTarget, u, true)),
+    btn('⧉', 'Ganzes Thema mit allen Zeilen duplizieren', run(() => { const c = opBlockDuplicate(S.doc, S.theme, u.id); if (c) { commit(); S.focus = { id: c.id, f: 0 }; renderAll(); } })),
+    btn('</>', 'LaTeX der Themenzeile direkt bearbeiten', run(() => { S.rawEdit = u.id; renderEditor(); const r = document.querySelector('#lines input.rawin'); if (r) r.focus(); })),
+    btn('✕', 'Ganzes Thema mit allen Zeilen löschen', () => {
+      commitIfChanged();
+      const n = b.end - b.start;
+      if (n > 1 && !confirm('Dieses Thema mit allen ' + n + ' Zeilen löschen? (Mit Rückgängig holst du es zurück.)')) return;
+      opBlockRemove(S.doc, S.theme, u.id); commit(); renderAll();
+    }, 'del')
+  );
+  return a;
+}
+
+function renderEditor() {
+  const host = $('#lines');
+  const scroller = host.parentElement;
+  const top = scroller.scrollTop;
+  host.textContent = '';
+  S.theme = themeMacro(S.doc);
+  S.blocks = blocksOf(S.doc, S.theme);
+  const headOf = {}, hidden = {};
+  S.blocks.forEach(b => {
+    headOf[b.start] = b;
+    if (S.collapsed.has(b.id)) for (let i = b.start + 1; i < b.end; i++) hidden[i] = true;
+  });
+  $('#themeBar').hidden = !S.blocks.length;
+  let prevSig = null, count = 0;
+  S.doc.units.forEach((u, ui) => {
+    if (!isVisible(u) || hidden[ui]) return;
+    count++;
+    const blk = headOf[ui];
+    const row = el('div', 'ln' + (blk ? ' thema' : '')); row.dataset.id = u.id;
+    if (!blk && S.theme) {
+      const inBlock = S.blocks.some(b => ui > b.start && ui < b.end);
+      if (inBlock) row.classList.add('inblk');
+    }
+    const sig = u.segs.map(s => s.k === 'x' ? '\u0001' : s.v).join('');
+    if (prevSig !== null && (sig !== prevSig || blk)) row.classList.add('gap');
+    prevSig = sig;
+    const cnt = el('div', 'cnt');
+    if (S.rawEdit === u.id) {
+      const raw = rawOfUnit(u);
+      const inp = el('input', 'rawin'); inp.type = 'text'; inp.value = raw; inp.spellcheck = false;
+      let done = false;
+      const finish = apply => {
+        if (done) return; done = true;
+        if (apply && inp.value !== raw) { opSetRaw(S.doc, idxOf(u.id), inp.value); commit(); }
+        S.rawEdit = null; renderAll();
+      };
+      inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); finish(true); } else if (ev.key === 'Escape') { finish(false); } });
+      inp.addEventListener('blur', () => finish(true));
+      cnt.append(inp);
+    } else if (hasFields(u)) {
+      let acc = '', f = 0, first = true;
+      u.segs.forEach(sg => {
+        if (sg.k === 's') { acc += sg.v; return; }
+        if (acc.trim()) { const c = el('span', 'chip', chipText(acc, first ? 'lead' : 'mid')); c.title = acc; cnt.append(c); }
+        acc = ''; first = false;
+        cnt.append(makeField(u, sg, f++));
+      });
+      if (acc.trim()) { const c = el('span', 'chip', chipText(acc, 'end')); c.title = acc; cnt.append(c); }
+    } else {
+      const raw = rawOfUnit(u);
+      const c = el('span', 'chip cmd', raw.trim() === '' ? '(leere Zeile)' : (raw.length > 90 ? raw.slice(0, 90) + '…' : raw));
+      c.title = raw; cnt.append(c);
+    }
+    if (blk) {
+      const col = S.collapsed.has(blk.id);
+      const tg = el('button', 'tg', col ? '▸' : '▾');
+      tg.title = col ? 'Thema aufklappen' : 'Thema einklappen';
+      tg.addEventListener('click', () => { if (col) S.collapsed.delete(blk.id); else S.collapsed.add(blk.id); renderEditor(); });
+      const n = blk.end - blk.start - 1;
+      const cntLbl = el('span', 'bcnt', n + (n === 1 ? ' Zeile' : ' Zeilen'));
+      const flds = cnt.querySelectorAll('.fld');
+      if (flds.length === 3) ['Nummer', 'Thema', 'Zeit'].forEach((ph, i) => { flds[i].placeholder = ph; });
+      row.prepend(tg);
+      row.append(cnt, cntLbl, S.rawEdit === u.id ? el('div', 'acts') : blockActions(u, blk));
+    } else {
+      row.append(cnt, rowActions(u));
+    }
+    host.append(row);
+  });
+  if (!count) host.append(el('p', 'empty', 'In dieser Vorlage wurden keine Textstellen gefunden. Mit „Befehlszeilen zeigen“ siehst du alle Zeilen und kannst sie über </> direkt bearbeiten.'));
+  host.querySelectorAll('.fld').forEach(grow);
+  scroller.scrollTop = top;
+  if (S.focus) { const f = S.focus; S.focus = null; focusField(f.id, f.f); }
+}
+
+/* ---------- Mehrere Zeilen einfügen ---------- */
+let bulkId = null;
+function openBulk(id) { bulkId = id; $('#dlgText').value = ''; $('#dlg').showModal(); $('#dlgText').focus(); }
+$('#dlgCancel').addEventListener('click', () => $('#dlg').close());
+$('#dlgOk').addEventListener('click', () => {
+  const txt = $('#dlgText').value;
+  $('#dlg').close();
+  if (!txt.trim()) return;
+  commitIfChanged();
+  const made = opBulk(S.doc, idxOf(bulkId), txt);
+  if (made.length) { commit(); S.focus = { id: made[made.length - 1].id, f: 0 }; renderAll(); toast(made.length + ' Zeilen eingefügt.'); }
+});
+
+/* ---------- Vorschau ---------- */
+let pvTimer = null;
+function schedulePreview() { clearTimeout(pvTimer); pvTimer = setTimeout(renderSide, 120); }
+function renderSide() { renderPreview(); renderSource(); renderWarnings(); }
+function renderPreview() {
+  const text = serialize(S.doc, S.opts);
+  const res = PV.render(text, { jobname: fileBase(), assets: S.assetUrls });
+  $('#page').innerHTML = res.html;
+  fitPage();
+  const notes = [];
+  if (res.unknown.length) notes.push('In der Vorschau nicht dargestellt (die Datei bleibt davon unberührt): ' + res.unknown.map(x => (x.indexOf(' ') > 0 ? x : '\\' + x)).join(', '));
+  const pg = $('#page .pg');
+  if (pg && pg.offsetHeight > 1126) notes.push('Der Inhalt ist vermutlich länger als eine Seite.');
+  $('#pvNote').textContent = notes.join('  ·  ');
+  $('#pvNote').style.display = notes.length ? '' : 'none';
+}
+function fitPage() {
+  const body = $('#pvBody'), page = $('#page'), wrap = $('#pageWrap');
+  const avail = body.clientWidth - 20;
+  const sc = Math.max(0.3, Math.min(1, avail / 794));
+  page.style.transform = 'scale(' + sc + ')';
+  page.style.transformOrigin = 'top left';
+  wrap.style.width = (794 * sc) + 'px';
+  wrap.style.height = (page.offsetHeight * sc) + 'px';
+}
+function renderSource() { $('#src').value = serialize(S.doc, S.opts); }
+function renderWarnings() {
+  const w = checkDoc(S.doc, S.opts);
+  $('#warns').textContent = w.length ? w.map(x => '⚠ ' + x.msg).join('  ') : '';
+}
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  S.tab = t.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  $('#pvBody').hidden = S.tab !== 'pv';
+  $('#src').hidden = S.tab !== 'src';
+  $('#pvNote').hidden = S.tab !== 'pv';
+  $('#pvHint').hidden = S.tab !== 'pv';
+  if (S.tab === 'pv') fitPage();
+}));
+window.addEventListener('resize', () => { if (S.doc) { fitPage(); document.querySelectorAll('#lines .fld').forEach(grow); } });
+
+/* ---------- Hinweis, Ordner, Logo ---------- */
+function renderReminder() {
+  const imgs = findImages(S.doc, S.opts).map(p => p.replace(/^\.\//, ''));
+  const box = $('#remind');
+  box.textContent = '';
+  box.append(el('b', null, 'Hinweis: '), document.createTextNode('Speichere die Datei im Ordner build.'));
+  if (imgs.length) {
+    box.append(document.createTextNode(imgs.length > 1 ? ' Dort müssen die Bilder ' : ' Dort muss das Logo unter dem Namen '));
+    imgs.forEach((p, i) => {
+      box.append(el('b', null, p));
+      if (i < imgs.length - 1) box.append(document.createTextNode(', '));
+    });
+    box.append(document.createTextNode(' liegen (so steht es in der Vorlage).'));
+    imgs.forEach(p => {
+      const st = S.imgStatus[p];
+      if (st === 'ok') box.append(el('span', 'ok', '  ✓ ' + p + ' im Ordner gefunden.'));
+      else if (st === 'missing') box.append(el('span', 'bad', '  ✗ ' + p + ' fehlt im Ordner!'));
+    });
+  }
+  const missingManual = imgs.some(p => !S.assetUrls[p]);
+  $('#btnLogo').hidden = !missingManual;
+}
+
+async function dirFile(path) {
+  const parts = path.replace(/^\.\//, '').split('/').filter(Boolean);
+  let d = S.dir;
+  for (let i = 0; i < parts.length - 1; i++) d = await d.getDirectoryHandle(parts[i]);
+  const fh = await d.getFileHandle(parts[parts.length - 1]);
+  return fh.getFile();
+}
+async function refreshAssets() {
+  const imgs = findImages(S.doc, S.opts).map(p => p.replace(/^\.\//, ''));
+  S.imgStatus = {};
+  for (const p of imgs) {
+    if (S.dir && S.dirOk) {
+      try {
+        const f = await dirFile(p);
+        if (S.assetUrls[p] && S.assetUrls[p].indexOf('blob:') === 0) URL.revokeObjectURL(S.assetUrls[p]);
+        S.assetUrls[p] = URL.createObjectURL(f);
+        S.imgStatus[p] = 'ok';
+      } catch (e) {
+        S.imgStatus[p] = 'missing';
+      }
+    }
+  }
+  renderReminder();
+  renderSide();
+}
+
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('lse-db', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function idbGet(k) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function idbSet(k, v) { const db = await idbOpen(); return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+
+function updateDirUI() {
+  const b = $('#btnDir'), st = $('#dirStat');
+  if (!S.dirSupport) {
+    b.hidden = true;
+    st.textContent = 'Dieser Browser kann nicht direkt in einen Ordner schreiben, die Datei wird heruntergeladen. (Chrome oder Edge können das.)';
+    return;
+  }
+  if (!S.dir) { b.textContent = 'Ordner build wählen …'; st.textContent = 'Dann speichert das Tool dort direkt und prüft, ob das Logo vorhanden ist.'; }
+  else if (!S.dirOk) { b.textContent = 'Ordner „' + S.dir.name + '“ freigeben'; st.textContent = 'Der Browser braucht dafür einmal pro Sitzung deine Zustimmung.'; }
+  else { b.textContent = 'Ordner wechseln …'; st.innerHTML = ''; const s = el('span', 'ok', 'Ausgabeordner: „' + S.dir.name + '“ verbunden'); st.append(s); }
+}
+async function initDir() {
+  if (!S.dirSupport) { updateDirUI(); return; }
+  try {
+    const h = await idbGet('build');
+    if (h) { S.dir = h; S.dirOk = (await h.queryPermission({ mode: 'readwrite' })) === 'granted'; }
+  } catch (e) { /* kein gespeicherter Ordner */ }
+  updateDirUI();
+  if (S.dirOk) refreshAssets();
+}
+$('#btnDir').addEventListener('click', async () => {
+  try {
+    if (S.dir && !S.dirOk) {
+      S.dirOk = (await S.dir.requestPermission({ mode: 'readwrite' })) === 'granted';
+    } else {
+      S.dir = await window.showDirectoryPicker({ id: 'lse-build', mode: 'readwrite' });
+      S.dirOk = true;
+      try { await idbSet('build', S.dir); } catch (e) { /* nicht kritisch */ }
+    }
+  } catch (e) { if (e && e.name !== 'AbortError') toast('Ordner konnte nicht geöffnet werden: ' + e.message, true); }
+  updateDirUI();
+  if (S.dirOk) refreshAssets();
+});
+$('#btnLogo').addEventListener('click', () => $('#logoIn').click());
+$('#logoIn').addEventListener('change', ev => {
+  const f = ev.target.files[0]; ev.target.value = '';
+  if (f) setManualImage(f);
+});
+function setManualImage(f) {
+  const imgs = findImages(S.doc, S.opts).map(p => p.replace(/^\.\//, ''));
+  const target = imgs.find(p => !S.assetUrls[p]) || imgs[0];
+  if (!target) { toast('Die Vorlage enthält kein Bild.', true); return; }
+  S.assetUrls[target] = URL.createObjectURL(f);
+  renderReminder(); renderSide();
+  toast('Logo wird nur in der Vorschau verwendet. Lege die echte Datei „' + target + '“ in den Ordner build.');
+}
+
+/* ---------- Vorlagen laden, merken ---------- */
+const STORE_KEY = 'lse_templates_v1';
+function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch (e) { return {}; } }
+function saveStore(o) { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); return true; } catch (e) { return false; } }
+function fillTplSelect(selected) {
+  const sel = $('#tplSel');
+  sel.textContent = '';
+  BUILTINS.forEach(b => { const o0 = el('option', null, b.name + ' (eingebaut)'); o0.value = 'builtin:' + b.name; sel.append(o0); });
+  const st = loadStore();
+  Object.keys(st).sort().forEach(k => { const o = el('option', null, k + ' (gemerkt)'); o.value = 'store:' + k; sel.append(o); });
+  const o2 = el('option', null, '— geladene Datei —'); o2.value = 'file'; o2.hidden = true; sel.append(o2);
+  sel.value = selected || ('builtin:' + BUILTINS[0].name);
+}
+function confirmDiscard() { return !S.dirty || confirm('Die Änderungen an der aktuellen Vorlage sind noch nicht gespeichert. Trotzdem fortfahren?'); }
+function loadTemplate(text, name, selKey) {
+  let doc;
+  try { doc = parseTex(text); } catch (e) { toast(e.message, true); return false; }
+  S.doc = doc; S.original = text; S.tplName = name; S.undo = []; S.redo = []; S.last = snap(); S.dirty = false; S.rawEdit = null; S.focus = null; S.collapsed = new Set();
+  const f = $('#fname');
+  if (!f.value.trim() || f.dataset.auto === '1') { f.value = name; f.dataset.auto = '1'; }
+  fillTplSelect(selKey || 'file');
+  renderAll();
+  refreshAssets();
+  return true;
+}
+$('#tplSel').addEventListener('change', ev => {
+  const v = ev.target.value;
+  if (!confirmDiscard()) { fillTplSelect(S.selKey); return; }
+  if (v.indexOf('builtin:') === 0) { const b = BUILTINS.find(x => 'builtin:' + x.name === v); if (b) { S.selKey = v; loadTemplate(b.text, b.name, v); } }
+  else if (v.indexOf('store:') === 0) { const k = v.slice(6); const st = loadStore(); if (st[k] != null) { S.selKey = v; loadTemplate(st[k], k, v); } }
+});
+$('#btnLoad').addEventListener('click', () => $('#fileIn').click());
+$('#fileIn').addEventListener('change', ev => { const f = ev.target.files[0]; ev.target.value = ''; if (f) readTemplateFile(f); });
+function readTemplateFile(f) {
+  if (!confirmDiscard()) return;
+  const r = new FileReader();
+  r.onload = () => { S.selKey = 'file'; loadTemplate(String(r.result), f.name.replace(/\.tex$/i, ''), 'file'); };
+  r.readAsText(f, 'utf-8');
+}
+$('#btnKeep').addEventListener('click', () => {
+  const st = loadStore();
+  st[S.tplName] = S.original;
+  if (saveStore(st)) { fillTplSelect('store:' + S.tplName); S.selKey = 'store:' + S.tplName; toast('Vorlage „' + S.tplName + '“ gemerkt (nur in diesem Browser).'); }
+  else toast('Das Merken hat nicht geklappt (Browser-Speicher nicht verfügbar).', true);
+});
+$('#btnForget').addEventListener('click', () => {
+  const v = $('#tplSel').value;
+  if (v.indexOf('store:') !== 0) { toast('Zum Vergessen zuerst eine gemerkte Vorlage in der Liste wählen.'); return; }
+  const st = loadStore(); delete st[v.slice(6)]; saveStore(st); fillTplSelect(S.selKey === v ? 'file' : S.selKey); toast('Vorlage vergessen.');
+});
+$('#btnReset').addEventListener('click', () => {
+  if (!confirm('Alle Änderungen verwerfen und die Vorlage so laden, wie sie war?')) return;
+  loadTemplate(S.original, S.tplName, $('#tplSel').value);
+});
+
+/* ---------- Optionen, Dateiname ---------- */
+$('#btnColl').addEventListener('click', () => { S.blocks.forEach(b => S.collapsed.add(b.id)); renderEditor(); });
+$('#btnExp').addEventListener('click', () => { S.collapsed = new Set(); renderEditor(); });
+$('#optEsc').addEventListener('change', ev => { S.opts.autoEscape = ev.target.checked; renderAll(); });
+$('#optCmd').addEventListener('change', ev => { S.showCmd = ev.target.checked; renderEditor(); });
+$('#fname').addEventListener('input', ev => { ev.target.dataset.auto = '0'; schedulePreview(); });
+
+/* ---------- Speichern ---------- */
+function outputText() { return serializeFile(S.doc, S.opts); }
+async function saveTex() {
+  commitIfChanged();
+  const name = cleanName($('#fname').value);
+  if (!name) { toast('Bitte zuerst oben einen Dateinamen eingeben. Er erscheint auch im Seitenkopf.', true); $('#fname').focus(); return; }
+  const warns = checkDoc(S.doc, S.opts);
+  if (warns.length && !confirm('Es gibt Warnungen (' + warns.length + '): Klammern sind nicht ausgeglichen, die Datei lässt sich dann evtl. nicht kompilieren. Trotzdem speichern?')) return;
+  const fn = name + '.tex';
+  const text = outputText();
+  try {
+    if (S.dir && S.dirOk) {
+      let exists = true;
+      try { await S.dir.getFileHandle(fn); } catch (e) { exists = false; }
+      if (exists && !confirm('Im Ordner „' + S.dir.name + '“ gibt es schon eine Datei „' + fn + '“. Überschreiben?')) return;
+      const fh = await S.dir.getFileHandle(fn, { create: true });
+      const w = await fh.createWritable(); await w.write(text); await w.close();
+      S.dirty = false;
+      toast('Gespeichert: ' + S.dir.name + '/' + fn);
+      return;
+    }
+    if (window.showSaveFilePicker) {
+      const fh = await window.showSaveFilePicker({ suggestedName: fn, types: [{ description: 'LaTeX-Datei', accept: { 'text/plain': ['.tex'] } }] });
+      const w = await fh.createWritable(); await w.write(text); await w.close();
+      S.dirty = false; toast('Gespeichert: ' + fh.name);
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+    a.download = fn; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    S.dirty = false; toast('Heruntergeladen: ' + fn + ' – lege sie in den Ordner build.');
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+    toast('Speichern fehlgeschlagen: ' + (e && e.message), true);
+  }
+}
+$('#btnSave').addEventListener('click', saveTex);
+$('#btnCopy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(serialize(S.doc, S.opts)); toast('LaTeX-Code in die Zwischenablage kopiert.'); }
+  catch (e) { $('.tab[data-tab=src]').click(); $('#src').select(); toast('Kopieren nicht erlaubt – der Quelltext ist markiert, bitte mit Strg+C kopieren.', true); }
+});
+$('#btnUndo').addEventListener('click', doUndo);
+$('#btnRedo').addEventListener('click', doRedo);
+document.addEventListener('keydown', ev => {
+  const mod = ev.ctrlKey || ev.metaKey;
+  if (mod && ev.key.toLowerCase() === 's') { ev.preventDefault(); saveTex(); return; }
+  const inField = /^(INPUT|TEXTAREA|SELECT)$/.test((ev.target.tagName || ''));
+  if (mod && !inField && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? doRedo() : doUndo(); }
+  else if (mod && !inField && ev.key.toLowerCase() === 'y') { ev.preventDefault(); doRedo(); }
+});
+window.addEventListener('beforeunload', ev => { if (S.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
+
+/* ---------- Ziehen und Ablegen ---------- */
+let dragN = 0;
+window.addEventListener('dragenter', ev => { if (ev.dataTransfer && ev.dataTransfer.types.indexOf('Files') >= 0) { dragN++; $('#drop').style.display = 'flex'; } });
+window.addEventListener('dragleave', () => { dragN = Math.max(0, dragN - 1); if (!dragN) $('#drop').style.display = 'none'; });
+window.addEventListener('dragover', ev => { ev.preventDefault(); });
+window.addEventListener('drop', ev => {
+  ev.preventDefault(); dragN = 0; $('#drop').style.display = 'none';
+  const files = Array.from((ev.dataTransfer && ev.dataTransfer.files) || []);
+  files.forEach(f => {
+    if (/\.tex$/i.test(f.name) || f.type.indexOf('text/') === 0) readTemplateFile(f);
+    else if (f.type.indexOf('image/') === 0) setManualImage(f);
+  });
+});
+
+/* ---------- Gesamt ---------- */
+function renderAll() {
+  renderEditor();
+  renderReminder();
+  renderSide();
+  updateButtons();
+}
+
+/* ---------- Start ---------- */
+(function start() {
+  const b0 = BUILTINS[0];
+  S.selKey = 'builtin:' + b0.name;
+  fillTplSelect(S.selKey);
+  loadTemplate(b0.text, b0.name, S.selKey);
+  updateDirUI();
+  initDir();
+  window.__S = S; // für Tests
+})();
+</script>
+</body>
+</html>

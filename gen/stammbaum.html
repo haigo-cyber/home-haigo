@@ -234,10 +234,41 @@ ul.cites button:hover{text-decoration:underline}
 textarea.raw{font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;min-height:46vh;white-space:pre}
 .issue{padding:6px 0;border-top:1px solid var(--line2);font-size:14px}
 .issue b.fehler{color:var(--danger)} .issue b.warnung{color:var(--warn)}
-.menu{position:absolute;right:14px;top:50px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;z-index:40;min-width:240px}
-.menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:6px}
-.menu button:hover{background:var(--accent-soft)}
-.menu hr{border:0;border-top:1px solid var(--line2);margin:4px 0}
+.menu{position:fixed;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;z-index:40;min-width:300px;max-width:min(420px,calc(100vw - 16px))}
+.menu .msearch{padding:2px 2px 6px}
+.menu .msq{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg)}
+.menu .mlist{overflow:auto;min-height:0;overscroll-behavior:contain}
+.menu .mi{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;text-align:left;border:0;background:transparent;padding:7px 10px;border-radius:6px}
+.menu .mi:hover,.menu .mi.act{background:var(--accent-soft)}
+.menu .mi:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.menu .mi[disabled]{opacity:.45}
+.menu kbd{font:12px var(--sans);color:var(--muted);white-space:nowrap}
+.menu .mh{font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 10px 4px}
+.menu .mlist>.mh:first-child{padding-top:4px}
+.menu .mempty{padding:10px;color:var(--muted)}
+.menu .mi[hidden],.menu .mh[hidden],.menu .mempty[hidden]{display:none}
+/* ---- Kopfzeile und Ansichten-Leiste ---- */
+.tgrp{display:flex;gap:6px;align-items:center}
+.tgrp.seg{gap:0}.tgrp.seg .btn:first-child{border-top-right-radius:0;border-bottom-right-radius:0}.tgrp.seg .btn:last-child{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-1px}
+.top{flex-wrap:nowrap}
+.top .fname{flex:0 1 auto;min-width:0}
+.tright{display:flex;align-items:center;gap:8px;flex:none}
+@media (max-width:1100px){.top .bstamp{display:none}}
+@media (max-width:900px){.top .brand{display:none}}
+@media (max-width:760px){.top{flex-wrap:wrap}.tright{flex:1 1 100%;flex-wrap:wrap;max-width:100%}.tright .vsep{display:none}}
+.vsep{width:1px;align-self:stretch;background:var(--line);margin:3px 2px}
+.btn.ico{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn.ico svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.btn.sm.ico{min-width:30px;padding:3px 7px}
+body.viewer .top .vsep{display:none}
+.tabs{position:relative;overflow-x:hidden}
+.tab.ovf{position:absolute;visibility:hidden;pointer-events:none}
+.tabmore{border:0;background:transparent;padding:10px 12px;border-bottom:3px solid transparent;color:var(--muted);white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.tabmore:hover,.tabmore[aria-expanded="true"]{color:var(--ink)}
+.tabmore svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.tabtools{display:flex;align-items:center;gap:5px}
+.tabtools .vsep{margin:2px 3px}
+@media (max-width:700px){.tabs{overflow-x:auto}}
 #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;z-index:90;max-width:90vw;font-size:14px;box-shadow:var(--shadow)}
 .empty{color:var(--muted);padding:16px 0}
 .badge{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--accent-soft)}
@@ -299,7 +330,7 @@ textarea.raw{font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;min-height:46vh
 
 .fstat{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:5px 14px;background:var(--panel);border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
 .fstat[hidden]{display:none}
-.fstat .fsrc{flex:1 1 320px;min-width:0}
+.fstat .fsrc{flex:1 1 220px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stwarn{color:#b45309;font-weight:600}
 .stok{color:var(--muted)}
 ul.plain{margin:0;padding-left:18px}
@@ -809,33 +840,37 @@ body.t3fs{overflow:hidden}
     <span class="brand">Seifferts Stammbaum</span>
     <span class="fname" id="fname"></span>
     <span class="spacer"></span>
-    <button class="btn" id="btnOpen">Datei öffnen</button>
-    <button class="btn" id="btnDrive">Google Drive</button>
-    <button class="btn" id="btnUndo" disabled>Rückgängig</button>
-    <button class="btn" id="btnRedo" disabled>Wiederholen</button>
-    <button class="btn pri" id="btnSave" disabled>Speichern</button>
-    <button class="btn" id="btnMenu" aria-haspopup="true" aria-expanded="false">Mehr</button>
+    <div class="tright">
+    <div class="tgrp"><button class="btn" id="btnOpen" title="Datei öffnen (Strg+O)">Datei öffnen</button>
+    <button class="btn" id="btnDrive" title="Sicherung in Google Drive anlegen oder wiederherstellen">Google Drive</button></div>
+    <span class="vsep" aria-hidden="true"></span>
+    <div class="tgrp seg" role="group" aria-label="Änderungen"><button class="btn ico" id="btnUndo" aria-label="Rückgängig" title="Rückgängig (Strg+Z)" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button class="btn ico" id="btnRedo" aria-label="Wiederholen" title="Wiederholen (Strg+Umschalt+Z)" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button></div>
+    <span class="vsep" aria-hidden="true"></span>
+    <button class="btn pri" id="btnSave" title="Speichern (Strg+S)" disabled>Speichern</button>
+    <button class="btn ico" id="btnMenu" aria-haspopup="menu" aria-expanded="false" title="Menü und Befehlssuche (Strg+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>Menü</button>
+    </div>
   </div>
   <div class="fstat" id="fstat" hidden></div>
   <div class="tabrow"><div class="tabs" role="tablist" id="tabs">
     <button class="tab" role="tab" data-view="card">Familienblatt</button>
-    <button class="tab" role="tab" data-view="d3">3D-Ansicht</button>
-    <button class="tab" role="tab" data-view="split">Geteilt</button>
-    <button class="tab" role="tab" data-view="two">Zwei Dateien</button>
     <button class="tab" role="tab" data-view="ped">Vorfahren</button>
     <button class="tab" role="tab" data-view="desc">Nachkommen</button>
-    <button class="tab" role="tab" data-view="src">Quellen</button>
-    <button class="tab" role="tab" data-view="names">Nachnamen</button>
+    <button class="tab" role="tab" data-view="split">Geteilt</button>
+    <button class="tab" role="tab" data-view="d3">3D-Ansicht</button>
     <button class="tab" role="tab" data-view="search">Suche</button>
     <button class="tab" role="tab" data-view="full">Volltext</button>
+    <button class="tab" role="tab" data-view="names">Nachnamen</button>
+    <button class="tab" role="tab" data-view="places">Orte</button>
     <button class="tab" role="tab" data-view="time">Zeitleiste</button>
     <button class="tab" role="tab" data-view="rel">Verwandtschaft</button>
-    <button class="tab" role="tab" data-view="places">Orte</button>
+    <button class="tab" role="tab" data-view="src">Quellen</button>
+    <button class="tab" role="tab" data-view="media">Medien</button>
     <button class="tab" role="tab" data-view="cal">Kalender</button>
     <button class="tab" role="tab" data-view="stats">Statistik</button>
-    <button class="tab" role="tab" data-view="media">Medien</button>
-    
-  </div><span class="tabtools"><button class="btn sm" id="btnCar" data-act="carOpen" title="Alle Ansichten als drehbaren Kartenring">Ansichten</button><button class="btn sm" id="btnEditP" data-act="t_editp" title="Die gewählte Person bearbeiten (geht auch per Doppelklick)">Person bearbeiten</button><button class="btn sm" id="btnSideL" data-act="t_side" aria-pressed="false" title="Personenliste links ein- oder ausblenden">Personenliste</button><button class="btn sm" id="btnInfo" data-act="t_info" aria-pressed="false" title="Seitenleiste rechts mit Bildern, Quellen und Orten der Person ein- oder ausblenden">Info-Leiste</button><button class="btn sm" id="btnDim" data-act="t_dim" aria-pressed="false" title="Nebenlinien halbtransparent zeigen: nur die direkte Linie der Hauptperson (Vorfahren, Nachkommen, Partner) bleibt deutlich">Nebenlinien abblenden</button><button class="btn sm" id="btnFs" data-act="t_fs" title="Vollbild ein- oder ausschalten">Vollbild</button></span></div>
+    <button class="tab" role="tab" data-view="two">Zwei Dateien</button>
+    <button class="tabmore" id="tabMore" aria-haspopup="menu" aria-expanded="false" title="Weitere Ansichten" hidden>Weitere<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+  </div><span class="tabtools"><button class="btn sm" id="btnCar" data-act="carOpen" title="Alle Ansichten als drehbaren Kartenring">Ansichten</button><button class="btn sm" id="btnEditP" data-act="t_editp" title="Die gewählte Person bearbeiten (geht auch per Doppelklick)">Person bearbeiten</button><span class="vsep" aria-hidden="true"></span><button class="btn sm ico" id="btnSideL" data-act="t_side" aria-pressed="false" aria-label="Personenliste" title="Personenliste links ein- oder ausblenden"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button><button class="btn sm ico" id="btnInfo" data-act="t_info" aria-pressed="false" aria-label="Info-Leiste" title="Seitenleiste rechts mit Bildern, Quellen und Orten der Person ein- oder ausblenden"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button><button class="btn sm ico" id="btnDim" data-act="t_dim" aria-pressed="false" aria-label="Nebenlinien abblenden" title="Nebenlinien halbtransparent zeigen: nur die direkte Linie der Hauptperson (Vorfahren, Nachkommen, Partner) bleibt deutlich"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button><button class="btn sm ico" id="btnFs" data-act="t_fs" aria-label="Vollbild" title="Vollbild ein- oder ausschalten"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></span></div>
   <div class="main" id="mainbox">
     <aside id="side">
       <div class="sbtop">
@@ -2425,7 +2460,7 @@ function srcFilesHtml(sid, compact) {
 const shortFile = (n) => n.length > 26 ? n.slice(0, 20) + "…" + n.slice(-5) : n;
 
 /* ---- Programmstand und Prüfung auf eine neuere Fassung (gegen veraltete Zwischenspeicher) ---- */
-const BUILD = "04.11.2026 21:39"; /* BUILD_ID=04.11.2026 21:39 */
+const BUILD = "07.11.2026 09:40"; /* BUILD_ID=07.11.2026 10:30 */
 async function checkFresh() {
   if (!/^https?:$/.test(location.protocol)) return false;
   try {
@@ -2485,7 +2520,7 @@ function renderDescList() {
     const fams = p.fams.filter(f => !path.has(f));
     if (!fams.length) return `<li class="leaf"><span class="dn${sideCls(pid)}">${nm}</span>${bd}</li>`;
     const famLine = (fid, idx) => {
-      if (DX.m === "off") return fams.length > 1 ? `<span class="sp">Familie ${idx + 1}</span>` : "";
+      if (!DX.sp) return fams.length > 1 ? `<span class="sp">Familie ${idx + 1}</span>` : "";
       const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, pid);
       const m = f.marr && f.marr.date.text ? ` <span class="sp">(${E(f.marr.date.text)})</span>` : "";
       return `<span class="sp">⚭</span> ${sp ? `<button class="lk" data-act="dgo" data-id="${sp}">${E(nameOf(sp))}</button> <span class="sp">${lifeHtml(db, sp)}</span>${qTotal(db, sp)} <span class="sp">${E(bdShort(db, sp))}</span>` : '<span class="sp">unbekannt</span>'}${m}`;
@@ -4095,7 +4130,7 @@ function mediaPicker(onPick, title, opts) {
   const d = openDlg({
     title: title || "Bild aus Drive wählen", wide: true, noFocus: false, data: { q: "" },
     body: (dd) => {
-      if (!accessToken && !LM.list.length) return `<p style="margin-top:0">Melde dich zuerst bei Google Drive an oder wähle einen Medienordner (Menü Mehr, Lokale Dateien und Sicherung).</p>`;
+      if (!accessToken && !LM.list.length) return `<p style="margin-top:0">Melde dich zuerst bei Google Drive an oder wähle einen Medienordner (Menü, Lokale Dateien und Sicherung).</p>`;
       if (!M.idx) return `<div class="hint">Lade Fotoliste …</div>`;
       return `<label class="fld"><span>Dateiname oder Ordner enthält</span><input id="mp_q" value="${E(dd.data.q)}" autocomplete="off"></label><div id="mp_grid"></div>`;
     },
@@ -4147,7 +4182,7 @@ function openGallery(pid) {
   const d = openDlg({
     title: (isSrc ? "Dateien der Quelle " + srcTitle(pid) : "Bilder von " + GED.displayName(rec)), wide: true, noFocus: true, data: {},
     body: () => {
-      let h = `<p style="margin-top:0">${isSrc ? "Hier verknüpfst du Bilder und PDF-Dateien mit der Quelle, so wie in Reunion." : "Hauptfoto ist das Bild, das in Reunion und hier zuerst erscheint."} Neue Dateien holst du aus dem Drive-Ordner Medien (Menü Mehr, Fotos und Dokumente zum Hochladen).</p>`;
+      let h = `<p style="margin-top:0">${isSrc ? "Hier verknüpfst du Bilder und PDF-Dateien mit der Quelle, so wie in Reunion." : "Hauptfoto ist das Bild, das in Reunion und hier zuerst erscheint."} Neue Dateien holst du aus dem Drive-Ordner Medien (Menü, Fotos und Dokumente zum Hochladen).</p>`;
       h += model.length ? `<ul class="gal">${model.map((m, i) => {
         const hit = M.idx ? findMedia(m.file) : null;
         const th = hit && IMG_RE.test(hit.name) ? `<img data-mid="${hit.id}" alt="">` : `<span class="nothumb">${hit ? "Dokument" : M.idx ? "nicht in Drive" : "keine Vorschau"}</span>`;
@@ -4395,8 +4430,8 @@ function renderStatus() {
   const sum = changeSummary(), n = sum.changed.length + sum.added.length + sum.deleted.length;
   let src;
   if (S.viewer) src = `<b>Nur-Lesen-Ansicht</b> vom ${E(S.viewerAt ? new Date(S.viewerAt).toLocaleString("de-DE") : "")}. Änderungen sind hier nicht möglich.`;
-  else if (S.fileHandle) src = `Hauptdatei: <b>lokale Datei</b> ${E(S.fileName)}. „Speichern“ schreibt direkt in diese Datei auf deinem Rechner.`;
-  else src = `Quelle: <b>lokale Datei</b> ${E(S.fileName)}. Sie wird nie verändert; „Als .ged speichern“ lädt eine neue Datei mit Zeitstempel herunter.`;
+  else if (S.fileHandle) src = `<span title="„Speichern“ schreibt direkt in diese Datei auf deinem Rechner.">Hauptdatei: <b>${E(S.fileName)}</b> · lokale Datei</span>`;
+  else src = `<span title="Die Datei wird nie verändert. „Als .ged speichern“ lädt eine neue Datei mit Zeitstempel herunter.">Quelle: <b>${E(S.fileName)}</b> · bleibt unverändert, Speichern erzeugt eine neue Datei</span>`;
   let st;
   if (isDirty()) st = `<span class="stwarn"><span class="sdot"></span>${n} ${n === 1 ? "Datensatz" : "Datensätze"} geändert, ${S.fileHandle && AS.on && !AS.paused ? "wird gleich automatisch gespeichert" : "noch nicht gespeichert"}</span>`;
   else if (S.lastSave) st = `<span class="stok">Gespeichert um ${E(fmtClock(S.lastSave.at))} (${S.lastSave.target === "drive" ? "Drive" : S.lastSave.target === "local" ? "lokale Datei" : "Download"}${S.lastSave.verified ? ", Inhalt geprüft" : ""})</span>`;
@@ -4428,7 +4463,7 @@ function saveConfirmDlg(o) {
         <dt>Stand in Drive</dt><dd>${E(fmtT(o.remote.modifiedTime))}, ${fmtSize(o.remote.size)}. ${o.conflicted ? "Achtung: Diese Datei wurde in Drive nach deinem Laden geändert. Du hast „Überschreiben“ gewählt." : "Das ist derselbe Stand, den du geladen hast."}</dd>
         <dt>Personen, Familien, Quellen</dt><dd>beim Laden ${s.o.indi} / ${s.o.fam} / ${s.o.sour}, jetzt ${s.indi} / ${s.fam} / ${s.sour}</dd>
         <dt>Änderungen</dt><dd>${list.length} Datensatz${list.length === 1 ? "" : "sätze"}</dd>
-        <dt>Sicherung</dt><dd>${o.needBackup ? "Vor dem Überschreiben wird der jetzige Stand aus Drive als Kopie „…-sicherung-…“ im selben Ordner abgelegt." : "Es wurde in dieser Sitzung vor weniger als 30 Minuten eine Sicherung angelegt, deshalb entsteht keine neue. Das lässt sich unter Mehr, Einstellungen ändern."}</dd>
+        <dt>Sicherung</dt><dd>${o.needBackup ? "Vor dem Überschreiben wird der jetzige Stand aus Drive als Kopie „…-sicherung-…“ im selben Ordner abgelegt." : "Es wurde in dieser Sitzung vor weniger als 30 Minuten eine Sicherung angelegt, deshalb entsteht keine neue. Das lässt sich unter Menü, Einstellungen ändern."}</dd>
         <dt>Danach</dt><dd>Das Tool liest die gespeicherte Datei aus Drive zurück und vergleicht sie Byte für Byte mit dem Gesendeten.</dd></dl>
         ${drop > 0.05 ? `<div class="err">Achtung: Es sind ${s.o.indi - s.indi} Personen weniger als beim Laden (${Math.round(drop * 100)} Prozent). Wenn du das nicht beabsichtigt hast, brich ab und prüfe unter Details, was gelöscht wurde.</div>` : ""}
         ${list.length ? `<details style="margin-top:8px"><summary>Was sich ändert (${list.length})</summary><ul class="cites" style="max-height:200px;overflow:auto;margin-top:8px">${list.slice(0, 200).map(x => `<li class="w">${E(x)}</li>`).join("")}${list.length > 200 ? "<li class=\"w\">…</li>" : ""}</ul></details>` : ""}`,
@@ -4986,14 +5021,14 @@ async function localSave() {
     await w.write(blob); await w.close();
     const after = await h.getFile();
     const sent = new Uint8Array(await blob.arrayBuffer()), back = new Uint8Array(await after.arrayBuffer());
-    if (back.length !== sent.length || !sent.every((v, i) => v === back[i])) throw new Error("Die gespeicherte Datei weicht von dem ab, was geschrieben werden sollte. Die Vorversion ist unter „Mehr“, „Lokale Dateien und Sicherung“ abrufbar.");
+    if (back.length !== sent.length || !sent.every((v, i) => v === back[i])) throw new Error("Die gespeicherte Datei weicht von dem ab, was geschrieben werden sollte. Die Vorversion ist unter „Menü“, „Lokale Dateien und Sicherung“ abrufbar.");
     S.localMod = after.lastModified; S.localSize = after.size;
     S.savedMark = S.db.changeCount;
     logSave({ target: "local", name: after.name, size: blob.size, verified: true, n });
     toast("In die lokale Datei gespeichert und geprüft (" + fmtSize(blob.size) + ")", 5000);
     if (bkDue() && accessToken) runBackup().then(backupToast);
   } catch (e) {
-    alert("Speichern in die lokale Datei fehlgeschlagen:\n" + (e && e.message || e) + "\n\nDeine Änderungen sind noch in der Seite. Über „Mehr“ kannst du sie als .ged-Datei herunterladen.");
+    alert("Speichern in die lokale Datei fehlgeschlagen:\n" + (e && e.message || e) + "\n\nDeine Änderungen sind noch in der Seite. Über „Menü“ kannst du sie als .ged-Datei herunterladen.");
   } finally { _lsaving = false; updateTop(); }
 }
 
@@ -5157,7 +5192,7 @@ async function driveViewOpen() {
   try {
     await ensureDrive();
     const f = (await driveList()).find(x => x.name === VIEW_FILE);
-    if (!f) { alert("In Drive liegt noch keine Ansicht. Sie entsteht bei der nächsten Sicherung (Mehr, Lokale Dateien und Sicherung, Einstellung „Ansicht für Handy und iPad mit in Drive ablegen“)."); return false; }
+    if (!f) { alert("In Drive liegt noch keine Ansicht. Sie entsteht bei der nächsten Sicherung (Menü, Lokale Dateien und Sicherung, Einstellung „Ansicht für Handy und iPad mit in Drive ablegen“)."); return false; }
     const p = JSON.parse(new TextDecoder().decode(await driveRead(f.id)));
     if (!p || !p.ged) throw new Error("Die Ansichtsdatei in Drive ist nicht lesbar.");
     return await bootViewer(p);
@@ -6124,7 +6159,7 @@ function tMedia() {
   const idxOk = !!M.idx;
   const albs = ZUS.data.albums;
   let h = tHead("Medien und Alben", "Alle Fotos und Dokumente, die an Personen, Familien und Quellen hängen. Die Dateien werden aus dem Medienordner oder aus Google Drive gezeigt.");
-  if (!idxOk && !S.viewer) h += `<div class="panel hint">${accessToken || LM.list.length ? "Lade Dateiliste …" : "Wähle unter „Mehr“, „Lokale Dateien und Sicherung“ einen Medienordner oder melde dich bei Google Drive an. Ohne Dateiliste lassen sich nur die Einträge zählen."}</div>`;
+  if (!idxOk && !S.viewer) h += `<div class="panel hint">${accessToken || LM.list.length ? "Lade Dateiliste …" : "Wähle unter „Menü“, „Lokale Dateien und Sicherung“ einen Medienordner oder melde dich bei Google Drive an. Ohne Dateiliste lassen sich nur die Einträge zählen."}</div>`;
   const list = mediaFiltered();
   const found = list.filter(x => x.hit).length;
   h += `<div class="tbar"><div class="chips">${[["all", "Alle"], ["indi", "Personen"], ["fam", "Familien"], ["sour", "Quellen"]].map(([k, t]) => `<button class="chip${TG.mType === k ? " on" : ""}" data-act="t_mtype" data-k="${k}">${t}</button>`).join("")}</div>
@@ -6300,7 +6335,7 @@ ACT.t_ifold = (d) => { SIDE.fold[d.s] = !SIDE.fold[d.s]; lsSet("st.ifold", JSON.
 function setFs(on) {
   document.body.classList.toggle("fs", on);
   SIDE.fsSide = false; SIDE.fsInfo = false;           // im Vollbild sind zunächst alle Seitenleisten weg
-  const b = $("btnFs"); if (b) { b.textContent = on ? "Vollbild beenden" : "Vollbild"; b.classList.toggle("pri", on); }
+  const b = $("btnFs"); if (b) { b.title = on ? "Vollbild beenden" : "Vollbild ein- oder ausschalten"; b.setAttribute("aria-label", on ? "Vollbild beenden" : "Vollbild"); b.setAttribute("aria-pressed", String(on)); b.classList.toggle("pri", on); }
   applySide(); renderInfo();
 }
 ACT.t_fs = () => {
@@ -6425,7 +6460,7 @@ const ZOOM = { ped: +lsGet("st.zoomP", 1) || 1, desc: +lsGet("st.zoomD", 1) || 1
 const ZMIN = 0.3, ZMAX = 2;
 /* Zuschaltbar: Ehepartner und Kinder der Hauptperson in der Vorfahrenansicht (PX), Ehepartner in der Nachkommenansicht (DX) */
 const PX = { sp: lsGet("st.pedSp", "0") === "1", kid: lsGet("st.pedKid", "0") === "1" };
-const DX = { m: (() => { const v = lsGet("st.descSpM", ""); if (["off", "line", "box"].includes(v)) return v; return lsGet("st.descSp", "1") === "0" ? "off" : "line"; })() };   // Ehepartner: aus, als Zeile im Kasten, als eigener Kasten
+const DX = { sp: lsGet("st.descSp", "1") !== "0" };
 const PX_MAX = 60;
 function pedExtras() {   // Ehepartner und Kinder der gewählten Person, nach Familie geordnet
   if (!S.db || !(PX.sp || PX.kid)) return [];
@@ -6442,12 +6477,12 @@ function pedXctl() {
   return `<span class="xtog" role="group" aria-label="Zuschalten"><label class="chk" title="Ehepartner der gewählten Person zusätzlich zeigen"><input type="checkbox" id="pxSp"${PX.sp ? " checked" : ""}> Ehepartner</label><label class="chk" title="Kinder der gewählten Person zusätzlich zeigen"><input type="checkbox" id="pxKid"${PX.kid ? " checked" : ""}> Kinder</label></span>`;
 }
 function descXctl() {
-  return `<label title="Ehepartner ausblenden, als Zeile im Kasten oder (im Baum) als eigener Kasten zeigen">Ehepartner <select id="dxMode">${[["off", "aus"], ["line", "als Zeile"], ["box", "eigener Kasten"]].map(([v, t]) => `<option value="${v}"${DX.m === v ? " selected" : ""}>${t}</option>`).join("")}</select></label>`;
+  return `<span class="xtog"><label class="chk" title="Ehepartner in den Kästen und Zeilen ein- oder ausblenden"><input type="checkbox" id="dxSp"${DX.sp ? " checked" : ""}> Ehepartner</label></span>`;
 }
 document.addEventListener("change", (e) => {
   const id = e.target && e.target.id;
   if (id === "pxSp" || id === "pxKid") { PX[id === "pxSp" ? "sp" : "kid"] = e.target.checked; lsSet(id === "pxSp" ? "st.pedSp" : "st.pedKid", e.target.checked ? "1" : "0"); render(); }
-  else if (id === "dxMode") { DX.m = e.target.value; lsSet("st.descSpM", DX.m); render(); }
+  else if (id === "dxSp") { DX.sp = e.target.checked; lsSet("st.descSp", DX.sp ? "1" : "0"); render(); }
 });
 function pedExtraRows() {   // für Liste und Fächer: Zeilen mit Ehepartnern und Kindern
   const db = S.db;
@@ -6625,33 +6660,6 @@ function layoutTree(items, edges, ori, slots) {
 const ARROW = { LR: ["›", "‹"], RL: ["‹", "›"], TB: ["⌄", "⌃"], BT: ["⌃", "⌄"] };   // [zu den Vorfahren/Kindern hin, zurück]
 function boxLines(nm, hasPh, BW, PH) { const tw = BW - 18 - 14 - (hasPh ? PH + 6 : 0); return Math.min(3, Math.max(1, Math.ceil(nm.length * 7.2 / tw))); }
 
-/* ---------- Ehepartner als eigene Kästen: Block aus Person und Ehepartner-Kästen ---------- */
-const SPG = 6;
-function spBlock(ph, shs, ori) {   // Versätze von Person und Ehepartner-Kästen im Block (alle Richtungen: untereinander, bei unten nach oben umgekehrt)
-  const offs = []; let y = 0;
-  if (ori === "BT") { shs.forEach(h => { offs.push(y); y += h + SPG; }); return { person: y, sp: offs, h: y + ph }; }
-  y = ph + SPG; shs.forEach(h => { offs.push(y); y += h + SPG; });
-  return { person: 0, sp: offs, h: shs.length ? y - SPG : ph };
-}
-function spBoxH(GEO, nm) { return GEO.c ? GEO.BH : Math.max(GEO.BH, 9 + boxLines(nm, false, GEO.BW, 40) * 16 + 4 + 15 + 14 + 6); }
-function spBoxHtml(GEO, s, top, left, label) {
-  const st = `left:${left}px;top:${top}px;height:${s.h}px;width:${GEO.BW}px`;
-  if (!s.id) return `<div class="tb empty sx spb${GEO.c ? " tc tc" + GEO.c : ""}" style="${st}">${GEO.c > 2 ? "?" : E(s.nm)}</div>`;
-  const body = GEO.c ? tcInner(GEO.c, s.nm, s.id) : `<span class="tx"><span class="nm">${E(s.nm)}</span><span class="yr">${lifeHtml(S.db, s.id)}</span><span class="pl">${E(label)}</span></span>`;
-  return `<button class="tb sx spb ${s.sex}${sideCls(s.id)}${GEO.c ? " tc tc" + GEO.c : ""}" style="${st}" data-act="pedgo" data-id="${s.id}" title="${E(s.nm)} (${E(label)})\n${E(bdText(S.db, s.id))}">${body}</button>`;
-}
-function spList(id, skip, lineChild) {   // Ehepartner einer Person als Liste von {id,nm,sex,marr}
-  const db = S.db, p = GED.personInfo(db, id), out = [], seen = new Set();
-  for (const fid of p.fams) {
-    const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, id);
-    if (lineChild && f.children.includes(lineChild)) continue;   // die Familie, aus der die Linie weiterläuft, steht schon im Baum
-    if (sp === id || (sp && (sp === skip || seen.has(sp)))) continue;
-    if (sp) seen.add(sp);
-    out.push({ id: sp || null, nm: sp ? nameOf(sp) : "Ehepartner unbekannt", sex: sp ? GED.personInfo(db, sp).sex : "U", marr: f.marr && f.marr.date.text ? f.marr.date.text : "" });
-  }
-  return out;
-}
-
 /* ---------- Vorfahren als Baum ---------- */
 function renderPedTree() {
   const db = S.db, N = S.gens, ori = ORI.ped;
@@ -6659,7 +6667,7 @@ function renderPedTree() {
   treeMediaIdx();
   const GEO = boxGeo(), BW = GEO.BW, BH = GEO.BH, PH = 40, placeholders = new Set();
   anc.forEach((id, k) => { const g = Math.floor(Math.log2(k)); if (g < N - 1 && (anc.has(2 * k) !== anc.has(2 * k + 1))) placeholders.add(anc.has(2 * k) ? 2 * k + 1 : 2 * k); });
-  const ex = pedExtras().filter(e => e.kind === "kid"), sh = ex.length ? 1 : 0, slots0 = Math.pow(2, N - 1), slots = Math.max(slots0, ex.length), dc = (slots - slots0) / 2;
+  const ex = pedExtras(), sh = ex.length ? 1 : 0, slots0 = Math.pow(2, N - 1), slots = Math.max(slots0, ex.length), dc = (slots - slots0) / 2;
   const all = new Set([...anc.keys(), ...placeholders]), info = new Map(), items = [], edges = [];
   all.forEach(k => {
     const g0 = Math.floor(Math.log2(k)), g = g0 + sh, i = k - Math.pow(2, g0), c = (i + 0.5) * slots0 / Math.pow(2, g0) + dc;
@@ -6668,9 +6676,7 @@ function renderPedTree() {
     const lines = boxLines(nm, hit, BW, PH);
     const bl = bdLine(db, id, "b"), dl = bdLine(db, id, "d");
     const rl = relTag(id, "bx"), h = GEO.c ? BH : Math.max(hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (bl ? 14 : 0) + (dl ? 14 : 0) + (rl ? 14 : 0) + 15, BH);
-    const sps = PX.sp ? spList(id, k === 1 ? null : anc.get(k ^ 1), k === 1 ? null : anc.get(k >> 1)).map(s => Object.assign(s, { h: spBoxH(GEO, s.nm) })) : [];
-    const blk = spBlock(h, sps.map(s => s.h), ori);
-    info.set(k, { h, hit, nm, bl, dl, rl, id, pi, sps, blk }); items.push({ key: k, g, c, h: blk.h });
+    info.set(k, { h, hit, nm, bl, dl, rl, id, pi }); items.push({ key: k, g, c, h });
     if (all.has(2 * k)) edges.push([k, 2 * k]); if (all.has(2 * k + 1)) edges.push([k, 2 * k + 1]);
   });
   const exInfo = ex.map((e, i) => {
@@ -6688,8 +6694,7 @@ function renderPedTree() {
       ${GEO.c ? tcInner(GEO.c, nm, e.id) : `<span class="tx"><span class="nm">${E(nm)}</span><span class="yr">${lifeHtml(db, e.id)}</span><span class="pl">${e.kind === "sp" ? "⚭ Ehepartner" : "Kind"}</span></span>`}</button>`;
   });
   all.forEach(k => {
-    const p = L.pos.get(k), f = info.get(k), st = `left:${p.left}px;top:${p.top + (f.blk ? f.blk.person : 0)}px;height:${f.blk ? f.h : p.h}px`;
-    if (f.sps) f.sps.forEach((s, j) => { boxes += spBoxHtml(GEO, s, p.top + f.blk.sp[j], p.left, "⚭ " + (k === 1 ? "Ehepartner" : "weitere Ehe") + (s.marr ? " " + s.marr : "")); });
+    const p = L.pos.get(k), f = info.get(k), st = `left:${p.left}px;top:${p.top}px;height:${p.h}px`;
     if (placeholders.has(k)) { boxes += `<div class="tb empty${GEO.c ? " tc tc" + GEO.c : ""}" style="${st};width:${BW}px">${GEO.c > 2 ? "?" : "unbekannt"}</div>`; return; }
     const ph = f.hit ? `<span class="ph"><img data-mid="${f.hit.id}" alt=""></span>` : "", kin = pedKin(f.id);
     const arL = k === 1 && kin.kids.length ? `<span class="ar" data-act="t_pchild" title="Zum Kind">${ARROW[ori][1]}</span>` : "";
@@ -6714,7 +6719,7 @@ function descNodes(maxDepth, MAXN) {
     const p = GED.personInfo(db, pid), node = { id: pid, p, depth, sp: [], kids: [], more: 0 };
     for (const fid of p.fams.filter(f => !path.has(f))) {
       const f = GED.famInfo(db, fid), sp = GED.spouseIn(db, fid, pid);
-      if (DX.m !== "off") node.sp.push(sp ? { id: sp, nm: nameOf(sp), yrs: bdShort(db, sp) || GED.lifeSpan(db, sp), sex: GED.personInfo(db, sp).sex, marr: f.marr && f.marr.date.text ? f.marr.date.text : "" } : { id: null, nm: "Ehepartner unbekannt", yrs: "", sex: "U", marr: "" });
+      if (DX.sp) node.sp.push(sp ? { id: sp, nm: nameOf(sp), yrs: bdShort(db, sp) || GED.lifeSpan(db, sp) } : { id: null, nm: "unbekannt", yrs: "" });
       if (!f.children.length) continue;
       if (depth >= maxDepth) { node.more += f.children.length; continue; }
       const np = new Set(path); np.add(fid);
@@ -6733,11 +6738,9 @@ function renderDescTree() {
     all.push(n); n.key = all.length - 1;
     n.hit = mainPhotoHit(n.p.rec); n.nm = GED.displayName(n.p.rec);
     const tw = BW - 18 - 14 - (n.hit ? PH + 6 : 0), lines = boxLines(n.nm, n.hit, BW, PH);
-    const boxMode = DX.m === "box", sps = boxMode ? 0 : n.sp.map(s => Math.max(1, Math.ceil((s.nm.length + s.yrs.length + 3) * 6.4 / tw))).reduce((a, b) => a + b, 0);
+    const sps = n.sp.map(s => Math.max(1, Math.ceil((s.nm.length + s.yrs.length + 3) * 6.4 / tw))).reduce((a, b) => a + b, 0);
     n.bl = bdLine(db, n.id, "b"); n.dl = bdLine(db, n.id, "d"); n.rl = relTag(n.id, "bx");
     n.h = GEO.c ? BH : Math.max(n.hit ? PH + 12 : 0, 9 + lines * 16 + 4 + (n.bl ? 14 : 0) + (n.dl ? 14 : 0) + (n.rl ? 14 : 0) + 15 + sps * 14, BH);
-    n.ph = n.h;
-    if (boxMode) { n.sp.forEach(s => { s.h = spBoxH(GEO, s.nm); }); n.blk = spBlock(n.ph, n.sp.map(s => s.h), ori); n.h = n.blk.h; }
     n.kids.forEach(walk);
   })(root);
   let leaf = 0;
@@ -6749,11 +6752,9 @@ function renderDescTree() {
   for (const n of all) {
     const p = L.pos.get(n.key);
     const ph = n.hit ? `<span class="ph"><img data-mid="${n.hit.id}" alt=""></span>` : "";
-    const boxMode = DX.m === "box";
-    if (boxMode) n.sp.forEach((s, j) => { boxes += spBoxHtml(GEO, s, p.top + n.blk.sp[j], p.left, "⚭ Ehepartner" + (s.marr ? " " + s.marr : "")); });
-    const spl = boxMode ? "" : n.sp.map(s => `<span class="pl sp2">⚭ ${s.id ? `<span class="splk" data-act="pedgo" data-id="${s.id}">${E(s.nm)}</span>` : E(s.nm)}${s.yrs ? " " + E(s.yrs) : ""}</span>`).join("");
+    const spl = n.sp.map(s => `<span class="pl sp2">⚭ ${s.id ? `<span class="splk" data-act="pedgo" data-id="${s.id}">${E(s.nm)}</span>` : E(s.nm)}${s.yrs ? " " + E(s.yrs) : ""}</span>`).join("");
     const arR = n.more ? `<span class="ar" data-act="dgo" data-id="${n.id}" title="${n.more} weitere Kinder: diese Person in die Mitte setzen">${ARROW[ori][0]}</span>` : "";
-    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}${sideCls(n.id)}${GEO.c ? " tc tc" + GEO.c : ""}" style="left:${p.left}px;top:${p.top + (boxMode ? n.blk.person : 0)}px;height:${n.ph}px;width:${BW}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}${GEO.c && n.sp.length ? "\n⚭ " + E(n.sp.map(s => s.nm).join(", ")) : ""}">${arR}${GEO.c ? tcInner(GEO.c, n.nm, n.id) : `${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${n.rl}${spl}</span>${qTotal(db, n.id)}`}</button>`;
+    boxes += `<button class="tb ${n.p.sex}${n.depth === 1 ? " root" : ""}${sideCls(n.id)}${GEO.c ? " tc tc" + GEO.c : ""}" style="left:${p.left}px;top:${p.top}px;height:${n.h}px;width:${BW}px" data-act="dgo" data-id="${n.id}" title="${E(n.nm)}\n${E(bdText(db, n.id))}${GEO.c && n.sp.length ? "\n⚭ " + E(n.sp.map(s => s.nm).join(", ")) : ""}">${arR}${GEO.c ? tcInner(GEO.c, n.nm, n.id) : `${ph}<span class="tx"><span class="nm">${E(n.nm)}</span>${n.bl}${n.dl}${n.rl}${spl}</span>${qTotal(db, n.id)}`}</button>`;
   }
   const opts = [2, 3, 4, 5, 6, 8].map(n => `<option value="${n}"${n === S.depth ? " selected" : ""}>${n}</option>`).join("");
   return `<div class="treebar"><strong style="font-family:var(--serif)">${E(nameOf(S.pid))}</strong>
@@ -7653,12 +7654,13 @@ function welcomeHtml() {
       ${S.lastHandleName ? `<button class="btn" data-act="openLast">Zuletzt: ${E(S.lastHandleName)}</button>` : ""}
       <button class="btn" data-act="drive">Von Google-Sicherung wiederherstellen</button>
       <div style="margin-top:10px"><button class="btn" data-act="driveView">${accessToken ? "Ansicht aus Drive öffnen" : "Bei Google anmelden und Ansicht öffnen"}</button></div></div>
-    <p class="fine" style="margin-top:14px">${FS.ok ? "Die Hauptdatei bleibt auf deinem Rechner und wird beim Speichern direkt überschrieben. Eine Sicherung samt Medien geht nach Google Drive (Mehr, Lokale Dateien und Sicherung). " : "Dieser Browser kann Dateien nicht direkt speichern. Mit Chrome oder Edge am Rechner geht es; hier wird beim Speichern eine neue Datei heruntergeladen. "}Exportiere in Reunion unter Datei, Exportieren eine GEDCOM-Datei mit UTF-8. Die Seite erkennt das Zeilenende deiner Datei und gibt es unverändert wieder aus.</p></div>`;
+    <p class="fine" style="margin-top:14px">${FS.ok ? "Die Hauptdatei bleibt auf deinem Rechner und wird beim Speichern direkt überschrieben. Eine Sicherung samt Medien geht nach Google Drive (Menü, Lokale Dateien und Sicherung). " : "Dieser Browser kann Dateien nicht direkt speichern. Mit Chrome oder Edge am Rechner geht es; hier wird beim Speichern eine neue Datei heruntergeladen. "}Exportiere in Reunion unter Datei, Exportieren eine GEDCOM-Datei mit UTF-8. Die Seite erkennt das Zeilenende deiner Datei und gibt es unverändert wieder aus.</p></div>`;
 }
 function render() {
   const has = !!S.db;
   applySide();
   document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.view === S.view && has)));
+  tabsLayout();
   $("tabs").parentNode.style.visibility = has ? "visible" : "hidden";
   const c = $("content");
   const tngv = has && TNG_VIEWS.includes(S.view);
@@ -7686,8 +7688,8 @@ function updateTop() {
   $("fname").innerHTML = has ? `<b>${E(S.fileName)}</b>${S.fileHandle ? " (lokal)" : S.viewer ? " (Ansicht)" : ""}${isDirty() ? '<span class="dirty" title="Ungespeicherte Änderungen"></span>' : ""}` : "";
   const u = has && S.db.undoStack.length, r = has && S.db.redoStack.length;
   $("btnUndo").disabled = !u; $("btnRedo").disabled = !r;
-  $("btnUndo").title = u ? "Rückgängig: " + S.db.undoStack[S.db.undoStack.length - 1].label : "";
-  $("btnRedo").title = r ? "Wiederholen: " + S.db.redoStack[S.db.redoStack.length - 1].label : "";
+  $("btnUndo").title = u ? "Rückgängig: " + S.db.undoStack[S.db.undoStack.length - 1].label + " (Strg+Z)" : "Rückgängig (Strg+Z)";
+  $("btnRedo").title = r ? "Wiederholen: " + S.db.redoStack[S.db.redoStack.length - 1].label + " (Strg+Umschalt+Z)" : "Wiederholen (Strg+Umschalt+Z)";
   const sv = $("btnSave");
   sv.disabled = !has;
   sv.textContent = S.fileHandle ? "In Datei speichern" : "Als .ged speichern";
@@ -7730,7 +7732,7 @@ async function loadBuffer(buf, name, source, driveMeta) {
   $("q").value = ""; $("abc").dataset.done = "";
   renderList();
   go(start);
-  toast(`${db.ofTag("INDI").length} Personen, ${db.ofTag("FAM").length} Familien, ${db.ofTag("SOUR").length} Quellen geladen` + (db.warnings.length ? " (Hinweise unter Mehr, Dateiinfo)" : ""), 4500);
+  toast(`${db.ofTag("INDI").length} Personen, ${db.ofTag("FAM").length} Familien, ${db.ofTag("SOUR").length} Quellen geladen` + (db.warnings.length ? " (Hinweise unter Menü, Dateiinfo)" : ""), 4500);
   return true;
 }
 function exportBlobText() {
@@ -8017,22 +8019,162 @@ function openDriveDlg() {
 ACT.drive = () => openDriveDlg();
 
 /* ============ MENÜ, PRÜFUNG, INFO, EINSTELLUNGEN ============ */
-function openMenu() {
-  if ($("menu")) { $("menu").remove(); return; }
-  const m = document.createElement("div");
-  m.className = "menu"; m.id = "menu";
-  m.innerHTML = `<button data-m="md">Neue Familienzweige per Markdown anlegen</button><button data-m="mde">Daten per Markdown ergänzen oder löschen</button><button data-m="check">Datenprüfung</button><button data-m="local">Lokale Dateien und Sicherung</button><button data-m="info">Dateiinfo</button><button data-m="ahnen">Ahnenspitzen und unverbundene Einträge</button><button data-m="merge">Zwei Personen verschmelzen</button><hr><button data-m="sf">Spezifische Filter</button><button data-m="todo">Forschungsnotizen (${todoCount()} offen)</button><hr><button data-m="export">Als .ged-Datei herunterladen</button><button data-m="viewer">Viewer-Datei für Handy und iPad</button><button data-m="media">Fotos und Dokumente (Drive)</button><button data-m="reports">Berichte als LaTeX</button><button data-m="filestatus">Datei und Sicherheit</button><button data-m="places">Orte und Bilder</button><button data-m="vergleich">Abgleich mit zweiter Datei</button><button data-m="pdf">PDF neben dem Stammbaum lesen</button><button data-m="abgleich">Abgleich mit PDF vorbereiten</button><hr><button data-m="main">Hauptperson festlegen</button><button data-m="settings">Einstellungen</button>`;
-  if (S.viewer) m.querySelectorAll("button[data-m]").forEach(x => { if (!["info", "todo"].includes(x.dataset.m)) x.remove(); });
-  m.querySelectorAll("hr").forEach(x => { if (S.viewer) x.remove(); });
-  document.body.appendChild(m);
-  $("btnMenu").setAttribute("aria-expanded", "true");
-  m.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-m]"); if (!b) return;
-    m.remove(); $("btnMenu").setAttribute("aria-expanded", "false");
-    ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, pdf: () => ACT.pdfMenu(), places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), todo: () => ACT.todoAll(), mde: () => ACT.mdEdit(), ahnen: () => ACT.ahnen(), merge: () => ACT.merge({}), sf: () => ACT.sf() })[b.dataset.m]();
-  });
+/* ---- Menüs: gegliedert, mit Suche und Tastaturbedienung ---- */
+let _pm = null;
+function closePop(focusBack) {
+  if (!_pm) return;
+  const { el, anchor } = _pm; _pm = null; el.remove();
+  if (anchor) { anchor.setAttribute("aria-expanded", "false"); if (focusBack) anchor.focus(); }
 }
-document.addEventListener("click", (e) => { const m = $("menu"); if (m && !e.target.closest("#menu") && e.target.id !== "btnMenu") { m.remove(); $("btnMenu").setAttribute("aria-expanded", "false"); } });
+function popMenu(anchor, spec) {
+  if (_pm && _pm.anchor === anchor) { closePop(true); return; }
+  closePop();
+  const items = spec.items.filter(Boolean);
+  const el = document.createElement("div");
+  el.className = "menu"; el.id = spec.id || "menu"; el.setAttribute("role", "menu"); el.setAttribute("aria-label", spec.label || "Menü");
+  let h = spec.search ? `<div class="msearch"><input type="search" class="msq" placeholder="${E(spec.search)}" aria-label="${E(spec.search)}" autocomplete="off" spellcheck="false"></div>` : "";
+  h += '<div class="mlist">';
+  items.forEach((it, i) => {
+    if (it.h) h += `<div class="mh" role="presentation" data-i="${i}"${it.only ? " hidden" : ""}>${E(it.h)}</div>`;
+    else h += `<button type="button" role="menuitem" class="mi" data-i="${i}" data-f="${E(GED.fold(it.label + " " + (it.kw || "")))}"${it.dis ? " disabled" : ""}${it.only ? " hidden" : ""}><span class="ml">${E(it.label)}</span>${it.keys ? `<kbd>${E(it.keys)}</kbd>` : ""}</button>`;
+  });
+  h += '</div><div class="mempty" hidden>Nichts gefunden</div>';
+  el.innerHTML = h;
+  document.body.appendChild(el);
+  anchor.setAttribute("aria-expanded", "true");
+  _pm = { el, anchor };
+  const inp = el.querySelector(".msq"), list = el.querySelector(".mlist");
+  const vis = () => [...el.querySelectorAll(".mi:not([hidden]):not([disabled])")];
+  const setAct = (b, scroll) => {
+    el.querySelectorAll(".mi.act").forEach(x => x.classList.remove("act"));
+    if (!b) return;
+    b.classList.add("act");
+    if (scroll !== false) b.scrollIntoView({ block: "nearest" });
+    if (!inp) b.focus({ preventScroll: true });
+  };
+  const apply = () => {
+    const terms = GED.fold(inp ? inp.value.trim() : "").split(/\s+/).filter(Boolean);
+    let head = null, has = false, any = false;
+    const flush = () => { if (head) head.hidden = !has; };
+    el.querySelectorAll(".mlist > *").forEach(n => {
+      if (n.classList.contains("mh")) { flush(); head = n; has = false; return; }
+      const it = items[+n.dataset.i];
+      const show = terms.length ? terms.every(t => n.dataset.f.includes(t)) : !it.only;
+      n.hidden = !show;
+      if (show) { has = true; any = true; }
+    });
+    flush();
+    el.querySelector(".mempty").hidden = any;
+    setAct(vis()[0], false);
+  };
+  const run = (b) => {
+    if (!b || b.disabled) return;
+    const it = items[+b.dataset.i];
+    closePop(false);
+    if (it && it.run) it.run();
+  };
+  el.addEventListener("click", (e) => { const b = e.target.closest(".mi"); if (b) run(b); });
+  el.addEventListener("mousemove", (e) => { const b = e.target.closest(".mi"); if (b && !b.classList.contains("act") && !b.disabled) setAct(b, false); });
+  el.addEventListener("keydown", (e) => {
+    const v = vis(), cur = v.indexOf(el.querySelector(".mi.act"));
+    if (e.key === "ArrowDown") { e.preventDefault(); setAct(v[Math.min(v.length - 1, cur + 1)]); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setAct(v[Math.max(0, cur - 1)]); }
+    else if (e.key === "Home" && !inp) { e.preventDefault(); setAct(v[0]); }
+    else if (e.key === "End" && !inp) { e.preventDefault(); setAct(v[v.length - 1]); }
+    else if (e.key === "PageDown") { e.preventDefault(); setAct(v[Math.min(v.length - 1, Math.max(0, cur) + 8)]); }
+    else if (e.key === "PageUp") { e.preventDefault(); setAct(v[Math.max(0, Math.max(0, cur) - 8)]); }
+    else if (e.key === "Enter") { e.preventDefault(); run(el.querySelector(".mi.act")); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePop(true); }
+    else if (e.key === "Tab") { closePop(false); }
+  });
+  if (inp) inp.addEventListener("input", apply);
+  // Platz: unter dem Auslöser, am rechten oder linken Rand ausgerichtet, nie aus dem Fenster
+  const r = anchor.getBoundingClientRect();
+  el.style.maxHeight = Math.max(160, innerHeight - r.bottom - 14) + "px";
+  const w = el.offsetWidth;
+  let left = spec.alignRight ? r.right - w : r.left;
+  left = Math.max(8, Math.min(left, innerWidth - w - 8));
+  el.style.left = left + "px"; el.style.top = (r.bottom + 6) + "px";
+  apply();
+  if (inp) inp.focus(); else setAct(vis()[0], false), vis()[0] && vis()[0].focus({ preventScroll: true });
+}
+document.addEventListener("mousedown", (e) => { if (_pm && !e.target.closest(".menu") && !_pm.anchor.contains(e.target)) closePop(false); });
+window.addEventListener("resize", () => closePop(false));
+function menuRun(key) {
+  return ({ local: openLocalDlg, viewer: openViewerDlg, export: exportDownload, media: openMediaDlg, abgleich: openAbgleich, vergleich: openCompare, pdf: () => ACT.pdfMenu(), places: openPlaces, filestatus: openFileStatus, reports: openReports, check: openCheck, info: openInfo, settings: openSettings, main: () => ACT.pickMain(), md: () => ACT.mdImport(), todo: () => ACT.todoAll(), mde: () => ACT.mdEdit(), ahnen: () => ACT.ahnen(), merge: () => ACT.merge({}), sf: () => ACT.sf() })[key]();
+}
+function menuCommands() {
+  const vw = S.viewer;
+  const m = (key, label, kw) => ({ label, kw, run: () => menuRun(key) });
+  const L = [];
+  if (!vw) L.push(
+    { h: "Daten bearbeiten" },
+    m("md", "Familienzweige per Markdown anlegen", "neue personen import liste"),
+    m("mde", "Daten per Markdown ergänzen oder löschen", "bearbeiten ändern"),
+    m("merge", "Zwei Personen verschmelzen", "dubletten zusammenführen"),
+    m("main", "Hauptperson festlegen", "startperson"),
+    { h: "Prüfen und auswerten" },
+    m("check", "Datenprüfung", "fehler befunde"),
+    m("ahnen", "Ahnenspitzen und unverbundene Einträge", "waisen"),
+    m("sf", "Spezifische Filter", "filter suche csv"),
+    m("todo", `Forschungsnotizen (${S.db ? todoCount() : 0} offen)`, "aufgaben todo"),
+    m("places", "Orte und Bilder", "karte koordinaten ortsbilder"),
+    { h: "Abgleich" },
+    m("vergleich", "Abgleich mit zweiter Datei", "gedcom vergleichen"),
+    m("pdf", "PDF neben dem Stammbaum lesen", "pdf"),
+    m("abgleich", "Abgleich mit PDF vorbereiten", "pdf ki chat"),
+    { h: "Datei und Sicherung" },
+    m("local", "Lokale Dateien und Sicherung", "drive vorversionen speichern unter"),
+    m("filestatus", "Datei und Sicherheit", "speicherprotokoll status"),
+    m("export", "Als .ged-Datei herunterladen", "export gedcom"),
+    m("viewer", "Viewer-Datei für Handy und iPad", "ansicht passwort html"),
+    m("media", "Fotos und Dokumente (Drive)", "medien hochladen"),
+    m("reports", "Berichte als LaTeX", "druck bericht tex pdf"),
+    { h: "Programm" },
+    m("info", "Dateiinfo", "version programmstand"),
+    m("settings", "Einstellungen", "optionen"));
+  else L.push({ h: "Auswerten" }, m("todo", `Forschungsnotizen (${S.db ? todoCount() : 0} offen)`, "aufgaben todo"), { h: "Programm" }, m("info", "Dateiinfo", "version programmstand"));
+  // Nur über die Suche erreichbar: Ansichten und Werkzeuge der Kopfzeile
+  const ex = [{ h: "Ansichten", only: true }];
+  document.querySelectorAll("#tabs .tab").forEach(t => {
+    if (t.offsetParent === null) return;
+    ex.push({ only: true, label: t.textContent.trim(), kw: "ansicht", run: () => { if (S.db) t.click(); else toast("Öffne zuerst eine Datei"); } });
+  });
+  ex.push({ h: "Aktionen", only: true });
+  [["btnOpen", "Datei öffnen", "Strg+O", ""], ["btnSave", "Speichern", "Strg+S", ""], ["btnUndo", "Rückgängig", "Strg+Z", ""], ["btnRedo", "Wiederholen", "Strg+Umschalt+Z", ""],
+   ["btnDrive", "Google Drive: Sicherung und Wiederherstellung", "", "backup sichern"], ["btnEditP", "Person bearbeiten", "", ""], ["btnCar", "Alle Ansichten als Kartenring", "", "karussell"],
+   ["btnSideL", "Personenliste ein- oder ausblenden", "", ""], ["btnInfo", "Info-Leiste ein- oder ausblenden", "", ""], ["btnDim", "Nebenlinien abblenden", "", ""], ["btnFs", "Vollbild", "", ""]
+  ].forEach(([id, label, keys, kw]) => { const b = $(id); if (b && !b.disabled && b.offsetParent !== null) ex.push({ only: true, label, keys, kw, run: () => b.click() }); });
+  return L.concat(ex);
+}
+function openMenu() { popMenu($("btnMenu"), { items: menuCommands(), search: "Befehl oder Ansicht suchen …", alignRight: true, label: "Menü" }); }
+/* ---- Ansichten-Leiste: was nicht passt, wandert in „Weitere“ (die gewählte Ansicht bleibt immer sichtbar) ---- */
+function tabsLayout() {
+  const box = $("tabs"), more = $("tabMore");
+  if (!box || !more) return;
+  const tabs = [...box.querySelectorAll(".tab")];
+  tabs.forEach(t => t.classList.remove("ovf"));
+  more.hidden = true;
+  if (box.clientWidth < 80 || getComputedStyle(box).overflowX === "auto") return;
+  const cs = getComputedStyle(box), avail = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const wd = (t) => t.offsetWidth + 2;
+  const vis = tabs.filter(t => t.offsetParent !== null);
+  if (vis.reduce((a, t) => a + wd(t), 0) <= avail) return;
+  more.hidden = false;
+  const budget = avail - wd(more);
+  const sel = vis.find(t => t.getAttribute("aria-selected") === "true");
+  const keep = new Set(); let used = 0;
+  if (sel) { keep.add(sel); used += wd(sel); }
+  for (const t of vis) { if (keep.has(t)) continue; if (used + wd(t) > budget) break; keep.add(t); used += wd(t); }
+  vis.forEach(t => { if (!keep.has(t)) t.classList.add("ovf"); });
+}
+$("tabMore").onclick = () => {
+  const hid = [...$("tabs").querySelectorAll(".tab.ovf")];
+  popMenu($("tabMore"), { id: "tabmenu", label: "Weitere Ansichten", items: hid.map(t => ({ label: t.textContent.trim(), run: () => t.click() })) });
+};
+if (window.ResizeObserver) new ResizeObserver(() => tabsLayout()).observe($("tabs")); else window.addEventListener("resize", tabsLayout);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(tabsLayout);
+setTimeout(tabsLayout, 0);
 function needDb() { if (!S.db) { toast("Öffne zuerst eine Datei"); return false; } return true; }
 function openCheck() {
   if (!needDb()) return;
@@ -8066,7 +8208,7 @@ function openInfo() {
       <dt>Personen</dt><dd>${counts.INDI || 0}</dd><dt>Familien</dt><dd>${counts.FAM || 0}</dd><dt>Quellen</dt><dd>${counts.SOUR || 0}</dd><dt>Notizsätze</dt><dd>${counts.NOTE || 0}</dd>
       <dt>Geänderte Sätze</dt><dd>${edited} (alle übrigen werden unverändert wieder ausgegeben)</dd></dl>
       ${db.warnings.length ? `<div class="panel"><h4>Hinweise beim Einlesen</h4>${db.warnings.slice(0, 20).map(w => `<div class="issue">${E(w)}</div>`).join("")}</div>` : ""}
-      <div class="panel"><h4>Markdown-Import</h4><p class="hint" style="margin-top:0">Personen und Familien lassen sich unter Mehr, Personen per Markdown anlegen, aus einer eingerückten Liste einlesen. Die folgenden Regeln sind so geschrieben, dass eine KI daraus passenden Text erzeugen kann.</p>${mdAiBlockHtml()}</div>
+      <div class="panel"><h4>Markdown-Import</h4><p class="hint" style="margin-top:0">Personen und Familien lassen sich unter Menü, Familienzweige per Markdown anlegen, aus einer eingerückten Liste einlesen. Die folgenden Regeln sind so geschrieben, dass eine KI daraus passenden Text erzeugen kann.</p>${mdAiBlockHtml()}</div>
       <p class="hint">Bilder und andere Medien werden nur als Verweis mit Dateipfad geführt. Die Pfade bleiben beim Bearbeiten unverändert, damit Reunion sie nach dem Re-Import wiederfindet.</p>`,
     buttons: () => [{ id: "close", label: "Schließen" }]
   });
@@ -8168,11 +8310,16 @@ $("tabs").addEventListener("click", (e) => { const b = e.target.closest(".tab");
 $("btnOpen").onclick = () => openLocalPicker();
 $("btnDrive").onclick = () => openDriveDlg();
 $("btnSave").onclick = () => { if (!S.db || S.viewer) return; if (S.fileHandle) localSave(); else exportDownload(); };
-$("btnMenu").onclick = (e) => { e.stopPropagation(); openMenu(); };
+$("btnMenu").onclick = () => openMenu();
 $("btnSide").onclick = () => document.body.classList.toggle("sb");
 $("btnUndo").onclick = () => { const l = GED.undo(S.db); if (l) afterEdit("Rückgängig: " + l); };
 $("btnRedo").onclick = () => { const l = GED.redo(S.db); if (l) afterEdit("Wiederholt: " + l); };
 document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !document.querySelector(".ovl")) {
+    const k = e.key.toLowerCase();
+    if (k === "k") { e.preventDefault(); if (_pm) closePop(true); else openMenu(); return; }
+    if (k === "o" && !S.viewer && $("btnOpen").offsetParent !== null) { e.preventDefault(); closePop(false); $("btnOpen").click(); return; }
+  }
   if (!S.db || document.querySelector(".ovl")) return;
   const mod = e.ctrlKey || e.metaKey;
   const inField = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || ""));
@@ -8245,7 +8392,7 @@ async function asSaveFile() {
   const w = await h.createWritable(); await w.write(blob); await w.close();
   const after = await h.getFile();
   const sent = new Uint8Array(await blob.arrayBuffer()), back = new Uint8Array(await after.arrayBuffer());
-  if (back.length !== sent.length || !sent.every((v, i) => v === back[i])) throw new Error("Die gespeicherte Datei weicht von dem ab, was geschrieben werden sollte. Die Vorversion ist unter „Mehr“, „Lokale Dateien und Sicherung“ abrufbar.");
+  if (back.length !== sent.length || !sent.every((v, i) => v === back[i])) throw new Error("Die gespeicherte Datei weicht von dem ab, was geschrieben werden sollte. Die Vorversion ist unter „Menü“, „Lokale Dateien und Sicherung“ abrufbar.");
   S.localMod = after.lastModified; S.localSize = after.size;
   S.savedMark = count;
   S.lastSave = { at: Date.now(), target: "local", name: after.name, size: blob.size, verified: true, n, auto: true };
@@ -8290,7 +8437,7 @@ function asState() {
   return "Entwurf im Browser: an";
 }
 ACT.asToggle = () => {
-  if (!S.fileHandle) { toast("Ohne direkt verbundene Datei wird alles als Entwurf im Browser gehalten. Zum Sichern: Mehr, Lokale Dateien und Sicherung, Speichern unter …", 7000); return; }
+  if (!S.fileHandle) { toast("Ohne direkt verbundene Datei wird alles als Entwurf im Browser gehalten. Zum Sichern: Menü, Lokale Dateien und Sicherung, Speichern unter …", 7000); return; }
   AS.on = !AS.on; lsSet("st.autosave", AS.on ? "1" : "0"); AS.paused = "";
   toast(AS.on ? "Automatisches Speichern ist an." : "Automatisches Speichern ist aus. Speichere mit „In Datei speichern“.", 4000);
   updateTop(); if (AS.on) asTick(true);
@@ -8307,7 +8454,7 @@ ACT.asRestore = async (d) => {
   const bytes = new TextEncoder().encode(x.text);
   if (await loadBuffer(bytes.buffer, x.name, "local", null)) {
     S.savedMark = -1; AS.draftCount = -1; AS.draftOf = null; updateTop();
-    toast("Entwurf wiederhergestellt. Speichere jetzt mit „Als .ged speichern“, oder über Mehr, Lokale Dateien und Sicherung, Speichern unter …, um wieder direkt in eine Datei zu schreiben.", 9000);
+    toast("Entwurf wiederhergestellt. Speichere jetzt mit „Als .ged speichern“, oder über Menü, Lokale Dateien und Sicherung, Speichern unter …, um wieder direkt in eine Datei zu schreiben.", 9000);
   }
 };
 ACT.asDrop = async (d) => {
@@ -8461,7 +8608,7 @@ ACT.newSrcFile = async () => {
 function fileBackupHint() {
   const c = typeof bkCfg === "function" ? bkCfg() : {};
   if (!LM.dirs.length) return `Noch kein Medienordner verbunden. Beim ersten Verknüpfen wirst du danach gefragt.`;
-  return c.media ? `Die Dateien liegen auf deinem Rechner. Die Google-Sicherung überträgt den Medienordner mit (eingeschaltet).` : `Die Dateien liegen auf deinem Rechner. Die Sicherung des Medienordners nach Google Drive ist ausgeschaltet. Einschalten unter Mehr, Lokale Dateien und Sicherung.`;
+  return c.media ? `Die Dateien liegen auf deinem Rechner. Die Google-Sicherung überträgt den Medienordner mit (eingeschaltet).` : `Die Dateien liegen auf deinem Rechner. Die Sicherung des Medienordners nach Google Drive ist ausgeschaltet. Einschalten unter Menü, Lokale Dateien und Sicherung.`;
 }
 
 /* ---- Quellen überall anklickbar: Q-Zeichen öffnen eine Liste, jede Quelle lässt sich öffnen und bearbeiten ---- */
@@ -10512,6 +10659,31 @@ ACT.qhelp = () => openDlg({
 });
 VIEW_OK.add("qhelp");
 
+
+/* ============ ANMELDUNG FÜR DAS LINUX-PROGRAMM ============
+   Das Linux-Programm öffnet diese Seite im normalen Browser mit ?linuxport=…&linuxstate=… . Die Seite meldet wie sonst bei
+   Google an und reicht das Token an das Programm auf demselben Rechner weiter (127.0.0.1). Ohne diese Angaben tut dieser Block nichts. */
+function linuxHandOff(port, state, token, secs) {
+  return "http://127.0.0.1:" + port + "/?access_token=" + encodeURIComponent(token) + "&expires_in=" + (secs || 3300) + "&state=" + encodeURIComponent(state);
+}
+(function () {
+  const q = new URLSearchParams(location.search), port = q.get("linuxport"), st = q.get("linuxstate");
+  if (!port || !st || !/^\d{2,5}$/.test(port) || !/^[\w-]{8,64}$/.test(st)) return;
+  const d = document.createElement("div");
+  d.id = "lxLogin";
+  d.style.cssText = "position:fixed;inset:0;z-index:99999;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px";
+  d.innerHTML = `<div class="panel" style="max-width:460px;padding:22px;text-align:center"><h2 style="margin-top:0">Anmeldung für das Linux-Programm</h2>
+    <p>Melde dich bei Google an. Danach kehrst du zum Linux-Programm zurück.</p>
+    <button class="btn pri" id="lxGo">Bei Google anmelden</button><div id="lxMsg" class="hint" style="margin-top:10px"></div></div>`;
+  document.body.appendChild(d);
+  document.getElementById("lxGo").onclick = async () => {
+    const m = document.getElementById("lxMsg");
+    m.textContent = "Einen Moment …";
+    try { await ensureDrive(); } catch (e) { m.textContent = "Anmeldung fehlgeschlagen: " + ((e && (e.message || e.type)) || e); return; }
+    m.textContent = "Fertig. Du kannst dieses Fenster schließen.";
+    location.href = linuxHandOff(port, st, accessToken);
+  };
+})();
 </script>
 </body>
 </html>

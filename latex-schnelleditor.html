@@ -50,6 +50,9 @@ body.nowrap #src{white-space:pre;overflow-wrap:normal}
 .ln .fld,.ln .rawin{min-width:12ch;padding:5px 8px;border:1px solid var(--bdi);border-radius:6px;font:inherit;line-height:1.35;width:0;background:var(--inp);color:var(--tx)}
 .ln textarea.fld{resize:none;overflow:hidden;display:block}
 .ln .rawin{flex:1;background:var(--inp);color:var(--tx);font:13px ui-monospace,Consolas,"Liberation Mono",monospace;width:auto;resize:none;overflow:hidden;display:block;line-height:1.4}
+.hdata{margin:0 0 10px;padding:6px 6px 8px;border:1px solid var(--bd);border-radius:9px;background:rgba(110,160,255,.06)}
+.hdata .hdh{font-size:12px;color:var(--mut);margin:0 4px 4px}
+.hdata .ln .fld{width:auto;flex:1;min-width:12ch;height:auto}
 .ln .fld:focus,.ln .rawin:focus{outline:2px solid var(--ac);outline-offset:-1px;border-color:var(--ac)}
 .ln .fld.bad{border-color:var(--err);background:#3a1f21}
 .ln.thema{background:var(--band);border:1px solid var(--bandbd);border-radius:8px;padding:6px 6px;margin-top:10px}
@@ -100,6 +103,8 @@ body.nowrap #src{white-space:pre;overflow-wrap:normal}
 #pageWrap{margin:0 auto}
 #page{width:794px}
 .pg{position:relative;background:#fff;color:#000;font-family:"Latin Modern Roman","LM Roman 12","CMU Serif","Computer Modern",Georgia,"Times New Roman",serif;font-size:16px;box-shadow:0 2px 14px rgba(0,0,0,.7)}
+.pg .pic{position:absolute;white-space:nowrap}
+.pg .card{display:inline-block;vertical-align:top;box-sizing:content-box;text-align:left}
 .pg .hd,.pg .ft{position:absolute;display:flex;align-items:flex-end}
 .pg .hd>div,.pg .ft>div{flex:1;display:flex;white-space:pre}
 .pg .hl{justify-content:flex-start;align-items:flex-end}
@@ -134,6 +139,8 @@ body.nowrap #src{white-space:pre;overflow-wrap:normal}
 /* Fuß */
 .bar{background:var(--panel);border-top:1px solid var(--bd);padding:8px 14px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
 .bar .rem{flex:1 1 320px;font-size:13px}
+.bar .outgrp{display:flex;align-items:center;gap:6px;font-size:13px}
+.bar .outgrp b{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .bar .rem b{font-weight:600}
 #toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#3a4354;border:1px solid #4a5568;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:80vw;z-index:50}
 #toast.show{opacity:1}
@@ -161,10 +168,11 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
 <body>
 <header class="top">
   <h1>Seifferts LaTeX-Schnelleditor</h1>
-  <span class="ver" id="ver" title="Version dieser Datei: zeigt, ob du die aktuelle Fassung geöffnet hast">Version 2.2 · 07.11.2026 19:09</span>
+  <span class="ver" id="ver" title="Version dieser Datei: zeigt, ob du die aktuelle Fassung geöffnet hast">Version 2.5 · 08.11.2026 17:01</span>
   <button class="btn wrapbtn" id="btnWrapAll" type="button" title="Nur die Anzeige im Tool: lange Texte umbrechen oder in einer Zeile lassen. Der Zeilenumbruch im PDF wird mit dem Knopf ↵ oder Umschalt+Enter gesetzt."></button>
   <div class="grp"><label for="tplSel">Vorlage</label><select id="tplSel"></select>
     <button class="btn" id="btnLoad" title="Eine .tex-Vorlage von deinem Rechner laden (oder hier ins Fenster ziehen)">Datei laden …</button>
+    <button class="btn" id="btnTplUpd" type="button">Vorlage aktualisieren</button>
     <button class="btn" id="btnKeep" title="Die geladene Vorlage im Browser merken, damit sie in der Liste steht">Vorlage merken</button>
     <button class="btn" id="btnForget" title="Die gewählte gemerkte Vorlage aus der Liste entfernen">Vergessen</button>
     <input type="file" id="fileIn" accept=".tex,text/plain,text/x-tex" hidden>
@@ -199,6 +207,9 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
   <button class="btn" id="btnRedo" disabled>↷ Wiederholen</button>
   <button class="btn" id="btnReset" title="Zurück zur Vorlage, wie sie geladen wurde">Zurücksetzen</button>
   <div class="rem" id="remind"></div>
+  <div class="outgrp" id="outGrp"><span class="small">Zielordner:</span> <b id="outName"></b>
+    <button class="btn sm" id="btnOut" type="button" title="Ordner festlegen oder ändern, in den „Als .tex speichern“ und „Vorlage aktualisieren“ schreiben">Ändern …</button>
+    <button class="btn sm" id="btnOutClr" type="button" hidden title="Zielordner zurücksetzen, es wird wieder im Hauptordner gespeichert">✕</button></div>
   <button class="btn" id="btnCopy">LaTeX kopieren</button>
   <button class="btn pri" id="btnSave">Als .tex speichern</button>
 </footer>
@@ -207,6 +218,13 @@ input::placeholder,textarea::placeholder{color:var(--ph)}
   <p class="small" style="margin:0 0 8px">Eine Zeile pro Eintrag. Hat die Zeile mehrere Textfelder, trennst du sie mit Tabulator (so kommt es aus Excel oder Tabellen). Die neuen Zeilen entstehen unter der gewählten Zeile.</p>
   <textarea id="dlgText" placeholder="M6c 0602 R004AB&#10;M6c 0602 R004LZA"></textarea>
   <div class="row"><button class="btn" id="dlgCancel">Abbrechen</button><button class="btn pri" id="dlgOk">Einfügen</button></div>
+</dialog>
+<dialog id="udlg">
+  <h3 style="margin:0 0 6px">Vorlage aktualisieren</h3>
+  <p class="small" style="margin:0 0 8px">Die bearbeitete Vorlage wird als neue, fortlaufend nummerierte Datei gespeichert. Das Original bleibt unverändert.</p>
+  <div id="uInfo" style="margin:8px 0"></div>
+  <div class="row" style="justify-content:flex-start"><button class="btn" id="uPick" type="button">Ordner wählen …</button></div>
+  <div class="row"><button class="btn" id="uCancel" type="button">Abbrechen</button><button class="btn" id="uLast" type="button" hidden></button><button class="btn pri" id="uNew" type="button"></button></div>
 </dialog>
 <dialog id="gdlg">
   <h3 style="margin:0 0 6px">Grafik einfügen</h3>
@@ -717,6 +735,54 @@ function lineTypes(doc) {
 }
 
 
+/* ---------- Kopfdaten: einfache Text-Makros im Vorspann (z. B. \Titel, \Fach) ---------- */
+function isSimpleText(b) {
+  if (b === '') return true;
+  if (/%/.test(b.replace(/\\%/g, ''))) return false;
+  if (/#\d/.test(b)) return false;
+  /* reine Zahlen und Längen (0.4pt, 1.0) sind keine Kopftexte */
+  if (/^\s*-?[0-9.,]+\s*(cm|mm|pt|em|ex|bp|in|sp|px)?\s*$/.test(b)) return false;
+  const t = b.replace(/\\textbar\{\}/g, ' ').replace(/\\(?:textbf|textit|emph|textsc|texttt|underline)\{/g, '{')
+    .replace(/\\[&%#_$,;\- ]/g, ' ').replace(/\\(?:quad|qquad|ldots|dots|ss|glqq|grqq|enspace)\b\s*(?:\{\})?/g, ' ').replace(/\\"[A-Za-z]/g, ' ');
+  return !/\\/.test(t);
+}
+/* only: Namen, die schon früher als Kopfdaten erkannt wurden (bleiben auch dann bearbeitbar, wenn der Text jetzt Befehle enthält) */
+function headFields(head, only) {
+  const all = [];
+  const re = /\\(?:re)?newcommand\*?\s*\{\\([A-Za-z@]+)\}\s*\{/g;
+  let m;
+  while ((m = re.exec(head))) {
+    const ls = head.lastIndexOf('\n', m.index) + 1;
+    if (/(^|[^\\])%/.test(head.slice(ls, m.index))) continue;
+    const open = m.index + m[0].length - 1;
+    let d = 0, j = open;
+    for (; j < head.length; j++) {
+      const c = head[j];
+      if (c === '\\') { j++; continue; }
+      if (c === '{') d++; else if (c === '}') { d--; if (d === 0) break; }
+    }
+    if (j >= head.length) continue;
+    const body = head.slice(open + 1, j);
+    re.lastIndex = j + 1;
+    if (/\n/.test(body)) continue;
+    const ok = only ? only.indexOf(m[1]) >= 0 : isSimpleText(body);
+    if (ok) all.push({ name: m[1], start: open + 1, end: j, value: body });
+  }
+  /* bei mehrfacher Definition gilt die letzte, die Reihenfolge der ersten Nennung bleibt */
+  const order = [], last = {};
+  all.forEach(f => { if (!(f.name in last)) order.push(f.name); last[f.name] = f; });
+  return order.map(n => last[n]);
+}
+function setHeadField(doc, name, value, opts, only) {
+  const f = headFields(doc.head, only).find(x => x.name === name);
+  if (!f) return false;
+  let v = String(value).replace(/\r?\n/g, ' ');
+  if (opts && opts.autoEscape) v = escSpecial(v);
+  doc.head = doc.head.slice(0, f.start) + v + doc.head.slice(f.end);
+  return true;
+}
+
+
 /* ---------- Schriftgröße des Dateinamens im Seitenkopf ---------- */
 function nameMacros(head) {
   const names = ['jobname'];
@@ -773,7 +839,7 @@ function setNameSize(doc, size) {
 
 if (typeof module !== 'undefined') {
   module.exports = { tokenizeLine, parseTex, serialize, serializeFile, escSpecial, opInsertBelow, opDuplicate, opRemove, opMove,
-    opMoveRelative, opBulk, opSetRaw, definedMacros, unitMacro, templateOf, themeMacro, blocksOf, opBlockMove, opBlockDuplicate, opBlockRemove, opInsertTypeAfterBlock, opInsertType, findNameSize, setNameSize, opInsertImage, opSetImg, imgLine, isContent, lineTypes, cloneUnits, hasFields, isBlankUnit, rawOfUnit, checkDoc, findImages, braceDelta, bodyOut, unitOut, segOut };
+    opMoveRelative, opBulk, opSetRaw, definedMacros, unitMacro, templateOf, themeMacro, blocksOf, opBlockMove, opBlockDuplicate, opBlockRemove, opInsertTypeAfterBlock, opInsertType, findNameSize, setNameSize, opInsertImage, opSetImg, imgLine, isContent, lineTypes, cloneUnits, hasFields, isBlankUnit, rawOfUnit, checkDoc, findImages, braceDelta, bodyOut, unitOut, segOut, headFields, setHeadField };
 }
 /* ===================================================================
    VORSCHAU: kleiner LaTeX-Interpreter, der eine Näherung als HTML liefert.
@@ -794,7 +860,7 @@ const PV = (function () {
     dots: '…', cdots: '⋯', alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', pi: 'π', circ: '∘', checkmark: '✓', blacksquare: '■',
     bullet: '•', colon: ':', quad: ' ', qquad: '  ', triangle: '△', angle: '∠', degree: '°' };
   const GL = { ss: 'ß', SS: 'SS', glqq: '„', grqq: '“', glq: '‚', grq: '‘', flqq: '«', frqq: '»', dq: '"', ldots: '…', dots: '…',
-    textellipsis: '…', textbackslash: '\\', textasciitilde: '~', textasciicircum: '^', euro: '€', texteuro: '€', textendash: '–',
+    textellipsis: '…', textbar: '|', textbackslash: '\\', textasciitilde: '~', textasciicircum: '^', euro: '€', texteuro: '€', textendash: '–',
     textemdash: '—', textbullet: '•', copyright: '©', pounds: '£', dag: '†', ddag: '‡', S: '§', P: '¶', o: 'ø', O: 'Ø', ae: 'æ',
     AE: 'Æ', oe: 'œ', OE: 'Œ', aa: 'å', AA: 'Å', l: 'ł', L: 'Ł', i: 'ı', j: 'ȷ', LaTeX: 'LaTeX', TeX: 'TeX', degree: '°',
     textdegree: '°', textquotedblleft: '“', textquotedblright: '”', textregistered: '®', texttrademark: '™', checkmark: '✓' };
@@ -832,6 +898,9 @@ const PV = (function () {
     this.geo = {};
     this.hf = {};
     this.depth = 0;
+    this.coltypes = {};
+    this.pics = [];
+    this.lw = null;
     this.jobname = (ctx && ctx.jobname) || 'Dateiname';
     this.fancy = false;
     this.headrule = 0;
@@ -839,7 +908,7 @@ const PV = (function () {
   const RP = Renderer.prototype;
 
   RP.baseStyle = function () {
-    return { size: BASE, lh: 14.5 * PXPT, bold: false, italic: false, sc: false, tt: false, sf: false, color: null, align: null, ul: false };
+    return { size: BASE, lh: 14.5 * PXPT, bold: false, italic: false, sc: false, tt: false, sf: !!this.defaultSf, color: null, align: null, ul: false };
   };
 
   /* ----- Längen ----- */
@@ -863,7 +932,8 @@ const PV = (function () {
     if (m[2]) {
       const nm = m[2].slice(1);
       let base = null;
-      if (nm === 'textwidth' || nm === 'linewidth' || nm === 'columnwidth') base = this.textwidthPx();
+      if (nm === 'textwidth') base = this.textwidthPx();
+      else if (nm === 'linewidth' || nm === 'columnwidth') base = this.lw != null ? this.lw : this.textwidthPx();
       else if (nm === 'paperwidth') base = 21 * PXCM;
       else if (nm === 'baselineskip') base = 14.5 * PXPT;
       else if (this.lengths[nm] != null) base = this.lengths[nm];
@@ -922,6 +992,19 @@ const PV = (function () {
       reDef.lastIndex = e + 1;
     }
     this.fancy = /fancyhdr/.test(h);
+    this.defaultSf = /\\renewcommand\s*\{\\familydefault\}\s*\{\\sfdefault\}/.test(h);
+    const reC = /\\newcolumntype\s*\{(.)\}\s*(?:\[\d\]\s*)?\{/g;
+    let cg;
+    while ((cg = reC.exec(h))) {
+      const e = readBalanced(h, cg.index + cg[0].length - 1);
+      if (e > 0) { this.coltypes[cg[1]] = h.slice(cg.index + cg[0].length, e); reC.lastIndex = e + 1; }
+    }
+    const reP = /\\AddToShipoutPicture(?:BG|FG)?\*?\s*\{/g;
+    let pg;
+    while ((pg = reP.exec(h))) {
+      const e = readBalanced(h, pg.index + pg[0].length - 1);
+      if (e > 0) { this.pics.push(h.slice(pg.index + pg[0].length, e)); reP.lastIndex = e + 1; }
+    }
     // Geometrie
     const geoOpts = [];
     let g;
@@ -1239,7 +1322,7 @@ const PV = (function () {
         case 'scshape': st.sc = true; break;
         case 'ttfamily': st.tt = true; break;
         case 'sffamily': st.sf = true; break;
-        case 'rmfamily': case 'normalfont': st.tt = false; st.sf = false; st.bold = false; st.italic = false; break;
+        case 'rmfamily': case 'normalfont': st.tt = false; st.sf = !!self.defaultSf && name === 'normalfont'; st.bold = false; st.italic = false; break;
         case 'centering': st.align = 'center'; self.openPar(C, st); break;
         case 'raggedright': st.align = 'left'; break;
         case 'raggedleft': st.align = 'right'; break;
@@ -1268,9 +1351,11 @@ const PV = (function () {
           break;
         }
         case 'parbox': {
-          readOpt(); const w = self.len(readArg(), st); readOpt();
+          readOpt(); readOpt(); readOpt(); const w = self.len(readArg(), st);
           const arg = readArg();
-          self.addItem(C, st, { t: 'mp', w, blocks: sub(arg, st).blocks });
+          const prevLw = self.lw; if (w != null) self.lw = w;
+          const bl = sub(arg, st).blocks; self.lw = prevLw;
+          self.addItem(C, st, { t: 'mp', w, blocks: bl });
           break;
         }
         case 'raisebox': {
@@ -1319,6 +1404,14 @@ const PV = (function () {
           const pa = plain(a), pb = plain(b), pc = plain(c2);
           self.addText(C, st, pb ? pa.split(pb).join(pc) : pa);
           break;
+        }
+        case 'rule': {
+          const lo = readOpt(); const w = self.len(readArg(), st); const h = self.len(readArg(), st);
+          self.addItem(C, st, { t: 'rule', w: w || 0, h: h || 0, lift: lo != null ? (self.len(lo, st) || 0) : 0 });
+          break;
+        }
+        case 'hyphenpenalty': case 'exhyphenpenalty': case 'tolerance': case 'emergencystretch': case 'linepenalty': case 'parindent': case 'parskip': {
+          const m2 = /^\s*=?\s*[-+]?[\d.]*\s*(?:pt|mm|cm|em|ex|plus|minus)?/.exec(s.slice(i)); i += m2[0].length; break;
         }
         case 'jobname': self.addText(C, st, self.jobname); break;
         case 'thepage': self.addText(C, st, '1'); break;
@@ -1391,7 +1484,9 @@ const PV = (function () {
       readOpt();
       const w = self.len(readArg(), st);
       const body = readEnv(env);
-      self.addItem(C, st, { t: 'mp', w, blocks: sub(body, st).blocks });
+      const prevLw = self.lw; if (w != null) self.lw = w;
+      const bl = sub(body, st).blocks; self.lw = prevLw;
+      self.addItem(C, st, { t: 'mp', w, blocks: bl });
       return;
     }
     if (star === 'tikzpicture') {
@@ -1401,8 +1496,31 @@ const PV = (function () {
       const re = /\\draw\s*(?:\[[^\]]*\])?\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)\s*rectangle\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/g;
       let m;
       while ((m = re.exec(body))) rects.push([+m[1], +m[2], +m[3], +m[4]]);
-      if (!rects.length) self.unknown.add('tikzpicture (außer Rechtecke)');
-      self.addItem(C, st, { t: 'tikz', rects });
+      /* einzelne Textkästen (\node[draw, text width=...] {Text};) werden als Karten gezeigt */
+      const cards = [];
+      const reN = /\\node\b/g; let mn;
+      while ((mn = reN.exec(body))) {
+        let p = mn.index + mn[0].length; while (/\s/.test(body[p] || '')) p++;
+        let opt = '';
+        if (body[p] === '[') { let d = 0, k = p + 1; for (; k < body.length; k++) { const ch = body[k]; if (ch === '\\') { k++; continue; } if (ch === '{') d++; else if (ch === '}') d--; else if (ch === ']' && d <= 0) break; } opt = body.slice(p + 1, k); p = k + 1; }
+        while (/\s/.test(body[p] || '')) p++;
+        if (body[p] === '(') { p = body.indexOf(')', p) + 1; while (/\s/.test(body[p] || '')) p++; }
+        if (/^at\b/.test(body.slice(p, p + 3)) || body[p] !== '{') continue;
+        const e = readBalanced(body, p); if (e < 0) continue;
+        if (!/\bdraw\b|text width/.test(opt)) continue;
+        const g1 = re => { const mm = re.exec(opt); return mm ? mm[1].trim() : null; };
+        const tw = g1(/text width\s*=\s*([^,\]]+)/), mh = g1(/minimum height\s*=\s*([^,\]]+)/), sep = g1(/inner sep\s*=\s*([^,\]]+)/);
+        const s2 = Object.assign({}, st);
+        if (/\\itshape/.test(opt)) s2.italic = true;
+        if (/\\sffamily/.test(opt)) s2.sf = true;
+        const fz = /\\fontsize\{([\d.]+)\}\{([\d.]+)\}/.exec(opt); if (fz) { s2.size = parseFloat(fz[1]) * PXPT; s2.lh = parseFloat(fz[2]) * PXPT; }
+        s2.align = null;
+        cards.push({ w: tw ? self.len(tw, st) : null, mh: mh ? self.len(mh, st) : null, sep: sep ? (self.len(sep, st) || 0) : 4 * PXPT,
+          draw: /\bdraw\b/.test(opt), fill: /fill\s*=\s*white/.test(opt), shadow: /drop shadow/.test(opt), blocks: sub(body.slice(p + 1, e), s2).blocks });
+        reN.lastIndex = e + 1;
+      }
+      if (!rects.length && !cards.length) self.unknown.add('tikzpicture (außer Rechtecke)');
+      self.addItem(C, st, { t: 'tikz', rects, cards });
       return;
     }
     if (star === 'verbatim' || star === 'lstlisting') {
@@ -1421,20 +1539,51 @@ const PV = (function () {
     sub(body, st).blocks.forEach(b => C.blocks.push(b));
   };
 
+  /* Makros, die selbst Zeilen oder Zellen erzeugen (& oder \\ im Makrotext), werden vor dem Zerlegen der Tabelle aufgelöst */
+  RP.expandRows = function (body, depth) {
+    if (depth > 6) return body;
+    let out = '', i = 0; const n = body.length;
+    while (i < n) {
+      const c = body[i];
+      if (c === '%') { let j = body.indexOf('\n', i); if (j < 0) j = n; i = j; continue; }
+      if (c !== '\\') { out += c; i++; continue; }
+      const m = /^\\([A-Za-z@]+)/.exec(body.slice(i, i + 60));
+      if (!m) { out += body.slice(i, i + 2); i += 2; continue; }
+      const mac = this.macros[m[1]];
+      if (!mac || !/&|\\\\|\\hline/.test(mac.body)) { out += m[0]; i += m[0].length; continue; }
+      let p = i + m[0].length;
+      const args = []; let k = 0;
+      if (mac.def != null) { while (/\s/.test(body[p] || '')) p++; if (body[p] === '[') { const e = body.indexOf(']', p); args.push(body.slice(p + 1, e)); p = e + 1; } else args.push(mac.def); k = 1; }
+      for (; k < mac.n; k++) {
+        while (/\s/.test(body[p] || '')) p++;
+        if (body[p] === '{') { const e = readBalanced(body, p); args.push(body.slice(p + 1, e < 0 ? n : e)); p = e < 0 ? n : e + 1; }
+        else { args.push(body[p] || ''); p++; }
+      }
+      const rep = mac.body.replace(/#(\d)/g, (x, d) => (args[parseInt(d, 10) - 1] != null ? args[parseInt(d, 10) - 1] : ''));
+      out += this.expandRows(rep, depth + 1); i = p;
+    }
+    return out;
+  };
+
   RP.tableBlock = function (spec, body, st) {
     const self = this;
     const cols = [];
     const parseSpec = sp => {
+      let pend = null;
       for (let i = 0; i < sp.length; i++) {
         const c = sp[i];
         if (c === '|') continue;
-        else if (c === 'l' || c === 'c' || c === 'r') cols.push({ a: c === 'l' ? 'left' : (c === 'c' ? 'center' : 'right'), w: null });
+        else if (c === 'l' || c === 'c' || c === 'r') { cols.push({ a: c === 'l' ? 'left' : (c === 'c' ? 'center' : 'right'), w: null }); pend = null; }
         else if (c === 'p' || c === 'm' || c === 'b' || c === 'X') {
           let w = null;
           if (sp[i + 1] === '{') { const e = readBalanced(sp, i + 1); w = self.len(sp.slice(i + 2, e), st); i = e; }
-          cols.push({ a: 'left', w });
+          cols.push({ a: pend || 'left', w }); pend = null;
         }
-        else if (c === '@' || c === '>' || c === '<' || c === '!') { if (sp[i + 1] === '{') { i = readBalanced(sp, i + 1); } }
+        else if (c === '>') {
+          if (sp[i + 1] === '{') { const e = readBalanced(sp, i + 1); const inn = sp.slice(i + 2, e); pend = /\\centering/.test(inn) ? 'center' : (/\\raggedleft/.test(inn) ? 'right' : (/\\raggedright/.test(inn) ? 'left' : null)); i = e; }
+        }
+        else if (c === '@' || c === '<' || c === '!') { if (sp[i + 1] === '{') { i = readBalanced(sp, i + 1); } }
+        else if (self.coltypes[c] != null) parseSpec(self.coltypes[c]);
         else if (c === '*') {
           const e1 = readBalanced(sp, i + 1); const cnt = parseInt(sp.slice(i + 2, e1), 10) || 1;
           const e2 = readBalanced(sp, e1 + 1); const inner = sp.slice(e1 + 2, e2);
@@ -1444,6 +1593,7 @@ const PV = (function () {
       }
     };
     parseSpec(spec);
+    body = this.expandRows(body.replace(/\\(?:endhead|endfirsthead|endfoot|endlastfoot)\b/g, ''), 0);
     // Zeilen und Zellen auf oberster Klammerebene trennen
     const rows = []; let cur = []; let cell = ''; let d = 0;
     for (let i = 0; i < body.length; i++) {
@@ -1458,8 +1608,10 @@ const PV = (function () {
     if (cell.trim() !== '' || cur.length) { cur.push(cell); rows.push(cur); }
     const outRows = rows.map(r => {
       let top = false;
+      let colIdx = 0;
       const cells = r.map((src, k) => {
         let t = src;
+        const myCol = cols[colIdx];
         if (/^\s*\\(hline|toprule|midrule|bottomrule)/.test(t)) { top = true; t = t.replace(/^\s*\\(hline|toprule|midrule|bottomrule)\s*/, ''); }
         while (/^\s*\\(hline|midrule)/.test(t)) t = t.replace(/^\s*\\(hline|midrule)\s*/, '');
         const C2 = { blocks: [], par: null };
@@ -1467,8 +1619,11 @@ const PV = (function () {
         const mc = /^\s*\\multicolumn\{(\d+)\}\{([^}]*)\}\{([\s\S]*)\}\s*$/.exec(t);
         let al = null;
         if (mc) { span = parseInt(mc[1], 10); t = mc[3]; al = /c/.test(mc[2]) ? 'center' : (/r/.test(mc[2]) ? 'right' : 'left'); }
+        const prevLw = self.lw; if (span === 1 && myCol && myCol.w != null) self.lw = myCol.w;
         self.evalStr(t, C2, st);
+        self.lw = prevLw;
         self.endPar(C2);
+        colIdx += span;
         return { blocks: C2.blocks, span, al };
       });
       return { cells, top };
@@ -1505,6 +1660,7 @@ const PV = (function () {
       case 'text': return '<span style="' + this.itemStyle(it.st) + (flex ? 'white-space:pre;' : '') + '">' + esc(it.v) + '</span>';
       case 'math': return '<span style="' + this.itemStyle(it.st) + 'font-style:italic;white-space:pre;">' + it.html + '</span>';
       case 'br': return flex ? '' : '<br>';
+      case 'rule': return '<span style="display:inline-block;flex:none;width:' + r2(it.w) + 'px;height:' + r2(it.h) + 'px;vertical-align:' + r2(it.lift) + 'px;' + (it.w > 0 && it.h > 0 ? 'background:#000;' : '') + '"></span>';
       case 'hfill': return '<span class="hfill"></span>';
       case 'hrule': return '<span class="hrulefill"></span>';
       case 'dotfill': return '<span class="dotfill" style="font-size:' + r2(it.st.size) + 'px"></span>';
@@ -1517,6 +1673,10 @@ const PV = (function () {
       case 'raise': return '<span style="position:relative;display:inline-block;top:' + r2(-it.lift) + 'px">' + it.items.map(x => this.itemHTML(x, flex)).join('') + '</span>';
       case 'mp': return '<span class="mp" style="' + (it.w != null ? 'width:' + r2(it.w) + 'px;' : '') + '">' + this.blocksHTML(it.blocks) + '</span>';
       case 'tikz': {
+        if (it.cards && it.cards.length && !it.rects.length) {
+          return it.cards.map(cd => '<span class="card" style="' + (cd.w != null ? 'width:' + r2(cd.w) + 'px;' : '') + (cd.mh != null ? 'min-height:' + r2(cd.mh - 2 * cd.sep) + 'px;' : '') +
+            'padding:' + r2(cd.sep) + 'px;' + (cd.draw ? 'border:0.8px solid #777;' : '') + (cd.fill ? 'background:#fff;' : '') + (cd.shadow ? 'box-shadow:2px 2px 0 #bbb;' : '') + '">' + this.blocksHTML(cd.blocks) + '</span>').join('');
+        }
         if (!it.rects.length) return '';
         let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
         it.rects.forEach(r => { x0 = Math.min(x0, r[0], r[2]); x1 = Math.max(x1, r[0], r[2]); y0 = Math.min(y0, r[1], r[3]); y1 = Math.max(y1, r[1], r[3]); });
@@ -1596,6 +1756,70 @@ const PV = (function () {
     }
   };
 
+  /* Kopf aus \AddToShipoutPicture mit \put-Befehlen (Linien, Logo, Text), nur der obere Bereich der Seite */
+  RP.pictureHTML = function (mg) {
+    let out = '';
+    const info = (this.ctx && this.ctx.assetInfo) || {};
+    this.pics.forEach(body => {
+      let unit = PXPT, thick = 0.4 * PXPT;
+      const mu = /\\setlength\s*\{\\unitlength\}\s*\{([^}]*)\}/.exec(body);
+      if (mu) { const v = this.len(mu[1]); if (v) unit = v; }
+      const mt = /\\linethickness\s*\{([^}]*)\}/.exec(body);
+      if (mt) { const v = this.len(mt[1]); if (v) thick = v; }
+      const re = /\\put\s*\(\s*([-+]?[\d.]+)\s*,\s*([-+]?[\d.]+)\s*\)\s*\{/g;
+      let m;
+      while ((m = re.exec(body))) {
+        const start = m.index + m[0].length - 1;
+        const e = readBalanced(body, start);
+        if (e < 0) continue;
+        re.lastIndex = e + 1;
+        const content = body.slice(start + 1, e).replace(/%[^\n]*/g, '').trim();
+        const x = parseFloat(m[1]) * unit, y = -parseFloat(m[2]) * unit;
+        if (y > mg.top + 6) continue;
+        const ln = /^\\line\s*\(\s*([-+]?[\d.]+)\s*,\s*([-+]?[\d.]+)\s*\)\s*\{([^}]*)\}/.exec(content);
+        if (ln) {
+          const dx = parseFloat(ln[1]), dy = parseFloat(ln[2]), L = (this.len(ln[3]) != null ? this.len(ln[3]) : parseFloat(ln[3]) * unit);
+          let x2 = x, y2 = y;
+          if (dx !== 0) { x2 = x + L * Math.sign(dx); y2 = y - L * dy / Math.abs(dx); } else { y2 = y - L * Math.sign(dy); }
+          out += '<svg class="pic" width="1" height="1" style="left:0;top:0;overflow:visible"><line x1="' + r2(x) + '" y1="' + r2(y) + '" x2="' + r2(x2) + '" y2="' + r2(y2) + '" stroke="#000" stroke-width="' + r2(Math.max(0.6, thick)) + '"/></svg>';
+          continue;
+        }
+        const ig = /^\\includegraphics\s*(?:\[([^\]]*)\])?\s*\{([^}]*)\}/.exec(content);
+        if (ig) {
+          const opts = {}; (ig[1] || '').split(',').forEach(kv => { const q = kv.indexOf('='); if (q > 0) opts[kv.slice(0, q).trim()] = kv.slice(q + 1).trim(); });
+          const path = ig[2].trim().replace(/^\.\//, '');
+          const url = this.ctx.assets && this.ctx.assets[path];
+          const inf = info[path];
+          const hPx = opts.height != null ? this.len(opts.height) : null, wPx = opts.width != null ? this.len(opts.width) : null;
+          let tr = [0, 0, 0, 0];
+          if (opts.trim) tr = opts.trim.split(/\s+/).map(v => { const f = parseFloat(v); return /(pt|cm|mm|in)$/.test(v) ? (this.len(v) || 0) : (isNaN(f) ? 0 : f * 96 / 72); });
+          if (url && inf) {
+            const nW = inf.w * 96 / (inf.dpi || 72), nH = inf.h * 96 / (inf.dpi || 72);
+            const sc = hPx != null ? hPx / (nH - tr[1] - tr[3]) : (wPx != null ? wPx / (nW - tr[0] - tr[2]) : 1);
+            const visW = (nW - tr[0] - tr[2]) * sc, visH = (nH - tr[1] - tr[3]) * sc;
+            out += '<div class="pic" style="left:' + r2(x) + 'px;top:' + r2(y - visH) + 'px;width:' + r2(visW) + 'px;height:' + r2(visH) + 'px;overflow:hidden"><img src="' + esc(url) +
+              '" style="position:absolute;left:' + r2(-tr[0] * sc) + 'px;top:' + r2(-tr[3] * sc) + 'px;width:' + r2(nW * sc) + 'px;height:' + r2(nH * sc) + 'px"></div>';
+          } else if (url) {
+            const h = hPx != null ? hPx : 40;
+            out += '<img class="pic" src="' + esc(url) + '" style="left:' + r2(x) + 'px;top:' + r2(y - h) + 'px;height:' + r2(h) + 'px">';
+          } else {
+            const h = hPx != null ? hPx : 40, w = wPx != null ? wPx : h * 1.5;
+            out += '<span class="pic imgph" style="left:' + r2(x) + 'px;top:' + r2(y - h) + 'px;width:' + r2(w) + 'px;height:' + r2(h) + 'px">' + esc(path) + '<br><small>(Logo nicht gefunden)</small></span>';
+          }
+          continue;
+        }
+        const C2 = { blocks: [], par: null };
+        this.evalStr(content, C2, this.baseStyle());
+        const items = C2.par || [];
+        if (!items.length) continue;
+        let sz = 0; items.forEach(it => { if (it.st) sz = Math.max(sz, it.st.size); });
+        if (!sz) sz = BASE;
+        out += '<div class="pic" style="left:' + r2(x) + 'px;top:' + r2(y - 0.82 * sz) + 'px;line-height:' + r2(sz) + 'px">' + items.map(it => this.itemHTML(it, true)).join('') + '</div>';
+      }
+    });
+    return out;
+  };
+
   function render(src, ctx) {
     const R = new Renderer(ctx);
     const TAG = '\\begin{document}';
@@ -1625,6 +1849,7 @@ const PV = (function () {
         '<div class="hl">' + hfHTML('lhead') + '</div><div class="hc">' + hfHTML('chead') + '</div><div class="hr">' + hfHTML('rhead') + '</div></div>';
       if (R.headrule > 0) header += '<div class="rule" style="left:' + r2(mg.left) + 'px;width:' + r2(textW) + 'px;top:' + r2(headTop + headh) + 'px;height:' + r2(Math.max(1, R.headrule)) + 'px"></div>';
     }
+    header += R.pictureHTML(mg);
     let footer = '';
     if (R.fancy && (R.hf.lfoot != null || R.hf.cfoot != null || R.hf.rfoot != null)) {
       footer = '<div class="ft" style="left:' + r2(mg.left) + 'px;width:' + r2(textW) + 'px;bottom:' + r2(Math.max(10, mg.bottom - 1.0 * PXCM)) + 'px">' +
@@ -1648,7 +1873,8 @@ function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.c
 const S = {
   doc: null, tplName: '', original: '', undo: [], redo: [], last: '',
   opts: { autoEscape: true, autoBreak: true }, showCmd: false, rawEdit: null, focus: null, dirty: false,
-  collapsed: new Set(), theme: null, blocks: [], assetUrls: {}, imgStatus: {}, dir: null, dirOk: false, dirSupport: !!window.showDirectoryPicker, tab: 'pv'
+  collapsed: new Set(), theme: null, blocks: [], assetUrls: {}, imgStatus: {}, dir: null, dirOk: false, dirSupport: !!window.showDirectoryPicker, tab: 'pv',
+  tplHandle: null, tplWrote: null, outDir: null
 };
 
 /* ---------- Kleinkram ---------- */
@@ -1661,7 +1887,8 @@ function toast(msg, err) {
 }
 function cleanName(n) { return (n || '').replace(/\.tex$/i, '').replace(/[\\/:*?"<>|]/g, '').trim(); }
 function fileBase() { return cleanName($('#fname').value) || 'Dateiname'; }
-function snap() { return JSON.stringify(S.doc.units); }
+function snap() { return JSON.stringify({ u: S.doc.units, h: S.doc.head }); }
+function restore(str) { const o = JSON.parse(str); S.doc.units = o.u; S.doc.head = o.h; }
 function isVisible(u) { return !u.fixed && (S.showCmd || hasFields(u) || !!u.img || S.rawEdit === u.id); }
 function idxOf(id) { return S.doc.units.findIndex(u => u.id === id); }
 
@@ -1676,13 +1903,13 @@ function doUndo() {
   commitIfChanged();
   if (!S.undo.length) return;
   S.redo.push(snap());
-  S.doc.units = JSON.parse(S.undo.pop());
+  restore(S.undo.pop());
   S.last = snap(); S.dirty = true; S.rawEdit = null; renderAll();
 }
 function doRedo() {
   if (!S.redo.length) return;
   S.undo.push(snap());
-  S.doc.units = JSON.parse(S.redo.pop());
+  restore(S.redo.pop());
   S.last = snap(); S.dirty = true; S.rawEdit = null; renderAll();
 }
 function updateButtons() {
@@ -1930,14 +2157,40 @@ function renderEditor() {
     }
     host.append(row);
   });
+  const hdBox = makeHeadData();
   if (!count) host.append(el('p', 'empty', 'In dieser Vorlage wurden keine Textstellen gefunden. Mit „Befehlszeilen zeigen“ siehst du alle Zeilen und kannst sie über </> direkt bearbeiten.'));
   host.querySelectorAll('.fld, .rawin').forEach(grow);
+  if (hdBox) host.prepend(hdBox);
   scroller.scrollTop = top;
   if (S.focus) {
     const f = S.focus; S.focus = null;
     if (f.img) { const i = host.querySelector('.ln[data-id="' + f.id + '"] .gnum'); if (i) { i.focus(); i.select(); } }
     else focusField(f.id, f.f);
   }
+}
+
+/* ---------- Kopfdaten (Titel, Fach usw. aus dem Vorspann) ---------- */
+function makeHeadData() {
+  const fl = headFields(S.doc.head, S.headNames || []);
+  if (!fl.length) return null;
+  const box = el('div', 'hdata');
+  box.append(el('div', 'hdh', 'Kopfdaten (stehen oben in der Datei, zum Beispiel im Seitenkopf)'));
+  fl.forEach(f => {
+    const row = el('div', 'ln hrow');
+    const cnt = el('div', 'cnt');
+    cnt.append(el('span', 'chip', '\\' + f.name));
+    const inp = el('input', 'fld'); inp.type = 'text'; inp.value = f.value; inp.spellcheck = false;
+    inp.placeholder = f.name === 'Untertitel' ? 'Untertitel (darf leer bleiben)' : '';
+    inp.addEventListener('input', () => {
+      if (braceDelta(inp.value) !== 0) { inp.classList.add('bad'); inp.title = 'Geschweifte Klammern sind nicht ausgeglichen. Der Wert wird so nicht übernommen.'; return; }
+      inp.classList.remove('bad'); inp.title = '';
+      setHeadField(S.doc, f.name, inp.value, S.opts, S.headNames);
+      S.dirty = true; schedulePreview();
+    });
+    inp.addEventListener('change', commitIfChanged);
+    cnt.append(inp); row.append(cnt); box.append(row);
+  });
+  return box;
 }
 
 /* ---------- Grafikzeilen ---------- */
@@ -2036,9 +2289,38 @@ $('#dlgOk').addEventListener('click', () => {
 let pvTimer = null;
 function schedulePreview() { clearTimeout(pvTimer); pvTimer = setTimeout(renderSide, 120); }
 function renderSide() { renderPreview(); renderSource(); renderWarnings(); }
+function pngDpi(b) {
+  if (b.length < 33 || b[0] !== 0x89 || b[1] !== 0x50) return 0;
+  for (let i = 8; i + 12 <= b.length && i < 8192;) {
+    const len = ((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0;
+    const type = String.fromCharCode(b[i + 4], b[i + 5], b[i + 6], b[i + 7]);
+    if (type === 'pHYs') { const ppx = ((b[i + 8] << 24) | (b[i + 9] << 16) | (b[i + 10] << 8) | b[i + 11]) >>> 0; return b[i + 16] === 1 ? ppx * 0.0254 : 0; }
+    if (type === 'IDAT') break;
+    i += 12 + len;
+  }
+  return 0;
+}
+/* Bildgrößen merken (für zugeschnittene Logos im Seitenkopf) */
+function ensureAssetInfo() {
+  S.assetInfo = S.assetInfo || {}; S.assetInfoUrl = S.assetInfoUrl || {};
+  Object.keys(S.assetUrls).forEach(p => {
+    const url = S.assetUrls[p];
+    if (!url || S.assetInfoUrl[p] === url) return;
+    S.assetInfoUrl[p] = url;
+    const im = new Image();
+    im.onload = async () => {
+      let dpi = 72;
+      try { dpi = pngDpi(new Uint8Array(await (await fetch(url)).arrayBuffer())) || 72; } catch (e) { /* 72 dpi annehmen */ }
+      S.assetInfo[p] = { w: im.naturalWidth, h: im.naturalHeight, dpi };
+      schedulePreview();
+    };
+    im.src = url;
+  });
+}
 function renderPreview() {
   const text = serialize(S.doc, S.opts);
-  const res = PV.render(text, { jobname: fileBase(), assets: S.assetUrls });
+  ensureAssetInfo();
+  const res = PV.render(text, { jobname: fileBase(), assets: S.assetUrls, assetInfo: S.assetInfo });
   $('#page').innerHTML = res.html;
   fitPage();
   const notes = [];
@@ -2129,7 +2411,7 @@ function renderReminder() {
   const contentMissing = all.filter(p => p.indexOf('content/') === 0 && S.imgStatus[p] === 'missing');
   const box = $('#remind');
   box.textContent = '';
-  box.append(el('b', null, 'Hinweis: '), document.createTextNode('Die .tex wird im Hauptordner gespeichert, eine Ebene über build.'));
+  box.append(el('b', null, 'Hinweis: '), document.createTextNode(S.outDir ? 'Die .tex wird im Zielordner „' + S.outDir.name + '“ gespeichert.' : 'Die .tex wird im Hauptordner gespeichert, eine Ebene über build.'));
   if (imgs.length) {
     box.append(document.createTextNode(imgs.length > 1 ? ' Die Bilder ' : ' Das Logo muss unter dem Namen '));
     imgs.forEach((p, i) => {
@@ -2255,14 +2537,17 @@ function fillTplSelect(selected) {
   sel.value = selected || ('builtin:' + BUILTINS[0].name);
 }
 function confirmDiscard() { return !S.dirty || confirm('Die Änderungen an der aktuellen Vorlage sind noch nicht gespeichert. Trotzdem fortfahren?'); }
-function loadTemplate(text, name, selKey) {
+function loadTemplate(text, name, selKey, handle) {
   let doc;
   try { doc = parseTex(text); } catch (e) { toast(e.message, true); return false; }
+  if (handle !== 'keep') { S.tplHandle = handle || null; S.tplWrote = null; }
+  S.headNames = headFields(doc.head).map(f => f.name);
   S.doc = doc; S.original = text; S.tplName = name; S.undo = []; S.redo = []; S.last = snap(); S.dirty = false; S.rawEdit = null; S.focus = null; S.collapsed = new Set();
   const f = $('#fname');
   if (!f.value.trim() || f.dataset.auto === '1') { f.value = name; f.dataset.auto = '1'; }
   fillTplSelect(selKey || 'file');
   updateNameSize();
+  updateTplBtn();
   renderAll();
   refreshAssets();
   return true;
@@ -2273,12 +2558,24 @@ $('#tplSel').addEventListener('change', ev => {
   if (v.indexOf('builtin:') === 0) { const b = BUILTINS.find(x => 'builtin:' + x.name === v); if (b) { S.selKey = v; loadTemplate(b.text, b.name, v); } }
   else if (v.indexOf('store:') === 0) { const k = v.slice(6); const st = loadStore(); if (st[k] != null) { S.selKey = v; loadTemplate(st[k], k, v); } }
 });
-$('#btnLoad').addEventListener('click', () => $('#fileIn').click());
+$('#btnLoad').addEventListener('click', async () => {
+  /* Chrome/Edge: über den Dateidialog laden, damit das Tool die Datei später wiederfindet (Vorlage aktualisieren). */
+  if (window.showOpenFilePicker) {
+    try {
+      const [h] = await window.showOpenFilePicker({ id: 'lse-tpl', types: [{ description: 'LaTeX-Datei', accept: { 'text/plain': ['.tex'] } }] });
+      readTemplateFile(await h.getFile(), h);
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  $('#fileIn').click();
+});
 $('#fileIn').addEventListener('change', ev => { const f = ev.target.files[0]; ev.target.value = ''; if (f) readTemplateFile(f); });
-function readTemplateFile(f) {
+function readTemplateFile(f, h) {
   if (!confirmDiscard()) return;
   const r = new FileReader();
-  r.onload = () => { S.selKey = 'file'; loadTemplate(String(r.result), f.name.replace(/\.tex$/i, ''), 'file'); };
+  r.onload = () => { S.selKey = 'file'; loadTemplate(String(r.result), f.name.replace(/\.tex$/i, ''), 'file', h || null); };
   r.readAsText(f, 'utf-8');
 }
 $('#btnKeep').addEventListener('click', () => {
@@ -2294,8 +2591,144 @@ $('#btnForget').addEventListener('click', () => {
 });
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('Alle Änderungen verwerfen und die Vorlage so laden, wie sie war?')) return;
-  loadTemplate(S.original, S.tplName, $('#tplSel').value);
+  loadTemplate(S.original, S.tplName, $('#tplSel').value, 'keep');
 });
+
+/* ---------- Zielordner (Speichern und Vorlage aktualisieren) ---------- */
+function pad2(n) { return n < 10 ? '0' + n : String(n); }
+function escRe(x) { return x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+async function fileExists(dir, n) { try { await dir.getFileHandle(n); return true; } catch (e) { return false; } }
+async function sameDir(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  try { return !!a.isSameEntry && await a.isSameEntry(b); } catch (e) { return false; }
+}
+async function outOk(interactive) {
+  if (!S.outDir) return false;
+  try {
+    if ((await S.outDir.queryPermission({ mode: 'readwrite' })) === 'granted') return true;
+    if (interactive) return (await S.outDir.requestPermission({ mode: 'readwrite' })) === 'granted';
+  } catch (e) { /* kein Zugriff */ }
+  return false;
+}
+function updateOutUI() {
+  const n = $('#outName'); if (!n) return;
+  n.textContent = S.outDir ? S.outDir.name : (S.dir ? S.dir.name + ' (Hauptordner)' : 'nicht gewählt');
+  $('#btnOutClr').hidden = !S.outDir;
+  $('#btnOut').hidden = !window.showDirectoryPicker;
+  if (S.doc) renderReminder();
+}
+async function chooseOutDir() {
+  if (!window.showDirectoryPicker) { toast('Dieser Browser kann keinen Ordner wählen. Chrome oder Edge können das.', true); return false; }
+  const o = { id: 'lse-outdir', mode: 'readwrite' };
+  const st = S.outDir || S.tplHandle || S.dir;
+  if (st) o.startIn = st;
+  try {
+    S.outDir = await window.showDirectoryPicker(o);
+    try { await idbSet('outdir', S.outDir); } catch (e) { /* nicht kritisch */ }
+    updateOutUI();
+    return true;
+  } catch (e) {
+    if (e && e.name === 'AbortError') return false;
+    toast('Dieser Ordner kann nicht verwendet werden (Chrome sperrt z. B. Dokumente, Downloads und Desktop selbst, ein Unterordner geht): ' + (e && e.message), true);
+    return false;
+  }
+}
+async function initOut() {
+  try { const h = await idbGet('outdir'); if (h) S.outDir = h; } catch (e) { /* kein gespeicherter Ordner */ }
+  updateOutUI();
+}
+$('#btnOut').addEventListener('click', async () => { await chooseOutDir(); });
+$('#btnOutClr').addEventListener('click', () => { S.outDir = null; try { idbSet('outdir', null); } catch (e) { /* nicht kritisch */ } updateOutUI(); toast('Zielordner zurückgesetzt. Gespeichert wird wieder im Hauptordner.'); });
+
+/* ---------- Vorlage aktualisieren: Originalname + fortlaufende Nummer ---------- */
+async function templateBase(dir) {
+  const b = cleanName(S.tplName) || 'Vorlage';
+  const m = /^(.*\D)(\d{2})$/.exec(b);
+  /* Name01 → Basis „Name“, aber nur, wenn „Name.tex“ im Zielordner liegt (sonst gehört die Zahl zum Namen) */
+  if (m && await fileExists(dir, m[1] + '.tex')) return m[1];
+  return b;
+}
+async function nextTemplateName(dir) {
+  const base = await templateBase(dir);
+  let max = 0;
+  const re = new RegExp('^' + escRe(base) + '(\\d{2,})\\.tex$', 'i');
+  if (dir.entries) { for await (const [n] of dir.entries()) { const m = re.exec(n); if (m) max = Math.max(max, parseInt(m[1], 10)); } }
+  let n = max + 1;
+  while (await fileExists(dir, base + pad2(n) + '.tex')) n++;
+  return { name: base + pad2(n) + '.tex', first: max === 0 };
+}
+function updateTplBtn() {
+  const b = $('#btnTplUpd'); if (!b) return;
+  b.title = 'Speichert die bearbeitete Vorlage als neue, fortlaufend nummerierte Datei („' + (cleanName(S.tplName) || 'Vorlage') + '01.tex“, „…02.tex“ usw.) im Zielordner. Das Original bleibt unverändert.';
+}
+function askUpdate() {
+  return new Promise(resolve => {
+    const dlg = $('#udlg'); let done = false, cur = null;
+    const finish = v => { if (done) return; done = true; dlg.close(); resolve(v); };
+    const refresh = async () => {
+      const info = $('#uInfo'), nb = $('#uNew'), lb = $('#uLast');
+      info.innerHTML = ''; lb.hidden = true; cur = null;
+      const ok = S.outDir && await outOk(false);
+      $('#uPick').textContent = ok ? 'Ordner ändern …' : 'Ordner wählen …';
+      if (!ok) {
+        info.append(el('div', null, 'Zielordner: noch keiner gewählt.'));
+        nb.textContent = 'Zuerst Ordner wählen'; nb.disabled = true; return;
+      }
+      cur = await nextTemplateName(S.outDir);
+      const l = el('div', null, 'Zielordner: '); l.append(el('b', null, S.outDir.name)); info.append(l);
+      info.append(el('div', 'small', cur.first
+        ? 'In diesem Ordner liegt noch keine nummerierte Fassung, die Datei wird neu angelegt.'
+        : 'Es gibt dort schon nummerierte Fassungen, die nächste Nummer wird vergeben.'));
+      nb.disabled = false; nb.textContent = 'Als „' + cur.name + '“ speichern';
+      if (S.tplWrote && await sameDir(S.tplWrote.dir, S.outDir) && await fileExists(S.outDir, S.tplWrote.name)) {
+        lb.hidden = false; lb.textContent = '„' + S.tplWrote.name + '“ überschreiben';
+      }
+    };
+    $('#uPick').onclick = async () => { if (await chooseOutDir()) await refresh(); };
+    $('#uCancel').onclick = () => finish(null);
+    $('#uNew').onclick = () => { if (cur) finish({ name: cur.name }); };
+    $('#uLast').onclick = () => finish({ name: S.tplWrote.name });
+    dlg.oncancel = ev => { ev.preventDefault(); finish(null); };
+    refresh().then(() => dlg.showModal());
+  });
+}
+async function updateTemplate() {
+  commitIfChanged();
+  const hasDirApi = !!window.showDirectoryPicker;
+  if (hasDirApi && S.outDir) await outOk(true); /* Zustimmung einmal pro Sitzung, solange die Mausaktion noch frisch ist */
+  const warns = checkDoc(S.doc, S.opts);
+  if (warns.length && !confirm('Es gibt Warnungen (' + warns.length + '): Klammern sind nicht ausgeglichen. Trotzdem als Vorlage speichern?')) return;
+  /* Vorlage ohne die automatischen Umbruch-Ergänzungen, so bleibt sie eine saubere Vorlage */
+  const text = serializeFile(S.doc, Object.assign({}, S.opts, { autoBreak: false }));
+  try {
+    if (hasDirApi) {
+      const r = await askUpdate();
+      if (!r) return;
+      const fh = await S.outDir.getFileHandle(r.name, { create: true });
+      const w = await fh.createWritable(); await w.write(text); await w.close();
+      S.dirty = false; S.tplWrote = { dir: S.outDir, name: r.name };
+      toast('Vorlage gespeichert: ' + S.outDir.name + '/' + r.name + ' (das Original ist unverändert).');
+      return;
+    }
+    const fn = (cleanName(S.tplName) || 'Vorlage') + '01.tex';
+    if (window.showSaveFilePicker) {
+      const fh = await window.showSaveFilePicker({ suggestedName: fn, types: [{ description: 'LaTeX-Datei', accept: { 'text/plain': ['.tex'] } }] });
+      const w = await fh.createWritable(); await w.write(text); await w.close();
+      S.dirty = false; toast('Vorlage gespeichert: ' + fh.name);
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+    a.download = fn; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    S.dirty = false; toast('Heruntergeladen: ' + fn + ' – lege sie zur Originalvorlage in deren Ordner.');
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+    toast('Vorlage speichern fehlgeschlagen: ' + (e && e.message), true);
+  }
+}
+$('#btnTplUpd').addEventListener('click', updateTemplate);
 
 /* ---------- Optionen, Dateiname ---------- */
 $('#btnColl').addEventListener('click', () => { S.blocks.forEach(b => S.collapsed.add(b.id)); renderEditor(); });
@@ -2332,19 +2765,22 @@ async function saveTex() {
   commitIfChanged();
   const name = cleanName($('#fname').value);
   if (!name) { toast('Bitte zuerst oben einen Dateinamen eingeben. Er erscheint auch im Seitenkopf.', true); $('#fname').focus(); return; }
+  /* Zielordner hat Vorrang, sonst der Hauptordner */
+  let tdir = null;
+  if (S.outDir && await outOk(true)) tdir = S.outDir; else if (S.dir && S.dirOk) tdir = S.dir;
   const warns = checkDoc(S.doc, S.opts);
   if (warns.length && !confirm('Es gibt Warnungen (' + warns.length + '): Klammern sind nicht ausgeglichen, die Datei lässt sich dann evtl. nicht kompilieren. Trotzdem speichern?')) return;
   const fn = name + '.tex';
   const text = outputText();
   try {
-    if (S.dir && S.dirOk) {
+    if (tdir) {
       let exists = true;
-      try { await S.dir.getFileHandle(fn); } catch (e) { exists = false; }
-      if (exists && !confirm('Im Ordner „' + S.dir.name + '“ gibt es schon eine Datei „' + fn + '“. Überschreiben?')) return;
-      const fh = await S.dir.getFileHandle(fn, { create: true });
+      try { await tdir.getFileHandle(fn); } catch (e) { exists = false; }
+      if (exists && !confirm('Im Ordner „' + tdir.name + '“ gibt es schon eine Datei „' + fn + '“. Überschreiben?')) return;
+      const fh = await tdir.getFileHandle(fn, { create: true });
       const w = await fh.createWritable(); await w.write(text); await w.close();
       S.dirty = false;
-      toast('Gespeichert: ' + S.dir.name + '/' + fn);
+      toast('Gespeichert: ' + tdir.name + '/' + fn);
       return;
     }
     if (window.showSaveFilePicker) {
@@ -2387,8 +2823,10 @@ window.addEventListener('dragover', ev => { ev.preventDefault(); });
 window.addEventListener('drop', ev => {
   ev.preventDefault(); dragN = 0; $('#drop').style.display = 'none';
   const files = Array.from((ev.dataTransfer && ev.dataTransfer.files) || []);
-  files.forEach(f => {
-    if (/\.tex$/i.test(f.name) || f.type.indexOf('text/') === 0) readTemplateFile(f);
+  const items = Array.from((ev.dataTransfer && ev.dataTransfer.items) || []).filter(it => it.kind === 'file');
+  const hp = files.map((f, i) => (items[i] && items[i].getAsFileSystemHandle) ? items[i].getAsFileSystemHandle().catch(() => null) : Promise.resolve(null));
+  files.forEach((f, i) => {
+    if (/\.tex$/i.test(f.name) || f.type.indexOf('text/') === 0) hp[i].then(h => readTemplateFile(f, h && h.kind === 'file' ? h : null));
     else if (f.type.indexOf('image/') === 0) setManualImage(f);
   });
 });
@@ -2409,6 +2847,7 @@ function renderAll() {
   loadTemplate(b0.text, b0.name, S.selKey);
   updateDirUI();
   initDir();
+  initOut();
   window.__S = S; // für Tests
 })();
 </script>

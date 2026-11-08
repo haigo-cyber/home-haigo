@@ -1072,6 +1072,38 @@ window.MWShort = (function () {
       return steps.filter((_, i) => keep.has(i));
     } };
 })();
+/* Wurzeln: Wurzelzeichen mit Strich ueber dem Radikanden, damit sichtbar ist, was unter der Wurzel steht.
+   Der Text bleibt unveraendert (Klammern werden nur ausgeblendet), Vorlesen und Vergleiche funktionieren weiter. */
+(function () {
+  const st = document.createElement("style");
+  st.textContent = ".rad{white-space:nowrap}.rad .rr{display:inline-block;border-top:.09em solid currentColor;padding:.02em .12em 0 .1em;margin-left:-.04em;line-height:1.05}.rad .rp{display:none}";
+  document.head.appendChild(st);
+  const RX = /(³)?√(\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)|\d+(?:[\u00a0\u202f]\d{3})*(?:,\d+)?|[A-Za-zΔ](?![A-Za-zäöüß]))/g;
+  function conv(root) {
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => {
+      if (n.nodeValue.indexOf("√") < 0) return NodeFilter.FILTER_REJECT;
+      const pe = n.parentElement; if (!pe || pe.closest("svg,script,style,textarea,input,select,option,.rad,[contenteditable]")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT; } });
+    const list = []; let n; while ((n = w.nextNode())) list.push(n);
+    list.forEach(t => {
+      const s = t.nodeValue; RX.lastIndex = 0; if (!RX.test(s)) return; RX.lastIndex = 0;
+      const f = document.createDocumentFragment(); let last = 0, m;
+      while ((m = RX.exec(s))) {
+        f.appendChild(document.createTextNode(s.slice(last, m.index)));
+        const sp = document.createElement("span"); sp.className = "rad"; sp.appendChild(document.createTextNode((m[1] || "") + "√"));
+        const rr = document.createElement("span"); rr.className = "rr"; const c = m[2];
+        if (c[0] === "(") { const a = document.createElement("span"); a.className = "rp"; a.textContent = "("; const b = document.createElement("span"); b.className = "rp"; b.textContent = ")"; rr.appendChild(a); rr.appendChild(document.createTextNode(c.slice(1, -1))); rr.appendChild(b); }
+        else rr.textContent = c;
+        sp.appendChild(rr); f.appendChild(sp); last = m.index + m[0].length;
+      }
+      f.appendChild(document.createTextNode(s.slice(last))); t.parentNode.replaceChild(f, t);
+    });
+  }
+  let pending = false, busy = false;
+  const mo = new MutationObserver(() => { if (busy || pending) return; pending = true; requestAnimationFrame(() => { pending = false; busy = true; try { conv(document.body); } finally { busy = false; mo.takeRecords(); } }); });
+  mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+  conv(document.body);
+})();
 function alEq(t, r) { /* "9 · 8" + Ergebnis: Einer unter Einer */
   const m = String(t).match(/^(\d+) ([·:]) (\d+)$/), ib = (w, x) => '<span style="display:inline-block;min-width:' + w + 'ch;text-align:right">' + x + "</span>";
   return m ? ib(2, m[1]) + " " + m[2] + " " + ib(2, m[3]) + " = " + ib(3, r) : t + " = " + r;

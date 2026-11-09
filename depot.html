@@ -14,6 +14,8 @@
         Notkopie des zuletzt ersetzten lokalen Standes
   v1.2  Kurse per CSV einlesen (Liste oder Tabelle), Zeichensatz-Erkennung, tolerantere Zahlenerkennung
   v1.3  Berechnungsmethoden: gleitender Durchschnitt, FIFO, LIFO, Netto-Einstand (Kaufsummen minus Verkaufserloese), Methodenvergleich
+  v1.6  Chart-Link je Position (manuell hinterlegt), Link in Uebersicht, Kurse, Positionen und Verlaufsdiagramm
+  v1.5  Vorschaudiagramm auf der Uebersicht: Depotwert, Netto-Rendite und vorhandene Kursdaten
   v1.4  Reiter Konto: Einzahlungen, Auszahlungen, Ertraege; Kaeufe und Verkaeufe buchen automatisch gegen das Konto; Gesamtvermoegen und Gesamtergebnis
 -->
 <style>
@@ -33,6 +35,7 @@
   }
 }
 a{color:var(--accent)}
+.chartlink{font-size:.85rem;white-space:nowrap}
 .cards-m{display:none}
 .sortm{display:none}
 .pcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
@@ -179,7 +182,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
 /* ======================================================================
    Seifferts Depot v1.0
    ====================================================================== */
-const VERSION = '1.4';
+const VERSION = '1.6';
 const LS_KEY = 'seifferts_depot_v1';
 const PALETTE = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
 
@@ -230,6 +233,15 @@ function parseDate(s){
   return y + '-' + pad2(m) + '-' + pad2(d);
 }
 
+/* ---------- Chart-Links: nur http und https ---------- */
+function cleanUrl(s){
+  s = String(s == null ? '' : s).trim();
+  if (!s) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = 'https://' + s;
+  try { const u = new URL(s); return /^https?:$/.test(u.protocol) && u.hostname.includes('.') ? u.href : null; } catch (e) { return null; }
+}
+const linkHTML = p => p && p.url ? `<a class="chartlink" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="Chart von ${esc(p.name)} in neuem Tab öffnen">Chart ↗</a>` : '';
+
 /* ---------- Zustand ---------- */
 function emptyState(){ return {positions:[], txs:[], prices:{}, cash:[], meta:{lastBackup:null}}; }
 const hasData = s => !!(s.positions.length || s.txs.length || (s.cash && s.cash.length));
@@ -238,7 +250,7 @@ function normalizeState(o){
   if (!o || typeof o !== 'object') return s;
   const ids = new Set();
   (Array.isArray(o.positions) ? o.positions : []).forEach(p => {
-    if (p && p.id && p.name && !ids.has(p.id)) { ids.add(p.id); s.positions.push({id:String(p.id), name:String(p.name), sym:String(p.sym || '')}); }
+    if (p && p.id && p.name && !ids.has(p.id)) { ids.add(p.id); s.positions.push({id:String(p.id), name:String(p.name), sym:String(p.sym || ''), url:cleanUrl(p.url) || ''}); }
   });
   (Array.isArray(o.txs) ? o.txs : []).forEach(t => {
     if (!t || !ids.has(t.posId)) return;
@@ -514,6 +526,7 @@ function render(){
   const v = $('#view');
   v.innerHTML = ({uebersicht:viewOverview, diagramme:viewCharts, kurse:viewKurse, kaeufe:viewKaeufe, konto:viewKonto, daten:viewDaten})[ui.tab]();
   if (ui.tab === 'diagramme') drawCharts();
+  if (ui.tab === 'uebersicht') drawPreview();
 }
 
 /* ======================================================================
@@ -557,6 +570,10 @@ function viewOverview(){
   if (tot.fallback) h += `<div class="note">${tot.fallback} Position${tot.fallback > 1 ? 'en haben' : ' hat'} noch keinen eigenen Kurs. Dort wird der letzte Transaktionspreis angesetzt (Gewinn/Verlust bleibt deshalb bei etwa null). <a href="#kurse" data-act="goto" data-tab="kurse">Kurse erfassen</a></div>`;
   if (tot.stale) h += `<div class="note">${tot.stale} Kurs${tot.stale > 1 ? 'e sind' : ' ist'} älter als 7 Tage und in der Tabelle als veraltet markiert.</div>`;
   h += cashNote();
+  h += `<section class="card" id="prevcard"><h2>Vorschau</h2>
+    <div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Depotwert</span><span><i class="sw line" style="background:var(--s2)"></i>Netto-Rendite</span><span><i class="sw" style="background:var(--muted);width:2px;height:12px;border-radius:0"></i>Kurs erfasst</span></div>
+    <div class="chart" id="c-prev"></div><p class="hint" id="c-prev-s" style="margin:6px 0 0"></p>
+    <details><summary>Werte als Tabelle und Berechnung</summary><p class="hint">Netto-Rendite ist das Gesamtergebnis nach Gebühren (Kursgewinn, Verkaufsgewinne und Erträge) in Prozent des eingesetzten Kapitals. ${cashOn() ? 'Eingesetztes Kapital ist hier das netto eingezahlte Geld aus dem Reiter Konto.' : 'Eingesetztes Kapital ist hier die Summe aller bisherigen Kaufbeträge inklusive Gebühren.'} Sie ist bei jeder Berechnungsmethode gleich.</p><div id="c-prev-t"></div></details></section>`;
   h += methodBar();
   h += `<div class="kpis">
     <div class="kpi"><div class="l">Depotwert</div><div class="v">${eur(tot.value)}</div><div class="s">${tot.openCount} offene Position${tot.openCount === 1 ? '' : 'en'}</div></div>
@@ -567,7 +584,7 @@ function viewOverview(){
   if (cashOn()) h += cashKpis(tot);
   const SORTS = [['value','Wert'],['gvPct','Gewinn/Verlust %'],['gv','Gewinn/Verlust €'],['share','Anteil'],['name','Name'],['cost','Einstand']];
   h += `<label class="sortm">Sortieren nach<select id="sortSel">${SORTS.map(([k, l]) => `<option value="${k}"${ui.sort.key === k ? ' selected' : ''}>${l}${k === 'name' ? ' (A–Z)' : ' (absteigend)'}</option>`).join('')}</select></label>`;
-  h += `<div class="cards-m">${shown.length ? shown.map(r => `<div class="pcard${r.errors.length ? ' err' : ''}"><div class="ph"><div><strong>${esc(r.pos.name)}</strong>${r.pos.sym ? `<span class="sub">${esc(r.pos.sym)}${r.open ? '' : ' · geschlossen'}</span>` : (r.open ? '' : '<span class="sub">geschlossen</span>')}</div>
+  h += `<div class="cards-m">${shown.length ? shown.map(r => `<div class="pcard${r.errors.length ? ' err' : ''}"><div class="ph"><div><strong>${esc(r.pos.name)}</strong>${r.pos.sym ? `<span class="sub">${esc(r.pos.sym)}${r.open ? '' : ' · geschlossen'}</span>` : (r.open ? '' : '<span class="sub">geschlossen</span>')}${r.pos.url ? `<span class="sub">${linkHTML(r.pos)}</span>` : ''}</div>
       ${r.open ? `<div class="pg ${signCls(r.gv)}">${pctS(r.gvPct)}<small>${eurS(r.gv)}</small></div>` : ''}</div>
       ${r.open ? `<dl class="pgrid"><div><dt>Stück</dt><dd>${qty(r.qty)}</dd></div><div><dt>Ø Einstieg</dt><dd>${price(r.avg)}</dd></div>
       <div><dt>Kurs</dt><dd>${isFinite(r.price) ? price(r.price) : '–'}${r.priceSrc === 'trade' ? '<br><small>(Transaktionspreis)</small>' : r.priceDate ? `<br><small>${fd(r.priceDate)}${r.stale ? ' (veraltet)' : ''}</small>` : ''}</dd></div>
@@ -579,7 +596,7 @@ function viewOverview(){
   if (!shown.length) h += `<tr><td colspan="9" style="text-align:left">Keine offenen Positionen.</td></tr>`;
   shown.forEach(r => {
     const kursNote = r.priceSrc === 'trade' ? '<small>(Transaktionspreis)</small>' : r.priceDate ? `<small>${fd(r.priceDate)}${r.stale ? ' (veraltet)' : ''}</small>` : '';
-    h += `<tr${r.errors.length ? ' class="err"' : ''}><td>${esc(r.pos.name)}${r.pos.sym ? `<small>${esc(r.pos.sym)}</small>` : ''}${r.open ? '' : '<small>geschlossen</small>'}</td>
+    h += `<tr${r.errors.length ? ' class="err"' : ''}><td>${esc(r.pos.name)}${r.pos.sym ? `<small>${esc(r.pos.sym)}</small>` : ''}${r.pos.url ? `<small>${linkHTML(r.pos)}</small>` : ''}${r.open ? '' : '<small>geschlossen</small>'}</td>
       <td>${r.open ? qty(r.qty) : '0'}</td><td>${r.open ? price(r.avg) : '–'}</td><td>${isFinite(r.price) ? price(r.price) : '–'}${kursNote}</td>
       <td>${r.open ? eur(r.cost) : '–'}</td><td>${r.open ? eur(r.value) : '–'}</td>
       <td class="${signCls(r.gv)}">${r.open ? eurS(r.gv) : '–'}</td><td class="${signCls(r.gv)}">${r.open ? pctS(r.gvPct) : '–'}</td><td>${r.open ? pctP(r.share) : '–'}</td></tr>`;
@@ -604,7 +621,7 @@ function viewKurse(){
     <label>Datum der Kurse<input type="date" id="kdate" value="${todayISO()}"></label>`;
   if (!open.length) h += `<p class="hint">Keine offenen Positionen.</p>`;
   open.forEach(r => {
-    h += `<div class="kursrow"><div>${esc(r.pos.name)}${r.pos.sym ? ` <span class="pill">${esc(r.pos.sym)}</span>` : ''}<span class="sub">Zuletzt: ${isFinite(r.price) ? price(r.price) + ' (' + (r.priceSrc === 'trade' ? 'Transaktionspreis ' : '') + fd(r.priceDate) + ')' : 'noch keiner'}</span></div>
+    h += `<div class="kursrow"><div>${esc(r.pos.name)}${r.pos.sym ? ` <span class="pill">${esc(r.pos.sym)}</span>` : ''}<span class="sub">Zuletzt: ${isFinite(r.price) ? price(r.price) + ' (' + (r.priceSrc === 'trade' ? 'Transaktionspreis ' : '') + fd(r.priceDate) + ')' : 'noch keiner'}</span><span class="sub">${r.pos.url ? linkHTML(r.pos) : `<a href="#kaeufe" data-act="posedit" data-id="${r.pos.id}">Link zum Chart hinterlegen</a>`}</span></div>
       <input class="kinput" data-pos="${r.pos.id}" inputmode="decimal" placeholder="${isFinite(r.price) ? fPrice.format(r.price) : 'Kurs'}" aria-label="Kurs ${esc(r.pos.name)} in Euro" autocomplete="off"></div>`;
   });
   h += `<p class="msg" id="kmsg" role="alert"></p><div class="btns"><button class="primary" type="submit">Kurse speichern</button></div>
@@ -697,7 +714,7 @@ function viewKaeufe(){
   if (!state.positions.length) h += `<p class="hint">Positionen entstehen automatisch, sobald du eine Transaktion mit neuem Namen speicherst.</p>`;
   state.positions.forEach(p => {
     const n = txsOf(p.id).length;
-    h += `<div class="kursrow" style="grid-template-columns:1fr auto"><div>${esc(p.name)}${p.sym ? ` <span class="pill">${esc(p.sym)}</span>` : ''}<span class="sub">${n} Transaktion${n === 1 ? '' : 'en'}</span></div>
+    h += `<div class="kursrow" style="grid-template-columns:1fr auto"><div>${esc(p.name)}${p.sym ? ` <span class="pill">${esc(p.sym)}</span>` : ''}<span class="sub">${n} Transaktion${n === 1 ? '' : 'en'}${p.url ? ' · ' + linkHTML(p) : ' · kein Chart-Link'}</span></div>
       <div class="btns" style="margin:0"><button class="btn small" data-act="posedit" data-id="${p.id}">Bearbeiten</button><button class="btn small danger" data-act="posdel" data-id="${p.id}">Löschen</button></div></div>`;
   });
   return h + `</details></div>`;
@@ -735,7 +752,7 @@ function saveTx(){
   const before = edit && edit.posId === posId ? calcFrom(txsOf(posId)).errors.length : calcFrom(others).errors.length;
   const after = calcFrom(others.concat([tx])).errors.length;
   if (after > before) return void (msg.textContent = 'Mit dieser Eingabe würde ein Verkauf den vorhandenen Bestand übersteigen. Bitte Datum, Art und Stückzahl prüfen.');
-  if (isNew) { pos = {id:uid(), name, sym:''}; state.positions.push(pos); }
+  if (isNew) { pos = {id:uid(), name, sym:'', url:''}; state.positions.push(pos); }
   tx.posId = pos.id;
   if (edit) Object.assign(edit, tx); else state.txs.push(tx);
   ui.txEdit = null; ui.lastDate = date;
@@ -894,7 +911,7 @@ async function importCSV(file){
   good.forEach(g => {
     const lc = g.name.toLowerCase();
     let p = state.positions.find(x => x.name.toLowerCase() === lc || (g.sym && x.sym && x.sym.toLowerCase() === g.sym.toLowerCase()));
-    if (!p) { p = {id:uid(), name:g.name, sym:g.sym}; state.positions.push(p); }
+    if (!p) { p = {id:uid(), name:g.name, sym:g.sym, url:''}; state.positions.push(p); }
     else if (g.sym && !p.sym) p.sym = g.sym;
     state.txs.push({id:uid(), posId:p.id, type:g.type, date:g.date, qty:g.qty, price:g.price, fee:g.fee});
   });
@@ -987,7 +1004,7 @@ async function importKurseCSV(file){
   toast(`${nNew + nChg} Kurse importiert (${nNew} neu, ${nChg} ersetzt)`, 4500);
 }
 function loadDemo(){
-  const P = (name, sym) => ({id:uid(), name, sym});
+  const P = (name, sym) => ({id:uid(), name, sym, url:''});
   const bia = P('Beispiel Industrie AG', 'BIA'), mwe = P('Muster Welt-ETF', 'MWE'), pes = P('Probe Energie SE', 'PES'), tph = P('Test Pharma plc', 'TPH');
   const T = (p, type, date, q, pr, fee = 0) => ({id:uid(), posId:p.id, type, date, qty:q, price:pr, fee});
   const s = emptyState(); s.positions = [bia, mwe, pes, tph];
@@ -1031,7 +1048,7 @@ function viewCharts(){
         `<div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Einstand</span><span><i class="sw" style="background:var(--s2)"></i>aktueller Wert</span></div>`)
     + `<section class="card"><h2>${cashOn() ? 'Gewichtung inklusive Kapital' : 'Gewichtung im Depot'}</h2><p class="hint" style="margin-top:0">${cashOn() ? 'Anteil am Gesamtvermögen: Positionen zum aktuellen Wert und verfügbares Kapital auf dem Konto.' : 'Anteil am aktuellen Depotwert.'}</p><div class="chart" id="c-donut"></div><details><summary>Werte als Tabelle</summary><div id="c-donut-t"></div></details></section>`
     + `<section class="card"><h2>Verlauf einer Position</h2><p class="hint" style="margin-top:0">Kursverlauf mit deinen Käufen und Verkäufen und dem gleitenden Ø-Einstiegspreis, darunter der Bestand in Stück.</p>
-        <label>Position<select id="detailSel">${detailOpts}</select></label>
+        <label>Position<select id="detailSel">${detailOpts}</select></label><p class="hint" id="detailLink" style="margin:-4px 0 8px"></p>
         <div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Kurs</span><span><i class="sw dash" style="border-color:var(--s2)"></i>Ø-Einstiegspreis</span><span><i class="sw dot" style="background:var(--s2)"></i>Kauf (Größe = Stück)</span><span>▽ Verkauf</span></div>
         <div class="chart" id="c-detail"></div><details><summary>Werte als Tabelle</summary><div id="c-detail-t"></div></details></section>`
     + card('c-depot', 'Depotwert im Zeitverlauf', 'Wert aus Stückzahl mal letztem bekannten Kurs, dazu das eingesetzte Kapital. Je öfter du Kurse erfasst, desto genauer die Linie.',
@@ -1258,6 +1275,78 @@ function depotChart(w, K){
   return {svg:svgWrap(w, h, g, K ? 'Gesamtvermögen und netto eingezahltes Kapital im Zeitverlauf' : 'Depotwert und eingesetztes Kapital im Zeitverlauf'), pts};
 }
 
+/* --- Vorschaudiagramm der Übersicht: Depotwert, Netto-Rendite, vorhandene Kursdaten --- */
+function previewData(){
+  const set = new Set(), kurs = new Map(), cashy = cashOn();
+  state.txs.forEach(t => set.add(t.date));
+  if (cashy) state.cash.forEach(c => set.add(c.date));
+  Object.values(state.prices).forEach(a => a.forEach(e => { set.add(e.date); kurs.set(e.date, (kurs.get(e.date) || 0) + 1); }));
+  return [...set].sort().map(d => {
+    let v = 0, res = 0;
+    state.positions.forEach(p => {
+      const st = calcPosition(p.id, d), open = st.qty > 1e-9, pr = open ? priceAtDate(p.id, d) : null;
+      const val = open ? (pr != null ? st.qty * pr : st.cost) : 0;
+      v += val; res += val - st.cost + st.realized;
+    });
+    let base;
+    if (cashy) { base = netPaid(d); res = v + cashInfo(d).bal - base; }
+    else base = state.txs.reduce((a, t) => t.type === 'buy' && t.date <= d ? a + t.qty * t.price + t.fee : a, 0);
+    return {d, v, res, base, rend:base > 0.005 ? res / base : null, kurs:kurs.get(d) || 0};
+  });
+}
+function previewChart(w, pts){
+  if (pts.length < 2) return null;
+  const t0 = tm(pts[0].d), t1 = tm(pts[pts.length - 1].d);
+  const L = 50, R = 10, T = 6, H1 = 74, GAP = 30, H2 = 54, RUG = 12, B = 20, pw = Math.max(80, w - L - R);
+  const T2 = T + H1 + GAP, TR = T2 + H2 + 8, h = TR + RUG + B;
+  const x = t => L + (t - t0) / (t1 - t0) * pw;
+  // Panel 1: Depotwert
+  const vs = pts.map(p => p.v), vlo = Math.min(...vs), vhi = Math.max(...vs), vsp = (vhi - vlo) || vhi * 0.1 || 1;
+  const y1r = niceRange(Math.max(0, vlo - vsp * 0.1), vhi + vsp * 0.1, 2), y1 = v => T + H1 - (v - y1r.lo) / (y1r.hi - y1r.lo) * H1, f1 = axisFmt(y1r.step);
+  // Panel 2: Netto-Rendite in Prozent, Nulllinie immer sichtbar
+  const rs = pts.filter(p => p.rend !== null).map(p => p.rend * 100);
+  const rlo = Math.min(0, ...rs), rhi = Math.max(0, ...rs);
+  const y2r = niceRange(rlo, rhi, 2), y2 = v => T2 + H2 - (v - y2r.lo) / (y2r.hi - y2r.lo) * H2, f2 = axisFmt(y2r.step);
+  let g = '';
+  timeTicks(t0, t1, w < 420 ? 2 : 4).forEach((t, i, a) => { g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T2 + H2}"/><text class="tm" x="${x(t)}" y="${h - 5}" text-anchor="${i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${tdate(t)}</text>`; });
+  y1r.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y1(v)}" y2="${y1(v)}"/><text class="tm" x="${L - 6}" y="${y1(v) + 4}" text-anchor="end">${f1(v)}</text>`; });
+  y2r.ticks.forEach(v => { g += `<line class="${Math.abs(v) < 1e-9 ? 'axis' : 'grid'}" x1="${L}" x2="${L + pw}" y1="${y2(v)}" y2="${y2(v)}"/><text class="tm" x="${L - 6}" y="${y2(v) + 4}" text-anchor="end">${f2(v)} %</text>`; });
+  g += `<text class="tm" x="${L}" y="${T2 - 8}">Netto-Rendite in Prozent</text>`;
+  // Hover-Baender
+  pts.forEach((p, i) => {
+    const xa = i ? (x(tm(pts[i - 1].d)) + x(tm(p.d))) / 2 : L, xb = i < pts.length - 1 ? (x(tm(p.d)) + x(tm(pts[i + 1].d))) / 2 : L + pw;
+    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${T2 + H2 - T}" data-tip="${esc(`${fd(p.d)}\nDepotwert ${eur(p.v)}\nNetto-Rendite ${p.rend === null ? '–' : pctS(p.rend)}\n${p.kurs ? p.kurs + ' Kurs' + (p.kurs > 1 ? 'e' : '') + ' erfasst' : 'kein Kurs erfasst'}`)}"/>`;
+  });
+  // Depotwert: Flaeche und Linie
+  const lineV = pts.map((p, i) => (i ? 'L' : 'M') + x(tm(p.d)) + ',' + y1(p.v)).join('');
+  g += `<path d="${lineV}L${x(t1)},${y1(y1r.lo)}L${x(t0)},${y1(y1r.lo)}Z" style="fill:var(--s1);fill-opacity:.12;stroke:none;pointer-events:none"/>`;
+  g += `<path d="${lineV}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round;pointer-events:none"/>`;
+  // Netto-Rendite: Linie, bei fehlender Basis unterbrochen
+  let seg = '', open = false;
+  pts.forEach(p => { if (p.rend === null) { open = false; return; } seg += (open ? 'L' : 'M') + x(tm(p.d)) + ',' + y2(p.rend * 100); open = true; });
+  g += `<path d="${seg}" style="fill:none;stroke:var(--s2);stroke-width:2;stroke-linejoin:round;pointer-events:none"/>`;
+  const last = pts[pts.length - 1];
+  g += `<text class="tv" x="${L + pw}" y="${y1(last.v) + (y1(last.v) - T < 14 ? 14 : -6)}" text-anchor="end">${eur(last.v)}</text>`;
+  if (last.rend !== null) g += `<text class="tv" x="${L + pw}" y="${y2(last.rend * 100) + (y2(last.rend * 100) - T2 < 14 ? 14 : -6)}" text-anchor="end">${pctS(last.rend)}</text>`;
+  // Kursdaten: ein Strich je Tag mit erfasstem Kurs
+  g += `<text class="tm" x="${L - 6}" y="${TR + 9}" text-anchor="end">Kurse</text>`;
+  pts.filter(p => p.kurs).forEach(p => {
+    const xx = x(tm(p.d));
+    g += `<line x1="${xx}" x2="${xx}" y1="${TR}" y2="${TR + RUG}" style="stroke:var(--muted);stroke-width:2"/><rect class="hit" x="${xx - 5}" y="${TR - 2}" width="10" height="${RUG + 4}" data-tip="${esc(`${fd(p.d)}\n${p.kurs} Kurs${p.kurs > 1 ? 'e' : ''} erfasst`)}"/>`;
+  });
+  return {svg:svgWrap(w, h, g, 'Vorschau: Depotwert, Netto-Rendite und erfasste Kursdaten im Zeitverlauf'), pts};
+}
+function drawPreview(){
+  const el = $('#c-prev'); if (!el) return;
+  const w = Math.max(280, el.clientWidth || 320), pts = previewData(), pc = previewChart(w, pts), {tot} = computeRows();
+  el.innerHTML = pc ? pc.svg : '<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen (Transaktionen oder erfasste Kurse).</p>';
+  const last = pts[pts.length - 1], nK = Object.values(state.prices).reduce((a, arr) => a + arr.length, 0);
+  const s = $('#c-prev-s');
+  if (s && last) s.textContent = `Netto-Rendite ${last.rend === null ? '–' : pctS(last.rend)}, Depotwert ${eur(tot.value)}. Kursdaten: ${nK ? `${nK} erfasste${nK === 1 ? 'r Kurs' : ' Kurse'}, letzter vom ${fd(tot.lastKurs)}` : 'noch keine eigenen Kurse erfasst'}${tot.fallback ? `. Bei ${tot.fallback} Position${tot.fallback > 1 ? 'en' : ''} stammt der angesetzte Preis aus einer Transaktion` : ''}.`;
+  const t = $('#c-prev-t');
+  if (t) t.innerHTML = pts.length ? tableHTML(['Datum', 'Depotwert', 'Netto-Rendite', 'Kurse erfasst'], pts.slice().reverse().map(p => [fd(p.d), eur(p.v), p.rend === null ? '–' : pctS(p.rend), p.kurs || '–'])) : '';
+}
+
 /* --- alles zeichnen --- */
 function drawCharts(){
   const {rows} = computeRows();
@@ -1293,6 +1382,7 @@ function drawCharts(){
   }
 }
 function drawDetail(){
+  const dl = $('#detailLink'), dp0 = posById(ui.detailPos); if (dl) dl.innerHTML = dp0 && dp0.url ? `Chart bei der Quelle: ${linkHTML(dp0)}` : '';
   const el = $('#c-detail'); if (!el) return;
   const w = Math.max(280, el.clientWidth || 320);
   const dt = detailChart(w, ui.detailPos);
@@ -1380,11 +1470,15 @@ Der aktuelle Stand (${sumState(state)}) wird ersetzt und bleibt seinerseits als 
     }
     case 'posedit': {
       const p = posById(b.dataset.id); if (!p) break;
-      const r = await modal({title:'Position bearbeiten', fields:[{label:'Name', value:p.name}, {label:'Kürzel oder WKN (optional)', value:p.sym}], ok:'Speichern'});
+      const keep = ui.tab === 'kurse' ? {d:($('#kdate') || {}).value, v:[...document.querySelectorAll('.kinput')].map(i => [i.dataset.pos, i.value])} : null;
+      const r = await modal({title:'Position bearbeiten', fields:[{label:'Name', value:p.name}, {label:'Kürzel oder WKN (optional)', value:p.sym}, {label:'Link zum Chart (optional, ganze Internetadresse einfügen)', value:p.url || ''}], ok:'Speichern'});
       if (!r) break;
       const nm = r[0].trim(); if (!nm) { toast('Der Name darf nicht leer sein.'); break; }
+      const nu = cleanUrl(r[2]); if (nu === null) { toast('Der Link ist ungültig. Erlaubt sind Internetadressen mit http:// oder https://.', 4500); break; }
       if (state.positions.some(x => x.id !== p.id && x.name.toLowerCase() === nm.toLowerCase())) { toast('Eine Position mit diesem Namen gibt es schon.', 3500); break; }
-      p.name = nm; p.sym = r[1].trim(); saveState(); render(); break;
+      p.name = nm; p.sym = r[1].trim(); p.url = nu; saveState(); render();
+      if (keep) { if ($('#kdate') && keep.d) $('#kdate').value = keep.d; keep.v.forEach(([id, v]) => { const i = document.querySelector(`.kinput[data-pos="${id}"]`); if (i && v) i.value = v; }); }
+      break;
     }
     case 'posdel': {
       const p = posById(b.dataset.id); if (!p) break;
@@ -1423,7 +1517,7 @@ document.addEventListener('keydown', e => {
   }
 });
 let rsT;
-window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (ui.tab === 'diagramme') drawCharts(); }, 150); });
+window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (ui.tab === 'diagramme') drawCharts(); if (ui.tab === 'uebersicht') drawPreview(); }, 150); });
 window.addEventListener('hashchange', () => { const t = location.hash.slice(1); if (TABS.includes(t) && t !== ui.tab) { ui.tab = t; render(); } });
 
 /* ======================================================================
@@ -1557,7 +1651,7 @@ function parsePayload(txt){ const o = JSON.parse(txt); return normalizeState(o &
 function canon(s){
   const by = (a, b) => a.id < b.id ? -1 : 1;
   return JSON.stringify({
-    p:s.positions.slice().sort(by).map(p => [p.id, p.name, p.sym]),
+    p:s.positions.slice().sort(by).map(p => [p.id, p.name, p.sym, p.url || '']),
     t:s.txs.slice().sort(by).map(t => [t.id, t.posId, t.type, t.date, t.qty, t.price, t.fee || 0]),
     k:Object.keys(s.prices).sort().map(k => [k, s.prices[k].map(e => [e.date, e.price])]),
     c:(s.cash || []).slice().sort(by).map(c => [c.id, c.date, c.type, c.amount, c.note])
@@ -1572,7 +1666,7 @@ function mergeStates(a, b){
   const s = JSON.parse(JSON.stringify(a)), pm = {}; let addP = 0, addT = 0, addK = 0, diffK = 0, addC = 0;
   b.positions.forEach(p => {
     let m = s.positions.find(x => x.id === p.id) || s.positions.find(x => x.name.toLowerCase() === p.name.toLowerCase());
-    if (!m) { m = {id:p.id, name:p.name, sym:p.sym}; s.positions.push(m); addP++; } else if (!m.sym && p.sym) m.sym = p.sym;
+    if (!m) { m = {id:p.id, name:p.name, sym:p.sym, url:p.url || ''}; s.positions.push(m); addP++; } else { if (!m.sym && p.sym) m.sym = p.sym; if (!m.url && p.url) m.url = p.url; }
     pm[p.id] = m.id;
   });
   const ids = new Set(s.txs.map(t => t.id));

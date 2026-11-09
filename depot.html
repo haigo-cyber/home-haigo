@@ -1,0 +1,1679 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Seifferts Depot</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<!--
+  Seifferts Depot - Aktiendepot-Tracker, eine einzelne HTML-Datei ohne Build, ohne Server, ohne Netzwerkzugriff.
+  Daten liegen ausschliesslich im localStorage dieses Browsers (Sicherung ueber den Reiter Daten).
+  v1.0  Erste Fassung: Kaeufe/Verkaeufe, manuelle Tageskurse, Uebersicht, Diagramme, JSON/CSV
+  v1.1  Google-Drive-Anbindung (drive.file): Datei im Ordner Seifferts Depot, taegliche Sicherungskopien, Konfliktabfrage,
+        Notkopie des zuletzt ersetzten lokalen Standes
+  v1.2  Kurse per CSV einlesen (Liste oder Tabelle), Zeichensatz-Erkennung, tolerantere Zahlenerkennung
+  v1.3  Berechnungsmethoden: gleitender Durchschnitt, FIFO, LIFO, Netto-Einstand (Kaufsummen minus Verkaufserloese), Methodenvergleich
+-->
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#f4f4f1; --surface:#fcfcfb; --surface2:#f0efec; --line:#d9d7d0; --grid:#e8e7e2;
+  --text:#0b0b0b; --text2:#52514e; --muted:#76756e;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#6250d6; --s8:#e34948;
+  --other:#9a9992; --pos:#1c5cab; --neg:#c0302f; --accent:#2a78d6; --warnbg:#fdf3dc; --warnline:#e3b24a;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#121211; --surface:#1a1a19; --surface2:#252523; --line:#3a3a37; --grid:#2b2b29;
+    --text:#f0efec; --text2:#c3c2b7; --muted:#8f8e86;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+    --other:#6f6e68; --pos:#6da7ec; --neg:#ef8584; --accent:#3987e5; --warnbg:#33290f; --warnline:#8a6a1c;
+  }
+}
+a{color:var(--accent)}
+.cards-m{display:none}
+.sortm{display:none}
+.pcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.pcard.err{background:var(--warnbg);border-color:var(--warnline)}
+.ph{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ph strong{font-size:1rem}
+.pg{text-align:right;font-weight:650;font-size:1.1rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pg small{display:block;font-weight:500;font-size:.82rem}
+.pgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 10px;margin:10px 0 0}
+.pgrid div{min-width:0}
+.pgrid dt{font-size:.74rem;color:var(--muted)}
+.pgrid dd{margin:0;font-size:.92rem;font-variant-numeric:tabular-nums}
+.pgrid dd small{color:var(--muted);font-size:.74rem}
+@media(max-width:640px){
+  .tbl-d{display:none}
+  .cards-m{display:block}
+  .sortm{display:block}
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding:0 12px}
+header.top{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
+header.top h1{margin:0;padding:10px 0 4px;font-size:1.15rem;font-weight:650}
+.ver{font-size:.75rem;font-weight:500;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle}
+nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:0 0 auto;min-height:40px;padding:6px 14px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text2);font:inherit;font-size:.95rem;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--surface2);border-color:var(--line);color:var(--text);font-weight:600}
+main{padding-top:14px;padding-bottom:60px}
+h2{font-size:1.05rem;margin:0 0 8px}
+h3{font-size:.95rem;margin:14px 0 6px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.hint{color:var(--muted);font-size:.88rem;margin:6px 0}
+.msg{color:var(--neg);font-size:.92rem;min-height:1.2em;margin:6px 0}
+.note{background:var(--warnbg);border:1px solid var(--warnline);border-radius:10px;padding:9px 12px;margin-bottom:14px;font-size:.92rem}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+@media(min-width:720px){.kpis{grid-template-columns:repeat(4,1fr)}}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.kpi .l{font-size:.8rem;color:var(--muted)}
+.kpi .v{font-size:1.3rem;font-weight:650;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:.85rem;color:var(--text2);font-variant-numeric:tabular-nums}
+.pos{color:var(--pos)} .neg{color:var(--neg)}
+.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.92rem;font-variant-numeric:tabular-nums}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--grid)}
+th:first-child,td:first-child{text-align:left}
+.sticky1 td:first-child,.sticky1 th:first-child{position:sticky;left:0;z-index:1}
+.sticky1 td:first-child{background:var(--surface)}
+thead th{background:var(--surface2);font-weight:600;font-size:.82rem;color:var(--text2)}
+th button{all:unset;cursor:pointer;display:inline-block;padding:2px 0}
+th button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+tfoot td,.sticky1 tfoot td:first-child{font-weight:650;background:var(--surface2);border-bottom:none}
+td small,.sub{display:block;color:var(--muted);font-size:.78rem}
+tr.err td{background:var(--warnbg)}
+label{display:block;font-size:.85rem;color:var(--text2);margin-bottom:10px}
+input,select,textarea{display:block;width:100%;min-height:44px;margin-top:3px;padding:8px 10px;font:inherit;font-size:16px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;-moz-appearance:none;appearance:none}
+select{background-image:linear-gradient(45deg,transparent 50%,var(--text2) 50%),linear-gradient(135deg,var(--text2) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
+input[type=date]{-moz-appearance:none;appearance:none}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+input[type=checkbox]{display:inline-block;width:20px;min-height:20px;margin:0 8px 0 0;vertical-align:middle;-moz-appearance:auto;appearance:auto}
+.checkrow{display:flex;align-items:center;font-size:.92rem;color:var(--text2);margin:6px 0 10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px}
+@media(max-width:560px){.grid3{grid-template-columns:1fr 1fr}.grid3 label:first-child{grid-column:1/3}}
+button.btn,button.primary,a.btn{display:inline-block;min-height:44px;padding:8px 16px;font:inherit;font-size:.95rem;border-radius:8px;border:1px solid var(--line);background:var(--surface2);color:var(--text);cursor:pointer;text-decoration:none;text-align:center}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.danger{color:var(--neg)}
+button.small{min-height:34px;padding:4px 10px;font-size:.85rem}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+details{margin:8px 0}
+summary{cursor:pointer;color:var(--text2);padding:6px 0;min-height:32px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.85rem;color:var(--text2);margin:2px 0 8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px}
+.sw.dot{border-radius:50%}
+.sw.dia{transform:rotate(45deg);width:10px;height:10px;border-radius:1px}
+.sw.line{height:3px;width:18px;border-radius:2px}
+.sw.dash{height:0;width:18px;border-top:3px dashed}
+.chart{width:100%;overflow:hidden}
+.chart svg{display:block;max-width:100%;height:auto}
+svg .t{fill:var(--text2);font-size:12px}
+svg .tm{fill:var(--muted);font-size:11px}
+svg .tv{fill:var(--text);font-size:11px;font-variant-numeric:tabular-nums}
+svg .tb{fill:var(--text);font-size:12px;font-weight:600}
+svg .grid{stroke:var(--grid);stroke-width:1}
+svg .axis{stroke:var(--line);stroke-width:1}
+svg .hit{fill:transparent}
+svg .hit:hover{fill:rgba(128,128,128,.14)}
+svg [data-tip]{cursor:default}
+.donutrow{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.donutrow ul{list-style:none;padding:0;margin:0;flex:1 1 220px;font-size:.92rem}
+.donutrow li{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--grid)}
+.donutrow li span.n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.donutrow li span.p{font-variant-numeric:tabular-nums;color:var(--text2)}
+#tip{position:fixed;display:none;z-index:50;max-width:260px;padding:7px 10px;background:var(--text);color:var(--bg);border-radius:8px;font-size:.82rem;line-height:1.35;white-space:pre-line;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;background:var(--text);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:.9rem;display:none;max-width:92vw}
+.overlay{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px}
+.dlg{background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:18px;width:100%;max-width:420px}
+.dlg h2{margin-top:0}
+.dlg p{white-space:pre-line}
+.hero{text-align:center;padding:30px 14px}
+.hero p{max-width:520px;margin:8px auto}
+code,pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85rem}
+pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;overflow-x:auto;margin:6px 0}
+.pill{display:inline-block;font-size:.75rem;border:1px solid var(--line);border-radius:999px;padding:0 8px;color:var(--text2);margin-left:4px}
+.pill.warn{border-color:var(--warnline);background:var(--warnbg)}
+.histlist{max-height:220px;overflow:auto;border:1px solid var(--grid);border-radius:8px}
+.histlist div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 10px;border-bottom:1px solid var(--grid);font-variant-numeric:tabular-nums;font-size:.9rem}
+.kursrow{display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--grid)}
+.kursrow input{margin-top:0}
+
+.titlerow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dpill{flex:0 1 auto;min-height:32px;margin-top:6px;padding:3px 12px;font:inherit;font-size:.8rem;color:var(--text2);background:var(--surface2);border:1px solid var(--line);border-radius:999px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dpill[data-st="ok"]{border-color:var(--s3)}
+.dpill[data-st="pending"],.dpill[data-st="busy"]{border-color:var(--s4)}
+.dpill[data-st="auth"],.dpill[data-st="conflict"],.dpill[data-st="error"],.dpill[data-st="unavail"]{border-color:var(--warnline);background:var(--warnbg);color:var(--text);font-weight:600}
+.btns.col{flex-direction:column}
+.btns.col button{text-align:left}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="titlerow"><h1>Seifferts Depot <span class="ver" id="ver"></span></h1><button id="drivepill" class="dpill" type="button" data-st="off"></button></div>
+    <nav id="nav" role="tablist" aria-label="Bereiche">
+      <button role="tab" data-tab="uebersicht">Übersicht</button>
+      <button role="tab" data-tab="diagramme">Diagramme</button>
+      <button role="tab" data-tab="kurse">Kurse</button>
+      <button role="tab" data-tab="kaeufe">Käufe</button>
+      <button role="tab" data-tab="daten">Daten</button>
+    </nav>
+  </div>
+</header>
+<main class="wrap" id="view"></main>
+<div id="tip" role="tooltip"></div>
+<div id="toast" role="status"></div>
+<div id="modal-root"></div>
+
+<script>
+'use strict';
+/* ======================================================================
+   Seifferts Depot v1.0
+   ====================================================================== */
+const VERSION = '1.3';
+const LS_KEY = 'seifferts_depot_v1';
+const PALETTE = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let _uid = 0;
+const uid = () => Date.now().toString(36) + (_uid++).toString(36) + Math.random().toString(36).slice(2, 6);
+
+/* ---------- Formate ---------- */
+const fEur  = new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR'});
+const fEurS = new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR', signDisplay:'exceptZero'});
+const fPrice = new Intl.NumberFormat('de-DE', {minimumFractionDigits:2, maximumFractionDigits:4});
+const fQty  = new Intl.NumberFormat('de-DE', {maximumFractionDigits:6});
+const fPct  = new Intl.NumberFormat('de-DE', {minimumFractionDigits:1, maximumFractionDigits:1, signDisplay:'exceptZero'});
+const fPct0 = new Intl.NumberFormat('de-DE', {minimumFractionDigits:1, maximumFractionDigits:1});
+const eur  = v => isFinite(v) ? fEur.format(v) : '–';
+const eurS = v => isFinite(v) ? fEurS.format(v) : '–';
+const price = v => isFinite(v) ? fPrice.format(v) + ' €' : '–';
+const qty  = v => isFinite(v) ? fQty.format(v) : '–';
+const pctS = r => isFinite(r) ? fPct.format(r * 100) + ' %' : '–';
+const pctP = r => isFinite(r) ? fPct0.format(r * 100) + ' %' : '–';
+const signCls = v => v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : '';
+
+function pad2(n){ return String(n).padStart(2, '0'); }
+function todayISO(){ const d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+function fd(iso){ if(!iso) return '–'; const [y, m, d] = iso.split('-'); return d + '.' + m + '.' + y; }
+function fdShort(iso){ const [y, m, d] = iso.split('-'); return d + '.' + m + '.'; }
+function daysBetween(a, b){ return Math.round((Date.parse(b) - Date.parse(a)) / 864e5); }
+
+function parseNum(s){
+  if (typeof s === 'number') return s;
+  s = String(s == null ? '' : s).trim().replace(/\s/g, '').replace(/€/g, '');
+  if (!s) return NaN;
+  const lc = s.lastIndexOf(','), ld = s.lastIndexOf('.');
+  if (lc >= 0 && ld >= 0) s = lc > ld ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  else if (lc >= 0) s = s.replace(',', '.');
+  else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, '');
+  return /^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(s) ? Number(s) : NaN;
+}
+function parseDate(s){
+  s = String(s || '').trim();
+  let y, m, d, mm;
+  if ((mm = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) { y = +mm[1]; m = +mm[2]; d = +mm[3]; }
+  else if ((mm = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/))) { d = +mm[1]; m = +mm[2]; y = +mm[3]; if (y < 100) y += 2000; }
+  else return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return y + '-' + pad2(m) + '-' + pad2(d);
+}
+
+/* ---------- Zustand ---------- */
+function emptyState(){ return {positions:[], txs:[], prices:{}, meta:{lastBackup:null}}; }
+function normalizeState(o){
+  const s = emptyState();
+  if (!o || typeof o !== 'object') return s;
+  const ids = new Set();
+  (Array.isArray(o.positions) ? o.positions : []).forEach(p => {
+    if (p && p.id && p.name && !ids.has(p.id)) { ids.add(p.id); s.positions.push({id:String(p.id), name:String(p.name), sym:String(p.sym || '')}); }
+  });
+  (Array.isArray(o.txs) ? o.txs : []).forEach(t => {
+    if (!t || !ids.has(t.posId)) return;
+    const d = parseDate(t.date), q = Number(t.qty), pr = Number(t.price), fee = Number(t.fee || 0);
+    if (!d || !(q > 0) || !(pr >= 0) || !(fee >= 0)) return;
+    s.txs.push({id:String(t.id || uid()), posId:t.posId, type:t.type === 'sell' ? 'sell' : 'buy', date:d, qty:q, price:pr, fee:fee});
+  });
+  if (o.prices && typeof o.prices === 'object') {
+    Object.keys(o.prices).forEach(pid => {
+      if (!ids.has(pid) || !Array.isArray(o.prices[pid])) return;
+      const m = new Map();
+      o.prices[pid].forEach(e => { const d = e && parseDate(e.date), pr = e && Number(e.price); if (d && pr > 0) m.set(d, pr); });
+      s.prices[pid] = [...m].map(([date, price]) => ({date, price})).sort((a, b) => a.date < b.date ? -1 : 1);
+    });
+  }
+  if (o.meta && o.meta.lastBackup) s.meta.lastBackup = String(o.meta.lastBackup);
+  if (o.meta && ['avg', 'fifo', 'lifo', 'net'].includes(o.meta.method)) s.meta.method = o.meta.method;
+  return s;
+}
+let storageOK = true;
+function loadState(){
+  try { const raw = localStorage.getItem(LS_KEY); if (raw) return normalizeState(JSON.parse(raw)); }
+  catch (e) { storageOK = false; console.warn('Laden fehlgeschlagen', e); }
+  return emptyState();
+}
+let state = loadState();
+let cache = {};
+function saveState(opts){
+  cache = {};
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch (e) { storageOK = false; toast('Achtung: Speichern im Browser nicht möglich. Bitte Sicherung exportieren.', 5000); }
+  if (!(opts && opts.noSync)) driveTouch();
+}
+/* Ersetzt den kompletten Bestand. Der bisherige Stand bleibt als Notkopie im Browser (Reiter Daten). */
+function replaceState(ns, opts){
+  opts = opts || {};
+  if (opts.keepPrev !== false && (state.positions.length || state.txs.length)) {
+    try { localStorage.setItem(LS_KEY + '_prev', JSON.stringify({saved:new Date().toISOString(), state})); } catch (e) {}
+  }
+  state = ns; saveState({noSync:!!opts.noSync});
+}
+
+/* ---------- Berechnung ---------- */
+const posById = id => state.positions.find(p => p.id === id);
+function txsOf(posId){ return state.txs.filter(t => t.posId === posId); }
+function sortTxs(list){
+  return list.slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.type === b.type ? 0 : a.type === 'buy' ? -1 : 1));
+}
+const METHODS = {
+  avg:{name:'Gleitender Durchschnitt', kpi:'inkl. Gebühren',
+    hint:'Alle Käufe werden zu einem Durchschnittskurs zusammengefasst. Ein Verkauf ändert den Durchschnittskurs der übrigen Stücke nicht. Der Gewinn aus einem Verkauf wird als realisiert ausgewiesen.'},
+  fifo:{name:'FIFO (zuerst gekauft, zuerst verkauft)', kpi:'inkl. Gebühren',
+    hint:'Beim Verkauf gelten die zuerst gekauften Stücke als zuerst verkauft. Der Einstiegspreis der übrigen Stücke ergibt sich aus den späteren Käufen. Banken nutzen dieses Verfahren meist für die Steuer; vergleiche trotzdem mit deiner Steuerbescheinigung.'},
+  lifo:{name:'LIFO (zuletzt gekauft, zuerst verkauft)', kpi:'inkl. Gebühren',
+    hint:'Beim Verkauf gelten die zuletzt gekauften Stücke als zuerst verkauft. Die älteren Käufe bleiben als Einstieg der übrigen Stücke erhalten.'},
+  net:{name:'Netto-Einstand (Käufe minus Verkaufserlöse)', kpi:'Käufe minus Verkaufserlöse',
+    hint:'Einstand = alle Kaufbeträge minus alle Verkaufserlöse, geteilt durch den aktuellen Bestand. Wer einen Teil teuer verkauft und günstiger zurückkauft, senkt so seinen Einstiegspreis. Beispiel: 100 Stück zu 10 €, 50 davon zu 15 € verkauft und 50 zu 12 € zurückgekauft ergibt (1.000 − 750 + 600) / 100 = 8,50 €. Verkaufsgewinne stecken hier im niedrigeren Einstand, ein realisierter Gewinn entsteht erst, wenn die Position ganz verkauft ist. Der Einstiegspreis kann bis auf null oder darunter sinken.'}
+};
+const curMethod = () => (state.meta && METHODS[state.meta.method]) ? state.meta.method : 'avg';
+/* Berechnet Bestand, Einstand, Einstiegspreis und realisiertes Ergebnis einer Position nach der gewaehlten Methode.
+   avg: gleitender Durchschnitt. fifo/lifo: Kaufpositionen (Lots) werden verbraucht. net: Kaufsummen minus Verkaufserloese. */
+function calcFrom(list, upTo, method){
+  method = method || curMethod();
+  const errors = [];
+  let realized = 0, buyQty = 0, buyVal = 0, soldQty = 0;
+  const seq = [];
+  for (const t of sortTxs(list)) { if (upTo && t.date > upTo) break; seq.push(t); }
+  let q = 0, cost = 0, costNet = 0, avg = NaN;
+  if (method === 'net') {
+    let inv = 0, invNet = 0, proc = 0, procNet = 0;
+    for (const t of seq) {
+      const fee = t.fee || 0;
+      if (t.type === 'buy') { q += t.qty; invNet += t.qty * t.price; inv += t.qty * t.price + fee; buyQty += t.qty; buyVal += t.qty * t.price; }
+      else {
+        if (t.qty > q + 1e-9) { errors.push(t.id); continue; }
+        q -= t.qty; procNet += t.qty * t.price; proc += t.qty * t.price - fee; soldQty += t.qty;
+        if (q < 1e-9) { q = 0; realized += proc - inv; inv = invNet = proc = procNet = 0; }
+      }
+    }
+    cost = inv - proc; costNet = invNet - procNet; avg = q > 0 ? costNet / q : NaN;
+  } else if (method === 'fifo' || method === 'lifo') {
+    const lots = [];
+    for (const t of seq) {
+      const fee = t.fee || 0;
+      if (t.type === 'buy') { lots.push({q:t.qty, p:t.price, f:fee}); q += t.qty; buyQty += t.qty; buyVal += t.qty * t.price; }
+      else {
+        if (t.qty > q + 1e-9) { errors.push(t.id); continue; }
+        let rem = t.qty, cons = 0;
+        while (rem > 1e-12 && lots.length) {
+          const lot = method === 'fifo' ? lots[0] : lots[lots.length - 1];
+          const take = Math.min(rem, lot.q), frac = take / lot.q;
+          cons += take * lot.p + lot.f * frac; lot.f -= lot.f * frac; lot.q -= take; rem -= take;
+          if (lot.q < 1e-12) { if (method === 'fifo') lots.shift(); else lots.pop(); }
+        }
+        realized += t.qty * t.price - fee - cons; q -= t.qty; soldQty += t.qty;
+        if (q < 1e-9) { q = 0; lots.length = 0; }
+      }
+    }
+    costNet = lots.reduce((a, l) => a + l.q * l.p, 0); cost = costNet + lots.reduce((a, l) => a + l.f, 0);
+    avg = q > 0 ? costNet / q : NaN;
+  } else {
+    for (const t of seq) {
+      const fee = t.fee || 0;
+      if (t.type === 'buy') { q += t.qty; costNet += t.qty * t.price; cost += t.qty * t.price + fee; buyQty += t.qty; buyVal += t.qty * t.price; }
+      else {
+        if (t.qty > q + 1e-9) { errors.push(t.id); continue; }
+        const f = t.qty / q;
+        realized += t.qty * t.price - fee - cost * f;
+        cost -= cost * f; costNet -= costNet * f; q -= t.qty; soldQty += t.qty;
+        if (q < 1e-9) { q = 0; cost = 0; costNet = 0; }
+      }
+    }
+    avg = q > 0 ? costNet / q : NaN;
+  }
+  return {qty:q, cost, costNet, avg, realized, errors, buyQty, buyVal, soldQty};
+}
+const calcPosition = (posId, upTo, method) => calcFrom(txsOf(posId), upTo, method);
+function setMethod(m){ if (!METHODS[m]) return; state.meta.method = m; saveState(); render(); }
+/* Auswahl der Berechnungsmethode, in Uebersicht und Diagrammen. */
+function methodBar(){
+  const m = curMethod();
+  return `<div class="card" style="padding:10px 14px"><label style="margin:0">Berechnungsmethode für Einstiegspreis und Ergebnis
+    <select id="methodSel">${Object.keys(METHODS).map(k => `<option value="${k}"${k === m ? ' selected' : ''}>${esc(METHODS[k].name.replace(/ \(.*$/, ''))}</option>`).join('')}</select></label>
+    <details><summary>Wie wird gerechnet?</summary><p class="hint" style="margin-top:0">${esc(METHODS[m].hint)}</p></details></div>`;
+}
+/* Gegenueberstellung aller Methoden */
+function methodCompare(rows){
+  const M = ['avg', 'fifo', 'lifo', 'net'], open = rows.filter(r => r.open);
+  if (!open.length) return '';
+  let h = `<details style="margin-top:14px"><summary><strong>Methoden im Vergleich</strong></summary>`;
+  h += `<h3>Ø Einstiegspreis je Stück (ohne Gebühren)</h3><div class="tablewrap"><table class="sticky1"><thead><tr><th>Position</th>${M.map(m => `<th>${m === 'avg' ? 'Gleitend' : m === 'net' ? 'Netto' : m.toUpperCase()}</th>`).join('')}</tr></thead><tbody>`;
+  open.forEach(r => { h += `<tr><td>${esc(r.pos.name)}</td>${M.map(m => `<td>${price(calcPosition(r.pos.id, undefined, m).avg)}</td>`).join('')}</tr>`; });
+  h += `</tbody></table></div><h3>Ergebnis des gesamten Depots</h3><div class="tablewrap"><table><thead><tr><th>Methode</th><th>Einstand</th><th>G/V offen</th><th>Realisiert</th><th>Gesamt</th></tr></thead><tbody>`;
+  M.forEach(m => {
+    let cost = 0, val = 0, real = 0;
+    state.positions.forEach(p => { const c = calcPosition(p.id, undefined, m); real += c.realized; const r = rows.find(x => x.pos.id === p.id); if (c.qty > 1e-9 && r && isFinite(r.price)) { cost += c.cost; val += c.qty * r.price; } });
+    h += `<tr><td>${esc(METHODS[m].name.replace(/ \(.*$/, ''))}</td><td>${eur(cost)}</td><td class="${signCls(val - cost)}">${eurS(val - cost)}</td><td class="${signCls(real)}">${eurS(real)}</td><td class="${signCls(val - cost + real)}">${eurS(val - cost + real)}</td></tr>`;
+  });
+  return h + `</tbody></table></div><p class="hint">Das Gesamtergebnis ist bei jeder Methode gleich. Die Methoden unterscheiden sich nur darin, wie es auf offene Position und realisierten Gewinn verteilt wird und welcher Einstiegspreis angezeigt wird.</p></details>`;
+}
+
+/* Preisbeobachtungen: manuelle Kurse + Transaktionspreise (Kurs gewinnt am selben Tag). */
+function obsFor(posId){
+  if (cache['o' + posId]) return cache['o' + posId];
+  const o = [];
+  txsOf(posId).forEach(t => o.push({date:t.date, price:t.price, src:'trade', w:0}));
+  (state.prices[posId] || []).forEach(p => o.push({date:p.date, price:p.price, src:'kurs', w:1}));
+  o.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.w - b.w);
+  return (cache['o' + posId] = o);
+}
+function priceAtDate(posId, d){
+  const o = obsFor(posId); let best = null;
+  for (const e of o) { if (e.date <= d) best = e; else break; }
+  return best ? best.price : null;
+}
+
+function computeRows(){
+  const rows = state.positions.map(p => {
+    const c = calcPosition(p.id), o = obsFor(p.id), last = o[o.length - 1] || null;
+    const open = c.qty > 1e-9;
+    const pr = last ? last.price : NaN;
+    const value = open ? (last ? c.qty * pr : NaN) : 0;
+    const gv = open && last ? value - c.cost : 0;
+    const age = last && last.src === 'kurs' ? daysBetween(last.date, todayISO()) : null;
+    return Object.assign({pos:p, open, price:pr, priceDate:last ? last.date : null, priceSrc:last ? last.src : null,
+      value, gv, gvPct:open && c.cost > 0 ? gv / c.cost : NaN, stale:age !== null && age > 7}, c);
+  });
+  const openRows = rows.filter(r => r.open && isFinite(r.value));
+  const tot = {
+    value:openRows.reduce((a, r) => a + r.value, 0),
+    cost:openRows.reduce((a, r) => a + r.cost, 0),
+    realized:rows.reduce((a, r) => a + r.realized, 0),
+    openCount:rows.filter(r => r.open).length,
+    fallback:rows.filter(r => r.open && r.priceSrc === 'trade').length,
+    stale:rows.filter(r => r.open && r.stale).length,
+    lastKurs:state.positions.reduce((m, p) => { const a = state.prices[p.id]; const d = a && a.length ? a[a.length - 1].date : ''; return d > m ? d : m; }, '')
+  };
+  tot.gv = tot.value - tot.cost;
+  tot.gvPct = tot.cost > 0 ? tot.gv / tot.cost : NaN;
+  rows.forEach(r => { r.share = r.open && tot.value > 0 && isFinite(r.value) ? r.value / tot.value : NaN; });
+  return {rows, tot};
+}
+
+/* ---------- UI-Helfer ---------- */
+const ui = {tab:'uebersicht', sort:{key:'value', dir:-1}, showClosed:false, txEdit:null, txFilter:'', detailPos:'', lastDate:null, openHist:null};
+let toastT;
+function toast(msg, ms = 2600){
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', ms);
+}
+function modal({title, text = '', fields = [], ok = 'OK', cancel = 'Abbrechen', danger = false}){
+  return new Promise(resolve => {
+    const root = $('#modal-root');
+    const prevFocus = document.activeElement;
+    root.innerHTML = `<div class="overlay"><form class="dlg" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+      <h2>${esc(title)}</h2>${text ? `<p>${esc(text)}</p>` : ''}
+      ${fields.map((f, i) => `<label>${esc(f.label)}<input data-f="${i}" value="${esc(f.value || '')}" autocomplete="off"></label>`).join('')}
+      <div class="btns"><button class="primary${danger ? ' danger' : ''}" type="submit"${danger ? ' style="background:var(--neg);border-color:var(--neg)"' : ''}>${esc(ok)}</button>
+      ${cancel ? `<button class="btn" type="button" data-cancel>${esc(cancel)}</button>` : ''}</div></form></div>`;
+    const form = root.querySelector('form');
+    const close = v => { root.innerHTML = ''; document.removeEventListener('keydown', onKey, true); if (prevFocus && prevFocus.focus) try { prevFocus.focus(); } catch (e) {} resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); close(fields.length ? null : false); } };
+    document.addEventListener('keydown', onKey, true);
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      close(fields.length ? fields.map((f, i) => form.querySelector(`[data-f="${i}"]`).value) : true);
+    });
+    const c = form.querySelector('[data-cancel]'); if (c) c.addEventListener('click', () => close(fields.length ? null : false));
+    const first = form.querySelector('input') || form.querySelector('button'); if (first) first.focus();
+  });
+}
+function download(name, text, mime){
+  const blob = new Blob([text], {type:mime || 'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
+}
+
+/* ======================================================================
+   Navigation
+   ====================================================================== */
+const TABS = ['uebersicht', 'diagramme', 'kurse', 'kaeufe', 'daten'];
+function go(tab){
+  if (!TABS.includes(tab)) tab = 'uebersicht';
+  ui.tab = tab;
+  if (location.hash !== '#' + tab) { try { history.replaceState(null, '', '#' + tab); } catch (e) {} }
+  render(); window.scrollTo(0, 0);
+}
+function render(){
+  document.querySelectorAll('#nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === ui.tab ? 'true' : 'false'));
+  const v = $('#view');
+  v.innerHTML = ({uebersicht:viewOverview, diagramme:viewCharts, kurse:viewKurse, kaeufe:viewKaeufe, daten:viewDaten})[ui.tab]();
+  if (ui.tab === 'diagramme') drawCharts();
+}
+
+/* ======================================================================
+   Übersicht
+   ====================================================================== */
+function hero(){
+  return `<div class="card hero"><h2>Noch keine Positionen</h2>
+    <p>Erfasse unter Käufe deine erste Transaktion (Datum, Stück, Einstiegspreis). Danach trägst du unter Kurse bei Bedarf die aktuellen Tageskurse ein, und die Auswertung entsteht von selbst.</p>
+    <div class="btns" style="justify-content:center"><button class="primary" data-act="goto" data-tab="kaeufe">Erste Transaktion erfassen</button>
+    <button class="btn" data-act="demo">Beispieldaten laden</button></div>
+    <p class="hint">Alle Daten bleiben in diesem Browser auf diesem Gerät. Es gibt keine Verbindung ins Internet.</p></div>`;
+}
+const COLS = [
+  ['name','Position','l'], ['qty','Stück'], ['avg','Ø Einstieg'], ['price','Kurs'], ['cost','Einstand'],
+  ['value','Wert'], ['gv','G/V €'], ['gvPct','G/V %'], ['share','Anteil']
+];
+function sortRows(rows){
+  const {key, dir} = ui.sort;
+  return rows.slice().sort((a, b) => {
+    let x = key === 'name' ? a.pos.name.toLowerCase() : a[key], y = key === 'name' ? b.pos.name.toLowerCase() : b[key];
+    const nx = typeof x === 'number' && !isFinite(x), ny = typeof y === 'number' && !isFinite(y);
+    if (nx || ny) return nx && ny ? 0 : nx ? 1 : -1;
+    return (x < y ? -1 : x > y ? 1 : 0) * dir;
+  });
+}
+function viewOverview(){
+  if (!state.positions.length) return hero();
+  const {rows, tot} = computeRows();
+  const shown = sortRows(rows.filter(r => r.open || ui.showClosed));
+  const closedCount = rows.filter(r => !r.open).length;
+  let h = '';
+  const bk = state.meta.lastBackup;
+  if (state.txs.length && !dm.on && (!bk || daysBetween(bk.slice(0, 10), todayISO()) > 30)) {
+    h += `<div class="note">Letzte Sicherung: ${bk ? fd(bk.slice(0, 10)) : 'noch nie'}. Die Daten liegen nur in diesem Browser. Unter <a href="#daten" data-act="goto" data-tab="daten">Daten</a> kannst du eine Sicherungsdatei speichern.</div>`;
+  }
+  if (tot.fallback) h += `<div class="note">${tot.fallback} Position${tot.fallback > 1 ? 'en haben' : ' hat'} noch keinen eigenen Kurs. Dort wird der letzte Transaktionspreis angesetzt (Gewinn/Verlust bleibt deshalb bei etwa null). <a href="#kurse" data-act="goto" data-tab="kurse">Kurse erfassen</a></div>`;
+  if (tot.stale) h += `<div class="note">${tot.stale} Kurs${tot.stale > 1 ? 'e sind' : ' ist'} älter als 7 Tage und in der Tabelle als veraltet markiert.</div>`;
+  h += methodBar();
+  h += `<div class="kpis">
+    <div class="kpi"><div class="l">Depotwert</div><div class="v">${eur(tot.value)}</div><div class="s">${tot.openCount} offene Position${tot.openCount === 1 ? '' : 'en'}</div></div>
+    <div class="kpi"><div class="l">Eingesetzt (Einstand)</div><div class="v">${eur(tot.cost)}</div><div class="s">${METHODS[curMethod()].kpi}</div></div>
+    <div class="kpi"><div class="l">Gewinn/Verlust offen</div><div class="v ${signCls(tot.gv)}">${eurS(tot.gv)}</div><div class="s ${signCls(tot.gv)}">${pctS(tot.gvPct)}</div></div>
+    <div class="kpi"><div class="l">Realisiert (Verkäufe)</div><div class="v ${signCls(tot.realized)}">${eurS(tot.realized)}</div><div class="s">${tot.lastKurs ? 'Letzter Kurs: ' + fd(tot.lastKurs) : 'noch keine Kurse'}</div></div>
+  </div>`;
+  const SORTS = [['value','Wert'],['gvPct','Gewinn/Verlust %'],['gv','Gewinn/Verlust €'],['share','Anteil'],['name','Name'],['cost','Einstand']];
+  h += `<label class="sortm">Sortieren nach<select id="sortSel">${SORTS.map(([k, l]) => `<option value="${k}"${ui.sort.key === k ? ' selected' : ''}>${l}${k === 'name' ? ' (A–Z)' : ' (absteigend)'}</option>`).join('')}</select></label>`;
+  h += `<div class="cards-m">${shown.length ? shown.map(r => `<div class="pcard${r.errors.length ? ' err' : ''}"><div class="ph"><div><strong>${esc(r.pos.name)}</strong>${r.pos.sym ? `<span class="sub">${esc(r.pos.sym)}${r.open ? '' : ' · geschlossen'}</span>` : (r.open ? '' : '<span class="sub">geschlossen</span>')}</div>
+      ${r.open ? `<div class="pg ${signCls(r.gv)}">${pctS(r.gvPct)}<small>${eurS(r.gv)}</small></div>` : ''}</div>
+      ${r.open ? `<dl class="pgrid"><div><dt>Stück</dt><dd>${qty(r.qty)}</dd></div><div><dt>Ø Einstieg</dt><dd>${price(r.avg)}</dd></div>
+      <div><dt>Kurs</dt><dd>${isFinite(r.price) ? price(r.price) : '–'}${r.priceSrc === 'trade' ? '<br><small>(Transaktionspreis)</small>' : r.priceDate ? `<br><small>${fd(r.priceDate)}${r.stale ? ' (veraltet)' : ''}</small>` : ''}</dd></div>
+      <div><dt>Einstand</dt><dd>${eur(r.cost)}</dd></div><div><dt>Wert</dt><dd>${eur(r.value)}</dd></div><div><dt>Anteil</dt><dd>${pctP(r.share)}</dd></div></dl>` : ''}${r.errors.length ? '<p class="msg" style="margin:6px 0 0">Ein Verkauf übersteigt den Bestand (siehe Käufe).</p>' : ''}</div>`).join('') : '<p class="hint">Keine offenen Positionen.</p>'}</div>`;
+  h += `<div class="tablewrap tbl-d"><table class="sticky1"><thead><tr>${COLS.map(([k, l, al]) => {
+    const act = ui.sort.key === k;
+    return `<th${al === 'l' ? ' style="text-align:left"' : ''} aria-sort="${act ? (ui.sort.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button data-act="sort" data-key="${k}">${l}${act ? (ui.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</button></th>`;
+  }).join('')}</tr></thead><tbody>`;
+  if (!shown.length) h += `<tr><td colspan="9" style="text-align:left">Keine offenen Positionen.</td></tr>`;
+  shown.forEach(r => {
+    const kursNote = r.priceSrc === 'trade' ? '<small>(Transaktionspreis)</small>' : r.priceDate ? `<small>${fd(r.priceDate)}${r.stale ? ' (veraltet)' : ''}</small>` : '';
+    h += `<tr${r.errors.length ? ' class="err"' : ''}><td>${esc(r.pos.name)}${r.pos.sym ? `<small>${esc(r.pos.sym)}</small>` : ''}${r.open ? '' : '<small>geschlossen</small>'}</td>
+      <td>${r.open ? qty(r.qty) : '0'}</td><td>${r.open ? price(r.avg) : '–'}</td><td>${isFinite(r.price) ? price(r.price) : '–'}${kursNote}</td>
+      <td>${r.open ? eur(r.cost) : '–'}</td><td>${r.open ? eur(r.value) : '–'}</td>
+      <td class="${signCls(r.gv)}">${r.open ? eurS(r.gv) : '–'}</td><td class="${signCls(r.gv)}">${r.open ? pctS(r.gvPct) : '–'}</td><td>${r.open ? pctP(r.share) : '–'}</td></tr>`;
+  });
+  h += `</tbody>`;
+  if (shown.length > 1 || tot.openCount) h += `<tfoot><tr><td>Gesamt</td><td></td><td></td><td></td><td>${eur(tot.cost)}</td><td>${eur(tot.value)}</td><td class="${signCls(tot.gv)}">${eurS(tot.gv)}</td><td class="${signCls(tot.gv)}">${pctS(tot.gvPct)}</td><td>${tot.value > 0 ? '100,0 %' : '–'}</td></tr></tfoot>`;
+  h += `</table></div>`;
+  if (closedCount) h += `<div class="checkrow" style="margin-top:12px"><input type="checkbox" id="showClosed"${ui.showClosed ? ' checked' : ''}><label for="showClosed" style="margin:0">Geschlossene Positionen anzeigen (${closedCount})</label></div>`;
+  h += methodCompare(rows);
+  h += `<p class="hint">Ø Einstieg ist der Einstiegspreis je Stück ohne Gebühren, Einstand der eingesetzte Betrag inklusive Gebühren (bei Netto-Einstand abzüglich der Verkaufserlöse). Beides richtet sich nach der gewählten Berechnungsmethode. Der angesetzte Kurs ist der jeweils neueste erfasste Kurs.</p>`;
+  return h;
+}
+
+/* ======================================================================
+   Kurse erfassen
+   ====================================================================== */
+function viewKurse(){
+  const {rows} = computeRows();
+  const open = rows.filter(r => r.open);
+  if (!state.positions.length) return `<div class="card"><p>Lege zuerst unter Käufe mindestens eine Position an.</p><button class="primary" data-act="goto" data-tab="kaeufe">Zu den Käufen</button></div>`;
+  let h = `<form class="card" id="kursform"><h2>Tageskurse erfassen</h2>
+    <label>Datum der Kurse<input type="date" id="kdate" value="${todayISO()}"></label>`;
+  if (!open.length) h += `<p class="hint">Keine offenen Positionen.</p>`;
+  open.forEach(r => {
+    h += `<div class="kursrow"><div>${esc(r.pos.name)}${r.pos.sym ? ` <span class="pill">${esc(r.pos.sym)}</span>` : ''}<span class="sub">Zuletzt: ${isFinite(r.price) ? price(r.price) + ' (' + (r.priceSrc === 'trade' ? 'Transaktionspreis ' : '') + fd(r.priceDate) + ')' : 'noch keiner'}</span></div>
+      <input class="kinput" data-pos="${r.pos.id}" inputmode="decimal" placeholder="${isFinite(r.price) ? fPrice.format(r.price) : 'Kurs'}" aria-label="Kurs ${esc(r.pos.name)} in Euro" autocomplete="off"></div>`;
+  });
+  h += `<p class="msg" id="kmsg" role="alert"></p><div class="btns"><button class="primary" type="submit">Kurse speichern</button></div>
+    <p class="hint">Leere Felder werden übersprungen. Ein bereits vorhandener Kurs für dasselbe Datum wird ersetzt. Mit der Eingabetaste springst du zum nächsten Feld. Ältere Tage kannst du durch Ändern des Datums nachtragen.</p></form>`;
+  h += `<div class="card"><h2>Kurse aus CSV einlesen</h2>
+    <p class="hint" style="margin-top:0">Unterstützt werden eine Liste (eine Zeile je Kurs) und eine Tabelle (eine Spalte je Position). Name oder Kürzel/WKN der Position müssen mit deinen Positionen übereinstimmen. Trennzeichen Semikolon, Komma oder Tab; Dezimalkomma oder Dezimalpunkt. Vor dem Einlesen siehst du eine Zusammenfassung.</p>
+    <pre>Datum;Name;Kurs
+06.11.2026;Muster AG;12,34
+06.11.2026;Probe SE;45,60</pre>
+    <pre>Datum;Muster AG;Probe SE
+06.11.2026;12,34;45,60
+07.11.2026;12,40;45,10</pre>
+    <p class="hint">Die Datei aus „Kurse als CSV“ (Reiter Daten) lässt sich direkt wieder einlesen. Eine Datei mit nur Datum und Kurs (zum Beispiel Download einer Kurshistorie) ist ebenfalls möglich, dann fragt das Tool nach der Position.</p>
+    <div class="btns"><button class="btn" data-act="importkurse">CSV-Datei wählen</button></div><input type="file" id="kursfile" accept=".csv,.txt,text/csv,text/plain" hidden></div>`;
+  h += `<div class="card"><h2>Kursverlauf</h2>`;
+  state.positions.forEach(p => {
+    const arr = (state.prices[p.id] || []).slice().reverse();
+    h += `<details${ui.openHist === p.id ? ' open' : ''}><summary>${esc(p.name)} (${arr.length} Kurs${arr.length === 1 ? '' : 'e'})</summary>`;
+    if (!arr.length) h += `<p class="hint">Noch keine Kurse erfasst.</p>`;
+    else h += `<div class="histlist">${arr.map(e => `<div><span>${fd(e.date)}</span><span>${price(e.price)}</span><button class="btn small danger" data-act="delprice" data-pos="${p.id}" data-date="${e.date}" aria-label="Kurs vom ${fd(e.date)} löschen">Löschen</button></div>`).join('')}</div>`;
+    h += `</details>`;
+  });
+  return h + `</div>`;
+}
+function saveKurse(){
+  const date = parseDate($('#kdate').value), msg = $('#kmsg');
+  if (!date) { msg.textContent = 'Bitte ein gültiges Datum wählen.'; return; }
+  const inputs = [...document.querySelectorAll('.kinput')];
+  const todo = [];
+  for (const i of inputs) {
+    if (!i.value.trim()) continue;
+    const v = parseNum(i.value);
+    if (!(v > 0)) { msg.textContent = `Ungültiger Kurs bei „${posById(i.dataset.pos).name}“.`; i.focus(); return; }
+    todo.push([i.dataset.pos, v]);
+  }
+  if (!todo.length) { msg.textContent = 'Kein Kurs eingegeben.'; return; }
+  todo.forEach(([pid, v]) => {
+    const arr = (state.prices[pid] = state.prices[pid] || []);
+    const ex = arr.find(e => e.date === date);
+    if (ex) ex.price = v; else arr.push({date, price:v});
+    arr.sort((a, b) => a.date < b.date ? -1 : 1);
+  });
+  saveState(); render(); toast(`${todo.length} Kurs${todo.length > 1 ? 'e' : ''} für ${fd(date)} gespeichert`);
+  const kd = $('#kdate'); if (kd) kd.value = date;
+}
+
+/* ======================================================================
+   Käufe / Transaktionen
+   ====================================================================== */
+function viewKaeufe(){
+  const ed = ui.txEdit ? state.txs.find(t => t.id === ui.txEdit) : null;
+  const edPos = ed ? posById(ed.posId) : null;
+  let h = `<form class="card" id="txform" autocomplete="off"><h2>${ed ? 'Transaktion bearbeiten' : 'Neue Transaktion'}</h2>
+    <div class="grid2">
+      <label>Datum<input type="date" id="f-date" value="${ed ? ed.date : (ui.lastDate || todayISO())}"></label>
+      <label>Art<select id="f-type"><option value="buy"${ed && ed.type === 'sell' ? '' : ' selected'}>Kauf</option><option value="sell"${ed && ed.type === 'sell' ? ' selected' : ''}>Verkauf</option></select></label>
+    </div>
+    <label>Position (Name eintippen oder wählen; ein neuer Name legt eine neue Position an)
+      <input id="f-name" list="poslist" value="${esc(edPos ? edPos.name : '')}" placeholder="z. B. Muster AG"></label>
+    <datalist id="poslist">${state.positions.map(p => `<option value="${esc(p.name)}">`).join('')}</datalist>
+    <div class="grid3">
+      <label>Stück<input id="f-qty" inputmode="decimal" value="${ed ? esc(fQty.format(ed.qty)) : ''}" placeholder="10"></label>
+      <label>Kurs je Stück (EUR)<input id="f-price" inputmode="decimal" value="${ed ? esc(String(ed.price).replace('.', ',')) : ''}" placeholder="45,20"></label>
+      <label>Gebühr (EUR, optional)<input id="f-fee" inputmode="decimal" value="${ed && ed.fee ? esc(String(ed.fee).replace('.', ',')) : ''}" placeholder="4,90"></label>
+    </div>
+    <p class="hint" id="txsum"></p><p class="msg" id="txmsg" role="alert"></p>
+    <div class="btns"><button class="primary" type="submit">${ed ? 'Änderung speichern' : 'Speichern'}</button>${ed ? '<button class="btn" type="button" data-act="txcancel">Abbrechen</button>' : ''}</div></form>`;
+
+  // Liste
+  const flt = ui.txFilter;
+  const list = state.txs.filter(t => !flt || t.posId === flt).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+  const errIds = new Set(); state.positions.forEach(p => calcPosition(p.id).errors.forEach(i => errIds.add(i)));
+  h += `<div class="card"><h2>Alle Transaktionen (${list.length})</h2>
+    <label>Anzeigen für<select id="txFilter"><option value="">Alle Positionen</option>${state.positions.map(p => `<option value="${p.id}"${p.id === flt ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>`;
+  if (!list.length) h += `<p class="hint">Noch keine Transaktionen.</p>`;
+  else {
+    h += `<div class="tablewrap"><table><thead><tr><th>Datum</th><th style="text-align:left">Position</th><th style="text-align:left">Art</th><th>Stück</th><th>Kurs</th><th>Gebühr</th><th>Betrag</th><th></th></tr></thead><tbody>`;
+    list.forEach(t => {
+      const p = posById(t.posId), amt = t.qty * t.price + (t.type === 'buy' ? t.fee : -t.fee);
+      h += `<tr${errIds.has(t.id) ? ' class="err"' : ''}><td>${fd(t.date)}</td><td style="text-align:left">${esc(p ? p.name : '?')}${errIds.has(t.id) ? '<small>Verkauf übersteigt Bestand</small>' : ''}</td>
+        <td style="text-align:left">${t.type === 'buy' ? 'Kauf' : 'Verkauf'}</td><td>${qty(t.qty)}</td><td>${price(t.price)}</td><td>${t.fee ? eur(t.fee) : '–'}</td><td>${eur(amt)}</td>
+        <td><button class="btn small" data-act="txedit" data-id="${t.id}">Bearbeiten</button> <button class="btn small danger" data-act="txdel" data-id="${t.id}">Löschen</button></td></tr>`;
+    });
+    h += `</tbody></table></div>`;
+  }
+  h += `</div>`;
+
+  // Positionen verwalten
+  h += `<div class="card"><details><summary><strong>Positionen verwalten</strong> (${state.positions.length})</summary>`;
+  if (!state.positions.length) h += `<p class="hint">Positionen entstehen automatisch, sobald du eine Transaktion mit neuem Namen speicherst.</p>`;
+  state.positions.forEach(p => {
+    const n = txsOf(p.id).length;
+    h += `<div class="kursrow" style="grid-template-columns:1fr auto"><div>${esc(p.name)}${p.sym ? ` <span class="pill">${esc(p.sym)}</span>` : ''}<span class="sub">${n} Transaktion${n === 1 ? '' : 'en'}</span></div>
+      <div class="btns" style="margin:0"><button class="btn small" data-act="posedit" data-id="${p.id}">Bearbeiten</button><button class="btn small danger" data-act="posdel" data-id="${p.id}">Löschen</button></div></div>`;
+  });
+  return h + `</details></div>`;
+}
+function updateTxSum(){
+  const el = $('#txsum'); if (!el) return;
+  const q = parseNum($('#f-qty').value), p = parseNum($('#f-price').value), f = parseNum($('#f-fee').value) || 0;
+  const sell = $('#f-type').value === 'sell';
+  el.textContent = q > 0 && p >= 0 ? `${sell ? 'Erlös' : 'Kaufbetrag'} inklusive Gebühr: ${eur(q * p + (sell ? -f : f))}` : '';
+}
+function saveTx(){
+  const msg = $('#txmsg'), date = parseDate($('#f-date').value), type = $('#f-type').value;
+  const name = $('#f-name').value.trim(), q = parseNum($('#f-qty').value), pr = parseNum($('#f-price').value);
+  const feeRaw = $('#f-fee').value.trim(), fee = feeRaw ? parseNum(feeRaw) : 0;
+  if (!date) return void (msg.textContent = 'Bitte ein gültiges Datum wählen.');
+  if (!name) return void (msg.textContent = 'Bitte eine Position angeben.');
+  if (!(q > 0)) return void (msg.textContent = 'Stückzahl muss größer als 0 sein.');
+  if (!(pr >= 0)) return void (msg.textContent = 'Bitte einen gültigen Kurs je Stück angeben.');
+  if (!(fee >= 0)) return void (msg.textContent = 'Gebühr ungültig (leer lassen oder eine Zahl ≥ 0).');
+  let pos = state.positions.find(p => p.name.toLowerCase() === name.toLowerCase());
+  const isNew = !pos;
+  const posId = pos ? pos.id : '__new__';
+  const edit = ui.txEdit ? state.txs.find(t => t.id === ui.txEdit) : null;
+  const tx = {id:edit ? edit.id : uid(), posId, type, date, qty:q, price:pr, fee};
+  // Plausibilität: Verkauf darf Bestand nicht übersteigen
+  const others = state.txs.filter(t => t.posId === posId && (!edit || t.id !== edit.id));
+  const before = edit && edit.posId === posId ? calcFrom(txsOf(posId)).errors.length : calcFrom(others).errors.length;
+  const after = calcFrom(others.concat([tx])).errors.length;
+  if (after > before) return void (msg.textContent = 'Mit dieser Eingabe würde ein Verkauf den vorhandenen Bestand übersteigen. Bitte Datum, Art und Stückzahl prüfen.');
+  if (isNew) { pos = {id:uid(), name, sym:''}; state.positions.push(pos); }
+  tx.posId = pos.id;
+  if (edit) Object.assign(edit, tx); else state.txs.push(tx);
+  ui.txEdit = null; ui.lastDate = date;
+  saveState(); render(); toast(edit ? 'Änderung gespeichert' : 'Transaktion gespeichert' + (isNew ? ` (neue Position „${name}“)` : ''));
+}
+
+/* ======================================================================
+   Daten: Sicherung, CSV, Beispieldaten
+   ====================================================================== */
+function prevInfo(){
+  try { const o = JSON.parse(localStorage.getItem(LS_KEY + '_prev') || 'null'); if (o && o.state) return {saved:o.saved, state:normalizeState(o.state)}; } catch (e) {}
+  return null;
+}
+function viewDaten(){
+  const bk = state.meta.lastBackup, pv = prevInfo();
+  return `<div class="card"><h2>Google Drive</h2><div id="drivecard">${driveCardInner()}</div></div>
+  <div class="card"><h2>Sicherungsdatei (manuell)</h2>
+    <p class="hint">Deine Daten liegen nur im Speicher dieses Browsers auf diesem Gerät. Am Handy und am Rechner sind das zwei getrennte Bestände. Eine Sicherungsdatei überträgt alles von einem Gerät auf das andere.</p>
+    <p>Letzte Sicherung: <strong>${bk ? fd(bk.slice(0, 10)) : 'noch nie'}</strong>${storageOK ? '' : ' <span class="pill warn">Browser-Speicher nicht verfügbar</span>'}</p>
+    <div class="btns"><button class="primary" data-act="exportjson">Sicherung speichern (JSON)</button>
+      <button class="btn" data-act="importjson">Sicherung einlesen</button></div>
+    <input type="file" id="jsonfile" accept=".json,application/json" hidden></div>
+  <div class="card"><h2>CSV</h2>
+    <p class="hint">Export für Excel oder LibreOffice (Semikolon, Dezimalkomma).</p>
+    <div class="btns"><button class="btn" data-act="exporttx">Transaktionen als CSV</button><button class="btn" data-act="exportkurse">Kurse als CSV</button></div>
+    <h3>Kurse importieren</h3>
+    <p class="hint">Liste (Datum;Name;Kurs) oder Tabelle (Datum und eine Spalte je Position). Genaueres steht im Reiter Kurse.</p>
+    <div class="btns"><button class="btn" data-act="importkurse">Kurse aus CSV einlesen</button></div>
+    <input type="file" id="kursfile" accept=".csv,.txt,text/csv,text/plain" hidden>
+    <h3>Transaktionen importieren</h3>
+    <p class="hint">Erste Zeile mit Spaltenüberschriften, Trennzeichen Semikolon, Komma oder Tab. Erkannt werden diese Spalten (Reihenfolge egal):</p>
+    <pre>Datum;Name;Kürzel;Art;Stück;Kurs;Gebühr
+12.01.2026;Muster AG;MAG;Kauf;10;82,40;4,90</pre>
+    <p class="hint">Kürzel und Gebühr sind optional. Art: Kauf oder Verkauf. Die Zeilen werden zu den vorhandenen Transaktionen hinzugefügt.</p>
+    <div class="btns"><button class="btn" data-act="importcsv">CSV-Datei wählen</button></div>
+    <input type="file" id="csvfile" accept=".csv,.txt,text/csv,text/plain" hidden></div>
+  <div class="card"><h2>Weitere Aktionen</h2><div class="btns">
+    <button class="btn" data-act="demo">Beispieldaten laden</button>
+    <button class="btn danger" data-act="wipe">Alle Daten löschen</button></div>
+    ${pv ? `<h3>Notkopie</h3><p class="hint">Beim Ersetzen des Bestands (Einlesen, Drive, Beispieldaten, Löschen) bleibt der vorherige Stand hier erhalten: ${esc(sumState(pv.state))}, gesichert am ${fdt(pv.saved)}.</p><div class="btns"><button class="btn" data-act="prevrestore">Vorherigen Stand wiederherstellen</button></div>` : ''}
+    <p class="hint">Version ${VERSION}. Diese Datei arbeitet komplett offline und sendet nichts an Dritte.</p></div>`;
+}
+function exportJSON(){
+  state.meta.lastBackup = new Date().toISOString();
+  const payload = {app:'seifferts-depot', format:1, exported:state.meta.lastBackup, data:state};
+  download('depot-sicherung-' + todayISO() + '.json', JSON.stringify(payload, null, 1), 'application/json');
+  saveState(); toast('Sicherung gespeichert'); if (ui.tab === 'daten') render();
+}
+async function importJSON(file){
+  try {
+    const o = JSON.parse(await file.text());
+    const s = normalizeState(o && o.data ? o.data : o);
+    if (!s.positions.length && !s.txs.length) { toast('Die Datei enthält keine Depotdaten.', 4000); return; }
+    const ok = await modal({title:'Sicherung einlesen?', text:`Die Datei enthält ${s.positions.length} Positionen und ${s.txs.length} Transaktionen.\nDie aktuell gespeicherten Daten (${state.positions.length} Positionen, ${state.txs.length} Transaktionen) werden dadurch ersetzt.`, ok:'Ersetzen', danger:true});
+    if (!ok) return;
+    replaceState(s); render(); toast('Sicherung eingelesen');
+  } catch (e) { toast('Die Datei konnte nicht gelesen werden.', 4000); }
+}
+function csvCell(v){ v = String(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+const dec = v => String(v).replace('.', ',');
+function exportTxCSV(){
+  const lines = [['Datum','Name','Kürzel','Art','Stück','Kurs','Gebühr'].join(';')];
+  sortTxs(state.txs).forEach(t => { const p = posById(t.posId); lines.push([fd(t.date), csvCell(p.name), csvCell(p.sym), t.type === 'buy' ? 'Kauf' : 'Verkauf', dec(t.qty), dec(t.price), dec(t.fee)].join(';')); });
+  download('depot-transaktionen-' + todayISO() + '.csv', '﻿' + lines.join('\r\n'), 'text/csv');
+}
+function exportKurseCSV(){
+  const lines = [['Datum','Name','Kürzel','Kurs'].join(';')];
+  state.positions.forEach(p => (state.prices[p.id] || []).forEach(e => lines.push([fd(e.date), csvCell(p.name), csvCell(p.sym), dec(e.price)].join(';'))));
+  download('depot-kurse-' + todayISO() + '.csv', '﻿' + lines.join('\r\n'), 'text/csv');
+}
+function parseCSV(text){
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/)[0] || '';
+  const delim = [';', '\t', ','].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === delim) { row.push(cur); cur = ''; }
+    else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+    else if (c !== '\r') cur += c;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+const hnorm = s => s.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]/g, '');
+const HMAP = {datum:'date', date:'date', name:'name', position:'name', wertpapier:'name', bezeichnung:'name', aktie:'name',
+  kuerzel:'sym', symbol:'sym', wkn:'sym', isin:'sym', ticker:'sym', art:'type', typ:'type', type:'type', transaktion:'type',
+  stueck:'qty', anzahl:'qty', menge:'qty', qty:'qty', kurs:'price', preis:'price', preisjestueck:'price', price:'price', einstiegspreis:'price',
+  gebuehr:'fee', gebuehren:'fee', kosten:'fee', fee:'fee',
+  schlusskurs:'price', schluss:'price', tageskurs:'price', close:'price', closing:'price', aktuellerkurs:'price', kursineur:'price'};
+async function importCSV(file){
+  const rows = parseCSV(await readTextFile(file));
+  if (rows.length < 2) { toast('Die CSV-Datei enthält keine Datenzeilen.', 4000); return; }
+  const col = {}; rows[0].forEach((h, i) => { const k = HMAP[hnorm(h)]; if (k && !(k in col)) col[k] = i; });
+  const miss = ['date', 'name', 'type', 'qty', 'price'].filter(k => !(k in col));
+  if (miss.length) { await modal({title:'Spalten fehlen', text:'Es fehlen Spalten für: ' + miss.map(k => ({date:'Datum', name:'Name', type:'Art', qty:'Stück', price:'Kurs'})[k]).join(', ') + '.\nErkannte Überschriften: ' + rows[0].join(' | '), ok:'OK', cancel:''}); return; }
+  const good = [], bad = [];
+  rows.slice(1).forEach((r, i) => {
+    const g = k => (k in col ? (r[col[k]] || '').trim() : '');
+    const date = parseDate(g('date')), name = g('name'), t = g('type').toLowerCase(), q = parseNum(g('qty')), pr = parseNum(g('price'));
+    const fee = g('fee') ? parseNum(g('fee')) : 0;
+    const type = /^(k|b)/.test(t) ? 'buy' : /^(v|s)/.test(t) ? 'sell' : null;
+    const why = !date ? 'Datum' : !name ? 'Name' : !type ? 'Art' : !(q > 0) ? 'Stück' : !(pr >= 0) ? 'Kurs' : !(fee >= 0) ? 'Gebühr' : null;
+    if (why) bad.push(`Zeile ${i + 2}: ${why} ungültig`); else good.push({date, name, sym:g('sym'), type, qty:q, price:pr, fee});
+  });
+  if (!good.length) { await modal({title:'Nichts importiert', text:bad.slice(0, 8).join('\n'), ok:'OK', cancel:''}); return; }
+  const ok = await modal({title:'CSV importieren?', text:`${good.length} Transaktionen werden hinzugefügt.` + (bad.length ? `\n${bad.length} Zeilen sind fehlerhaft und werden übersprungen:\n` + bad.slice(0, 6).join('\n') + (bad.length > 6 ? '\n…' : '') : ''), ok:'Importieren'});
+  if (!ok) return;
+  good.forEach(g => {
+    const lc = g.name.toLowerCase();
+    let p = state.positions.find(x => x.name.toLowerCase() === lc || (g.sym && x.sym && x.sym.toLowerCase() === g.sym.toLowerCase()));
+    if (!p) { p = {id:uid(), name:g.name, sym:g.sym}; state.positions.push(p); }
+    else if (g.sym && !p.sym) p.sym = g.sym;
+    state.txs.push({id:uid(), posId:p.id, type:g.type, date:g.date, qty:g.qty, price:g.price, fee:g.fee});
+  });
+  saveState(); render();
+  const errN = state.positions.reduce((a, p) => a + calcPosition(p.id).errors.length, 0);
+  toast(`${good.length} Transaktionen importiert` + (errN ? `. ${errN} Verkauf/Verkäufe übersteigen den Bestand (siehe Käufe).` : ''), errN ? 6000 : 3000);
+}
+
+/* Excel speichert CSV oft als Windows-1252: erst UTF-8 versuchen, sonst Windows-1252. */
+async function readTextFile(file){
+  const buf = await file.arrayBuffer();
+  try { return new TextDecoder('utf-8', {fatal:true}).decode(buf); }
+  catch (e) { return new TextDecoder('windows-1252').decode(buf); }
+}
+function matchPos(str){
+  str = String(str || '').trim(); if (!str) return null;
+  const l = str.toLowerCase(), n = hnorm(str);
+  return state.positions.find(p => p.name.toLowerCase() === l)
+    || state.positions.find(p => p.sym && p.sym.toLowerCase() === l)
+    || state.positions.find(p => hnorm(p.name) === n || (p.sym && hnorm(p.sym) === n)) || null;
+}
+/* Kurse einlesen. Liste: Datum;Name;Kurs. Tabelle: Datum;Position A;Position B ... Einzelliste: Datum;Kurs (Position wird abgefragt). */
+async function importKurseCSV(file){
+  const info = (title, text) => modal({title, text, ok:'OK', cancel:''});
+  let rows;
+  try { rows = parseCSV(await readTextFile(file)); } catch (e) { toast('Die Datei konnte nicht gelesen werden.', 4000); return; }
+  if (!state.positions.length) { await info('Keine Positionen', 'Lege zuerst unter Käufe mindestens eine Position an. Kurse werden nur vorhandenen Positionen zugeordnet.'); return; }
+  if (rows.length < 2) { await info('Keine Datenzeilen', 'Die CSV-Datei enthält keine Datenzeilen.'); return; }
+  const hdr = rows[0], col = {};
+  hdr.forEach((h, i) => { const k = HMAP[hnorm(h)]; if (k && !(k in col)) col[k] = i; });
+  if (!('date' in col)) { await info('Spalte Datum fehlt', 'Die erste Zeile muss Überschriften enthalten, mindestens eine Spalte „Datum“.\nErkannte Überschriften: ' + hdr.join(' | ')); return; }
+  const items = [], bad = [], unmatched = {}, unmatchedCols = [];
+  const push = (line, dateStr, pos, priceStr) => {
+    const date = parseDate(dateStr), v = parseNum(priceStr);
+    if (!date) { bad.push(`Zeile ${line}: Datum ungültig`); return; }
+    if (!(v > 0)) { bad.push(`Zeile ${line}: Kurs ungültig`); return; }
+    items.push({pos, date, price:v});
+  };
+  let mode, single = null, wcols = [];
+  if ('price' in col && ('name' in col || 'sym' in col)) mode = 'Liste (eine Zeile je Kurs)';
+  else {
+    hdr.forEach((h, i) => { if (i === col.date || !h.trim()) return; const p = matchPos(h); if (p) wcols.push({i, pos:p}); else unmatchedCols.push(h.trim()); });
+    if (wcols.length) mode = 'Tabelle (eine Spalte je Position)';
+    else if ('price' in col) {
+      mode = 'Kurse einer Position';
+      if (state.positions.length > 10) { await info('Position unklar', 'Die Datei enthält keine Spalte mit dem Namen der Position. Ergänze eine Spalte „Name“ oder benenne die Kursspalte nach der Position.'); return; }
+      const ch = await choose({title:'Zu welcher Position gehören die Kurse?', text:'In der Datei steht kein Positionsname. Bitte wähle die Position:', options:state.positions.map(p => ({key:p.id, label:p.name, sub:p.sym || ''})).concat([{key:'', label:'Abbrechen'}])});
+      if (!ch) return;
+      single = posById(ch); unmatchedCols.length = 0;
+    } else { await info('Format nicht erkannt', 'Erwartet wird entweder eine Liste mit den Spalten Datum, Name (oder Kürzel) und Kurs, oder eine Tabelle mit Datum und je einer Spalte pro Position (Überschrift = Name oder Kürzel).\nErkannte Überschriften: ' + hdr.join(' | ')); return; }
+  }
+  rows.slice(1).forEach((r, i) => {
+    const line = i + 2, g = k => (k in col ? (r[col[k]] || '').trim() : '');
+    if (mode.startsWith('Tabelle')) wcols.forEach(w => { const c = (r[w.i] || '').trim(); if (c) push(line, g('date'), w.pos, c); });
+    else if (single) push(line, g('date'), single, g('price'));
+    else {
+      const key = g('name') || g('sym');
+      if (!key) { bad.push(`Zeile ${line}: Name fehlt`); return; }
+      const p = matchPos(g('name')) || matchPos(g('sym'));
+      if (!p) { unmatched[key] = (unmatched[key] || 0) + 1; return; }
+      push(line, g('date'), p, g('price'));
+    }
+  });
+  const m = new Map(); items.forEach(it => m.set(it.pos.id + '|' + it.date, it));
+  const list = [...m.values()]; let nNew = 0, nChg = 0, nSame = 0; const chg = [];
+  list.forEach(it => {
+    const ex = (state.prices[it.pos.id] || []).find(e => e.date === it.date);
+    if (!ex) { nNew++; it.k = 'new'; } else if (Math.abs(ex.price - it.price) < 1e-9) { nSame++; it.k = 'same'; } else { nChg++; it.k = 'chg'; it.old = ex.price; chg.push(it); }
+  });
+  const unN = Object.keys(unmatched);
+  const probs = [];
+  if (unN.length) probs.push('Keiner Position zugeordnet (übersprungen): ' + unN.slice(0, 5).map(n => `„${n}“ (${unmatched[n]})`).join(', ') + (unN.length > 5 ? ' …' : ''));
+  if (unmatchedCols.length) probs.push('Spalten ohne passende Position (übersprungen): ' + unmatchedCols.slice(0, 5).join(', ') + (unmatchedCols.length > 5 ? ' …' : ''));
+  if (bad.length) probs.push(`${bad.length} fehlerhafte Zeile${bad.length > 1 ? 'n' : ''} (übersprungen): ` + bad.slice(0, 4).join('; ') + (bad.length > 4 ? ' …' : ''));
+  if (nNew + nChg === 0) { await info('Nichts zu importieren', (nSame ? `Alle ${nSame} Kurse sind schon vorhanden.` : 'In der Datei wurde kein passender Kurs gefunden.') + (probs.length ? '\n\n' + probs.join('\n') : '')); return; }
+  const dates = list.map(i => i.date).sort(), npos = new Set(list.map(i => i.pos.id)).size;
+  let text = `Format: ${mode}\n${list.length} Kurse für ${npos} Position${npos > 1 ? 'en' : ''}, ${fd(dates[0])}${dates[0] !== dates[dates.length - 1] ? ' bis ' + fd(dates[dates.length - 1]) : ''}\n\nNeu: ${nNew}\nErsetzt (anderer Preis am selben Tag): ${nChg}\nUnverändert, wird übersprungen: ${nSame}`;
+  if (chg.length) text += '\n\nErsetzt werden zum Beispiel:\n' + chg.slice(0, 4).map(c => `${c.pos.name} ${fd(c.date)}: ${price(c.old)} → ${price(c.price)}`).join('\n') + (chg.length > 4 ? '\n…' : '');
+  if (probs.length) text += '\n\n' + probs.join('\n');
+  const ok = await modal({title:'Kurse importieren?', text, ok:'Importieren'});
+  if (!ok) return;
+  list.forEach(it => {
+    if (it.k === 'same') return;
+    const arr = (state.prices[it.pos.id] = state.prices[it.pos.id] || []);
+    const ex = arr.find(e => e.date === it.date);
+    if (ex) ex.price = it.price; else arr.push({date:it.date, price:it.price});
+    arr.sort((a, b) => a.date < b.date ? -1 : 1);
+  });
+  saveState(); render();
+  toast(`${nNew + nChg} Kurse importiert (${nNew} neu, ${nChg} ersetzt)`, 4500);
+}
+function loadDemo(){
+  const P = (name, sym) => ({id:uid(), name, sym});
+  const bia = P('Beispiel Industrie AG', 'BIA'), mwe = P('Muster Welt-ETF', 'MWE'), pes = P('Probe Energie SE', 'PES'), tph = P('Test Pharma plc', 'TPH');
+  const T = (p, type, date, q, pr, fee = 0) => ({id:uid(), posId:p.id, type, date, qty:q, price:pr, fee});
+  const s = emptyState(); s.positions = [bia, mwe, pes, tph];
+  s.txs = [
+    T(bia, 'buy', '2026-01-12', 10, 82.40, 4.90), T(bia, 'buy', '2026-03-09', 5, 74.10, 4.90), T(bia, 'buy', '2026-06-15', 8, 91.30, 4.90),
+    T(mwe, 'buy', '2026-01-20', 25, 98.50, 1), T(mwe, 'buy', '2026-02-17', 25, 101.20, 1), T(mwe, 'buy', '2026-04-14', 30, 96.80, 1),
+    T(mwe, 'buy', '2026-08-03', 20, 108.10, 1), T(mwe, 'sell', '2026-10-05', 15, 112.40, 1),
+    T(pes, 'buy', '2026-02-02', 120, 12.35, 4.90), T(pes, 'buy', '2026-05-11', 80, 10.90, 4.90),
+    T(tph, 'buy', '2026-03-23', 15, 61.20, 4.90)];
+  const D = ['2026-01-30','2026-02-27','2026-03-31','2026-04-30','2026-05-29','2026-06-30','2026-07-31','2026-08-31','2026-09-30','2026-10-30','2026-11-06'];
+  const V = {
+    [bia.id]:[84.1,79.5,73.8,78.2,86.0,92.4,95.1,93.0,97.8,101.2,103.6],
+    [mwe.id]:[99.2,102.5,94.1,98.7,100.3,103.8,106.9,109.4,111.0,113.2,114.1],
+    [pes.id]:[12.1,12.8,11.9,11.2,10.4,10.9,11.6,12.3,12.9,13.4,13.1],
+    [tph.id]:[null,null,61.8,62.5,60.1,58.9,57.4,55.2,56.8,58.0,59.3]};
+  s.positions.forEach(p => {
+    const first = s.txs.filter(t => t.posId === p.id).map(t => t.date).sort()[0];
+    s.prices[p.id] = D.map((d, i) => ({date:d, price:V[p.id][i]})).filter(e => e.price && e.date >= first);
+  });
+  s.meta.lastBackup = state.meta.lastBackup;
+  replaceState(s);
+}
+
+/* ======================================================================
+   Diagramme
+   ====================================================================== */
+function viewCharts(){
+  const {rows} = computeRows();
+  const open = rows.filter(r => r.open);
+  if (!state.positions.length) return hero();
+  if (!open.length) return `<div class="card"><p>Keine offenen Positionen, daher gibt es nichts zu zeichnen.</p></div>`;
+  if (!open.find(r => r.pos.id === ui.detailPos)) ui.detailPos = open[0].pos.id;
+  const detailOpts = state.positions.map(p => `<option value="${p.id}"${p.id === ui.detailPos ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  const bar = methodBar();
+  const card = (id, title, sub, extra = '') => `<section class="card"><h2>${title}</h2>${sub ? `<p class="hint" style="margin-top:0">${sub}</p>` : ''}${extra}<div class="chart" id="${id}"></div><details><summary>Werte als Tabelle</summary><div id="${id}-t"></div></details></section>`;
+  return bar + card('c-qty', 'Stückzahlen je Position', 'Aktueller Bestand nach allen Käufen und Verkäufen.')
+    + card('c-dots', 'Einstiegspreise der Käufe im Vergleich zum Durchschnitt', 'Jede Zeile zeigt, wie weit die einzelnen Käufe und der aktuelle Kurs vom eigenen Ø-Einstiegspreis entfernt liegen (Mitte = Ø). Die Größe der Punkte entspricht der gekauften Stückzahl.',
+        `<div class="legend"><span><i class="sw dot" style="background:var(--s1)"></i>Kauf (Größe = Stück)</span><span><i class="sw dia" style="background:var(--s2)"></i>aktueller Kurs</span><span><i class="sw line" style="background:var(--text2);width:3px;height:14px"></i>Ø-Einstiegspreis</span></div>`)
+    + card('c-val', 'Eingesetztes Kapital und aktueller Wert', 'In Euro, je Position.',
+        `<div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Einstand</span><span><i class="sw" style="background:var(--s2)"></i>aktueller Wert</span></div>`)
+    + `<section class="card"><h2>Gewichtung im Depot</h2><p class="hint" style="margin-top:0">Anteil am aktuellen Depotwert.</p><div class="chart" id="c-donut"></div><details><summary>Werte als Tabelle</summary><div id="c-donut-t"></div></details></section>`
+    + `<section class="card"><h2>Verlauf einer Position</h2><p class="hint" style="margin-top:0">Kursverlauf mit deinen Käufen und Verkäufen und dem gleitenden Ø-Einstiegspreis, darunter der Bestand in Stück.</p>
+        <label>Position<select id="detailSel">${detailOpts}</select></label>
+        <div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Kurs</span><span><i class="sw dash" style="border-color:var(--s2)"></i>Ø-Einstiegspreis</span><span><i class="sw dot" style="background:var(--s2)"></i>Kauf (Größe = Stück)</span><span>▽ Verkauf</span></div>
+        <div class="chart" id="c-detail"></div><details><summary>Werte als Tabelle</summary><div id="c-detail-t"></div></details></section>`
+    + card('c-depot', 'Depotwert im Zeitverlauf', 'Wert aus Stückzahl mal letztem bekannten Kurs, dazu das eingesetzte Kapital. Je öfter du Kurse erfasst, desto genauer die Linie.',
+        `<div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Depotwert</span><span><i class="sw line" style="background:var(--s2)"></i>Eingesetzt (Einstand)</span></div>`);
+}
+
+/* --- Helfer --- */
+function niceStep(range, n){ const raw = range / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * mag; }
+function niceRange(lo, hi, n = 4){
+  if (hi - lo < 1e-9) { const d = Math.abs(hi) * 0.1 || 1; lo -= d; hi += d; }
+  const step = niceStep(hi - lo, n), a = Math.floor(lo / step + 1e-9) * step, b = Math.ceil(hi / step - 1e-9) * step, ticks = [];
+  for (let v = a; v <= b + step * 1e-6; v += step) ticks.push(+v.toFixed(10));
+  return {lo:a, hi:b, step, ticks};
+}
+function axisFmt(step){
+  const d = Math.abs(step - Math.round(step)) < 1e-9 ? 0 : Math.abs(step * 10 - Math.round(step * 10)) < 1e-9 ? 1 : 2;
+  const f = new Intl.NumberFormat('de-DE', {minimumFractionDigits:d, maximumFractionDigits:d});
+  return v => f.format(v);
+}
+const trunc = (s, n) => s.length > n ? s.slice(0, Math.max(1, n - 1)) + '…' : s;
+const svgWrap = (w, h, inner, label) => `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${esc(label)}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+const tableHTML = (head, rows) => `<div class="tablewrap"><table><thead><tr>${head.map((h, i) => `<th${i === 0 ? ' style="text-align:left"' : ''}>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+function barPath(x, y, w, h, col, tip){
+  if (w <= 0) return `<rect class="hit" x="${x}" y="${y - 3}" width="14" height="${h + 6}" data-tip="${esc(tip)}"/>`;
+  const r = Math.min(4, w, h / 2);
+  return `<path d="M${x},${y}h${w - r}a${r},${r} 0 0 1 ${r},${r}v${h - 2 * r}a${r},${r} 0 0 1 ${-r},${r}h${-(w - r)}z" style="fill:${col}"/><rect class="hit" x="${x}" y="${y - 3}" width="${w + 40}" height="${h + 6}" data-tip="${esc(tip)}"/>`;
+}
+const tm = d => Date.parse(d);
+const tdate = t => new Date(t).toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'2-digit', timeZone:'UTC'});
+function timeTicks(t0, t1, n){ const a = []; for (let i = 0; i <= n; i++) a.push(t0 + (t1 - t0) * i / n); return a; }
+
+/* --- Horizontale Balken (1 oder 2 Serien) --- */
+function hbarChart(w, items, series, fmt, label){
+  const sn = series.length, leftW = Math.round(Math.min(150, Math.max(86, w * 0.3))), rightW = 78;
+  const pw = Math.max(60, w - leftW - rightW);
+  const maxV = Math.max(0, ...items.flatMap(i => i.vals));
+  const sc = niceRange(0, maxV || 1, 4);
+  const barH = sn > 1 ? 11 : 14, gap = sn > 1 ? 3 : 0, blockH = sn * barH + (sn - 1) * gap, rowH = blockH + 16;
+  const top = 6, axisH = 22, h = top + items.length * rowH + axisH;
+  const x = v => leftW + v / sc.hi * pw, af = axisFmt(sc.step);
+  let g = '';
+  sc.ticks.forEach(t => { g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${top}" y2="${h - axisH}"/><text class="tm" x="${x(t)}" y="${h - 6}" text-anchor="middle">${af(t)}</text>`; });
+  g += `<line class="axis" x1="${leftW}" x2="${leftW}" y1="${top}" y2="${h - axisH}"/>`;
+  items.forEach((it, i) => {
+    const y0 = top + i * rowH + 8;
+    g += `<text class="t" x="${leftW - 8}" y="${y0 + blockH / 2 + 4}" text-anchor="end">${esc(trunc(it.label, Math.floor((leftW - 10) / 6.4)))}<title>${esc(it.label)}</title></text>`;
+    it.vals.forEach((v, k) => {
+      const y = y0 + k * (barH + gap), bw = v / sc.hi * pw;
+      g += barPath(leftW, y, bw, barH, series[k].color, it.tips[k]);
+      g += `<text class="tv" x="${leftW + bw + 5}" y="${y + barH - (sn > 1 ? 1 : 3)}">${fmt(v)}</text>`;
+    });
+  });
+  return svgWrap(w, h, g, label);
+}
+
+/* --- Punktdiagramm: Käufe und Kurs relativ zum Ø-Einstieg --- */
+function dotChart(w, rows){
+  const excluded = rows.filter(r => r.open && !(isFinite(r.avg) && r.avg > 0)).map(r => r.pos.name);
+  const data = rows.filter(r => r.open && isFinite(r.avg) && r.avg > 0).map(r => {
+    const buys = sortTxs(txsOf(r.pos.id)).filter(t => t.type === 'buy');
+    return {r, buys, cur:isFinite(r.price) ? r.price / r.avg - 1 : null};
+  });
+  const devs = data.flatMap(d => d.buys.map(b => b.price / d.r.avg - 1).concat(d.cur === null ? [] : [d.cur]));
+  const lo0 = Math.min(-0.1, ...devs) * 1.12, hi0 = Math.max(0.1, ...devs) * 1.12;
+  const sc = niceRange(lo0 * 100, hi0 * 100, 5);
+  const leftW = Math.round(Math.min(150, Math.max(86, w * 0.28))), rightW = 54, pw = Math.max(60, w - leftW - rightW);
+  const x = pct => leftW + (pct - sc.lo) / (sc.hi - sc.lo) * pw;
+  const rowH = 36, top = 22, axisH = 24, h = top + data.length * rowH + axisH;
+  const maxQ = Math.max(1, ...data.flatMap(d => d.buys.map(b => b.qty)));
+  const af = axisFmt(sc.step);
+  let g = '';
+  sc.ticks.forEach(t => { g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${top - 6}" y2="${h - axisH}"/><text class="tm" x="${x(t)}" y="${h - 7}" text-anchor="middle">${t > 0 ? '+' : ''}${af(t)} %</text>`; });
+  g += `<line x1="${x(0)}" x2="${x(0)}" y1="${top - 8}" y2="${h - axisH}" style="stroke:var(--text2);stroke-width:1.5"/><text class="tm" x="${x(0)}" y="${top - 11}" text-anchor="middle">Ø-Einstieg</text>`;
+  data.forEach((d, i) => {
+    const cy = top + i * rowH + rowH / 2, nm = d.r.pos.name;
+    g += `<line class="grid" x1="${leftW}" x2="${leftW + pw}" y1="${cy}" y2="${cy}"/>`;
+    g += `<text class="t" x="${leftW - 8}" y="${cy + 4}" text-anchor="end">${esc(trunc(nm, Math.floor((leftW - 10) / 6.4)))}<title>${esc(nm)}</title></text>`;
+    d.buys.forEach(b => {
+      const dv = (b.price / d.r.avg - 1) * 100, rad = 4 + 6 * Math.sqrt(b.qty / maxQ);
+      g += `<circle cx="${x(dv)}" cy="${cy}" r="${rad.toFixed(1)}" style="fill:var(--s1);stroke:var(--surface);stroke-width:2" data-tip="${esc(`${nm}\nKauf ${fd(b.date)}\n${qty(b.qty)} Stück zu ${price(b.price)}\n${pctS(dv / 100)} gegenüber Ø ${price(d.r.avg)}`)}"/>`;
+    });
+    if (d.cur !== null) {
+      const cx = x(d.cur * 100), s = 7;
+      g += `<path d="M${cx},${cy - s}L${cx + s},${cy}L${cx},${cy + s}L${cx - s},${cy}Z" style="fill:var(--s2);stroke:var(--surface);stroke-width:2" data-tip="${esc(`${nm}\nAktueller Kurs ${price(d.r.price)}${d.r.priceDate ? ' (' + fd(d.r.priceDate) + ')' : ''}\n${pctS(d.cur)} gegenüber Ø ${price(d.r.avg)}`)}"/>`;
+      g += `<text class="tv" x="${w - 2}" y="${cy + 4}" text-anchor="end">${pctS(d.cur)}</text>`;
+    }
+  });
+  g += `<line class="axis" x1="${leftW}" x2="${leftW + pw}" y1="${h - axisH}" y2="${h - axisH}"/>`;
+  return {svg:svgWrap(w, h, g, 'Einstiegspreise der Käufe relativ zum Durchschnitt'), data, excluded};
+}
+
+/* --- Donut --- */
+function donutChart(rows){
+  const open = rows.filter(r => r.open && isFinite(r.value) && r.value > 0).sort((a, b) => b.value - a.value);
+  const total = open.reduce((a, r) => a + r.value, 0);
+  if (!open.length) return null;
+  let items = open.slice(0, 7).map((r, i) => ({name:r.pos.name, value:r.value, color:PALETTE[i]}));
+  if (open.length > 7) items.push({name:`Sonstige (${open.length - 7})`, value:open.slice(7).reduce((a, r) => a + r.value, 0), color:'var(--other)'});
+  const S = 220, c = S / 2, R = 104, r0 = 64;
+  const pt = (rad, a) => [c + rad * Math.sin(a), c - rad * Math.cos(a)];
+  let a0 = 0, g = '';
+  const seg = (a, b, it, frac, tip) => {
+    const [x1, y1] = pt(R, a), [x2, y2] = pt(R, b), [x3, y3] = pt(r0, b), [x4, y4] = pt(r0, a), large = b - a > Math.PI ? 1 : 0;
+    return `<path d="M${x1},${y1}A${R},${R} 0 ${large} 1 ${x2},${y2}L${x3},${y3}A${r0},${r0} 0 ${large} 0 ${x4},${y4}Z" style="fill:${it.color};stroke:var(--surface);stroke-width:2" data-tip="${esc(tip)}"/>`;
+  };
+  items.forEach(it => {
+    const frac = it.value / total, a1 = a0 + frac * 2 * Math.PI, tip = `${it.name}\n${eur(it.value)} (${pctP(frac)})`;
+    if (frac > 0.9999) { g += seg(0, Math.PI, it, 0.5, tip) + seg(Math.PI, 2 * Math.PI - 1e-6, it, 0.5, tip); }
+    else g += seg(a0, a1, it, frac, tip);
+    a0 = a1;
+  });
+  g += `<text class="tm" x="${c}" y="${c - 6}" text-anchor="middle">Depotwert</text><text class="tb" x="${c}" y="${c + 14}" text-anchor="middle">${eur(total)}</text>`;
+  const legend = `<ul>${items.map(it => `<li><i class="sw" style="background:${it.color}"></i><span class="n">${esc(it.name)}</span><span class="p">${pctP(it.value / total)}</span></li>`).join('')}</ul>`;
+  return {html:`<div class="donutrow">${svgWrap(S, S, g, 'Gewichtung im Depot')}${legend}</div>`, items, total};
+}
+
+/* --- Verlauf einer Position --- */
+function avgTimeline(list){
+  const out = [];
+  for (const t of sortTxs(list)) { const c = calcFrom(list, t.date); out.push({date:t.date, qty:c.qty, avg:c.avg}); }
+  return out;
+}
+function detailChart(w, posId){
+  const txs = sortTxs(txsOf(posId)), manual = state.prices[posId] || [];
+  if (!txs.length && !manual.length) return null;
+  const dates = txs.map(t => t.date).concat(manual.map(m => m.date)).sort();
+  let t0 = tm(dates[0]), t1 = tm(dates[dates.length - 1]);
+  if (t1 - t0 < 14 * 864e5) { const m = (14 * 864e5 - (t1 - t0)) / 2; t0 -= m; t1 += m; }
+  const steps = avgTimeline(txs);
+  const allP = manual.map(m => m.price).concat(txs.map(t => t.price), steps.filter(s => s.qty > 0).map(s => s.avg));
+  let pmin = Math.min(...allP), pmax = Math.max(...allP); const sp = (pmax - pmin) || pmax * 0.1 || 1;
+  const yr = niceRange(pmin - sp * 0.08, pmax + sp * 0.08, 4);
+  const maxQ = Math.max(1, ...steps.map(s => s.qty));
+  const qr = niceRange(0, maxQ, 2);
+  const L = 56, R = 16, T = 10, H1 = 190, GAP = 34, H2 = 80, B = 28, pw = Math.max(80, w - L - R);
+  const h = T + H1 + GAP + H2 + B;
+  const x = t => L + (t - t0) / (t1 - t0) * pw, y1 = v => T + H1 - (v - yr.lo) / (yr.hi - yr.lo) * H1;
+  const y2Top = T + H1 + GAP, y2 = v => y2Top + H2 - (v - qr.lo) / (qr.hi - qr.lo) * H2;
+  const af = axisFmt(yr.step), qf = axisFmt(qr.step);
+  let g = '';
+  timeTicks(t0, t1, w < 420 ? 3 : 5).forEach((t, i, a) => {
+    g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T + H1}"/><line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${y2Top}" y2="${y2Top + H2}"/>`;
+    g += `<text class="tm" x="${x(t)}" y="${h - 8}" text-anchor="${i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${tdate(t)}</text>`;
+  });
+  yr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y1(v)}" y2="${y1(v)}"/><text class="tm" x="${L - 6}" y="${y1(v) + 4}" text-anchor="end">${af(v)}</text>`; });
+  qr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y2(v)}" y2="${y2(v)}"/><text class="tm" x="${L - 6}" y="${y2(v) + 4}" text-anchor="end">${qf(v)}</text>`; });
+  g += `<text class="t" x="${L}" y="${y2Top - 12}">Bestand in Stück</text>`;
+  // Kurs
+  if (manual.length > 1) g += `<path d="${manual.map((m, i) => (i ? 'L' : 'M') + x(tm(m.date)) + ',' + y1(m.price)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
+  manual.forEach(m => {
+    if (manual.length <= 40 || manual.length === 1) g += `<circle cx="${x(tm(m.date))}" cy="${y1(m.price)}" r="3" style="fill:var(--s1);stroke:var(--surface);stroke-width:2"/>`;
+    g += `<circle cx="${x(tm(m.date))}" cy="${y1(m.price)}" r="12" class="hit" data-tip="${esc(`Kurs ${fd(m.date)}\n${price(m.price)}`)}"/>`;
+  });
+  // Ø-Einstieg
+  let d = '', inRun = false;
+  steps.forEach((s, i) => {
+    const xs = x(tm(s.date)), xn = i + 1 < steps.length ? x(tm(steps[i + 1].date)) : x(t1);
+    if (s.qty > 0) { d += inRun ? `V${y1(s.avg)}` : `M${xs},${y1(s.avg)}`; d += `H${xn}`; inRun = true; } else inRun = false;
+  });
+  if (d) g += `<path d="${d}" style="fill:none;stroke:var(--s2);stroke-width:2;stroke-dasharray:6 4"/>`;
+  const lastS = steps[steps.length - 1];
+  if (lastS && lastS.qty > 0) g += `<text class="t" x="${L + pw}" y="${y1(lastS.avg) - 6}" text-anchor="end" style="fill:var(--text)">Ø ${price(lastS.avg)}</text>`;
+  // Transaktionen
+  txs.forEach((t, i) => {
+    const cx = x(tm(t.date)), cy = y1(t.price), tip = `${t.type === 'buy' ? 'Kauf' : 'Verkauf'} ${fd(t.date)}\n${qty(t.qty)} Stück zu ${price(t.price)}`;
+    if (t.type === 'buy') g += `<circle cx="${cx}" cy="${cy}" r="${(4 + 7 * Math.sqrt(t.qty / maxQ)).toFixed(1)}" style="fill:var(--s2);stroke:var(--surface);stroke-width:2" data-tip="${esc(tip)}"/>`;
+    else g += `<path d="M${cx - 7},${cy - 6}L${cx + 7},${cy - 6}L${cx},${cy + 7}Z" style="fill:var(--surface);stroke:var(--s2);stroke-width:2.5;stroke-linejoin:round" data-tip="${esc(tip)}"/>`;
+  });
+  // Bestand
+  if (steps.length) {
+    let p = `M${x(tm(steps[0].date))},${y2(0)}V${y2(steps[0].qty)}`;
+    steps.forEach((s, i) => { if (i) p += `H${x(tm(s.date))}V${y2(s.qty)}`; });
+    p += `H${x(t1)}`;
+    g += `<path d="${p}V${y2(0)}Z" style="fill:var(--s1);fill-opacity:.16;stroke:none"/><path d="${p}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
+    steps.forEach(s => { g += `<circle cx="${x(tm(s.date))}" cy="${y2(s.qty)}" r="12" class="hit" data-tip="${esc(`Bestand ab ${fd(s.date)}\n${qty(s.qty)} Stück`)}"/>`; });
+  }
+  g += `<line class="axis" x1="${L}" x2="${L + pw}" y1="${T + H1}" y2="${T + H1}"/><line class="axis" x1="${L}" x2="${L + pw}" y1="${y2Top + H2}" y2="${y2Top + H2}"/>`;
+  return {svg:svgWrap(w, h, g, 'Kursverlauf mit Käufen, Ø-Einstiegspreis und Bestand'), txs, steps, manual};
+}
+
+/* --- Depotwert im Zeitverlauf --- */
+function depotSeries(){
+  const set = new Set();
+  state.txs.forEach(t => set.add(t.date));
+  Object.values(state.prices).forEach(a => a.forEach(e => set.add(e.date)));
+  const dates = [...set].sort();
+  return dates.map(d => {
+    let v = 0, c = 0;
+    state.positions.forEach(p => { const st = calcPosition(p.id, d); if (st.qty > 1e-9) { const pr = priceAtDate(p.id, d); if (pr != null) v += st.qty * pr; c += st.cost; } });
+    return {d, v, c};
+  });
+}
+function depotChart(w){
+  const pts = depotSeries();
+  if (pts.length < 2) return null;
+  const t0 = tm(pts[0].d), t1 = tm(pts[pts.length - 1].d);
+  const all = pts.flatMap(p => [p.v, p.c]);
+  const lo = Math.min(...all), hi = Math.max(...all), sp = (hi - lo) || hi * 0.1 || 1;
+  const yr = niceRange(lo < 0 ? lo - sp * 0.1 : Math.max(0, lo - sp * 0.1), hi + sp * 0.1, 4);
+  const L = 62, R = 16, T = 16, H = 230, B = 28, pw = Math.max(80, w - L - R), h = T + H + B;
+  const x = t => L + (t - t0) / (t1 - t0) * pw, y = v => T + H - (v - yr.lo) / (yr.hi - yr.lo) * H, af = axisFmt(yr.step);
+  let g = '';
+  timeTicks(t0, t1, w < 420 ? 3 : 5).forEach((t, i, a) => { g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T + H}"/><text class="tm" x="${x(t)}" y="${h - 8}" text-anchor="${i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${tdate(t)}</text>`; });
+  yr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y(v)}" y2="${y(v)}"/><text class="tm" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${af(v)}</text>`; });
+  g += `<line class="axis" x1="${L}" x2="${L + pw}" y1="${T + H}" y2="${T + H}"/>`;
+  // Hover-Baender
+  pts.forEach((p, i) => {
+    const xa = i ? (x(tm(pts[i - 1].d)) + x(tm(p.d))) / 2 : L, xb = i < pts.length - 1 ? (x(tm(p.d)) + x(tm(pts[i + 1].d))) / 2 : L + pw;
+    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${H}" data-tip="${esc(`${fd(p.d)}\nDepotwert ${eur(p.v)}\nEingesetzt ${eur(p.c)}\nGewinn/Verlust ${eurS(p.v - p.c)}`)}"/>`;
+  });
+  // Einstand (Treppe)
+  g += `<path d="${pts.map((p, i) => i ? `H${x(tm(p.d))}V${y(p.c)}` : `M${x(tm(p.d))},${y(p.c)}`).join('')}" style="fill:none;stroke:var(--s2);stroke-width:2"/>`;
+  g += `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + x(tm(p.d)) + ',' + y(p.v)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
+  if (pts.length <= 40) pts.forEach(p => { g += `<circle cx="${x(tm(p.d))}" cy="${y(p.v)}" r="3" style="fill:var(--s1);stroke:var(--surface);stroke-width:2;pointer-events:none"/>`; });
+  const last = pts[pts.length - 1], vAbove = last.v >= last.c;
+  g += `<text class="tv" x="${L + pw}" y="${y(last.v) + (vAbove ? -9 : 17)}" text-anchor="end">Wert ${eur(last.v)}</text>`;
+  g += `<text class="tv" x="${L + pw}" y="${y(last.c) + (vAbove ? 17 : -9)}" text-anchor="end">Einstand ${eur(last.c)}</text>`;
+  return {svg:svgWrap(w, h, g, 'Depotwert und eingesetztes Kapital im Zeitverlauf'), pts};
+}
+
+/* --- alles zeichnen --- */
+function drawCharts(){
+  const {rows} = computeRows();
+  const open = rows.filter(r => r.open);
+  const W = id => Math.max(280, ($('#' + id) || {clientWidth:320}).clientWidth || 320);
+  const put = (id, html, tbl) => { const el = $('#' + id); if (el) el.innerHTML = html; const t = $('#' + id + '-t'); if (t) t.innerHTML = tbl || ''; };
+
+  const byName = open.slice().sort((a, b) => a.pos.name.localeCompare(b.pos.name, 'de'));
+  put('c-qty', hbarChart(W('c-qty'), byName.map(r => ({label:r.pos.name, vals:[r.qty], tips:[`${r.pos.name}\n${qty(r.qty)} Stück`]})), [{color:'var(--s1)'}], qty, 'Stückzahlen je Position'),
+      tableHTML(['Position', 'Stück'], byName.map(r => [esc(r.pos.name), qty(r.qty)])));
+
+  const dc = dotChart(W('c-dots'), byName);
+  put('c-dots', dc.svg + (dc.excluded.length ? `<p class="hint">Nicht dargestellt, weil der Einstiegspreis bei dieser Methode null oder negativ ist: ${esc(dc.excluded.join(', '))}</p>` : ''), tableHTML(['Position', 'Ø Einstieg', 'Kurs', 'Abweichung', 'Käufe (Datum: Stück zu Preis)'],
+      dc.data.map(d => [esc(d.r.pos.name), price(d.r.avg), price(d.r.price), pctS(d.cur === null ? NaN : d.cur), d.buys.map(b => `${fdShort(b.date)} ${qty(b.qty)} × ${price(b.price)}`).join('<br>')])));
+
+  const withVal = byName.filter(r => isFinite(r.value));
+  put('c-val', hbarChart(W('c-val'), withVal.map(r => ({label:r.pos.name, vals:[Math.max(0, r.cost), r.value], tips:[`${r.pos.name}\nEinstand ${eur(r.cost)}`, `${r.pos.name}\nWert ${eur(r.value)}\nG/V ${eurS(r.gv)} (${pctS(r.gvPct)})`]})),
+      [{color:'var(--s1)'}, {color:'var(--s2)'}], v => eur(v).replace(/ €/, ' €'), 'Eingesetztes Kapital und aktueller Wert'),
+      tableHTML(['Position', 'Einstand', 'Wert', 'G/V'], withVal.map(r => [esc(r.pos.name), eur(r.cost), eur(r.value), eurS(r.gv)])));
+
+  const dn = donutChart(rows);
+  put('c-donut', dn ? dn.html : '<p class="hint">Noch keine Kurse oder Werte.</p>', dn ? tableHTML(['Position', 'Wert', 'Anteil'], dn.items.map(i => [esc(i.name), eur(i.value), pctP(i.value / dn.total)])) : '');
+
+  drawDetail();
+
+  const dp = depotChart(W('c-depot'));
+  put('c-depot', dp ? dp.svg : '<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen (Transaktionen oder erfasste Kurse).</p>',
+      dp ? tableHTML(['Datum', 'Depotwert', 'Eingesetzt', 'G/V'], dp.pts.slice().reverse().map(p => [fd(p.d), eur(p.v), eur(p.c), eurS(p.v - p.c)])) : '');
+}
+function drawDetail(){
+  const el = $('#c-detail'); if (!el) return;
+  const w = Math.max(280, el.clientWidth || 320);
+  const dt = detailChart(w, ui.detailPos);
+  el.innerHTML = dt ? dt.svg : '<p class="hint">Für diese Position liegen noch keine Daten vor.</p>';
+  const t = $('#c-detail-t');
+  if (t) t.innerHTML = dt ? tableHTML(['Datum', 'Ereignis', 'Stück', 'Kurs'],
+    dt.txs.map(x => ({d:x.date, c:[fd(x.date), x.type === 'buy' ? 'Kauf' : 'Verkauf', qty(x.qty), price(x.price)]}))
+      .concat(dt.manual.map(m => ({d:m.date, c:[fd(m.date), 'Kurs', '', price(m.price)]})))
+      .sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : 0).map(o => o.c)) : '';
+}
+
+/* ======================================================================
+   Ereignisse
+   ====================================================================== */
+const tipEl = $('#tip');
+function showTip(el, e){
+  tipEl.textContent = el.getAttribute('data-tip'); tipEl.style.display = 'block';
+  const r = tipEl.getBoundingClientRect(); let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + r.width > innerWidth - 6) x = innerWidth - r.width - 6;
+  if (x < 6) x = 6;
+  if (y + r.height > innerHeight - 6) y = Math.max(6, e.clientY - r.height - 14);
+  tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
+}
+const hideTip = () => { tipEl.style.display = 'none'; };
+document.addEventListener('pointerover', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e); });
+document.addEventListener('pointermove', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e); else hideTip(); });
+document.addEventListener('pointerdown', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e); else hideTip(); });
+window.addEventListener('scroll', hideTip, {passive:true});
+
+document.addEventListener('click', async e => {
+  const nav = e.target.closest('#nav button'); if (nav) { go(nav.dataset.tab); return; }
+  if (e.target.closest('#drivepill')) { pillClick(); return; }
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act;
+  if (b.tagName === 'A') e.preventDefault();
+  switch (act) {
+    case 'goto': go(b.dataset.tab); break;
+    case 'sort': { const k = b.dataset.key; ui.sort = ui.sort.key === k ? {key:k, dir:-ui.sort.dir} : {key:k, dir:k === 'name' ? 1 : -1}; render(); break; }
+    case 'demo': {
+      if (state.positions.length || state.txs.length) { if (!await modal({title:'Beispieldaten laden?', text:'Die vorhandenen Daten werden durch erfundene Beispieldaten ersetzt. Das lässt sich nicht rückgängig machen.', ok:'Ersetzen', danger:true})) break; }
+      loadDemo(); go('uebersicht'); toast('Beispieldaten geladen'); break;
+    }
+    case 'wipe': {
+      if (!await modal({title:'Alle Daten löschen?', text:'Alle Positionen, Transaktionen und Kurse in diesem Browser werden gelöscht. Hast du vorher eine Sicherung gespeichert?', ok:'Endgültig löschen', danger:true})) break;
+      replaceState(emptyState()); ui.txEdit = null; render(); toast('Alle Daten gelöscht. Der vorherige Stand bleibt als Notkopie im Reiter Daten.', 4500); break;
+    }
+    case 'exportjson': exportJSON(); break;
+    case 'importjson': $('#jsonfile').click(); break;
+    case 'exporttx': exportTxCSV(); break;
+    case 'exportkurse': exportKurseCSV(); break;
+    case 'importcsv': $('#csvfile').click(); break;
+    case 'importkurse': $('#kursfile').click(); break;
+    case 'driveconnect': driveConnect(); break;
+    case 'drivesave': driveSaveNow(); break;
+    case 'driveload': driveLoadNow(); break;
+    case 'drivebackups': driveListBackups(); break;
+    case 'driverestore': driveRestore(b.dataset.id, b.dataset.name); break;
+    case 'drivedisconnect': driveDisconnect(); break;
+    case 'prevrestore': {
+      const pv = prevInfo(); if (!pv) break;
+      if (!await modal({title:'Vorherigen Stand wiederherstellen?', text:`${sumState(pv.state)}
+gesichert am ${fdt(pv.saved)}
+
+Der aktuelle Stand (${sumState(state)}) wird ersetzt und bleibt seinerseits als Notkopie erhalten.`, ok:'Wiederherstellen', danger:true})) break;
+      replaceState(pv.state); render(); toast('Vorheriger Stand wiederhergestellt'); break;
+    }
+    case 'delprice': {
+      const arr = state.prices[b.dataset.pos] || []; state.prices[b.dataset.pos] = arr.filter(x => x.date !== b.dataset.date);
+      ui.openHist = b.dataset.pos; saveState(); { const y = window.scrollY; render(); window.scrollTo(0, y); }
+      break;
+    }
+    case 'txedit': ui.txEdit = b.dataset.id; render(); window.scrollTo(0, 0); break;
+    case 'txcancel': ui.txEdit = null; render(); break;
+    case 'txdel': {
+      const t = state.txs.find(x => x.id === b.dataset.id), p = t && posById(t.posId); if (!t) break;
+      if (!await modal({title:'Transaktion löschen?', text:`${t.type === 'buy' ? 'Kauf' : 'Verkauf'} vom ${fd(t.date)}: ${qty(t.qty)} Stück ${p ? p.name : ''} zu ${price(t.price)}`, ok:'Löschen', danger:true})) break;
+      state.txs = state.txs.filter(x => x.id !== t.id); if (ui.txEdit === t.id) ui.txEdit = null; saveState(); render(); toast('Transaktion gelöscht'); break;
+    }
+    case 'posedit': {
+      const p = posById(b.dataset.id); if (!p) break;
+      const r = await modal({title:'Position bearbeiten', fields:[{label:'Name', value:p.name}, {label:'Kürzel oder WKN (optional)', value:p.sym}], ok:'Speichern'});
+      if (!r) break;
+      const nm = r[0].trim(); if (!nm) { toast('Der Name darf nicht leer sein.'); break; }
+      if (state.positions.some(x => x.id !== p.id && x.name.toLowerCase() === nm.toLowerCase())) { toast('Eine Position mit diesem Namen gibt es schon.', 3500); break; }
+      p.name = nm; p.sym = r[1].trim(); saveState(); render(); break;
+    }
+    case 'posdel': {
+      const p = posById(b.dataset.id); if (!p) break;
+      const n = txsOf(p.id).length;
+      if (!await modal({title:'Position löschen?', text:`„${p.name}“ mit ${n} Transaktion${n === 1 ? '' : 'en'} und allen erfassten Kursen wird gelöscht.`, ok:'Löschen', danger:true})) break;
+      state.positions = state.positions.filter(x => x.id !== p.id); state.txs = state.txs.filter(x => x.posId !== p.id); delete state.prices[p.id];
+      saveState(); render(); toast('Position gelöscht'); break;
+    }
+  }
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.id === 'txform') saveTx();
+  else if (e.target.id === 'kursform') saveKurse();
+});
+document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#txform')) updateTxSum(); });
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'showClosed') { ui.showClosed = t.checked; render(); }
+  else if (t.id === 'driveAuto') { dm.auto = t.checked; saveDM(); if (dm.auto && dm.dirty) driveTouch(); else updatePill(); }
+  else if (t.id === 'methodSel') setMethod(t.value);
+  else if (t.id === 'sortSel') { ui.sort = {key:t.value, dir:t.value === 'name' ? 1 : -1}; render(); }
+  else if (t.id === 'txFilter') { ui.txFilter = t.value; const y = window.scrollY; render(); window.scrollTo(0, y); }
+  else if (t.id === 'detailSel') { ui.detailPos = t.value; drawDetail(); }
+  else if (t.id === 'f-type') updateTxSum();
+  else if (t.id === 'jsonfile' && t.files[0]) { importJSON(t.files[0]); t.value = ''; }
+  else if (t.id === 'csvfile' && t.files[0]) { importCSV(t.files[0]); t.value = ''; }
+  else if (t.id === 'kursfile' && t.files[0]) { importKurseCSV(t.files[0]); t.value = ''; }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('kinput')) {
+    e.preventDefault();
+    const all = [...document.querySelectorAll('.kinput')], i = all.indexOf(e.target);
+    if (i < all.length - 1) all[i + 1].focus(); else saveKurse();
+  }
+});
+let rsT;
+window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (ui.tab === 'diagramme') drawCharts(); }, 150); });
+window.addEventListener('hashchange', () => { const t = location.hash.slice(1); if (TABS.includes(t) && t !== ui.tab) { ui.tab = t; render(); } });
+
+/* ======================================================================
+   Google Drive: Anmeldung, Datei, Sicherungen, Konflikte
+   Gleiche Client-ID und gleiche Art der Anmeldung wie in den anderen Tools (Google Identity Services,
+   Berechtigung drive.file: die App sieht nur Dateien, die sie selbst angelegt hat).
+   ====================================================================== */
+const CLIENT_ID = '22658520266-72537b3ef6bi63gmfaavt4r5snnjv0ln.apps.googleusercontent.com';
+const D_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const D_FOLDER = 'Seifferts Depot', D_BACKUP = 'Sicherungen', D_FILE = 'depot-daten.json', D_KEEP = 30;
+const DK = 'seifferts_depot_drive_v1';
+const D_API = 'https://www.googleapis.com/drive/v3/', D_UP = 'https://www.googleapis.com/upload/drive/v3/';
+let D_DEBOUNCE = 2500;
+
+function loadDM(){
+  const def = {on:false, fileId:'', folderId:'', backupId:'', version:'', lastSaved:'', dirty:false, auto:true, backupDay:''};
+  try { const o = JSON.parse(localStorage.getItem(DK) || 'null'); if (o && typeof o === 'object') return Object.assign(def, o); } catch (e) {}
+  return def;
+}
+let dm = loadDM();
+const saveDM = () => { try { localStorage.setItem(DK, JSON.stringify(dm)); } catch (e) {} };
+const dd = {state:dm.on ? 'auth' : 'off', msg:'', token:null, exp:0, tc:null, pending:null, timer:null, q:Promise.resolve(), hold:false, backups:null, nextTag:'', lastCheck:0};
+let rev = 0;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const dq = fn => (dd.q = dd.q.then(fn, fn).catch(() => {}));
+function fdt(iso){ if (!iso) return '–'; const d = new Date(iso); return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+
+/* ---------- Status und Anzeige ---------- */
+function driveLabel(){
+  const t = dm.lastSaved ? new Date(dm.lastSaved) : null, hm = t ? pad2(t.getHours()) + ':' + pad2(t.getMinutes()) : '';
+  return ({
+    off:['Drive: aus', 'Nicht mit Google Drive verbunden'],
+    busy:['Drive: synchronisiert …', 'Synchronisiere mit Google Drive'],
+    ok:['Drive: gesichert' + (hm ? ' ' + hm : ''), 'Alles ist in Google Drive gesichert'],
+    pending:['Drive: ungesichert', 'Änderungen sind noch nicht in Google Drive gespeichert'],
+    auth:['Drive: anmelden', 'Anmeldung bei Google nötig. Änderungen sind nur lokal gespeichert.'],
+    conflict:['Drive: Konflikt', 'Drive und dieser Browser haben unterschiedliche Stände. Bitte klären.'],
+    error:['Drive: Fehler', 'Fehler bei Google Drive'],
+    unavail:['Drive: nur über https', 'Die Google-Anmeldung funktioniert nicht bei einer lokal geöffneten Datei.']
+  })[dd.state];
+}
+function updatePill(){
+  const b = $('#drivepill'); if (!b) return;
+  const [s, l] = driveLabel();
+  b.textContent = s; b.title = l + (dd.msg ? '\n' + dd.msg : ''); b.dataset.st = dd.state;
+}
+function setStatus(st, msg){
+  dd.state = st; dd.msg = msg || ''; updatePill();
+  const el = $('#drivecard'); if (el) el.innerHTML = driveCardInner();
+}
+function handleErr(e){
+  console.warn('Drive', e);
+  const msg = e && e.message ? e.message : String(e);
+  if (e && (e.code === 'nogis' || e.code === 'timeout' || e.status === 401 || /Anmeldung/.test(msg))) setStatus('auth', msg);
+  else if (e instanceof TypeError) setStatus('error', 'Keine Verbindung zu Google (offline?). Änderungen bleiben lokal gespeichert und werden später hochgeladen.');
+  else setStatus('error', msg);
+}
+
+/* ---------- Token (Google Identity Services) ---------- */
+const gisOK = () => !!(window.google && google.accounts && google.accounts.oauth2);
+function initTC(){
+  if (dd.tc) return true; if (!gisOK()) return false;
+  dd.tc = google.accounts.oauth2.initTokenClient({
+    client_id:CLIENT_ID, scope:D_SCOPE,
+    callback:r => { const t = dd.pending; dd.pending = null; if (!t) return;
+      if (r && r.access_token) { dd.token = r.access_token; dd.exp = Date.now() + (+r.expires_in || 3600) * 1000; t.res(r); }
+      else t.rej(new Error('Anmeldung fehlgeschlagen' + (r && r.error ? ' (' + r.error + ')' : ''))); },
+    error_callback:e => { const t = dd.pending; dd.pending = null; if (t) t.rej(new Error('Anmeldung nicht möglich (' + ((e && e.type) || 'Fehler') + ')')); }
+  });
+  return true;
+}
+function requestToken(interactive){
+  return new Promise((res, rej) => {
+    if (!initTC()) return rej(Object.assign(new Error('Google-Anmeldung nicht geladen (offline?)'), {code:'nogis'}));
+    const to = setTimeout(() => { if (dd.pending) { dd.pending = null; rej(Object.assign(new Error('Zeitüberschreitung bei der Anmeldung'), {code:'timeout'})); } }, interactive ? 120000 : 15000);
+    dd.pending = {res:v => { clearTimeout(to); res(v); }, rej:e => { clearTimeout(to); rej(e); }};
+    try { dd.tc.requestAccessToken({prompt:''}); } catch (e) { clearTimeout(to); dd.pending = null; rej(e); }
+  });
+}
+const tokenValid = () => !!(dd.token && Date.now() < dd.exp - 60000);
+async function ensureToken(interactive){ if (!tokenValid()) await requestToken(interactive); }
+/* Fuer Knoepfe: das Anmelde-Fenster muss direkt aus dem Klick heraus geoeffnet werden. */
+async function gestureToken(){ if (!tokenValid()) await requestToken(true); }
+
+async function dapi(url, opts = {}, interactive = false, retried = false){
+  await ensureToken(interactive);
+  const h = Object.assign({Authorization:'Bearer ' + dd.token}, opts.headers || {});
+  const r = await fetch(url, Object.assign({}, opts, {headers:h}));
+  if (r.status === 401 && !retried) { dd.token = null; return dapi(url, opts, interactive, true); }
+  if (!r.ok) {
+    let m = ''; try { const j = await r.json(); m = (j.error && (j.error.message || j.error)) || ''; } catch (e) {}
+    const err = new Error('Drive ' + r.status + (m ? ': ' + String(m).slice(0, 160) : '')); err.status = r.status; throw err;
+  }
+  return r;
+}
+const qs = o => Object.entries(o).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
+async function dlist(q, fields = 'files(id,name,version,modifiedTime,size)', extra = {}){
+  const r = await dapi(D_API + 'files?' + qs(Object.assign({q, fields, spaces:'drive', pageSize:'100'}, extra)));
+  return (await r.json()).files || [];
+}
+async function dmeta(id){ const r = await dapi(D_API + 'files/' + encodeURIComponent(id) + '?' + qs({fields:'id,name,version,modifiedTime,trashed,parents'})); return r.json(); }
+async function ensureFolder(name, parent, knownId, create = true){
+  if (knownId) { try { const f = await dmeta(knownId); if (f && !f.trashed) return knownId; } catch (e) { if (e.status !== 404) throw e; } }
+  const l = await dlist(`name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false` + (parent ? ` and '${parent}' in parents` : ''), 'files(id,name)');
+  if (l.length) return l[0].id;
+  if (!create) return '';
+  const body = {name, mimeType:'application/vnd.google-apps.folder'}; if (parent) body.parents = [parent];
+  const r = await dapi(D_API + 'files?fields=id', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  return (await r.json()).id;
+}
+async function dfind(folderId){
+  const l = await dlist(`'${folderId}' in parents and name='${D_FILE}' and trashed=false`, 'files(id,name,version,modifiedTime)', {orderBy:'modifiedTime desc'});
+  return l[0] || null;
+}
+async function dcreate(folderId, content){
+  const b = 'dpb' + Math.random().toString(36).slice(2);
+  const meta = JSON.stringify({name:D_FILE, parents:[folderId], mimeType:'application/json', appProperties:{app:'seifferts-depot'}});
+  const body = `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${content}\r\n--${b}--`;
+  const r = await dapi(D_UP + 'files?uploadType=multipart&fields=id,version,modifiedTime', {method:'POST', headers:{'Content-Type':'multipart/related; boundary=' + b}, body});
+  return r.json();
+}
+async function dupdate(id, content){
+  const r = await dapi(D_UP + 'files/' + encodeURIComponent(id) + '?uploadType=media&fields=id,version,modifiedTime', {method:'PATCH', headers:{'Content-Type':'application/json; charset=UTF-8'}, body:content});
+  return r.json();
+}
+async function dread(id){ const r = await dapi(D_API + 'files/' + encodeURIComponent(id) + '?alt=media'); return r.text(); }
+
+/* ---------- Inhalt ---------- */
+const payload = () => JSON.stringify({app:'seifferts-depot', format:1, saved:new Date().toISOString(), data:state}, null, 1);
+function parsePayload(txt){ const o = JSON.parse(txt); return normalizeState(o && o.data ? o.data : o); }
+function canon(s){
+  const by = (a, b) => a.id < b.id ? -1 : 1;
+  return JSON.stringify({
+    p:s.positions.slice().sort(by).map(p => [p.id, p.name, p.sym]),
+    t:s.txs.slice().sort(by).map(t => [t.id, t.posId, t.type, t.date, t.qty, t.price, t.fee || 0]),
+    k:Object.keys(s.prices).sort().map(k => [k, s.prices[k].map(e => [e.date, e.price])])
+  });
+}
+function sumState(s){
+  let last = ''; Object.values(s.prices).forEach(a => a.forEach(e => { if (e.date > last) last = e.date; }));
+  return `${s.positions.length} Positionen, ${s.txs.length} Transaktionen` + (last ? `, letzter Kurs ${fd(last)}` : ', noch keine Kurse');
+}
+/* Vereinigung zweier Staende ueber die IDs. Geloeschte Eintraege koennen dabei zurueckkehren. */
+function mergeStates(a, b){
+  const s = JSON.parse(JSON.stringify(a)), pm = {}; let addP = 0, addT = 0, addK = 0, diffK = 0;
+  b.positions.forEach(p => {
+    let m = s.positions.find(x => x.id === p.id) || s.positions.find(x => x.name.toLowerCase() === p.name.toLowerCase());
+    if (!m) { m = {id:p.id, name:p.name, sym:p.sym}; s.positions.push(m); addP++; } else if (!m.sym && p.sym) m.sym = p.sym;
+    pm[p.id] = m.id;
+  });
+  const ids = new Set(s.txs.map(t => t.id));
+  b.txs.forEach(t => { if (ids.has(t.id) || !pm[t.posId]) return; s.txs.push(Object.assign({}, t, {posId:pm[t.posId]})); ids.add(t.id); addT++; });
+  Object.keys(b.prices).forEach(pid => {
+    const tid = pm[pid]; if (!tid) return;
+    const arr = (s.prices[tid] = s.prices[tid] || []);
+    b.prices[pid].forEach(e => { const ex = arr.find(x => x.date === e.date); if (!ex) { arr.push({date:e.date, price:e.price}); addK++; } else if (ex.price !== e.price) diffK++; });
+    arr.sort((x, y) => x.date < y.date ? -1 : 1);
+  });
+  return {state:normalizeState(s), addP, addT, addK, diffK};
+}
+
+/* ---------- Sicherungskopien in Drive ---------- */
+async function dbackup(tag){
+  if (!dm.fileId) return;
+  const day = todayISO();
+  if (!tag && dm.backupDay === day) return;
+  dm.backupId = await ensureFolder(D_BACKUP, dm.folderId, dm.backupId); saveDM();
+  const list = await dlist(`'${dm.backupId}' in parents and trashed=false`, 'files(id,name)', {orderBy:'name desc'});
+  let name;
+  if (tag) { const n = new Date(); name = `depot-sicherung-${day}-${pad2(n.getHours())}${pad2(n.getMinutes())}-${tag}.json`; }
+  else { name = `depot-sicherung-${day}.json`; if (list.some(f => f.name === name)) { dm.backupDay = day; saveDM(); await dprune(list.slice(D_KEEP)); return; } }
+  await dapi(D_API + 'files/' + encodeURIComponent(dm.fileId) + '/copy?fields=id,name', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, parents:[dm.backupId]})});
+  if (!tag) { dm.backupDay = day; saveDM(); }
+  await dprune(list.slice(D_KEEP - 1));
+}
+/* Aeltere Sicherungskopien in den Drive-Papierkorb verschieben (nur die ueber dem Limit). */
+async function dprune(old){
+  for (const f of old) {
+    try { await dapi(D_API + 'files/' + encodeURIComponent(f.id), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({trashed:true})}); } catch (e) { console.warn('Aufräumen', e); }
+  }
+}
+
+/* ---------- Abfrage bei Konflikt ---------- */
+function choose({title, text, options}){
+  return new Promise(resolve => {
+    const root = $('#modal-root');
+    root.innerHTML = `<div class="overlay"><div class="dlg" role="dialog" aria-modal="true" aria-label="${esc(title)}" style="max-height:92vh;overflow:auto"><h2>${esc(title)}</h2><p>${esc(text)}</p>
+      <div class="btns col">${options.map(o => `<button type="button" class="${o.primary ? 'primary' : 'btn'}" data-k="${o.key}">${esc(o.label)}${o.sub ? `<span class="sub" style="color:inherit;opacity:.8">${esc(o.sub)}</span>` : ''}</button>`).join('')}</div></div></div>`;
+    root.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { root.innerHTML = ''; resolve(b.dataset.k); }));
+    const f = root.querySelector('button'); if (f) f.focus();
+  });
+}
+function resolveConflict(rs, remote){
+  return choose({
+    title:'Unterschiedliche Stände',
+    text:`Google Drive: ${sumState(rs)}\n(zuletzt geändert ${fdt(remote.modifiedTime)})\n\nDieser Browser: ${sumState(state)}\n\nNichts geht verloren: Vor jedem Überschreiben in Drive wird eine Sicherungskopie angelegt, und ein ersetzter lokaler Stand bleibt als Notkopie im Browser.`,
+    options:[
+      {key:'merge', label:'Beide zusammenführen', sub:'Empfohlen. Gelöschte Einträge können zurückkehren.', primary:true},
+      {key:'remote', label:'Stand aus Drive übernehmen', sub:'Lokale Änderungen werden ersetzt.'},
+      {key:'local', label:'Diesen Browser nach Drive hochladen', sub:'Der Drive-Stand wird ersetzt (vorher kopiert).'},
+      {key:'cancel', label:'Später entscheiden'}
+    ]});
+}
+
+/* ---------- Synchronisation ---------- */
+async function driveSync(opts = {}){
+  if (!dm.on) return;
+  if (dd.hold && !opts.force) return;
+  dd.hold = false;
+  setStatus('busy');
+  try {
+    await ensureToken(!!opts.interactive);
+    dm.folderId = await ensureFolder(D_FOLDER, null, dm.folderId); saveDM();
+    let remote = null, lost = false;
+    if (dm.fileId) { try { const m = await dmeta(dm.fileId); if (!m.trashed) remote = m; } catch (e) { if (e.status !== 404) throw e; } }
+    if (!remote) {
+      const f = await dfind(dm.folderId);
+      if (f) { remote = f; if (dm.fileId && f.id !== dm.fileId) dm.version = ''; dm.fileId = f.id; saveDM(); }
+      else if (dm.fileId) { lost = true; dm.fileId = ''; dm.version = ''; saveDM(); }
+    }
+    const localHas = state.positions.length > 0 || state.txs.length > 0;
+    const upload = async tag => {
+      const my = rev, content = payload();
+      if (remote) { await dbackup(tag || dd.nextTag || ''); dd.nextTag = ''; const res = await dupdate(remote.id, content); dm.version = res.version; }
+      else { const res = await dcreate(dm.folderId, content); dm.fileId = res.id; dm.version = res.version; remote = {id:res.id, version:res.version}; }
+      dm.lastSaved = new Date().toISOString();
+      if (rev === my) dm.dirty = false;
+      saveDM();
+    };
+    const takeRemote = (rs, msg) => { replaceState(rs, {noSync:true}); dm.version = remote.version; dm.dirty = false; saveDM(); render(); if (msg) toast(msg, 3500); };
+
+    if (!remote) {
+      if (localHas) { if (lost) toast('Die Drive-Datei war gelöscht und wird neu angelegt.', 4500); await upload(); }
+      else { dm.dirty = false; saveDM(); }
+    } else if (remote.version === dm.version) {
+      if (dm.dirty || opts.force) await upload();
+    } else {
+      const rs = parsePayload(await dread(remote.id));
+      if (canon(rs) === canon(state)) { dm.version = remote.version; dm.dirty = false; saveDM(); }
+      else if (!localHas) takeRemote(rs, 'Stand aus Google Drive geladen');
+      else if (dm.version && !dm.dirty) takeRemote(rs, 'Neuerer Stand aus Google Drive geladen (anderes Gerät)');
+      else {
+        setStatus('conflict');
+        const ch = await resolveConflict(rs, remote);
+        if (ch === 'remote') takeRemote(rs, 'Stand aus Drive übernommen');
+        else if (ch === 'local') { await upload('vor-ueberschreiben'); toast('Lokaler Stand nach Drive hochgeladen'); }
+        else if (ch === 'merge') {
+          const mg = mergeStates(state, rs);
+          replaceState(mg.state, {noSync:true}); dm.dirty = true; rev++;
+          await upload('vor-zusammenfuehren'); render();
+          toast(`Zusammengeführt: ${mg.addT} Transaktionen, ${mg.addK} Kurse, ${mg.addP} Positionen aus Drive ergänzt` + (mg.diffK ? `. ${mg.diffK} abweichende Kurse: lokaler Wert behalten.` : ''), 6000);
+        } else {
+          if (opts.connecting) { dm.on = false; saveDM(); setStatus('off'); return; }
+          dd.hold = true; setStatus('conflict'); return;
+        }
+      }
+    }
+    dd.lastCheck = Date.now();
+    if (dm.dirty) { setStatus('pending'); clearTimeout(dd.timer); dd.timer = setTimeout(() => dq(() => driveSync({})), D_DEBOUNCE); }
+    else setStatus('ok');
+  } catch (e) { handleErr(e); }
+}
+function driveTouch(){
+  if (!dm.on) return;
+  rev++; dm.dirty = true; saveDM();
+  if (dd.state === 'auth' || dd.state === 'conflict' || dd.state === 'unavail') { updatePill(); return; }
+  setStatus('pending');
+  if (!dm.auto) return;
+  clearTimeout(dd.timer); dd.timer = setTimeout(() => dq(() => driveSync({})), D_DEBOUNCE);
+}
+async function driveConnect(){
+  if (location.protocol === 'file:') { setStatus('unavail'); return; }
+  try { setStatus('busy'); await requestToken(true); } catch (e) { dm.on ? handleErr(e) : (setStatus('off'), toast(e.message, 4000)); return; }
+  dm.on = true; saveDM(); dq(() => driveSync({connecting:true}));
+}
+async function driveSignIn(){
+  try { setStatus('busy'); await requestToken(true); } catch (e) { handleErr(e); return; }
+  dq(() => driveSync({}));
+}
+async function driveStart(){
+  if (!dm.on) { updatePill(); return; }
+  if (location.protocol === 'file:') { setStatus('unavail'); return; }
+  for (let i = 0; i < 160 && !gisOK(); i++) await sleep(50);
+  if (!gisOK()) { setStatus('auth', 'Google-Anmeldung nicht geladen (offline?)'); return; }
+  dq(() => driveSync({}));
+}
+function driveSaveNow(){
+  gestureToken().then(() => { dd.hold = false; dq(() => driveSync({force:true, interactive:true})); }).catch(handleErr);
+}
+function driveLoadNow(){
+  gestureToken().then(() => dq(async () => {
+    try {
+      setStatus('busy');
+      dm.folderId = await ensureFolder(D_FOLDER, null, dm.folderId, false); saveDM();
+      const remote = dm.folderId ? await dfind(dm.folderId) : null;
+      if (!remote) { toast('In Drive gibt es noch keine Datei.', 3500); setStatus(dm.dirty ? 'pending' : 'ok'); return; }
+      const rs = parsePayload(await dread(remote.id));
+      setStatus(dm.dirty ? 'pending' : 'ok');
+      const ok = await modal({title:'Stand aus Drive laden?', text:`Drive: ${sumState(rs)}\nDieser Browser: ${sumState(state)}\n\nDer lokale Stand wird ersetzt` + (dm.dirty ? ' (noch nicht gesicherte Änderungen gehen dabei verloren)' : '') + '. Er bleibt als Notkopie im Browser erhalten.', ok:'Ersetzen', danger:true});
+      if (!ok) return;
+      dm.fileId = remote.id; dm.version = remote.version; dm.dirty = false; dd.hold = false;
+      replaceState(rs, {noSync:true}); saveDM(); setStatus('ok'); render(); toast('Stand aus Drive geladen');
+    } catch (e) { handleErr(e); }
+  })).catch(handleErr);
+}
+function driveListBackups(){
+  gestureToken().then(() => dq(async () => {
+    try {
+      setStatus('busy');
+      dm.folderId = await ensureFolder(D_FOLDER, null, dm.folderId, false);
+      dm.backupId = dm.folderId ? await ensureFolder(D_BACKUP, dm.folderId, dm.backupId, false) : ''; saveDM();
+      dd.backups = dm.backupId ? await dlist(`'${dm.backupId}' in parents and trashed=false`, 'files(id,name,modifiedTime,size)', {orderBy:'name desc'}) : [];
+      setStatus(dm.dirty ? 'pending' : 'ok');
+    } catch (e) { handleErr(e); }
+  })).catch(handleErr);
+}
+function driveRestore(id, name){
+  gestureToken().then(() => dq(async () => {
+    try {
+      setStatus('busy');
+      const rs = parsePayload(await dread(id));
+      setStatus(dm.dirty ? 'pending' : 'ok');
+      const ok = await modal({title:'Sicherung einlesen?', text:`${name}\n${sumState(rs)}\n\nDer aktuelle Stand (${sumState(state)}) wird ersetzt. In Drive wird vorher eine Sicherungskopie des aktuellen Standes angelegt.`, ok:'Einlesen', danger:true});
+      if (!ok) return;
+      dd.nextTag = 'vor-wiederherstellung'; replaceState(rs); render(); toast('Sicherung eingelesen, wird nach Drive gespeichert', 4000);
+    } catch (e) { handleErr(e); }
+  })).catch(handleErr);
+}
+async function driveDisconnect(){
+  if (!await modal({title:'Verbindung trennen?', text:'Die Dateien in Google Drive und die Daten in diesem Browser bleiben unverändert erhalten. Es wird nur nicht mehr synchronisiert.', ok:'Trennen'})) return;
+  if (dd.token && gisOK()) { try { google.accounts.oauth2.revoke(dd.token, () => {}); } catch (e) {} }
+  dd.token = null; dd.exp = 0; dd.backups = null; dd.hold = false; clearTimeout(dd.timer);
+  dm = Object.assign(loadDM(), {on:false, fileId:'', folderId:'', backupId:'', version:'', lastSaved:'', dirty:false, backupDay:''}); saveDM();
+  setStatus('off'); toast('Verbindung getrennt');
+}
+function pillClick(){
+  const st = dd.state;
+  if (st === 'auth') driveSignIn();
+  else if (st === 'conflict') driveSaveNow();
+  else if (st === 'error') dq(() => driveSync({}));
+  else go('daten');
+}
+
+function driveCardInner(){
+  const [lab, long] = driveLabel();
+  if (!dm.on) {
+    return `<p class="hint">Dein Depot wird als Datei <code>${D_FILE}</code> im Drive-Ordner „${D_FOLDER}“ gespeichert, mit täglicher Sicherungskopie. So hast du am Handy und am Rechner denselben Stand. Das Tool sieht in Drive nur Dateien, die es selbst angelegt hat.</p>`
+      + (location.protocol === 'file:' ? `<p class="note">Die Google-Anmeldung funktioniert nur, wenn das Tool über seine https-Adresse geöffnet wird (GitHub Pages), nicht als lokale Datei.</p>` : '')
+      + `<div class="btns"><button class="primary" data-act="driveconnect"${location.protocol === 'file:' ? ' disabled' : ''}>Mit Google Drive verbinden</button></div>${dd.msg ? `<p class="msg">${esc(dd.msg)}</p>` : ''}`;
+  }
+  const fl = dm.fileId ? `<a href="https://drive.google.com/file/d/${encodeURIComponent(dm.fileId)}/view" target="_blank" rel="noopener">${D_FILE}</a>` : D_FILE + ' (wird beim ersten Speichern angelegt)';
+  const fo = dm.folderId ? `<a href="https://drive.google.com/drive/folders/${encodeURIComponent(dm.folderId)}" target="_blank" rel="noopener">${D_FOLDER}</a>` : D_FOLDER;
+  let h = `<p><strong>${esc(lab)}</strong><span class="sub">${esc(long)}</span></p>${dd.msg ? `<p class="msg">${esc(dd.msg)}</p>` : ''}
+    <p class="hint" style="margin-top:0">Ordner: ${fo}<br>Datei: ${fl}<br>Letzte Speicherung: ${dm.lastSaved ? fdt(dm.lastSaved) : 'noch keine'}<br>Sicherungskopien: täglich im Unterordner „${D_BACKUP}“, die letzten ${D_KEEP} bleiben erhalten.</p>
+    <div class="btns"><button class="primary" data-act="drivesave">Jetzt speichern</button><button class="btn" data-act="driveload">Stand aus Drive laden</button><button class="btn" data-act="drivebackups">Sicherungen anzeigen</button><button class="btn" data-act="drivedisconnect">Verbindung trennen</button></div>
+    <div class="checkrow" style="margin-top:12px"><input type="checkbox" id="driveAuto"${dm.auto ? ' checked' : ''}><label for="driveAuto" style="margin:0">Änderungen automatisch nach Drive speichern</label></div>`;
+  if (dd.backups) {
+    h += `<h3>Sicherungen in Drive (${dd.backups.length})</h3>`;
+    h += dd.backups.length ? `<div class="histlist">${dd.backups.map(f => `<div><span>${esc(f.name.replace(/^depot-sicherung-/, '').replace(/\.json$/, ''))}</span><button class="btn small" data-act="driverestore" data-id="${esc(f.id)}" data-name="${esc(f.name)}">Einlesen</button></div>`).join('')}</div>` : `<p class="hint">Noch keine Sicherungskopien. Die erste entsteht beim ersten Überschreiben der Datei.</p>`;
+  }
+  return h;
+}
+
+window.addEventListener('online', () => { if (dm.on && dm.dirty && dd.state === 'error') dq(() => driveSync({})); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !dm.on || dd.hold || !tokenValid() || dd.state === 'busy') return;
+  if ($('#modal-root').innerHTML) return;
+  if (Date.now() - dd.lastCheck > 60000) dq(() => driveSync({}));
+});
+
+/* Start */
+$('#ver').textContent = 'v' + VERSION;
+(function init(){
+  const t = location.hash.slice(1); if (TABS.includes(t)) ui.tab = t;
+  render(); updateTxSum(); updatePill(); driveStart();
+})();
+</script>
+</body>
+</html>

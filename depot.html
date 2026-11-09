@@ -20,6 +20,7 @@
   v1.9  Mehrere Depots (Auswahl oben, Musterdepots, Kopieren), Sicherung und Drive umfassen alle Depots
   v1.5  Vorschaudiagramm auf der Uebersicht: Depotwert, Netto-Rendite und vorhandene Kursdaten
   v1.4  Reiter Konto: Einzahlungen, Auszahlungen, Ertraege; Kaeufe und Verkaeufe buchen automatisch gegen das Konto; Gesamtvermoegen und Gesamtergebnis
+  v1.9.1 Linux-Anbindung: Block linuxHandOff am Ende (Anmeldung fuer die Linux-App, nur aktiv mit ?linuxport=...), Logo Seiffert Apps in der Kopfzeile
 -->
 <style>
 :root{
@@ -165,7 +166,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
 <body>
 <header class="top">
   <div class="wrap">
-    <div class="titlerow"><h1>Seifferts Depot <span class="ver" id="ver"></span></h1><button id="drivepill" class="dpill" type="button" data-st="off"></button></div>
+    <div class="titlerow"><h1><img src="data:image/png;base64,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" alt="" width="28" height="28" style="vertical-align:middle;border-radius:6px;margin:-3px 8px 0 0">Seifferts Depot <span class="ver" id="ver"></span></h1><button id="drivepill" class="dpill" type="button" data-st="off"></button></div>
     <div class="depotrow"><label for="depotSel">Depot</label><select id="depotSel" aria-label="Depot wählen"></select></div>
     <nav id="nav" role="tablist" aria-label="Bereiche">
       <button role="tab" data-tab="uebersicht">Übersicht</button>
@@ -187,7 +188,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
 /* ======================================================================
    Seifferts Depot v1.0
    ====================================================================== */
-const VERSION = '1.9';
+const VERSION = '1.9.1';
 const LS_KEY = 'seifferts_depot_v1';
 const PALETTE = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
 
@@ -2306,5 +2307,44 @@ $('#ver').textContent = 'v' + VERSION;
   render(); updateTxSum(); updatePill(); driveStart();
 })();
 </script>
+<!-- LINUXHANDOFF BEGIN -->
+<script id="linuxHandOff">
+/* Anmeldung fuer die Linux-App von Seifferts Depot. Nur aktiv, wenn diese Seite mit ?linuxport=...&linuxstate=... geoeffnet wird
+   (das macht die Linux-App). Die Seite meldet mit der vorhandenen Client-ID bei Google an und reicht das Token per Weiterleitung an
+   127.0.0.1 weiter, also an die Linux-App auf diesem Rechner. Ohne diese Parameter geschieht nichts. Dieser Block muss erhalten bleiben. */
+(function(){
+  var q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  var port = q.get('linuxport'), st = q.get('linuxstate');
+  if (!port || !st) return;
+  if (!/^[0-9]{2,5}$/.test(port) || !/^[A-Za-z0-9_-]{8,128}$/.test(st)) return;
+  /* In diesem Modus ruhen die Oberflaeche des Tools und seine Drive-Synchronisation. */
+  window.driveSync = async function(){}; window.driveStart = async function(){}; window.driveTouch = function(){}; window.render = function(){};
+  document.body.innerHTML = '<div class="wrap" style="padding-top:40px"><div class="card hero"><h2>Anmeldung für Seifferts Depot (Linux-App)</h2>'
+    + '<p>Mit dem Knopf meldest du dich bei Google an. Danach geht die Anmeldung an die Linux-App auf diesem Rechner, und du kannst diesen Browser-Tab schließen.</p>'
+    + '<div class="btns" style="justify-content:center"><button class="primary" id="lxBtn" type="button">Bei Google anmelden</button></div>'
+    + '<p class="msg" id="lxMsg" role="status" style="color:var(--text2)"></p></div></div>';
+  var btn = document.getElementById('lxBtn'), msg = document.getElementById('lxMsg');
+  function post(fields){
+    /* wie beim Stammbaum: Weiterleitung (GET) an die Linux-App auf diesem Rechner */
+    fields.state = st;
+    var qs = Object.keys(fields).map(function(k){ return encodeURIComponent(k) + '=' + encodeURIComponent(String(fields[k])); }).join('&');
+    location.href = 'http://127.0.0.1:' + port + '/handoff?' + qs;
+  }
+  btn.addEventListener('click', function(){
+    if (!(window.google && google.accounts && google.accounts.oauth2)) { msg.textContent = 'Die Google-Anmeldung ist noch nicht geladen. Bitte kurz warten und noch einmal klicken (Internetverbindung nötig).'; return; }
+    btn.disabled = true; msg.textContent = 'Bitte im Fenster von Google anmelden …';
+    try {
+      google.accounts.oauth2.initTokenClient({client_id: CLIENT_ID, scope: D_SCOPE,
+        callback: function(r){
+          if (r && r.access_token) { msg.textContent = 'Anmeldung wird übermittelt …'; post({access_token: r.access_token, expires_in: r.expires_in || 3600}); }
+          else { btn.disabled = false; msg.textContent = 'Anmeldung fehlgeschlagen' + (r && r.error ? ' (' + r.error + ')' : '') + '. Du kannst es noch einmal versuchen.'; }
+        },
+        error_callback: function(e){ btn.disabled = false; msg.textContent = 'Anmeldung nicht möglich (' + ((e && e.type) || 'Fehler') + '). Bitte erlaube Pop-up-Fenster für diese Seite und versuche es noch einmal.'; }
+      }).requestAccessToken({prompt: ''});
+    } catch (e) { btn.disabled = false; msg.textContent = 'Anmeldung nicht möglich: ' + e.message; }
+  });
+})();
+</script>
+<!-- LINUXHANDOFF END -->
 </body>
 </html>

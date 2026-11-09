@@ -15,6 +15,9 @@
   v1.2  Kurse per CSV einlesen (Liste oder Tabelle), Zeichensatz-Erkennung, tolerantere Zahlenerkennung
   v1.3  Berechnungsmethoden: gleitender Durchschnitt, FIFO, LIFO, Netto-Einstand (Kaufsummen minus Verkaufserloese), Methodenvergleich
   v1.6  Chart-Link je Position (manuell hinterlegt), Link in Uebersicht, Kurse, Positionen und Verlaufsdiagramm
+  v1.7  Kerzen-Charts (Eroeffnung, Hoch, Tief), Wochen-/Monatskerzen, CSV-Spalten Open/High/Low
+  v1.8  Rendite-Kennzahlen TTWROR und IRR (gesamt und je Position, waehlbarer Zeitraum), TTWROR-Chart
+  v1.9  Mehrere Depots (Auswahl oben, Musterdepots, Kopieren), Sicherung und Drive umfassen alle Depots
   v1.5  Vorschaudiagramm auf der Uebersicht: Depotwert, Netto-Rendite und vorhandene Kursdaten
   v1.4  Reiter Konto: Einzahlungen, Auszahlungen, Ertraege; Kaeufe und Verkaeufe buchen automatisch gegen das Konto; Gesamtvermoegen und Gesamtergebnis
 -->
@@ -35,7 +38,7 @@
   }
 }
 a{color:var(--accent)}
-.chartlink{font-size:.85rem;white-space:nowrap}
+.chartlink,.linkadd{font-size:.85rem;white-space:nowrap}
 .cards-m{display:none}
 .sortm{display:none}
 .pcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
@@ -149,6 +152,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
 .kursrow{display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--grid)}
 .kursrow input{margin-top:0}
 
+.depotrow{display:flex;align-items:center;gap:8px;margin:0 0 8px}.depotrow label{margin:0;font-size:.85rem;color:var(--text2);flex:none}.depotrow select{flex:1;min-width:0;padding-top:6px;padding-bottom:6px;font-weight:600}
 .titlerow{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .dpill{flex:0 1 auto;min-height:32px;margin-top:6px;padding:3px 12px;font:inherit;font-size:.8rem;color:var(--text2);background:var(--surface2);border:1px solid var(--line);border-radius:999px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dpill[data-st="ok"]{border-color:var(--s3)}
@@ -162,6 +166,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
 <header class="top">
   <div class="wrap">
     <div class="titlerow"><h1>Seifferts Depot <span class="ver" id="ver"></span></h1><button id="drivepill" class="dpill" type="button" data-st="off"></button></div>
+    <div class="depotrow"><label for="depotSel">Depot</label><select id="depotSel" aria-label="Depot wählen"></select></div>
     <nav id="nav" role="tablist" aria-label="Bereiche">
       <button role="tab" data-tab="uebersicht">Übersicht</button>
       <button role="tab" data-tab="diagramme">Diagramme</button>
@@ -182,7 +187,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
 /* ======================================================================
    Seifferts Depot v1.0
    ====================================================================== */
-const VERSION = '1.6';
+const VERSION = '1.9';
 const LS_KEY = 'seifferts_depot_v1';
 const PALETTE = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
 
@@ -240,11 +245,13 @@ function cleanUrl(s){
   if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = 'https://' + s;
   try { const u = new URL(s); return /^https?:$/.test(u.protocol) && u.hostname.includes('.') ? u.href : null; } catch (e) { return null; }
 }
+const addLinkHTML = p => `<a href="#" class="linkadd" data-act="poslink" data-id="${p.id}">+ Chart-Link hinzufügen</a>`;
 const linkHTML = p => p && p.url ? `<a class="chartlink" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="Chart von ${esc(p.name)} in neuem Tab öffnen">Chart ↗</a>` : '';
 
 /* ---------- Zustand ---------- */
 function emptyState(){ return {positions:[], txs:[], prices:{}, cash:[], meta:{lastBackup:null}}; }
-const hasData = s => !!(s.positions.length || s.txs.length || (s.cash && s.cash.length));
+const isWS = o => !!o && Array.isArray(o.depots);
+const hasData = s => isWS(s) ? (s.depots.length > 1 || s.depots.some(d => hasData(d.state))) : !!(s.positions.length || s.txs.length || (s.cash && s.cash.length));
 function normalizeState(o){
   const s = emptyState();
   if (!o || typeof o !== 'object') return s;
@@ -262,8 +269,14 @@ function normalizeState(o){
     Object.keys(o.prices).forEach(pid => {
       if (!ids.has(pid) || !Array.isArray(o.prices[pid])) return;
       const m = new Map();
-      o.prices[pid].forEach(e => { const d = e && parseDate(e.date), pr = e && Number(e.price); if (d && pr > 0) m.set(d, pr); });
-      s.prices[pid] = [...m].map(([date, price]) => ({date, price})).sort((a, b) => a.date < b.date ? -1 : 1);
+      o.prices[pid].forEach(e => {
+        const d = e && parseDate(e.date), pr = e && Number(e.price);
+        if (!(d && pr > 0)) return;
+        const it = {date:d, price:pr}, oo = Number(e.o), hh = Number(e.h), ll = Number(e.l);
+        if (oo > 0 && hh > 0 && ll > 0 && hh >= ll) { it.o = oo; it.h = hh; it.l = ll; }
+        m.set(d, it);
+      });
+      s.prices[pid] = [...m.values()].sort((a, b) => a.date < b.date ? -1 : 1);
     });
   }
   const cids = new Set();
@@ -275,29 +288,121 @@ function normalizeState(o){
   });
   if (o.meta && o.meta.lastBackup) s.meta.lastBackup = String(o.meta.lastBackup);
   if (o.meta && ['avg', 'fifo', 'lifo', 'net'].includes(o.meta.method)) s.meta.method = o.meta.method;
+  if (o.meta && ['line', 'candle'].includes(o.meta.chartType)) s.meta.chartType = o.meta.chartType;
+  if (o.meta && ['day', 'week', 'month'].includes(o.meta.candleGrid)) s.meta.candleGrid = o.meta.candleGrid;
+  if (o.meta && ['all', 'ytd', '1y', '6m', '3m', '1m'].includes(o.meta.perfPeriod)) s.meta.perfPeriod = o.meta.perfPeriod;
   return s;
 }
 let storageOK = true;
-function loadState(){
-  try { const raw = localStorage.getItem(LS_KEY); if (raw) return normalizeState(JSON.parse(raw)); }
+/* ---------- Mehrere Depots ----------
+   Jedes Depot ist ein eigener Stand (Positionen, Transaktionen, Kurse, Konto). `state` zeigt immer auf das aktive Depot.
+   Das Depot "main" liegt unter dem bisherigen Schluessel, so bleiben vorhandene Daten erhalten. */
+const DEF_NAME = 'Mein Depot', REG_KEY = LS_KEY + '_reg';
+const depotKey = id => id === 'main' ? LS_KEY : LS_KEY + '__' + id;
+function normalizeWS(o){
+  if (!isWS(o)) return {depots:[{id:'main', name:DEF_NAME, state:normalizeState(o)}]};
+  const seen = new Set(), list = [];
+  o.depots.forEach(d => {
+    if (!d || typeof d !== 'object') return;
+    const id = String(d.id == null ? '' : d.id);
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || seen.has(id)) return;
+    seen.add(id); list.push({id, name:String(d.name || DEF_NAME).trim().slice(0, 60) || DEF_NAME, state:normalizeState(d.state)});
+  });
+  if (!list.length) list.push({id:'main', name:DEF_NAME, state:emptyState()});
+  return {depots:list};
+}
+const normalizeAny = x => isWS(x) ? normalizeWS(x) : normalizeState(x);
+function loadOne(id){
+  try { const raw = localStorage.getItem(depotKey(id)); if (raw) return normalizeState(JSON.parse(raw)); }
   catch (e) { storageOK = false; console.warn('Laden fehlgeschlagen', e); }
   return emptyState();
 }
-let state = loadState();
+let depots = [], activeId = 'main';
+(function loadAll(){
+  let reg = null; try { reg = JSON.parse(localStorage.getItem(REG_KEY) || 'null'); } catch (e) {}
+  const list = reg && Array.isArray(reg.depots) ? reg.depots.filter(d => d && /^[A-Za-z0-9_-]{1,40}$/.test(String(d.id))) : [];
+  if (!list.length) list.push({id:'main', name:DEF_NAME});
+  depots = list.map(d => ({id:String(d.id), name:String(d.name || DEF_NAME).slice(0, 60), state:loadOne(String(d.id))}));
+  activeId = reg && depots.some(d => d.id === reg.active) ? reg.active : depots[0].id;
+})();
+const activeDepot = () => depots.find(d => d.id === activeId) || depots[0];
+let state = activeDepot().state;
 let cache = {};
+/* Alle Depots als ein Objekt (fuer Sicherung und Drive) */
+const wsObj = () => ({depots:depots.map(d => ({id:d.id, name:d.name, state:d.id === activeId ? state : d.state}))});
+function persist(ids){
+  try {
+    (ids || depots.map(d => d.id)).forEach(id => { const d = depots.find(x => x.id === id); if (d) localStorage.setItem(depotKey(id), JSON.stringify(d.id === activeId ? state : d.state)); });
+    localStorage.setItem(REG_KEY, JSON.stringify({depots:depots.map(d => ({id:d.id, name:d.name})), active:activeId}));
+  } catch (e) { storageOK = false; toast('Achtung: Speichern im Browser nicht möglich. Bitte Sicherung exportieren.', 5000); }
+}
 function saveState(opts){
   cache = {};
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-  catch (e) { storageOK = false; toast('Achtung: Speichern im Browser nicht möglich. Bitte Sicherung exportieren.', 5000); }
+  activeDepot().state = state;
+  persist([activeId]);
   if (!(opts && opts.noSync)) driveTouch();
 }
-/* Ersetzt den kompletten Bestand. Der bisherige Stand bleibt als Notkopie im Browser (Reiter Daten). */
+function resetUiForDepot(){ Object.assign(ui, {txEdit:null, cashEdit:null, txFilter:'', detailPos:'', lastDate:null, lastCashDate:null, openHist:null}); cache = {}; }
+/* Ersetzt den kompletten Bestand. Der bisherige Stand bleibt als Notkopie im Browser (Reiter Daten).
+   Ein einzelner Stand ersetzt nur das aktive Depot, ein Objekt mit mehreren Depots ersetzt alle. */
 function replaceState(ns, opts){
   opts = opts || {};
-  if (opts.keepPrev !== false && hasData(state)) {
-    try { localStorage.setItem(LS_KEY + '_prev', JSON.stringify({saved:new Date().toISOString(), state})); } catch (e) {}
+  if (opts.keepPrev !== false && hasData(wsObj())) {
+    try { localStorage.setItem(LS_KEY + '_prev', JSON.stringify({saved:new Date().toISOString(), state:depots.length > 1 ? wsObj() : state})); } catch (e) {}
   }
-  state = ns; saveState({noSync:!!opts.noSync});
+  if (isWS(ns)) {
+    const keep = new Set(ns.depots.map(d => d.id));
+    depots.forEach(d => { if (!keep.has(d.id)) { try { localStorage.removeItem(depotKey(d.id)); } catch (e) {} } });
+    depots = ns.depots.map(d => ({id:d.id, name:d.name, state:d.state}));
+    if (!depots.some(d => d.id === activeId)) activeId = depots[0].id;
+    state = activeDepot().state; resetUiForDepot(); persist();
+    if (!opts.noSync) driveTouch();
+  } else { state = ns; saveState({noSync:!!opts.noSync}); }
+}
+function uniqueDepotName(name, exceptId){ return !depots.some(d => d.id !== exceptId && d.name.toLowerCase() === name.toLowerCase()); }
+function switchDepot(id){
+  if (id === activeId || !depots.some(d => d.id === id)) return;
+  activeDepot().state = state; activeId = id; state = activeDepot().state;
+  resetUiForDepot(); persist([]); render(); toast(`Depot „${activeDepot().name}“ geöffnet`);
+}
+function createDepot(name, mode){
+  activeDepot().state = state;
+  let ns = emptyState();
+  if (mode === 'copy') { ns = normalizeState(JSON.parse(JSON.stringify(state))); ns.meta.lastBackup = null; }
+  else if (mode === 'base') ns = normalizeState(JSON.parse(JSON.stringify({positions:state.positions, prices:state.prices, meta:{method:state.meta.method}})));
+  const id = 'd' + uid().replace(/[^A-Za-z0-9]/g, '');
+  depots.push({id, name, state:ns}); persist([id]); driveTouch();
+  switchDepot(id);
+}
+async function startNewDepot(){
+  const mode = await choose({title:'Neues Depot', text:'Womit soll das neue Depot beginnen?', options:[
+    {key:'empty', label:'Leeres Depot', sub:'ohne Positionen, Käufe und Kurse', primary:true},
+    {key:'base', label:'Musterdepot mit denselben Wertpapieren und Kursen', sub:`übernimmt Positionen und Kurse von „${activeDepot().name}“, aber keine Käufe und kein Konto`},
+    {key:'copy', label:'Vollständige Kopie', sub:`übernimmt auch Käufe und Konto von „${activeDepot().name}“`},
+    {key:'', label:'Abbrechen'}]});
+  if (!mode) return;
+  const def = mode === 'empty' ? 'Neues Depot' : mode === 'base' ? 'Musterdepot' : `Kopie von ${activeDepot().name}`;
+  for (let name = def;;) {
+    const r = await modal({title:'Name des Depots', fields:[{label:'Name', value:name}], ok:'Anlegen'});
+    if (!r) return;
+    name = r[0].trim().slice(0, 60);
+    if (!name) { toast('Der Name darf nicht leer sein.'); name = def; continue; }
+    if (!uniqueDepotName(name)) { toast('Ein Depot mit diesem Namen gibt es schon.', 3500); continue; }
+    createDepot(name, mode); return;
+  }
+}
+function fillDepotSel(){
+  const el = $('#depotSel'); if (!el) return;
+  el.innerHTML = depots.map(d => `<option value="${esc(d.id)}"${d.id === activeId ? ' selected' : ''}>${esc(d.name)}</option>`).join('') + `<option value="__new">Neues Depot anlegen …</option><option value="__manage">Depots verwalten …</option>`;
+}
+function depotCard(){
+  let h = `<div class="card" id="depotcard"><h2>Depots</h2><p class="hint">Jedes Depot hat eigene Positionen, Transaktionen, Kurse und ein eigenes Konto, zum Beispiel ein Musterdepot, um Strategien durchzuspielen. Das aktive Depot wählst du ganz oben. Sicherungsdatei und Google Drive enthalten alle Depots.</p>`;
+  depots.forEach(d => {
+    const st = d.id === activeId ? state : d.state;
+    h += `<div class="kursrow" style="grid-template-columns:1fr auto"><div>${esc(d.name)}${d.id === activeId ? ' <span class="pill">aktiv</span>' : ''}<span class="sub">${esc(sumState(st))}</span></div>
+      <div class="btns" style="margin:0">${d.id === activeId ? '' : `<button class="btn small" data-act="depotopen" data-id="${esc(d.id)}">Öffnen</button>`}<button class="btn small" data-act="depotrename" data-id="${esc(d.id)}">Umbenennen</button>${depots.length > 1 ? `<button class="btn small danger" data-act="depotdel" data-id="${esc(d.id)}">Löschen</button>` : ''}</div></div>`;
+  });
+  return h + `<div class="btns"><button class="primary" data-act="depotnew">Neues Depot anlegen</button></div></div>`;
 }
 
 /* ---------- Berechnung ---------- */
@@ -475,6 +580,133 @@ function computeRows(){
   return {rows, tot};
 }
 
+/* ======================================================================
+   Rendite: TTWROR (zeitgewichtet) und IRR (interner Zinsfuss)
+   ====================================================================== */
+const PERF_PERIODS = {all:'Gesamter Zeitraum', ytd:'Laufendes Jahr', '1y':'Letzte 12 Monate', '6m':'Letzte 6 Monate', '3m':'Letzte 3 Monate', '1m':'Letzter Monat'};
+const curPerf = () => PERF_PERIODS[state.meta.perfPeriod] ? state.meta.perfPeriod : 'all';
+const isoAdd = (d, n) => new Date(Date.parse(d) + n * 864e5).toISOString().slice(0, 10);
+function isoMinusMonths(d, m){
+  const t = new Date(Date.parse(d)), day = t.getUTCDate();
+  t.setUTCDate(1); t.setUTCMonth(t.getUTCMonth() - m);
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  t.setUTCDate(Math.min(day, last)); return t.toISOString().slice(0, 10);
+}
+function perfRange(period){
+  const set = new Set();
+  state.txs.forEach(t => set.add(t.date)); state.cash.forEach(c => set.add(c.date));
+  Object.values(state.prices).forEach(a => a.forEach(e => set.add(e.date)));
+  if (!set.size) return null;
+  const dates = [...set].sort(), e = dates[dates.length - 1], s0 = isoAdd(dates[0], -1);
+  let s = s0;
+  if (period === 'ytd') s = (+e.slice(0, 4) - 1) + '-12-31';
+  else if (period === '1y') s = isoMinusMonths(e, 12);
+  else if (period === '6m') s = isoMinusMonths(e, 6);
+  else if (period === '3m') s = isoMinusMonths(e, 3);
+  else if (period === '1m') s = isoMinusMonths(e, 1);
+  const clamped = s < s0; if (clamped) s = s0;
+  return {s, e, s0, dates, clamped};
+}
+/* Wert des Portfolios (Depot, mit Konto zusätzlich der Kontostand) oder einer einzelnen Position an einem Tag. */
+function perfValue(d, cashy, posId){
+  let v = 0;
+  state.positions.forEach(p => {
+    if (posId && p.id !== posId) return;
+    const st = calcPosition(p.id, d);
+    if (st.qty > 1e-9) { const pr = priceAtDate(p.id, d); if (pr != null) v += st.qty * pr; }
+  });
+  return posId || !cashy ? v : v + cashInfo(d).bal;
+}
+/* Zahlungen ins Portfolio: positiv = Einzahlung/Kauf, negativ = Auszahlung/Verkauf. */
+function perfFlows(cashy, posId){
+  if (cashy && !posId) return state.cash.filter(c => c.type === 'in' || c.type === 'out').map(c => ({d:c.date, a:c.type === 'in' ? c.amount : -c.amount}));
+  return state.txs.filter(t => !posId || t.posId === posId).map(t => ({d:t.date, a:t.type === 'buy' ? t.qty * t.price + t.fee : -(t.qty * t.price - t.fee)}));
+}
+/* XIRR: Jahreszins, bei dem der Barwert aller Zahlungen null ist (365-Tage-Jahr). cfs: [{t:Tage, a:Betrag aus Sicht des Anlegers}] */
+function xirr(cfs){
+  if (!cfs.some(c => c.a > 1e-9) || !cfs.some(c => c.a < -1e-9)) return null;
+  const f = x => cfs.reduce((a, c) => a + c.a * Math.exp(-x * c.t / 365), 0);
+  let lo = -12, hi = 12, flo = f(lo);
+  if (!(flo * f(hi) < 0)) return null;
+  for (let i = 0; i < 200; i++) { const mid = (lo + hi) / 2, fm = f(mid); if (flo * fm <= 0) hi = mid; else { lo = mid; flo = fm; } }
+  return Math.exp((lo + hi) / 2) - 1;
+}
+/* Kennzahlen fuer einen Zeitraum (s, e]. Verkettung der Teilrenditen an allen Datumsstellen:
+   r = (Wert am Ende - Zahlungen des Tages) / Wert am Vortag. Zahlungen gelten am Ende des Tages zum Tageskurs.
+   War der Wert am Vortag null (erste Zahlung), gilt r = Wert / Zahlung. */
+function perfCalc(R, valueAt, flows){
+  const {s, e, dates} = R, byD = {}, inR = flows.filter(f => f.d > s && f.d <= e);
+  inR.forEach(f => { byD[f.d] = (byD[f.d] || 0) + f.a; });
+  const v0 = valueAt(s); let prev = v0, cum = 1, started = v0 > 1e-9; const series = [{d:s, r:0}];
+  dates.filter(d => d > s && d <= e).forEach(d => {
+    const V = valueAt(d), F = byD[d] || 0;
+    if (prev > 1e-9) { cum *= Math.max(0, (V - F) / prev); started = true; }
+    else if (F > 1e-9) { cum *= Math.max(0, V / F); started = true; } /* erste Zahlung bei Wert null: Wert gegen eingezahlten Betrag, damit Gebühren sichtbar werden */
+    prev = V; series.push({d, r:cum - 1});
+  });
+  const vE = valueAt(e), net = inR.reduce((a, f) => a + f.a, 0);
+  const firstFlow = inR.length ? inR.map(f => f.d).sort()[0] : null, startD = v0 > 1e-9 ? s : firstFlow;
+  const days = startD ? daysBetween(startD, e) : 0;
+  const cfs = []; if (v0 > 1e-9) cfs.push({t:0, a:-v0});
+  inR.forEach(f => cfs.push({t:daysBetween(s, f.d), a:-f.a}));
+  if (vE > 1e-9) cfs.push({t:daysBetween(s, e), a:vE});
+  const ok = started && series.length > 1 && days > 0;
+  const cumR = ok ? cum - 1 : null;
+  return {ok, cum:cumR, days, startD, pa:ok && days >= 30 && cum > 0 ? Math.pow(cum, 365 / days) - 1 : null,
+    irr:ok && days >= 30 ? xirr(cfs) : null, gain:vE - v0 - net, v0, vE, net, series};
+}
+function perfAll(){
+  if (cache.perf) return cache.perf;
+  const R = perfRange(curPerf()); if (!R) return null;
+  const cashy = cashOn();
+  const total = perfCalc(R, d => perfValue(d, cashy), perfFlows(cashy));
+  const per = state.positions.map(p => ({pos:p, res:perfCalc(R, d => perfValue(d, false, p.id), perfFlows(false, p.id))})).filter(x => x.res.ok);
+  return (cache.perf = {R, cashy, total, per});
+}
+function setPerfPeriod(v){ if (!PERF_PERIODS[v]) return; state.meta.perfPeriod = v; saveState(); const y = window.scrollY; render(); window.scrollTo(0, y); }
+const perfSelHTML = () => `<label style="margin:0">Zeitraum<select id="perfSel">${Object.keys(PERF_PERIODS).map(k => `<option value="${k}"${k === curPerf() ? ' selected' : ''}>${PERF_PERIODS[k]}</option>`).join('')}</select></label>`;
+const irrTxt = v => v == null ? '–' : v > 10 ? 'über 1.000 %' : pctS(v);
+function perfCard(){
+  const P = perfAll(), T = P && P.total;
+  let h = `<section class="card" id="perfcard"><h2>Rendite</h2>${perfSelHTML()}`;
+  if (!T || !T.ok) return h + `<p class="hint">Für die Renditekennzahlen braucht das Tool mindestens eine Transaktion (oder Einzahlung) und Kurse oder Transaktionen von mindestens zwei verschiedenen Tagen${P && P.R.clamped ? '' : ' im gewählten Zeitraum'}.</p></section>`;
+  const pa = T.pa != null ? pctS(T.pa) : '–', paSub = T.days < 30 ? 'Zeitraum unter 30 Tage' : T.days < 365 ? 'auf ein Jahr hochgerechnet' : 'je Jahr';
+  h += `<p class="hint" style="margin:6px 0 10px">${fd(T.startD)} bis ${fd(P.R.e)} (${T.days} Tage)${P.R.clamped ? ', Daten beginnen später' : ''}</p>
+    <div class="kpis"><div class="kpi"><div class="l">TTWROR</div><div class="v ${signCls(T.cum)}">${pctS(T.cum)}</div><div class="s">zeitgewichtet, gesamter Zeitraum</div></div>
+    <div class="kpi"><div class="l">TTWROR p. a.</div><div class="v ${signCls(T.pa)}">${pa}</div><div class="s">${paSub}</div></div>
+    <div class="kpi"><div class="l">IRR p. a.</div><div class="v ${signCls(T.irr)}">${irrTxt(T.irr)}</div><div class="s">${T.days < 30 ? 'Zeitraum unter 30 Tage' : 'berücksichtigt Zahlungszeitpunkte'}</div></div>
+    <div class="kpi"><div class="l">Ergebnis im Zeitraum</div><div class="v ${signCls(T.gain)}">${eurS(T.gain)}</div><div class="s">nach Gebühren, ohne Steuern</div></div></div>`;
+  if (P.per.length) h += `<details><summary>Rendite je Position</summary>` +
+    P.per.map(x => `<div style="padding:8px 0;border-bottom:1px solid var(--grid)"><strong>${esc(x.pos.name)}</strong><span class="sub" style="display:block;font-size:.85rem">TTWROR <span class="${signCls(x.res.cum)}">${pctS(x.res.cum)}</span> · IRR p. a. <span class="${signCls(x.res.irr)}">${irrTxt(x.res.irr)}</span> · Gewinn <span class="${signCls(x.res.gain)}">${eurS(x.res.gain)}</span></span></div>`).join('') +
+    `<p class="hint">Je Position nur Käufe, Verkäufe und Kurse. Erträge (Dividenden, Zinsen) aus dem Konto lassen sich keiner Position zuordnen und fehlen hier, sind im Gesamtwert oben aber enthalten (bei erfasstem Konto). IRR wird erst ab 30 Tagen berechnet.</p></details>`;
+  h += `<details><summary>Was bedeuten TTWROR und IRR?</summary>
+    <p class="hint" style="margin-top:0">TTWROR (zeitgewichtete Rendite) zeigt, wie sich das angelegte Geld entwickelt hat, unabhängig davon, wann und wie viel du ein- oder ausgezahlt hast. Der Zeitraum wird dazu an jeder Zahlung geteilt und die Teilrenditen werden miteinander verkettet. Das eignet sich zum Vergleich mit einem Index oder einem Fonds.</p>
+    <p class="hint">IRR (interner Zinsfuß) ist der Jahreszins, der zu deinen tatsächlichen Zahlungen und deren Terminen passt (gerechnet wie XIRR in Tabellenkalkulationen, 365-Tage-Jahr). Er bewertet damit auch dein Timing: Zahlst du kurz vor einem Anstieg mehr ein, fällt der IRR höher aus als der TTWROR.</p>
+    <p class="hint">Grundlage: ${P.cashy ? 'Weil ein Konto erfasst ist, zählen nur Einzahlungen und Auszahlungen als Zahlungen. Bewertet wird Depot plus Kontostand, Erträge erhöhen also die Rendite.' : 'Ohne erfasstes Konto zählen Käufe als Einzahlung und Verkäufe als Auszahlung, bewertet wird der Depotwert.'} Zwischen zwei erfassten Kursen gilt der jeweils letzte bekannte Kurs, je seltener du Kurse einträgst, desto gröber ist der Verlauf. Zahlungen werden am Ende des Tages zum Tageskurs verbucht. Gebühren mindern die Rendite, Steuern sind nicht berücksichtigt. Die gewählte Methode für den Einstiegspreis hat auf diese Kennzahlen keinen Einfluss.</p></details></section>`;
+  return h;
+}
+function ttwrorChart(w, series){
+  if (!series || series.length < 2) return null;
+  const t0 = tm(series[0].d), t1 = tm(series[series.length - 1].d), vals = series.map(p => p.r * 100);
+  const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), sp = (hi - lo) || 1;
+  const yr = niceRange(lo < 0 ? lo - sp * 0.08 : 0, hi + sp * 0.08, 4);
+  const L = 56, R = 16, T = 16, H = 210, B = 28, pw = Math.max(80, w - L - R), h = T + H + B;
+  const x = t => L + (t - t0) / (t1 - t0) * pw, y = v => T + H - (v - yr.lo) / (yr.hi - yr.lo) * H, af = axisFmt(yr.step);
+  let g = '';
+  timeTicks(t0, t1, w < 420 ? 3 : 5).forEach((t, i, a) => { g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T + H}"/><text class="tm" x="${x(t)}" y="${h - 8}" text-anchor="${i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${tdate(t)}</text>`; });
+  yr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y(v)}" y2="${y(v)}"/><text class="tm" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${af(v)} %</text>`; });
+  g += `<line class="axis" x1="${L}" x2="${L + pw}" y1="${y(0)}" y2="${y(0)}"/>`;
+  series.forEach((p, i) => {
+    const xa = i ? (x(tm(series[i - 1].d)) + x(tm(p.d))) / 2 : L, xb = i < series.length - 1 ? (x(tm(p.d)) + x(tm(series[i + 1].d))) / 2 : L + pw;
+    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${H}" data-tip="${esc(`${fd(p.d)}\nTTWROR seit Beginn ${pctS(p.r)}`)}"/>`;
+  });
+  g += `<path d="${series.map((p, i) => (i ? 'L' : 'M') + x(tm(p.d)) + ',' + y(p.r * 100)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
+  if (series.length <= 40) series.forEach(p => { g += `<circle cx="${x(tm(p.d))}" cy="${y(p.r * 100)}" r="3" style="fill:var(--s1);stroke:var(--surface);stroke-width:2;pointer-events:none"/>`; });
+  const last = series[series.length - 1];
+  g += `<text class="tv" x="${L + pw}" y="${y(last.r * 100) + (last.r >= 0 ? -9 : 17)}" text-anchor="end">${pctS(last.r)}</text>`;
+  return {svg:svgWrap(w, h, g, 'Zeitgewichtete Rendite (TTWROR) im Zeitverlauf'), series};
+}
+
 /* ---------- UI-Helfer ---------- */
 const ui = {tab:'uebersicht', sort:{key:'value', dir:-1}, showClosed:false, txEdit:null, txFilter:'', detailPos:'', lastDate:null, openHist:null};
 let toastT;
@@ -527,6 +759,7 @@ function render(){
   v.innerHTML = ({uebersicht:viewOverview, diagramme:viewCharts, kurse:viewKurse, kaeufe:viewKaeufe, konto:viewKonto, daten:viewDaten})[ui.tab]();
   if (ui.tab === 'diagramme') drawCharts();
   if (ui.tab === 'uebersicht') drawPreview();
+  fillDepotSel();
 }
 
 /* ======================================================================
@@ -582,9 +815,10 @@ function viewOverview(){
     <div class="kpi"><div class="l">Realisiert (Verkäufe)</div><div class="v ${signCls(tot.realized)}">${eurS(tot.realized)}</div><div class="s">${tot.lastKurs ? 'Letzter Kurs: ' + fd(tot.lastKurs) : 'noch keine Kurse'}</div></div>
   </div>`;
   if (cashOn()) h += cashKpis(tot);
+  h += perfCard();
   const SORTS = [['value','Wert'],['gvPct','Gewinn/Verlust %'],['gv','Gewinn/Verlust €'],['share','Anteil'],['name','Name'],['cost','Einstand']];
   h += `<label class="sortm">Sortieren nach<select id="sortSel">${SORTS.map(([k, l]) => `<option value="${k}"${ui.sort.key === k ? ' selected' : ''}>${l}${k === 'name' ? ' (A–Z)' : ' (absteigend)'}</option>`).join('')}</select></label>`;
-  h += `<div class="cards-m">${shown.length ? shown.map(r => `<div class="pcard${r.errors.length ? ' err' : ''}"><div class="ph"><div><strong>${esc(r.pos.name)}</strong>${r.pos.sym ? `<span class="sub">${esc(r.pos.sym)}${r.open ? '' : ' · geschlossen'}</span>` : (r.open ? '' : '<span class="sub">geschlossen</span>')}${r.pos.url ? `<span class="sub">${linkHTML(r.pos)}</span>` : ''}</div>
+  h += `<div class="cards-m">${shown.length ? shown.map(r => `<div class="pcard${r.errors.length ? ' err' : ''}"><div class="ph"><div><strong>${esc(r.pos.name)}</strong>${r.pos.sym ? `<span class="sub">${esc(r.pos.sym)}${r.open ? '' : ' · geschlossen'}</span>` : (r.open ? '' : '<span class="sub">geschlossen</span>')}<span class="sub">${r.pos.url ? linkHTML(r.pos) : addLinkHTML(r.pos)}</span></div>
       ${r.open ? `<div class="pg ${signCls(r.gv)}">${pctS(r.gvPct)}<small>${eurS(r.gv)}</small></div>` : ''}</div>
       ${r.open ? `<dl class="pgrid"><div><dt>Stück</dt><dd>${qty(r.qty)}</dd></div><div><dt>Ø Einstieg</dt><dd>${price(r.avg)}</dd></div>
       <div><dt>Kurs</dt><dd>${isFinite(r.price) ? price(r.price) : '–'}${r.priceSrc === 'trade' ? '<br><small>(Transaktionspreis)</small>' : r.priceDate ? `<br><small>${fd(r.priceDate)}${r.stale ? ' (veraltet)' : ''}</small>` : ''}</dd></div>
@@ -596,7 +830,7 @@ function viewOverview(){
   if (!shown.length) h += `<tr><td colspan="9" style="text-align:left">Keine offenen Positionen.</td></tr>`;
   shown.forEach(r => {
     const kursNote = r.priceSrc === 'trade' ? '<small>(Transaktionspreis)</small>' : r.priceDate ? `<small>${fd(r.priceDate)}${r.stale ? ' (veraltet)' : ''}</small>` : '';
-    h += `<tr${r.errors.length ? ' class="err"' : ''}><td>${esc(r.pos.name)}${r.pos.sym ? `<small>${esc(r.pos.sym)}</small>` : ''}${r.pos.url ? `<small>${linkHTML(r.pos)}</small>` : ''}${r.open ? '' : '<small>geschlossen</small>'}</td>
+    h += `<tr${r.errors.length ? ' class="err"' : ''}><td>${esc(r.pos.name)}${r.pos.sym ? `<small>${esc(r.pos.sym)}</small>` : ''}<small>${r.pos.url ? linkHTML(r.pos) : addLinkHTML(r.pos)}</small>${r.open ? '' : '<small>geschlossen</small>'}</td>
       <td>${r.open ? qty(r.qty) : '0'}</td><td>${r.open ? price(r.avg) : '–'}</td><td>${isFinite(r.price) ? price(r.price) : '–'}${kursNote}</td>
       <td>${r.open ? eur(r.cost) : '–'}</td><td>${r.open ? eur(r.value) : '–'}</td>
       <td class="${signCls(r.gv)}">${r.open ? eurS(r.gv) : '–'}</td><td class="${signCls(r.gv)}">${r.open ? pctS(r.gvPct) : '–'}</td><td>${r.open ? pctP(r.share) : '–'}</td></tr>`;
@@ -624,6 +858,10 @@ function viewKurse(){
     h += `<div class="kursrow"><div>${esc(r.pos.name)}${r.pos.sym ? ` <span class="pill">${esc(r.pos.sym)}</span>` : ''}<span class="sub">Zuletzt: ${isFinite(r.price) ? price(r.price) + ' (' + (r.priceSrc === 'trade' ? 'Transaktionspreis ' : '') + fd(r.priceDate) + ')' : 'noch keiner'}</span><span class="sub">${r.pos.url ? linkHTML(r.pos) : `<a href="#kaeufe" data-act="posedit" data-id="${r.pos.id}">Link zum Chart hinterlegen</a>`}</span></div>
       <input class="kinput" data-pos="${r.pos.id}" inputmode="decimal" placeholder="${isFinite(r.price) ? fPrice.format(r.price) : 'Kurs'}" aria-label="Kurs ${esc(r.pos.name)} in Euro" autocomplete="off"></div>`;
   });
+  if (open.length) h += `<details style="margin-top:10px"><summary>Eröffnung, Hoch und Tief ergänzen (optional, für Kerzen-Charts)</summary>
+    <p class="hint">Nur ausfüllen, wenn du die Tageswerte kennst. Dann bitte alle drei Felder einer Position füllen. Der Schlusskurs steht oben im Feld der Position (oder ist für dieses Datum schon gespeichert).</p>` +
+    open.map(r => `<div style="margin-top:8px"><strong>${esc(r.pos.name)}</strong><div class="grid3">` +
+      [['o', 'Eröffnung'], ['h', 'Hoch'], ['l', 'Tief']].map(([f, nm]) => `<label>${nm}<input class="kohl" data-pos="${r.pos.id}" data-f="${f}" inputmode="decimal" autocomplete="off" aria-label="${nm} ${esc(r.pos.name)}"></label>`).join('') + `</div></div>`).join('') + `</details>`;
   h += `<p class="msg" id="kmsg" role="alert"></p><div class="btns"><button class="primary" type="submit">Kurse speichern</button></div>
     <p class="hint">Leere Felder werden übersprungen. Ein bereits vorhandener Kurs für dasselbe Datum wird ersetzt. Mit der Eingabetaste springst du zum nächsten Feld. Ältere Tage kannst du durch Ändern des Datums nachtragen.</p></form>`;
   h += `<div class="card"><h2>Kurse aus CSV einlesen</h2>
@@ -641,7 +879,7 @@ function viewKurse(){
     const arr = (state.prices[p.id] || []).slice().reverse();
     h += `<details${ui.openHist === p.id ? ' open' : ''}><summary>${esc(p.name)} (${arr.length} Kurs${arr.length === 1 ? '' : 'e'})</summary>`;
     if (!arr.length) h += `<p class="hint">Noch keine Kurse erfasst.</p>`;
-    else h += `<div class="histlist">${arr.map(e => `<div><span>${fd(e.date)}</span><span>${price(e.price)}</span><button class="btn small danger" data-act="delprice" data-pos="${p.id}" data-date="${e.date}" aria-label="Kurs vom ${fd(e.date)} löschen">Löschen</button></div>`).join('')}</div>`;
+    else h += `<div class="histlist">${arr.map(e => `<div><span>${fd(e.date)}</span><span>${price(e.price)}${e.o ? `<span class="sub">E ${price(e.o)} · H ${price(e.h)} · T ${price(e.l)}</span>` : ''}</span><button class="btn small danger" data-act="delprice" data-pos="${p.id}" data-date="${e.date}" aria-label="Kurs vom ${fd(e.date)} löschen">Löschen</button></div>`).join('')}</div>`;
     h += `</details>`;
   });
   return h + `</div>`;
@@ -650,18 +888,37 @@ function saveKurse(){
   const date = parseDate($('#kdate').value), msg = $('#kmsg');
   if (!date) { msg.textContent = 'Bitte ein gültiges Datum wählen.'; return; }
   const inputs = [...document.querySelectorAll('.kinput')];
-  const todo = [];
+  const byPid = {};
   for (const i of inputs) {
     if (!i.value.trim()) continue;
     const v = parseNum(i.value);
     if (!(v > 0)) { msg.textContent = `Ungültiger Kurs bei „${posById(i.dataset.pos).name}“.`; i.focus(); return; }
-    todo.push([i.dataset.pos, v]);
+    byPid[i.dataset.pos] = {pid:i.dataset.pos, v, ohl:null};
   }
+  const ohlIn = {};
+  document.querySelectorAll('.kohl').forEach(i => { (ohlIn[i.dataset.pos] = ohlIn[i.dataset.pos] || {})[i.dataset.f] = i; });
+  for (const pid of Object.keys(ohlIn)) {
+    const f = ohlIn[pid], vals = ['o', 'h', 'l'].map(k => f[k].value.trim());
+    if (vals.every(x => !x)) continue;
+    const nm = posById(pid).name;
+    if (vals.some(x => !x)) { msg.textContent = `Bei „${nm}“ bitte Eröffnung, Hoch und Tief alle drei ausfüllen.`; f.o.focus(); return; }
+    const [o, h, l] = vals.map(parseNum);
+    if (![o, h, l].every(x => x > 0)) { msg.textContent = `Bei „${nm}“ ist ein Wert für Eröffnung, Hoch oder Tief ungültig.`; f.o.focus(); return; }
+    const entry = byPid[pid] || (byPid[pid] = {pid, v:null, ohl:null});
+    const exist = (state.prices[pid] || []).find(e => e.date === date);
+    const c = entry.v != null ? entry.v : exist ? exist.price : null;
+    if (c == null) { msg.textContent = `Bei „${nm}“ fehlt der Schlusskurs für ${fd(date)}. Bitte oben eintragen.`; return; }
+    if (!(h >= Math.max(o, c, l) - 1e-9 && l <= Math.min(o, c, h) + 1e-9)) { msg.textContent = `Bei „${nm}“ passen die Werte nicht zusammen: Hoch muss der höchste, Tief der niedrigste Wert sein.`; f.h.focus(); return; }
+    entry.ohl = {o, h, l};
+  }
+  const todo = Object.values(byPid);
   if (!todo.length) { msg.textContent = 'Kein Kurs eingegeben.'; return; }
-  todo.forEach(([pid, v]) => {
-    const arr = (state.prices[pid] = state.prices[pid] || []);
-    const ex = arr.find(e => e.date === date);
-    if (ex) ex.price = v; else arr.push({date, price:v});
+  todo.forEach(t => {
+    const arr = (state.prices[t.pid] = state.prices[t.pid] || []);
+    let ex = arr.find(e => e.date === date);
+    if (ex) { if (t.v != null) ex.price = t.v; } else { ex = {date, price:t.v}; arr.push(ex); }
+    if (t.ohl) { ex.o = t.ohl.o; ex.h = t.ohl.h; ex.l = t.ohl.l; }
+    else if (ex.o && !(ex.h >= ex.price && ex.l <= ex.price)) { delete ex.o; delete ex.h; delete ex.l; }
     arr.sort((a, b) => a.date < b.date ? -1 : 1);
   });
   saveState(); render(); toast(`${todo.length} Kurs${todo.length > 1 ? 'e' : ''} für ${fd(date)} gespeichert`);
@@ -808,12 +1065,12 @@ function saveCash(){
    Daten: Sicherung, CSV, Beispieldaten
    ====================================================================== */
 function prevInfo(){
-  try { const o = JSON.parse(localStorage.getItem(LS_KEY + '_prev') || 'null'); if (o && o.state) return {saved:o.saved, state:normalizeState(o.state)}; } catch (e) {}
+  try { const o = JSON.parse(localStorage.getItem(LS_KEY + '_prev') || 'null'); if (o && o.state) return {saved:o.saved, state:normalizeAny(o.state)}; } catch (e) {}
   return null;
 }
 function viewDaten(){
   const bk = state.meta.lastBackup, pv = prevInfo();
-  return `<div class="card"><h2>Google Drive</h2><div id="drivecard">${driveCardInner()}</div></div>
+  return depotCard() + `<div class="card"><h2>Google Drive</h2><div id="drivecard">${driveCardInner()}</div></div>
   <div class="card"><h2>Sicherungsdatei (manuell)</h2>
     <p class="hint">Deine Daten liegen nur im Speicher dieses Browsers auf diesem Gerät. Am Handy und am Rechner sind das zwei getrennte Bestände. Eine Sicherungsdatei überträgt alles von einem Gerät auf das andere.</p>
     <p>Letzte Sicherung: <strong>${bk ? fd(bk.slice(0, 10)) : 'noch nie'}</strong>${storageOK ? '' : ' <span class="pill warn">Browser-Speicher nicht verfügbar</span>'}</p>
@@ -836,24 +1093,39 @@ function viewDaten(){
     <input type="file" id="csvfile" accept=".csv,.txt,text/csv,text/plain" hidden></div>
   <div class="card"><h2>Weitere Aktionen</h2><div class="btns">
     <button class="btn" data-act="demo">Beispieldaten laden</button>
-    <button class="btn danger" data-act="wipe">Alle Daten löschen</button></div>
+    <button class="btn danger" data-act="wipe">${depots.length > 1 ? 'Dieses Depot leeren' : 'Alle Daten löschen'}</button></div>
     ${pv ? `<h3>Notkopie</h3><p class="hint">Beim Ersetzen des Bestands (Einlesen, Drive, Beispieldaten, Löschen) bleibt der vorherige Stand hier erhalten: ${esc(sumState(pv.state))}, gesichert am ${fdt(pv.saved)}.</p><div class="btns"><button class="btn" data-act="prevrestore">Vorherigen Stand wiederherstellen</button></div>` : ''}
     <p class="hint">Version ${VERSION}. Diese Datei arbeitet komplett offline und sendet nichts an Dritte.</p></div>`;
 }
 function exportJSON(){
-  state.meta.lastBackup = new Date().toISOString();
-  const payload = {app:'seifferts-depot', format:1, exported:state.meta.lastBackup, data:state};
-  download('depot-sicherung-' + todayISO() + '.json', JSON.stringify(payload, null, 1), 'application/json');
-  saveState(); toast('Sicherung gespeichert'); if (ui.tab === 'daten') render();
+  const now = new Date().toISOString();
+  depots.forEach(d => { (d.id === activeId ? state : d.state).meta.lastBackup = now; });
+  download('depot-sicherung-' + todayISO() + '.json', payload(), 'application/json');
+  saveState(); persist(); toast(depots.length > 1 ? `Sicherung aller ${depots.length} Depots gespeichert` : 'Sicherung gespeichert'); if (ui.tab === 'daten') render();
 }
 async function importJSON(file){
   try {
     const o = JSON.parse(await file.text());
-    const s = normalizeState(o && o.data ? o.data : o);
-    if (!hasData(s)) { toast('Die Datei enthält keine Depotdaten.', 4000); return; }
-    const ok = await modal({title:'Sicherung einlesen?', text:`Die Datei enthält ${sumState(s)}.\nDie aktuell gespeicherten Daten (${sumState(state)}) werden dadurch ersetzt.`, ok:'Ersetzen', danger:true});
+    const multi = !!(o && Array.isArray(o.depots)), ws = normalizeWS(multi ? o : (o && o.data ? o.data : o));
+    if (!hasData(ws)) { toast('Die Datei enthält keine Depotdaten.', 4000); return; }
+    if (!multi && depots.length > 1) {
+      const k = await choose({title:'Sicherung einlesen', text:`Die Datei enthält ein einzelnes Depot: ${sumState(ws)}.\nDu hast ${depots.length} Depots.`, options:[
+        {key:'add', label:'Als neues Depot hinzufügen', sub:'alle vorhandenen Depots bleiben unverändert', primary:true},
+        {key:'replace', label:`Aktuelles Depot „${activeDepot().name}“ ersetzen`, sub:`bisher: ${sumState(state)}`},
+        {key:'', label:'Abbrechen'}]});
+      if (!k) return;
+      if (k === 'add') {
+        let name = 'Eingelesenes Depot', i = 2; while (!uniqueDepotName(name)) name = 'Eingelesenes Depot ' + i++;
+        activeDepot().state = state;
+        const id = 'd' + uid().replace(/[^A-Za-z0-9]/g, ''); depots.push({id, name, state:ws.depots[0].state}); persist([id]); driveTouch(); switchDepot(id); toast(`Als Depot „${name}“ eingelesen`); return;
+      }
+      replaceState(ws.depots[0].state); render(); toast('Sicherung eingelesen'); return;
+    }
+    const cur = wsObj();
+    const ok = await modal({title:'Sicherung einlesen?', text:`Die Datei enthält ${sumState(ws)}.\nDie aktuell gespeicherten Daten (${sumState(cur)}) werden dadurch ersetzt.`, ok:'Ersetzen', danger:true});
     if (!ok) return;
-    replaceState(s); render(); toast('Sicherung eingelesen');
+    if (multi) replaceState(ws); else replaceState(ws.depots[0].state);
+    render(); toast('Sicherung eingelesen');
   } catch (e) { toast('Die Datei konnte nicht gelesen werden.', 4000); }
 }
 function csvCell(v){ v = String(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
@@ -864,8 +1136,9 @@ function exportTxCSV(){
   download('depot-transaktionen-' + todayISO() + '.csv', '﻿' + lines.join('\r\n'), 'text/csv');
 }
 function exportKurseCSV(){
-  const lines = [['Datum','Name','Kürzel','Kurs'].join(';')];
-  state.positions.forEach(p => (state.prices[p.id] || []).forEach(e => lines.push([fd(e.date), csvCell(p.name), csvCell(p.sym), dec(e.price)].join(';'))));
+  const anyO = state.positions.some(p => (state.prices[p.id] || []).some(e => e.o));
+  const lines = [['Datum','Name','Kürzel','Kurs'].concat(anyO ? ['Eröffnung','Hoch','Tief'] : []).join(';')];
+  state.positions.forEach(p => (state.prices[p.id] || []).forEach(e => lines.push([fd(e.date), csvCell(p.name), csvCell(p.sym), dec(e.price)].concat(anyO ? (e.o ? [dec(e.o), dec(e.h), dec(e.l)] : ['', '', '']) : []).join(';'))));
   download('depot-kurse-' + todayISO() + '.csv', '﻿' + lines.join('\r\n'), 'text/csv');
 }
 function parseCSV(text){
@@ -889,7 +1162,10 @@ const HMAP = {datum:'date', date:'date', name:'name', position:'name', wertpapie
   kuerzel:'sym', symbol:'sym', wkn:'sym', isin:'sym', ticker:'sym', art:'type', typ:'type', type:'type', transaktion:'type',
   stueck:'qty', anzahl:'qty', menge:'qty', qty:'qty', kurs:'price', preis:'price', preisjestueck:'price', price:'price', einstiegspreis:'price',
   gebuehr:'fee', gebuehren:'fee', kosten:'fee', fee:'fee',
-  schlusskurs:'price', schluss:'price', tageskurs:'price', close:'price', closing:'price', aktuellerkurs:'price', kursineur:'price'};
+  schlusskurs:'price', schluss:'price', tageskurs:'price', close:'price', closing:'price', aktuellerkurs:'price', kursineur:'price',
+  open:'open', opening:'open', eroeffnung:'open', eroeffnungskurs:'open', eroeffnungspreis:'open',
+  high:'high', hoch:'high', tageshoch:'high', hoechst:'high', hoechstkurs:'high',
+  low:'low', tief:'low', tagestief:'low', tiefst:'low', tiefstkurs:'low'};
 async function importCSV(file){
   const rows = parseCSV(await readTextFile(file));
   if (rows.length < 2) { toast('Die CSV-Datei enthält keine Datenzeilen.', 4000); return; }
@@ -943,12 +1219,17 @@ async function importKurseCSV(file){
   const hdr = rows[0], col = {};
   hdr.forEach((h, i) => { const k = HMAP[hnorm(h)]; if (k && !(k in col)) col[k] = i; });
   if (!('date' in col)) { await info('Spalte Datum fehlt', 'Die erste Zeile muss Überschriften enthalten, mindestens eine Spalte „Datum“.\nErkannte Überschriften: ' + hdr.join(' | ')); return; }
-  const items = [], bad = [], unmatched = {}, unmatchedCols = [];
-  const push = (line, dateStr, pos, priceStr) => {
+  const items = [], bad = [], unmatched = {}, unmatchedCols = []; let nOhlBad = 0;
+  const push = (line, dateStr, pos, priceStr, os) => {
     const date = parseDate(dateStr), v = parseNum(priceStr);
     if (!date) { bad.push(`Zeile ${line}: Datum ungültig`); return; }
     if (!(v > 0)) { bad.push(`Zeile ${line}: Kurs ungültig`); return; }
-    items.push({pos, date, price:v});
+    let ohl = null;
+    if (os && (os.o || os.h || os.l)) {
+      const o = parseNum(os.o), h = parseNum(os.h), l = parseNum(os.l);
+      if (o > 0 && h > 0 && l > 0 && h >= l) ohl = {o, h, l}; else nOhlBad++;
+    }
+    items.push({pos, date, price:v, ohl});
   };
   let mode, single = null, wcols = [];
   if ('price' in col && ('name' in col || 'sym' in col)) mode = 'Liste (eine Zeile je Kurs)';
@@ -966,29 +1247,34 @@ async function importKurseCSV(file){
   rows.slice(1).forEach((r, i) => {
     const line = i + 2, g = k => (k in col ? (r[col[k]] || '').trim() : '');
     if (mode.startsWith('Tabelle')) wcols.forEach(w => { const c = (r[w.i] || '').trim(); if (c) push(line, g('date'), w.pos, c); });
-    else if (single) push(line, g('date'), single, g('price'));
+    else if (single) push(line, g('date'), single, g('price'), {o:g('open'), h:g('high'), l:g('low')});
     else {
       const key = g('name') || g('sym');
       if (!key) { bad.push(`Zeile ${line}: Name fehlt`); return; }
       const p = matchPos(g('name')) || matchPos(g('sym'));
       if (!p) { unmatched[key] = (unmatched[key] || 0) + 1; return; }
-      push(line, g('date'), p, g('price'));
+      push(line, g('date'), p, g('price'), {o:g('open'), h:g('high'), l:g('low')});
     }
   });
   const m = new Map(); items.forEach(it => m.set(it.pos.id + '|' + it.date, it));
-  const list = [...m.values()]; let nNew = 0, nChg = 0, nSame = 0; const chg = [];
+  const list = [...m.values()]; let nNew = 0, nChg = 0, nSame = 0, nOhl = 0; const chg = [];
   list.forEach(it => {
     const ex = (state.prices[it.pos.id] || []).find(e => e.date === it.date);
-    if (!ex) { nNew++; it.k = 'new'; } else if (Math.abs(ex.price - it.price) < 1e-9) { nSame++; it.k = 'same'; } else { nChg++; it.k = 'chg'; it.old = ex.price; chg.push(it); }
+    if (!ex) { nNew++; it.k = 'new'; }
+    else if (Math.abs(ex.price - it.price) < 1e-9) {
+      if (it.ohl && !(ex.o === it.ohl.o && ex.h === it.ohl.h && ex.l === it.ohl.l)) { nOhl++; it.k = 'ohl'; } else { nSame++; it.k = 'same'; }
+    } else { nChg++; it.k = 'chg'; it.old = ex.price; chg.push(it); }
   });
+  const nWithOhl = list.filter(i => i.ohl).length;
   const unN = Object.keys(unmatched);
   const probs = [];
   if (unN.length) probs.push('Keiner Position zugeordnet (übersprungen): ' + unN.slice(0, 5).map(n => `„${n}“ (${unmatched[n]})`).join(', ') + (unN.length > 5 ? ' …' : ''));
   if (unmatchedCols.length) probs.push('Spalten ohne passende Position (übersprungen): ' + unmatchedCols.slice(0, 5).join(', ') + (unmatchedCols.length > 5 ? ' …' : ''));
+  if (nOhlBad) probs.push(`${nOhlBad} Zeile${nOhlBad > 1 ? 'n' : ''} mit unstimmigen Werten für Eröffnung/Hoch/Tief (nur der Schlusskurs wird übernommen)`);
   if (bad.length) probs.push(`${bad.length} fehlerhafte Zeile${bad.length > 1 ? 'n' : ''} (übersprungen): ` + bad.slice(0, 4).join('; ') + (bad.length > 4 ? ' …' : ''));
-  if (nNew + nChg === 0) { await info('Nichts zu importieren', (nSame ? `Alle ${nSame} Kurse sind schon vorhanden.` : 'In der Datei wurde kein passender Kurs gefunden.') + (probs.length ? '\n\n' + probs.join('\n') : '')); return; }
+  if (nNew + nChg + nOhl === 0) { await info('Nichts zu importieren', (nSame ? `Alle ${nSame} Kurse sind schon vorhanden.` : 'In der Datei wurde kein passender Kurs gefunden.') + (probs.length ? '\n\n' + probs.join('\n') : '')); return; }
   const dates = list.map(i => i.date).sort(), npos = new Set(list.map(i => i.pos.id)).size;
-  let text = `Format: ${mode}\n${list.length} Kurse für ${npos} Position${npos > 1 ? 'en' : ''}, ${fd(dates[0])}${dates[0] !== dates[dates.length - 1] ? ' bis ' + fd(dates[dates.length - 1]) : ''}\n\nNeu: ${nNew}\nErsetzt (anderer Preis am selben Tag): ${nChg}\nUnverändert, wird übersprungen: ${nSame}`;
+  let text = `Format: ${mode}\n${list.length} Kurse für ${npos} Position${npos > 1 ? 'en' : ''}, ${fd(dates[0])}${dates[0] !== dates[dates.length - 1] ? ' bis ' + fd(dates[dates.length - 1]) : ''}\n\nNeu: ${nNew}\nErsetzt (anderer Preis am selben Tag): ${nChg}` + (nWithOhl ? `\nNur um Kerzenwerte ergänzt (gleicher Schlusskurs): ${nOhl}\nMit Eröffnung, Hoch und Tief: ${nWithOhl}` : '') + `\nUnverändert, wird übersprungen: ${nSame}`;
   if (chg.length) text += '\n\nErsetzt werden zum Beispiel:\n' + chg.slice(0, 4).map(c => `${c.pos.name} ${fd(c.date)}: ${price(c.old)} → ${price(c.price)}`).join('\n') + (chg.length > 4 ? '\n…' : '');
   if (probs.length) text += '\n\n' + probs.join('\n');
   const ok = await modal({title:'Kurse importieren?', text, ok:'Importieren'});
@@ -997,11 +1283,12 @@ async function importKurseCSV(file){
     if (it.k === 'same') return;
     const arr = (state.prices[it.pos.id] = state.prices[it.pos.id] || []);
     const ex = arr.find(e => e.date === it.date);
-    if (ex) ex.price = it.price; else arr.push({date:it.date, price:it.price});
+    let e2 = ex; if (e2) e2.price = it.price; else { e2 = {date:it.date, price:it.price}; arr.push(e2); }
+    if (it.ohl) { e2.o = it.ohl.o; e2.h = it.ohl.h; e2.l = it.ohl.l; } else if (it.k === 'chg') { delete e2.o; delete e2.h; delete e2.l; }
     arr.sort((a, b) => a.date < b.date ? -1 : 1);
   });
   saveState(); render();
-  toast(`${nNew + nChg} Kurse importiert (${nNew} neu, ${nChg} ersetzt)`, 4500);
+  toast(`${nNew + nChg} Kurse importiert (${nNew} neu, ${nChg} ersetzt)` + (nOhl ? `, ${nOhl} um Kerzenwerte ergänzt` : ''), 4500);
 }
 function loadDemo(){
   const P = (name, sym) => ({id:uid(), name, sym, url:''});
@@ -1039,7 +1326,7 @@ function viewCharts(){
   if (!open.length) return `<div class="card"><p>Keine offenen Positionen, daher gibt es nichts zu zeichnen.</p></div>`;
   if (!open.find(r => r.pos.id === ui.detailPos)) ui.detailPos = open[0].pos.id;
   const detailOpts = state.positions.map(p => `<option value="${p.id}"${p.id === ui.detailPos ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
-  const bar = methodBar();
+  const bar = methodBar() + chartBar(), candle = curChart().type === 'candle';
   const card = (id, title, sub, extra = '') => `<section class="card"><h2>${title}</h2>${sub ? `<p class="hint" style="margin-top:0">${sub}</p>` : ''}${extra}<div class="chart" id="${id}"></div><details><summary>Werte als Tabelle</summary><div id="${id}-t"></div></details></section>`;
   return bar + card('c-qty', 'Stückzahlen je Position', 'Aktueller Bestand nach allen Käufen und Verkäufen.')
     + card('c-dots', 'Einstiegspreise der Käufe im Vergleich zum Durchschnitt', 'Jede Zeile zeigt, wie weit die einzelnen Käufe und der aktuelle Kurs vom eigenen Ø-Einstiegspreis entfernt liegen (Mitte = Ø). Die Größe der Punkte entspricht der gekauften Stückzahl.',
@@ -1049,12 +1336,13 @@ function viewCharts(){
     + `<section class="card"><h2>${cashOn() ? 'Gewichtung inklusive Kapital' : 'Gewichtung im Depot'}</h2><p class="hint" style="margin-top:0">${cashOn() ? 'Anteil am Gesamtvermögen: Positionen zum aktuellen Wert und verfügbares Kapital auf dem Konto.' : 'Anteil am aktuellen Depotwert.'}</p><div class="chart" id="c-donut"></div><details><summary>Werte als Tabelle</summary><div id="c-donut-t"></div></details></section>`
     + `<section class="card"><h2>Verlauf einer Position</h2><p class="hint" style="margin-top:0">Kursverlauf mit deinen Käufen und Verkäufen und dem gleitenden Ø-Einstiegspreis, darunter der Bestand in Stück.</p>
         <label>Position<select id="detailSel">${detailOpts}</select></label><p class="hint" id="detailLink" style="margin:-4px 0 8px"></p>
-        <div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Kurs</span><span><i class="sw dash" style="border-color:var(--s2)"></i>Ø-Einstiegspreis</span><span><i class="sw dot" style="background:var(--s2)"></i>Kauf (Größe = Stück)</span><span>▽ Verkauf</span></div>
+        <div class="legend">${candle ? candleLegend() : '<span><i class="sw line" style="background:var(--s1)"></i>Kurs</span>'}<span><i class="sw dash" style="border-color:var(--s2)"></i>Ø-Einstiegspreis</span><span><i class="sw dot" style="background:var(--s2)"></i>Kauf (Größe = Stück)</span><span>▽ Verkauf</span></div>
         <div class="chart" id="c-detail"></div><details><summary>Werte als Tabelle</summary><div id="c-detail-t"></div></details></section>`
     + card('c-depot', 'Depotwert im Zeitverlauf', 'Wert aus Stückzahl mal letztem bekannten Kurs, dazu das eingesetzte Kapital. Je öfter du Kurse erfasst, desto genauer die Linie.',
-        `<div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Depotwert</span><span><i class="sw line" style="background:var(--s2)"></i>Eingesetzt (Einstand)</span></div>`)
+        `<div class="legend">${candle ? candleLegend() : '<span><i class="sw line" style="background:var(--s1)"></i>Depotwert</span>'}<span><i class="sw line" style="background:var(--s2)"></i>Eingesetzt (Einstand)</span></div>`)
+    + card('c-ttwror', 'Wertentwicklung (TTWROR)', 'Kumulierte zeitgewichtete Rendite seit Beginn des gewählten Zeitraums, bereinigt um Ein- und Auszahlungen. Erklärung in der Übersicht unter Rendite.', perfSelHTML())
     + (cashOn() ? card('c-konto', 'Gesamtvermögen im Zeitverlauf', 'Depotwert plus Kapital auf dem Konto, verglichen mit dem Geld, das du netto eingezahlt hast. Der Abstand der beiden Linien ist dein Gesamtergebnis.',
-        `<div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Gesamtvermögen</span><span><i class="sw line" style="background:var(--s2)"></i>Netto eingezahlt</span></div>`) : '');
+        `<div class="legend">${candle ? candleLegend() : '<span><i class="sw line" style="background:var(--s1)"></i>Gesamtvermögen</span>'}<span><i class="sw line" style="background:var(--s2)"></i>Netto eingezahlt</span></div>`) : '');
 }
 
 /* --- Helfer --- */
@@ -1081,6 +1369,62 @@ function barPath(x, y, w, h, col, tip){
 const tm = d => Date.parse(d);
 const tdate = t => new Date(t).toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'2-digit', timeZone:'UTC'});
 function timeTicks(t0, t1, n){ const a = []; for (let i = 0; i <= n; i++) a.push(t0 + (t1 - t0) * i / n); return a; }
+
+/* --- Kerzen-Charts --- */
+const curChart = () => ({type:state.meta.chartType === 'candle' ? 'candle' : 'line', grid:['day', 'week', 'month'].includes(state.meta.candleGrid) ? state.meta.candleGrid : 'week'});
+function setChartPref(k, v){ state.meta[k] = v; saveState(); const y = window.scrollY; render(); window.scrollTo(0, y); }
+function chartBar(){
+  const c = curChart(), o = (v, t, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${t}</option>`;
+  return `<div class="card" style="padding:10px 14px"><div class="grid2">
+    <label style="margin:0">Darstellung der Verläufe<select id="chartTypeSel">${o('line', 'Linie', c.type)}${o('candle', 'Kerzen', c.type)}</select></label>
+    <label style="margin:0">Kerzenlänge<select id="candleGridSel"${c.type === 'candle' ? '' : ' disabled'}>${o('day', 'Tag', c.grid)}${o('week', 'Woche', c.grid)}${o('month', 'Monat', c.grid)}</select></label></div>
+    <details><summary>Wie lese ich Kerzen?</summary><p class="hint" style="margin-top:0">Eine Kerze zeigt Eröffnung, Hoch, Tief und Schluss eines Zeitraums. Hohle blaue Kerze: Schluss über Eröffnung (gestiegen). Gefüllte rote Kerze: Schluss unter Eröffnung (gefallen). Der dünne Strich reicht vom Tief bis zum Hoch. Gilt für den Kursverlauf einer Position und die Verläufe von Depotwert und Gesamtvermögen. Hast du keine Werte für Eröffnung, Hoch und Tief erfasst (Reiter Kurse, auch per CSV mit Open, High, Low), werden sie aus den erfassten Schlusskursen abgeleitet: Eröffnung ist der Schluss des Vorzeitraums, Hoch und Tief sind der höchste und niedrigste erfasste Kurs im Zeitraum. Das sind dann Näherungen, keine echten Tageshochs.</p></details></div>`;
+}
+function bucketKey(date, g){
+  if (g === 'day') return date;
+  if (g === 'month') return date.slice(0, 7);
+  const t = Date.parse(date), dow = (new Date(t).getUTCDay() + 6) % 7;
+  return new Date(t - dow * 864e5).toISOString().slice(0, 10);
+}
+/* pts: [{d, c, o?, h?, l?}] aufsteigend nach Datum. Ergebnis: Kerzen {d0, d1, o, h, l, c, n, real, last} */
+function makeCandles(pts, g){
+  const out = []; let cur = null, key = null;
+  pts.forEach(p => {
+    const k = bucketKey(p.d, g);
+    if (!cur || k !== key) {
+      cur = {d0:p.d, d1:p.d, o:p.o != null ? p.o : cur ? cur.c : p.c, h:-Infinity, l:Infinity, c:p.c, n:0, real:true, last:p};
+      out.push(cur); key = k;
+    }
+    cur.d1 = p.d; cur.c = p.c; cur.n++; cur.last = p;
+    cur.h = Math.max(cur.h, p.h != null ? p.h : p.c, p.c); cur.l = Math.min(cur.l, p.l != null ? p.l : p.c, p.c);
+    if (p.o == null || p.h == null || p.l == null) cur.real = false;
+  });
+  out.forEach(c => { c.h = Math.max(c.h, c.o); c.l = Math.min(c.l, c.o); });
+  return out;
+}
+function candleWidth(cs, pw, t0, t1){
+  if (cs.length < 2) return 12;
+  let gap = Infinity;
+  for (let i = 1; i < cs.length; i++) gap = Math.min(gap, (tm(cs[i].d1) - tm(cs[i - 1].d1)) / (t1 - t0) * pw);
+  return Math.max(2, Math.min(16, gap * 0.62));
+}
+function candleTip(c, g, fmt, name, extra){
+  const per = g === 'day' || c.d0 === c.d1 ? fd(c.d1) : `${fd(c.d0)} bis ${fd(c.d1)} (${c.n} Kurse)`, ch = c.o ? (c.c - c.o) / c.o : 0;
+  return `${name ? name + ' ' : ''}${per}\nEröffnung ${fmt(c.o)}\nHoch ${fmt(c.h)}\nTief ${fmt(c.l)}\nSchluss ${fmt(c.c)} (${pctS(ch)})` + (c.real ? '' : '\nHoch/Tief aus den erfassten Schlusskursen') + (extra ? '\n' + extra : '');
+}
+/* Zeichnet Kerzen samt Hover-Baendern. X: Kerze -> x, Y: Wert -> y */
+function candleGfx(cs, X, Y, T, H, L, pw, bw, tip){
+  let g = '';
+  cs.forEach((c, i) => {
+    const cx = X(c), up = c.c >= c.o, col = up ? 'var(--pos)' : 'var(--neg)', yt = Y(Math.max(c.o, c.c)), yb = Y(Math.min(c.o, c.c)), bh = Math.max(1.5, yb - yt);
+    g += `<line x1="${cx}" x2="${cx}" y1="${Y(c.h)}" y2="${Y(c.l)}" style="stroke:${col};stroke-width:1.5;pointer-events:none"/>`;
+    g += `<rect x="${cx - bw / 2}" y="${yt}" width="${bw}" height="${bh}" rx="1" style="fill:${up ? 'var(--surface)' : col};stroke:${col};stroke-width:1.5;pointer-events:none"/>`;
+    const xa = i ? (X(cs[i - 1]) + cx) / 2 : L, xb = i < cs.length - 1 ? (cx + X(cs[i + 1])) / 2 : L + pw;
+    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${H}" data-tip="${esc(tip(c))}"/>`;
+  });
+  return g;
+}
+const candleLegend = () => `<span><i class="sw" style="background:var(--surface);border:2px solid var(--pos);box-sizing:border-box"></i>gestiegen (hohl)</span><span><i class="sw" style="background:var(--neg)"></i>gefallen (gefüllt)</span>`;
 
 /* --- Horizontale Balken (1 oder 2 Serien) --- */
 function hbarChart(w, items, series, fmt, label){
@@ -1182,14 +1526,16 @@ function detailChart(w, posId){
   let t0 = tm(dates[0]), t1 = tm(dates[dates.length - 1]);
   if (t1 - t0 < 14 * 864e5) { const m = (14 * 864e5 - (t1 - t0)) / 2; t0 -= m; t1 += m; }
   const steps = avgTimeline(txs);
-  const allP = manual.map(m => m.price).concat(txs.map(t => t.price), steps.filter(s => s.qty > 0).map(s => s.avg));
+  const cc = curChart(), cd = cc.type === 'candle' && manual.length ? makeCandles(manual.map(m => ({d:m.date, c:m.price, o:m.o, h:m.h, l:m.l})), cc.grid) : null;
+  const allP = manual.map(m => m.price).concat(txs.map(t => t.price), steps.filter(s => s.qty > 0).map(s => s.avg), cd ? cd.flatMap(c => [c.h, c.l]) : []);
   let pmin = Math.min(...allP), pmax = Math.max(...allP); const sp = (pmax - pmin) || pmax * 0.1 || 1;
   const yr = niceRange(pmin - sp * 0.08, pmax + sp * 0.08, 4);
   const maxQ = Math.max(1, ...steps.map(s => s.qty));
   const qr = niceRange(0, maxQ, 2);
   const L = 56, R = 16, T = 10, H1 = 190, GAP = 34, H2 = 80, B = 28, pw = Math.max(80, w - L - R);
   const h = T + H1 + GAP + H2 + B;
-  const x = t => L + (t - t0) / (t1 - t0) * pw, y1 = v => T + H1 - (v - yr.lo) / (yr.hi - yr.lo) * H1;
+  const bw = cd ? candleWidth(cd, pw, t0, t1) : 0, pad = cd ? bw / 2 + 3 : 0;
+  const x = t => L + pad + (t - t0) / (t1 - t0) * (pw - 2 * pad), y1 = v => T + H1 - (v - yr.lo) / (yr.hi - yr.lo) * H1;
   const y2Top = T + H1 + GAP, y2 = v => y2Top + H2 - (v - qr.lo) / (qr.hi - qr.lo) * H2;
   const af = axisFmt(yr.step), qf = axisFmt(qr.step);
   let g = '';
@@ -1201,8 +1547,9 @@ function detailChart(w, posId){
   qr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y2(v)}" y2="${y2(v)}"/><text class="tm" x="${L - 6}" y="${y2(v) + 4}" text-anchor="end">${qf(v)}</text>`; });
   g += `<text class="t" x="${L}" y="${y2Top - 12}">Bestand in Stück</text>`;
   // Kurs
-  if (manual.length > 1) g += `<path d="${manual.map((m, i) => (i ? 'L' : 'M') + x(tm(m.date)) + ',' + y1(m.price)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
-  manual.forEach(m => {
+  if (cd) g += candleGfx(cd, c => x(tm(c.d1)), y1, T, H1, L, pw, bw, c => candleTip(c, cc.grid, price));
+  else if (manual.length > 1) g += `<path d="${manual.map((m, i) => (i ? 'L' : 'M') + x(tm(m.date)) + ',' + y1(m.price)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
+  if (!cd) manual.forEach(m => {
     if (manual.length <= 40 || manual.length === 1) g += `<circle cx="${x(tm(m.date))}" cy="${y1(m.price)}" r="3" style="fill:var(--s1);stroke:var(--surface);stroke-width:2"/>`;
     g += `<circle cx="${x(tm(m.date))}" cy="${y1(m.price)}" r="12" class="hit" data-tip="${esc(`Kurs ${fd(m.date)}\n${price(m.price)}`)}"/>`;
   });
@@ -1214,7 +1561,7 @@ function detailChart(w, posId){
   });
   if (d) g += `<path d="${d}" style="fill:none;stroke:var(--s2);stroke-width:2;stroke-dasharray:6 4"/>`;
   const lastS = steps[steps.length - 1];
-  if (lastS && lastS.qty > 0) g += `<text class="t" x="${L + pw}" y="${y1(lastS.avg) - 6}" text-anchor="end" style="fill:var(--text)">Ø ${price(lastS.avg)}</text>`;
+  if (lastS && lastS.qty > 0) g += `<text class="t" x="${L + pw}" y="${y1(lastS.avg) - 6}" text-anchor="end" style="fill:var(--text);paint-order:stroke;stroke:var(--surface);stroke-width:4px">Ø ${price(lastS.avg)}</text>`;
   // Transaktionen
   txs.forEach((t, i) => {
     const cx = x(tm(t.date)), cy = y1(t.price), tip = `${t.type === 'buy' ? 'Kauf' : 'Verkauf'} ${fd(t.date)}\n${qty(t.qty)} Stück zu ${price(t.price)}`;
@@ -1251,24 +1598,27 @@ function depotChart(w, K){
   const pts = depotSeries(K), L1 = K ? 'Gesamtvermögen' : 'Depotwert', L2 = K ? 'Netto eingezahlt' : 'Eingesetzt', LE = K ? 'Ergebnis' : 'Gewinn/Verlust';
   if (pts.length < 2) return null;
   const t0 = tm(pts[0].d), t1 = tm(pts[pts.length - 1].d);
-  const all = pts.flatMap(p => [p.v, p.c]);
+  const cc = curChart(), cd = cc.type === 'candle' ? makeCandles(pts.map(p => ({d:p.d, c:p.v, src:p})), cc.grid) : null;
+  const all = pts.flatMap(p => [p.v, p.c]).concat(cd ? cd.flatMap(c => [c.h, c.l]) : []);
   const lo = Math.min(...all), hi = Math.max(...all), sp = (hi - lo) || hi * 0.1 || 1;
   const yr = niceRange(lo < 0 ? lo - sp * 0.1 : Math.max(0, lo - sp * 0.1), hi + sp * 0.1, 4);
   const L = 62, R = 16, T = 16, H = 230, B = 28, pw = Math.max(80, w - L - R), h = T + H + B;
-  const x = t => L + (t - t0) / (t1 - t0) * pw, y = v => T + H - (v - yr.lo) / (yr.hi - yr.lo) * H, af = axisFmt(yr.step);
+  const bw = cd ? candleWidth(cd, pw, t0, t1) : 0, pad = cd ? bw / 2 + 3 : 0;
+  const x = t => L + pad + (t - t0) / (t1 - t0) * (pw - 2 * pad), y = v => T + H - (v - yr.lo) / (yr.hi - yr.lo) * H, af = axisFmt(yr.step);
   let g = '';
   timeTicks(t0, t1, w < 420 ? 3 : 5).forEach((t, i, a) => { g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T + H}"/><text class="tm" x="${x(t)}" y="${h - 8}" text-anchor="${i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${tdate(t)}</text>`; });
   yr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y(v)}" y2="${y(v)}"/><text class="tm" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${af(v)}</text>`; });
   g += `<line class="axis" x1="${L}" x2="${L + pw}" y1="${T + H}" y2="${T + H}"/>`;
   // Hover-Baender
-  pts.forEach((p, i) => {
+  if (!cd) pts.forEach((p, i) => {
     const xa = i ? (x(tm(pts[i - 1].d)) + x(tm(p.d))) / 2 : L, xb = i < pts.length - 1 ? (x(tm(p.d)) + x(tm(pts[i + 1].d))) / 2 : L + pw;
     g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${H}" data-tip="${esc(`${fd(p.d)}\n${L1} ${eur(p.v)}\n${L2} ${eur(p.c)}\n${LE} ${eurS(p.v - p.c)}`)}"/>`;
   });
   // Einstand (Treppe)
   g += `<path d="${pts.map((p, i) => i ? `H${x(tm(p.d))}V${y(p.c)}` : `M${x(tm(p.d))},${y(p.c)}`).join('')}" style="fill:none;stroke:var(--s2);stroke-width:2"/>`;
-  g += `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + x(tm(p.d)) + ',' + y(p.v)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
-  if (pts.length <= 40) pts.forEach(p => { g += `<circle cx="${x(tm(p.d))}" cy="${y(p.v)}" r="3" style="fill:var(--s1);stroke:var(--surface);stroke-width:2;pointer-events:none"/>`; });
+  if (cd) g += candleGfx(cd, c => x(tm(c.d1)), y, T, H, L, pw, bw, c => candleTip(c, cc.grid, eur, L1, `${L2} ${eur(c.last.src.c)} (Stand ${fd(c.d1)})\n${LE} ${eurS(c.c - c.last.src.c)}`));
+  else g += `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + x(tm(p.d)) + ',' + y(p.v)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
+  if (!cd && pts.length <= 40) pts.forEach(p => { g += `<circle cx="${x(tm(p.d))}" cy="${y(p.v)}" r="3" style="fill:var(--s1);stroke:var(--surface);stroke-width:2;pointer-events:none"/>`; });
   const last = pts[pts.length - 1], vAbove = last.v >= last.c;
   g += `<text class="tv" x="${L + pw}" y="${y(last.v) + (vAbove ? -9 : 17)}" text-anchor="end">${K ? 'Vermögen' : 'Wert'} ${eur(last.v)}</text>`;
   g += `<text class="tv" x="${L + pw}" y="${y(last.c) + (vAbove ? 17 : -9)}" text-anchor="end">${K ? 'Eingezahlt' : 'Einstand'} ${eur(last.c)}</text>`;
@@ -1375,6 +1725,9 @@ function drawCharts(){
   const dp = depotChart(W('c-depot'));
   put('c-depot', dp ? dp.svg : '<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen (Transaktionen oder erfasste Kurse).</p>',
       dp ? tableHTML(['Datum', 'Depotwert', 'Eingesetzt', 'G/V'], dp.pts.slice().reverse().map(p => [fd(p.d), eur(p.v), eur(p.c), eurS(p.v - p.c)])) : '');
+  const P = perfAll(), tc = P && P.total.ok ? ttwrorChart(W('c-ttwror'), P.total.series) : null;
+  put('c-ttwror', tc ? tc.svg : '<p class="hint">Der Verlauf erscheint, sobald Transaktionen und Kurse von mindestens zwei verschiedenen Tagen im gewählten Zeitraum vorliegen.</p>',
+      tc ? tableHTML(['Datum', 'TTWROR seit Beginn'], tc.series.slice(1).reverse().map(p => [fd(p.d), pctS(p.r)])) : '');
   if (cashOn()) {
     const dk = depotChart(W('c-konto'), true);
     put('c-konto', dk ? dk.svg : '<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen.</p>',
@@ -1382,7 +1735,7 @@ function drawCharts(){
   }
 }
 function drawDetail(){
-  const dl = $('#detailLink'), dp0 = posById(ui.detailPos); if (dl) dl.innerHTML = dp0 && dp0.url ? `Chart bei der Quelle: ${linkHTML(dp0)}` : '';
+  const dl = $('#detailLink'), dp0 = posById(ui.detailPos); if (dl) dl.innerHTML = !dp0 ? '' : dp0.url ? `Chart bei der Quelle: ${linkHTML(dp0)} · <a href="#" data-act="poslink" data-id="${dp0.id}">Link ändern</a>` : `Kein Chart-Link hinterlegt: ${addLinkHTML(dp0)}`;
   const el = $('#c-detail'); if (!el) return;
   const w = Math.max(280, el.clientWidth || 320);
   const dt = detailChart(w, ui.detailPos);
@@ -1390,7 +1743,7 @@ function drawDetail(){
   const t = $('#c-detail-t');
   if (t) t.innerHTML = dt ? tableHTML(['Datum', 'Ereignis', 'Stück', 'Kurs'],
     dt.txs.map(x => ({d:x.date, c:[fd(x.date), x.type === 'buy' ? 'Kauf' : 'Verkauf', qty(x.qty), price(x.price)]}))
-      .concat(dt.manual.map(m => ({d:m.date, c:[fd(m.date), 'Kurs', '', price(m.price)]})))
+      .concat(dt.manual.map(m => ({d:m.date, c:[fd(m.date), 'Kurs', '', price(m.price) + (m.o ? ` (E ${price(m.o)}, H ${price(m.h)}, T ${price(m.l)})` : '')]})))
       .sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : 0).map(o => o.c)) : '';
 }
 
@@ -1422,14 +1775,30 @@ document.addEventListener('click', async e => {
     case 'goto': go(b.dataset.tab); break;
     case 'sort': { const k = b.dataset.key; ui.sort = ui.sort.key === k ? {key:k, dir:-ui.sort.dir} : {key:k, dir:k === 'name' ? 1 : -1}; render(); break; }
     case 'demo': {
-      if (hasData(state)) { if (!await modal({title:'Beispieldaten laden?', text:'Die vorhandenen Daten werden durch erfundene Beispieldaten ersetzt. Das lässt sich nicht rückgängig machen.', ok:'Ersetzen', danger:true})) break; }
+      if (hasData(state)) { if (!await modal({title:'Beispieldaten laden?', text:(depots.length > 1 ? `Die Daten des Depots „${activeDepot().name}“ werden durch erfundene Beispieldaten ersetzt. Andere Depots bleiben unverändert. ` : 'Die vorhandenen Daten werden durch erfundene Beispieldaten ersetzt. ') + 'Der vorherige Stand bleibt als Notkopie im Reiter Daten.', ok:'Ersetzen', danger:true})) break; }
       loadDemo(); go('uebersicht'); toast('Beispieldaten geladen'); break;
     }
     case 'wipe': {
-      if (!await modal({title:'Alle Daten löschen?', text:'Alle Positionen, Transaktionen, Kurse und Kontobuchungen in diesem Browser werden gelöscht. Hast du vorher eine Sicherung gespeichert?', ok:'Endgültig löschen', danger:true})) break;
-      replaceState(emptyState()); ui.txEdit = null; render(); toast('Alle Daten gelöscht. Der vorherige Stand bleibt als Notkopie im Reiter Daten.', 4500); break;
+      if (!await modal({title:depots.length > 1 ? 'Dieses Depot leeren?' : 'Alle Daten löschen?', text:depots.length > 1 ? `Alle Positionen, Transaktionen, Kurse und Kontobuchungen des Depots „${activeDepot().name}“ werden gelöscht. Andere Depots bleiben unverändert.` : 'Alle Positionen, Transaktionen, Kurse und Kontobuchungen in diesem Browser werden gelöscht. Hast du vorher eine Sicherung gespeichert?', ok:'Endgültig löschen', danger:true})) break;
+      replaceState(emptyState()); ui.txEdit = null; render(); toast((depots.length > 1 ? 'Depot geleert' : 'Alle Daten gelöscht') + '. Der vorherige Stand bleibt als Notkopie im Reiter Daten.', 4500); break;
     }
     case 'exportjson': exportJSON(); break;
+    case 'depotnew': startNewDepot(); break;
+    case 'depotopen': switchDepot(b.dataset.id); break;
+    case 'depotrename': {
+      const d = depots.find(x => x.id === b.dataset.id); if (!d) break;
+      const r = await modal({title:'Depot umbenennen', fields:[{label:'Name', value:d.name}], ok:'Speichern'}); if (!r) break;
+      const nm = r[0].trim().slice(0, 60); if (!nm) { toast('Der Name darf nicht leer sein.'); break; }
+      if (!uniqueDepotName(nm, d.id)) { toast('Ein Depot mit diesem Namen gibt es schon.', 3500); break; }
+      d.name = nm; persist([]); driveTouch(); render(); break;
+    }
+    case 'depotdel': {
+      const d = depots.find(x => x.id === b.dataset.id); if (!d || depots.length < 2) break;
+      const st = d.id === activeId ? state : d.state;
+      if (!await modal({title:`Depot „${d.name}“ löschen?`, text:`${sumState(st)}\nDas Depot wird endgültig gelöscht. Der Stand davor (alle Depots) bleibt als Notkopie im Reiter Daten.`, ok:'Endgültig löschen', danger:true})) break;
+      const ws = wsObj(); ws.depots = ws.depots.filter(x => x.id !== d.id);
+      replaceState(ws); render(); toast(`Depot „${d.name}“ gelöscht`); break;
+    }
     case 'importjson': $('#jsonfile').click(); break;
     case 'exporttx': exportTxCSV(); break;
     case 'exportkurse': exportKurseCSV(); break;
@@ -1468,6 +1837,16 @@ Der aktuelle Stand (${sumState(state)}) wird ersetzt und bleibt seinerseits als 
       if (!await modal({title:'Kontobuchung löschen?', text:`${CASH_TYPES[c.type]} vom ${fd(c.date)}: ${eur(c.amount)}${c.note ? ' (' + c.note + ')' : ''}`, ok:'Löschen', danger:true})) break;
       state.cash = state.cash.filter(x => x.id !== c.id); if (ui.cashEdit === c.id) ui.cashEdit = null; saveState(); render(); toast('Kontobuchung gelöscht'); break;
     }
+    case 'poslink': {
+      const p = posById(b.dataset.id); if (!p) break;
+      const keep = ui.tab === 'kurse' ? {d:($('#kdate') || {}).value, v:[...document.querySelectorAll('.kinput')].map(i => [i.dataset.pos, i.value])} : null;
+      const r = await modal({title:`Chart-Link für ${p.name}`, text:'Ganze Internetadresse der Chart-Seite einfügen, zum Beispiel von deinem Broker oder einem Finanzportal. Ein leeres Feld entfernt den Link.', fields:[{label:'Link zum Chart', value:p.url || ''}], ok:'Speichern'});
+      if (!r) break;
+      const nu = cleanUrl(r[0]); if (nu === null) { toast('Der Link ist ungültig. Erlaubt sind Internetadressen mit http:// oder https://.', 4500); break; }
+      p.url = nu; saveState(); render(); toast(nu ? 'Chart-Link gespeichert' : 'Chart-Link entfernt');
+      if (keep) { if ($('#kdate') && keep.d) $('#kdate').value = keep.d; keep.v.forEach(([id, v]) => { const i = document.querySelector(`.kinput[data-pos="${id}"]`); if (i && v) i.value = v; }); }
+      break;
+    }
     case 'posedit': {
       const p = posById(b.dataset.id); if (!p) break;
       const keep = ui.tab === 'kurse' ? {d:($('#kdate') || {}).value, v:[...document.querySelectorAll('.kinput')].map(i => [i.dataset.pos, i.value])} : null;
@@ -1501,6 +1880,14 @@ document.addEventListener('change', e => {
   if (t.id === 'showClosed') { ui.showClosed = t.checked; render(); }
   else if (t.id === 'driveAuto') { dm.auto = t.checked; saveDM(); if (dm.auto && dm.dirty) driveTouch(); else updatePill(); }
   else if (t.id === 'methodSel') setMethod(t.value);
+  else if (t.id === 'depotSel') {
+    if (t.value === '__new') { fillDepotSel(); startNewDepot(); }
+    else if (t.value === '__manage') { fillDepotSel(); go('daten'); const c = $('#depotcard'); if (c) c.scrollIntoView(); }
+    else switchDepot(t.value);
+  }
+  else if (t.id === 'perfSel') setPerfPeriod(t.value);
+  else if (t.id === 'chartTypeSel') setChartPref('chartType', t.value);
+  else if (t.id === 'candleGridSel') setChartPref('candleGrid', t.value);
   else if (t.id === 'sortSel') { ui.sort = {key:t.value, dir:t.value === 'name' ? 1 : -1}; render(); }
   else if (t.id === 'txFilter') { ui.txFilter = t.value; const y = window.scrollY; render(); window.scrollTo(0, y); }
   else if (t.id === 'detailSel') { ui.detailPos = t.value; drawDetail(); }
@@ -1646,23 +2033,44 @@ async function dupdate(id, content){
 async function dread(id){ const r = await dapi(D_API + 'files/' + encodeURIComponent(id) + '?alt=media'); return r.text(); }
 
 /* ---------- Inhalt ---------- */
-const payload = () => JSON.stringify({app:'seifferts-depot', format:1, saved:new Date().toISOString(), data:state}, null, 1);
-function parsePayload(txt){ const o = JSON.parse(txt); return normalizeState(o && o.data ? o.data : o); }
+/* Ein einzelnes Standard-Depot wird wie bisher (Format 1) geschrieben. Bei mehreren Depots steht "depots" im Objekt,
+   und "data" enthaelt zur Absicherung aelterer Versionen das erste Depot. */
+const payload = () => {
+  const w = wsObj(), single = w.depots.length === 1 && w.depots[0].id === 'main' && w.depots[0].name === DEF_NAME;
+  const o = {app:'seifferts-depot', format:single ? 1 : 2, saved:new Date().toISOString(), data:w.depots[0].state};
+  if (!single) o.depots = w.depots.map(d => ({id:d.id, name:d.name, state:d.state}));
+  return JSON.stringify(o, null, 1);
+};
+function parsePayload(txt){ const o = JSON.parse(txt); return normalizeWS(o && Array.isArray(o.depots) ? o : (o && o.data ? o.data : o)); }
 function canon(s){
+  if (isWS(s)) return JSON.stringify(s.depots.slice().sort((a, b) => a.id < b.id ? -1 : 1).map(d => [d.id, d.name, canon(d.state)]));
   const by = (a, b) => a.id < b.id ? -1 : 1;
   return JSON.stringify({
     p:s.positions.slice().sort(by).map(p => [p.id, p.name, p.sym, p.url || '']),
     t:s.txs.slice().sort(by).map(t => [t.id, t.posId, t.type, t.date, t.qty, t.price, t.fee || 0]),
-    k:Object.keys(s.prices).sort().map(k => [k, s.prices[k].map(e => [e.date, e.price])]),
+    k:Object.keys(s.prices).sort().map(k => [k, s.prices[k].map(e => e.o ? [e.date, e.price, e.o, e.h, e.l] : [e.date, e.price])]),
     c:(s.cash || []).slice().sort(by).map(c => [c.id, c.date, c.type, c.amount, c.note])
   });
 }
 function sumState(s){
+  if (isWS(s)) return s.depots.length === 1 ? sumState(s.depots[0].state) : `${s.depots.length} Depots: ` + s.depots.map(d => `${d.name} (${d.state.positions.length} Positionen, ${d.state.txs.length} Transaktionen)`).join('; ');
   let last = ''; Object.values(s.prices).forEach(a => a.forEach(e => { if (e.date > last) last = e.date; }));
   return `${s.positions.length} Positionen, ${s.txs.length} Transaktionen` + (s.cash && s.cash.length ? `, ${s.cash.length} Kontobuchungen` : '') + (last ? `, letzter Kurs ${fd(last)}` : ', noch keine Kurse');
 }
 /* Vereinigung zweier Staende ueber die IDs. Geloeschte Eintraege koennen dabei zurueckkehren. */
 function mergeStates(a, b){
+  if (!isWS(a) && !isWS(b)) return mergeOne(a, b);
+  const wrap = x => isWS(x) ? x : {depots:[{id:'main', name:DEF_NAME, state:x}]};
+  const out = JSON.parse(JSON.stringify(wrap(a))), sum = {addP:0, addT:0, addK:0, diffK:0, addC:0, addD:0};
+  wrap(b).depots.forEach(bd => {
+    const ad = out.depots.find(d => d.id === bd.id);
+    if (!ad) { out.depots.push(JSON.parse(JSON.stringify(bd))); sum.addD++; return; }
+    const m = mergeOne(ad.state, bd.state); ad.state = m.state;
+    ['addP', 'addT', 'addK', 'diffK', 'addC'].forEach(k => { sum[k] += m[k]; });
+  });
+  return Object.assign({state:out}, sum);
+}
+function mergeOne(a, b){
   const s = JSON.parse(JSON.stringify(a)), pm = {}; let addP = 0, addT = 0, addK = 0, diffK = 0, addC = 0;
   b.positions.forEach(p => {
     let m = s.positions.find(x => x.id === p.id) || s.positions.find(x => x.name.toLowerCase() === p.name.toLowerCase());
@@ -1676,7 +2084,7 @@ function mergeStates(a, b){
   Object.keys(b.prices).forEach(pid => {
     const tid = pm[pid]; if (!tid) return;
     const arr = (s.prices[tid] = s.prices[tid] || []);
-    b.prices[pid].forEach(e => { const ex = arr.find(x => x.date === e.date); if (!ex) { arr.push({date:e.date, price:e.price}); addK++; } else if (ex.price !== e.price) diffK++; });
+    b.prices[pid].forEach(e => { const ex = arr.find(x => x.date === e.date); if (!ex) { arr.push(Object.assign({}, e)); addK++; } else if (ex.price !== e.price) diffK++; else if (!ex.o && e.o) { ex.o = e.o; ex.h = e.h; ex.l = e.l; } });
     arr.sort((x, y) => x.date < y.date ? -1 : 1);
   });
   return {state:normalizeState(s), addP, addT, addK, diffK, addC};
@@ -1716,7 +2124,7 @@ function choose({title, text, options}){
 function resolveConflict(rs, remote){
   return choose({
     title:'Unterschiedliche Stände',
-    text:`Google Drive: ${sumState(rs)}\n(zuletzt geändert ${fdt(remote.modifiedTime)})\n\nDieser Browser: ${sumState(state)}\n\nNichts geht verloren: Vor jedem Überschreiben in Drive wird eine Sicherungskopie angelegt, und ein ersetzter lokaler Stand bleibt als Notkopie im Browser.`,
+    text:`Google Drive: ${sumState(rs)}\n(zuletzt geändert ${fdt(remote.modifiedTime)})\n\nDieser Browser: ${sumState(wsObj())}\n\nNichts geht verloren: Vor jedem Überschreiben in Drive wird eine Sicherungskopie angelegt, und ein ersetzter lokaler Stand bleibt als Notkopie im Browser.`,
     options:[
       {key:'merge', label:'Beide zusammenführen', sub:'Empfohlen. Gelöschte Einträge können zurückkehren.', primary:true},
       {key:'remote', label:'Stand aus Drive übernehmen', sub:'Lokale Änderungen werden ersetzt.'},
@@ -1741,7 +2149,7 @@ async function driveSync(opts = {}){
       if (f) { remote = f; if (dm.fileId && f.id !== dm.fileId) dm.version = ''; dm.fileId = f.id; saveDM(); }
       else if (dm.fileId) { lost = true; dm.fileId = ''; dm.version = ''; saveDM(); }
     }
-    const localHas = hasData(state);
+    const localHas = hasData(wsObj());
     const upload = async tag => {
       const my = rev, content = payload();
       if (remote) { await dbackup(tag || dd.nextTag || ''); dd.nextTag = ''; const res = await dupdate(remote.id, content); dm.version = res.version; }
@@ -1759,7 +2167,7 @@ async function driveSync(opts = {}){
       if (dm.dirty || opts.force) await upload();
     } else {
       const rs = parsePayload(await dread(remote.id));
-      if (canon(rs) === canon(state)) { dm.version = remote.version; dm.dirty = false; saveDM(); }
+      if (canon(rs) === canon(wsObj())) { dm.version = remote.version; dm.dirty = false; saveDM(); }
       else if (!localHas) takeRemote(rs, 'Stand aus Google Drive geladen');
       else if (dm.version && !dm.dirty) takeRemote(rs, 'Neuerer Stand aus Google Drive geladen (anderes Gerät)');
       else {
@@ -1768,10 +2176,10 @@ async function driveSync(opts = {}){
         if (ch === 'remote') takeRemote(rs, 'Stand aus Drive übernommen');
         else if (ch === 'local') { await upload('vor-ueberschreiben'); toast('Lokaler Stand nach Drive hochgeladen'); }
         else if (ch === 'merge') {
-          const mg = mergeStates(state, rs);
+          const mg = mergeStates(wsObj(), rs);
           replaceState(mg.state, {noSync:true}); dm.dirty = true; rev++;
           await upload('vor-zusammenfuehren'); render();
-          toast(`Zusammengeführt: ${mg.addT} Transaktionen, ${mg.addK} Kurse, ${mg.addP} Positionen, ${mg.addC} Kontobuchungen aus Drive ergänzt` + (mg.diffK ? `. ${mg.diffK} abweichende Kurse: lokaler Wert behalten.` : ''), 6000);
+          toast(`Zusammengeführt: ${mg.addT} Transaktionen, ${mg.addK} Kurse, ${mg.addP} Positionen, ${mg.addC} Kontobuchungen` + (mg.addD ? `, ${mg.addD} Depots` : '') + ` aus Drive ergänzt` + (mg.diffK ? `. ${mg.diffK} abweichende Kurse: lokaler Wert behalten.` : ''), 6000);
         } else {
           if (opts.connecting) { dm.on = false; saveDM(); setStatus('off'); return; }
           dd.hold = true; setStatus('conflict'); return;
@@ -1819,7 +2227,7 @@ function driveLoadNow(){
       if (!remote) { toast('In Drive gibt es noch keine Datei.', 3500); setStatus(dm.dirty ? 'pending' : 'ok'); return; }
       const rs = parsePayload(await dread(remote.id));
       setStatus(dm.dirty ? 'pending' : 'ok');
-      const ok = await modal({title:'Stand aus Drive laden?', text:`Drive: ${sumState(rs)}\nDieser Browser: ${sumState(state)}\n\nDer lokale Stand wird ersetzt` + (dm.dirty ? ' (noch nicht gesicherte Änderungen gehen dabei verloren)' : '') + '. Er bleibt als Notkopie im Browser erhalten.', ok:'Ersetzen', danger:true});
+      const ok = await modal({title:'Stand aus Drive laden?', text:`Drive: ${sumState(rs)}\nDieser Browser: ${sumState(wsObj())}\n\nDer lokale Stand wird ersetzt` + (dm.dirty ? ' (noch nicht gesicherte Änderungen gehen dabei verloren)' : '') + '. Er bleibt als Notkopie im Browser erhalten.', ok:'Ersetzen', danger:true});
       if (!ok) return;
       dm.fileId = remote.id; dm.version = remote.version; dm.dirty = false; dd.hold = false;
       replaceState(rs, {noSync:true}); saveDM(); setStatus('ok'); render(); toast('Stand aus Drive geladen');
@@ -1843,7 +2251,7 @@ function driveRestore(id, name){
       setStatus('busy');
       const rs = parsePayload(await dread(id));
       setStatus(dm.dirty ? 'pending' : 'ok');
-      const ok = await modal({title:'Sicherung einlesen?', text:`${name}\n${sumState(rs)}\n\nDer aktuelle Stand (${sumState(state)}) wird ersetzt. In Drive wird vorher eine Sicherungskopie des aktuellen Standes angelegt.`, ok:'Einlesen', danger:true});
+      const ok = await modal({title:'Sicherung einlesen?', text:`${name}\n${sumState(rs)}\n\nDer aktuelle Stand (${sumState(wsObj())}) wird ersetzt. In Drive wird vorher eine Sicherungskopie des aktuellen Standes angelegt.`, ok:'Einlesen', danger:true});
       if (!ok) return;
       dd.nextTag = 'vor-wiederherstellung'; replaceState(rs); render(); toast('Sicherung eingelesen, wird nach Drive gespeichert', 4000);
     } catch (e) { handleErr(e); }

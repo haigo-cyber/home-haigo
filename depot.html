@@ -14,6 +14,7 @@
         Notkopie des zuletzt ersetzten lokalen Standes
   v1.2  Kurse per CSV einlesen (Liste oder Tabelle), Zeichensatz-Erkennung, tolerantere Zahlenerkennung
   v1.3  Berechnungsmethoden: gleitender Durchschnitt, FIFO, LIFO, Netto-Einstand (Kaufsummen minus Verkaufserloese), Methodenvergleich
+  v1.4  Reiter Konto: Einzahlungen, Auszahlungen, Ertraege; Kaeufe und Verkaeufe buchen automatisch gegen das Konto; Gesamtvermoegen und Gesamtergebnis
 -->
 <style>
 :root{
@@ -60,6 +61,7 @@ header.top h1{margin:0;padding:10px 0 4px;font-size:1.15rem;font-weight:650}
 nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
 nav::-webkit-scrollbar{display:none}
 nav button{flex:0 0 auto;min-height:40px;padding:6px 14px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text2);font:inherit;font-size:.95rem;cursor:pointer}
+@media(max-width:480px){nav button{padding:6px 8px;font-size:.9rem}}
 nav button[aria-selected="true"]{background:var(--surface2);border-color:var(--line);color:var(--text);font-weight:600}
 main{padding-top:14px;padding-bottom:60px}
 h2{font-size:1.05rem;margin:0 0 8px}
@@ -162,6 +164,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
       <button role="tab" data-tab="diagramme">Diagramme</button>
       <button role="tab" data-tab="kurse">Kurse</button>
       <button role="tab" data-tab="kaeufe">Käufe</button>
+      <button role="tab" data-tab="konto">Konto</button>
       <button role="tab" data-tab="daten">Daten</button>
     </nav>
   </div>
@@ -176,7 +179,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
 /* ======================================================================
    Seifferts Depot v1.0
    ====================================================================== */
-const VERSION = '1.3';
+const VERSION = '1.4';
 const LS_KEY = 'seifferts_depot_v1';
 const PALETTE = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
 
@@ -228,7 +231,8 @@ function parseDate(s){
 }
 
 /* ---------- Zustand ---------- */
-function emptyState(){ return {positions:[], txs:[], prices:{}, meta:{lastBackup:null}}; }
+function emptyState(){ return {positions:[], txs:[], prices:{}, cash:[], meta:{lastBackup:null}}; }
+const hasData = s => !!(s.positions.length || s.txs.length || (s.cash && s.cash.length));
 function normalizeState(o){
   const s = emptyState();
   if (!o || typeof o !== 'object') return s;
@@ -250,6 +254,13 @@ function normalizeState(o){
       s.prices[pid] = [...m].map(([date, price]) => ({date, price})).sort((a, b) => a.date < b.date ? -1 : 1);
     });
   }
+  const cids = new Set();
+  (Array.isArray(o.cash) ? o.cash : []).forEach(c => {
+    if (!c) return;
+    const d = parseDate(c.date), a = Number(c.amount), id = String(c.id || uid());
+    if (!d || !(a > 0) || !isFinite(a) || !['in', 'out', 'ertrag'].includes(c.type) || cids.has(id)) return;
+    cids.add(id); s.cash.push({id, date:d, type:c.type, amount:a, note:String(c.note || '')});
+  });
   if (o.meta && o.meta.lastBackup) s.meta.lastBackup = String(o.meta.lastBackup);
   if (o.meta && ['avg', 'fifo', 'lifo', 'net'].includes(o.meta.method)) s.meta.method = o.meta.method;
   return s;
@@ -271,7 +282,7 @@ function saveState(opts){
 /* Ersetzt den kompletten Bestand. Der bisherige Stand bleibt als Notkopie im Browser (Reiter Daten). */
 function replaceState(ns, opts){
   opts = opts || {};
-  if (opts.keepPrev !== false && (state.positions.length || state.txs.length)) {
+  if (opts.keepPrev !== false && hasData(state)) {
     try { localStorage.setItem(LS_KEY + '_prev', JSON.stringify({saved:new Date().toISOString(), state})); } catch (e) {}
   }
   state = ns; saveState({noSync:!!opts.noSync});
@@ -352,6 +363,40 @@ function calcFrom(list, upTo, method){
   return {qty:q, cost, costNet, avg, realized, errors, buyQty, buyVal, soldQty};
 }
 const calcPosition = (posId, upTo, method) => calcFrom(txsOf(posId), upTo, method);
+/* ---------- Konto: jeder Kauf und Verkauf bucht automatisch gegen das Konto ---------- */
+const cashOn = () => state.cash.length > 0;
+const CASH_TYPES = {in:'Einzahlung', out:'Auszahlung', ertrag:'Ertrag (Dividende, Zinsen)'};
+/* Alle Kontobewegungen in zeitlicher Reihenfolge. Am selben Tag gilt: erst Einzahlungen und Erträge, dann Verkäufe, dann Käufe, zuletzt Auszahlungen. */
+function cashEvents(){
+  const ev = [];
+  state.cash.forEach((c, i) => ev.push({d:c.date, o:c.type === 'out' ? 3 : 0, n:i, a:c.type === 'out' ? -c.amount : c.amount, kind:c.type, id:c.id, text:(CASH_TYPES[c.type].replace(/ \(.*$/, '')) + (c.note ? ': ' + c.note : '')}));
+  state.txs.forEach((t, i) => { const p = posById(t.posId), nm = p ? p.name : '?';
+    ev.push(t.type === 'sell'
+      ? {d:t.date, o:1, n:i, a:t.qty * t.price - t.fee, kind:'sell', id:t.id, text:`Verkauf ${nm}, ${qty(t.qty)} Stück zu ${price(t.price)}`}
+      : {d:t.date, o:2, n:i, a:-(t.qty * t.price + t.fee), kind:'buy', id:t.id, text:`Kauf ${nm}, ${qty(t.qty)} Stück zu ${price(t.price)}`}); });
+  ev.sort((x, y) => x.d < y.d ? -1 : x.d > y.d ? 1 : x.o - y.o || x.n - y.n);
+  let bal = 0; ev.forEach(e => { bal += e.a; e.bal = bal; });
+  return ev;
+}
+function cashInfo(upTo){
+  let bal = 0, min = 0, minDate = '';
+  for (const e of cashEvents()) { if (upTo && e.d > upTo) break; bal = e.bal; if (bal < min - 1e-9) { min = bal; minDate = e.d; } }
+  return {bal, min, minDate, over:min < -0.005};
+}
+const netPaid = upTo => state.cash.reduce((a, c) => (upTo && c.date > upTo) || c.type === 'ertrag' ? a : a + (c.type === 'in' ? c.amount : -c.amount), 0);
+function cashNote(){
+  if (!cashOn()) return '';
+  const ci = cashInfo();
+  return ci.over ? `<div class="note">Das Konto ist ${ci.bal < -0.005 ? 'aktuell' : `seit dem ${fd(ci.minDate)} zeitweise`} um ${eur(-(ci.bal < -0.005 ? ci.bal : ci.min))} überzogen, die Käufe übersteigen also das erfasste Kapital. Prüfe unter <a href="#konto" data-act="goto" data-tab="konto">Konto</a>, ob eine Einzahlung fehlt oder ihr Datum nach dem ersten Kauf liegt.</div>` : '';
+}
+function cashKpis(tot){
+  const ci = cashInfo(), net = netPaid(), total = ci.bal + tot.value, res = total - net;
+  return `<div class="kpis">
+    <div class="kpi"><div class="l">Verfügbares Kapital</div><div class="v ${ci.bal < -0.005 ? 'neg' : ''}">${eur(ci.bal)}</div><div class="s">nach allen Käufen und Verkäufen</div></div>
+    <div class="kpi"><div class="l">Gesamtvermögen</div><div class="v">${eur(total)}</div><div class="s">Depotwert plus Kapital</div></div>
+    <div class="kpi"><div class="l">Netto eingezahlt</div><div class="v">${eur(net)}</div><div class="s">Einzahlungen minus Auszahlungen</div></div>
+    <div class="kpi"><div class="l">Gesamtergebnis</div><div class="v ${signCls(res)}">${eurS(res)}</div><div class="s ${signCls(res)}">${net > 0 ? pctS(res / net) : '–'}</div></div></div>`;
+}
 function setMethod(m){ if (!METHODS[m]) return; state.meta.method = m; saveState(); render(); }
 /* Auswahl der Berechnungsmethode, in Uebersicht und Diagrammen. */
 function methodBar(){
@@ -456,7 +501,7 @@ function download(name, text, mime){
 /* ======================================================================
    Navigation
    ====================================================================== */
-const TABS = ['uebersicht', 'diagramme', 'kurse', 'kaeufe', 'daten'];
+const TABS = ['uebersicht', 'diagramme', 'kurse', 'kaeufe', 'konto', 'daten'];
 function go(tab){
   if (!TABS.includes(tab)) tab = 'uebersicht';
   ui.tab = tab;
@@ -465,8 +510,9 @@ function go(tab){
 }
 function render(){
   document.querySelectorAll('#nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === ui.tab ? 'true' : 'false'));
+  { const nv = $('#nav'), sel = nv && nv.querySelector('[aria-selected="true"]'); if (sel) nv.scrollLeft = Math.max(0, sel.offsetLeft - (nv.clientWidth - sel.offsetWidth) / 2); }
   const v = $('#view');
-  v.innerHTML = ({uebersicht:viewOverview, diagramme:viewCharts, kurse:viewKurse, kaeufe:viewKaeufe, daten:viewDaten})[ui.tab]();
+  v.innerHTML = ({uebersicht:viewOverview, diagramme:viewCharts, kurse:viewKurse, kaeufe:viewKaeufe, konto:viewKonto, daten:viewDaten})[ui.tab]();
   if (ui.tab === 'diagramme') drawCharts();
 }
 
@@ -477,8 +523,13 @@ function hero(){
   return `<div class="card hero"><h2>Noch keine Positionen</h2>
     <p>Erfasse unter Käufe deine erste Transaktion (Datum, Stück, Einstiegspreis). Danach trägst du unter Kurse bei Bedarf die aktuellen Tageskurse ein, und die Auswertung entsteht von selbst.</p>
     <div class="btns" style="justify-content:center"><button class="primary" data-act="goto" data-tab="kaeufe">Erste Transaktion erfassen</button>
+    <button class="btn" data-act="goto" data-tab="konto">Kapital erfassen</button>
     <button class="btn" data-act="demo">Beispieldaten laden</button></div>
     <p class="hint">Alle Daten bleiben in diesem Browser auf diesem Gerät. Es gibt keine Verbindung ins Internet.</p></div>`;
+}
+function viewCashOnly(){
+  const zero = {value:0};
+  return cashNote() + cashKpis(zero) + `<div class="card"><p>Noch keine Käufe erfasst. Sobald du unter Käufe eine Transaktion speicherst, wird sie automatisch vom Konto abgebucht.</p><div class="btns"><button class="primary" data-act="goto" data-tab="kaeufe">Ersten Kauf erfassen</button><button class="btn" data-act="goto" data-tab="konto">Zum Konto</button></div></div>`;
 }
 const COLS = [
   ['name','Position','l'], ['qty','Stück'], ['avg','Ø Einstieg'], ['price','Kurs'], ['cost','Einstand'],
@@ -494,7 +545,7 @@ function sortRows(rows){
   });
 }
 function viewOverview(){
-  if (!state.positions.length) return hero();
+  if (!state.positions.length) return cashOn() ? viewCashOnly() : hero();
   const {rows, tot} = computeRows();
   const shown = sortRows(rows.filter(r => r.open || ui.showClosed));
   const closedCount = rows.filter(r => !r.open).length;
@@ -505,6 +556,7 @@ function viewOverview(){
   }
   if (tot.fallback) h += `<div class="note">${tot.fallback} Position${tot.fallback > 1 ? 'en haben' : ' hat'} noch keinen eigenen Kurs. Dort wird der letzte Transaktionspreis angesetzt (Gewinn/Verlust bleibt deshalb bei etwa null). <a href="#kurse" data-act="goto" data-tab="kurse">Kurse erfassen</a></div>`;
   if (tot.stale) h += `<div class="note">${tot.stale} Kurs${tot.stale > 1 ? 'e sind' : ' ist'} älter als 7 Tage und in der Tabelle als veraltet markiert.</div>`;
+  h += cashNote();
   h += methodBar();
   h += `<div class="kpis">
     <div class="kpi"><div class="l">Depotwert</div><div class="v">${eur(tot.value)}</div><div class="s">${tot.openCount} offene Position${tot.openCount === 1 ? '' : 'en'}</div></div>
@@ -512,6 +564,7 @@ function viewOverview(){
     <div class="kpi"><div class="l">Gewinn/Verlust offen</div><div class="v ${signCls(tot.gv)}">${eurS(tot.gv)}</div><div class="s ${signCls(tot.gv)}">${pctS(tot.gvPct)}</div></div>
     <div class="kpi"><div class="l">Realisiert (Verkäufe)</div><div class="v ${signCls(tot.realized)}">${eurS(tot.realized)}</div><div class="s">${tot.lastKurs ? 'Letzter Kurs: ' + fd(tot.lastKurs) : 'noch keine Kurse'}</div></div>
   </div>`;
+  if (cashOn()) h += cashKpis(tot);
   const SORTS = [['value','Wert'],['gvPct','Gewinn/Verlust %'],['gv','Gewinn/Verlust €'],['share','Anteil'],['name','Name'],['cost','Einstand']];
   h += `<label class="sortm">Sortieren nach<select id="sortSel">${SORTS.map(([k, l]) => `<option value="${k}"${ui.sort.key === k ? ' selected' : ''}>${l}${k === 'name' ? ' (A–Z)' : ' (absteigend)'}</option>`).join('')}</select></label>`;
   h += `<div class="cards-m">${shown.length ? shown.map(r => `<div class="pcard${r.errors.length ? ' err' : ''}"><div class="ph"><div><strong>${esc(r.pos.name)}</strong>${r.pos.sym ? `<span class="sub">${esc(r.pos.sym)}${r.open ? '' : ' · geschlossen'}</span>` : (r.open ? '' : '<span class="sub">geschlossen</span>')}</div>
@@ -653,7 +706,15 @@ function updateTxSum(){
   const el = $('#txsum'); if (!el) return;
   const q = parseNum($('#f-qty').value), p = parseNum($('#f-price').value), f = parseNum($('#f-fee').value) || 0;
   const sell = $('#f-type').value === 'sell';
-  el.textContent = q > 0 && p >= 0 ? `${sell ? 'Erlös' : 'Kaufbetrag'} inklusive Gebühr: ${eur(q * p + (sell ? -f : f))}` : '';
+  const amt = q > 0 && p >= 0 ? q * p + (sell ? -f : f) : NaN;
+  let txt = isFinite(amt) ? `${sell ? 'Erlös' : 'Kaufbetrag'} inklusive Gebühr: ${eur(amt)}` : '';
+  if (isFinite(amt) && cashOn()) {
+    const edit = ui.txEdit ? state.txs.find(t => t.id === ui.txEdit) : null;
+    const old = edit ? (edit.type === 'sell' ? edit.qty * edit.price - edit.fee : -(edit.qty * edit.price + edit.fee)) : 0;
+    const after = cashInfo().bal - old + (sell ? amt : -amt);
+    txt += `. Kontostand danach: ${eur(after)}` + (after < -0.005 ? ` (Achtung: das Konto wäre um ${eur(-after)} überzogen)` : '');
+  }
+  el.textContent = txt;
 }
 function saveTx(){
   const msg = $('#txmsg'), date = parseDate($('#f-date').value), type = $('#f-type').value;
@@ -678,7 +739,52 @@ function saveTx(){
   tx.posId = pos.id;
   if (edit) Object.assign(edit, tx); else state.txs.push(tx);
   ui.txEdit = null; ui.lastDate = date;
-  saveState(); render(); toast(edit ? 'Änderung gespeichert' : 'Transaktion gespeichert' + (isNew ? ` (neue Position „${name}“)` : ''));
+  saveState(); render(); toast((edit ? 'Änderung gespeichert' : 'Transaktion gespeichert' + (isNew ? ` (neue Position „${name}“)` : '')) + (cashOn() ? `. Konto: ${eur(cashInfo().bal)}` : ''), 3200);
+}
+
+/* ======================================================================
+   Konto
+   ====================================================================== */
+function viewKonto(){
+  const ed = ui.cashEdit ? state.cash.find(c => c.id === ui.cashEdit) : null;
+  const {tot} = computeRows();
+  let h = cashNote();
+  if (cashOn()) h += cashKpis(tot);
+  h += `<form class="card" id="cashform" autocomplete="off"><h2>${ed ? 'Kontobuchung bearbeiten' : 'Kapital erfassen'}</h2>
+    <p class="hint" style="margin-top:0">Hier erfasst du nur Geld, das aufs Konto kommt oder es verlässt. Käufe und Verkäufe musst du nicht gegenbuchen: Jeder Kauf wird automatisch vom Konto abgezogen (Kaufbetrag plus Gebühr), jeder Verkauf automatisch gutgeschrieben (Erlös minus Gebühr). Lege eine Einzahlung am besten auf ein Datum vor dem ersten Kauf.</p>
+    <div class="grid2">
+      <label>Datum<input type="date" id="c-date" value="${ed ? ed.date : (ui.lastCashDate || todayISO())}"></label>
+      <label>Art<select id="c-type">${Object.keys(CASH_TYPES).map(k => `<option value="${k}"${ed && ed.type === k ? ' selected' : ''}>${CASH_TYPES[k]}</option>`).join('')}</select></label>
+    </div>
+    <div class="grid2">
+      <label>Betrag (EUR)<input id="c-amount" inputmode="decimal" value="${ed ? esc(String(ed.amount).replace('.', ',')) : ''}" placeholder="30.000,00"></label>
+      <label>Notiz (optional)<input id="c-note" value="${ed ? esc(ed.note) : ''}" placeholder="z. B. Startkapital"></label>
+    </div>
+    <p class="msg" id="cashmsg" role="alert"></p>
+    <div class="btns"><button class="primary" type="submit">${ed ? 'Änderung speichern' : 'Speichern'}</button>${ed ? '<button class="btn" type="button" data-act="cashcancel">Abbrechen</button>' : ''}</div></form>`;
+  const ev = cashEvents().reverse();
+  h += `<div class="card"><h2>Kontoauszug (${ev.length} Buchungen)</h2>`;
+  if (!ev.length) h += `<p class="hint">Noch keine Buchungen.</p>`;
+  else {
+    h += `<div class="tablewrap"><table><thead><tr><th>Datum</th><th style="text-align:left">Buchung</th><th>Betrag</th></tr></thead><tbody>`;
+    ev.forEach(e => {
+      const mine = e.kind === 'in' || e.kind === 'out' || e.kind === 'ertrag';
+      h += `<tr${e.bal < -0.005 ? ' class="err"' : ''}><td>${fd(e.d).slice(0, 6) + fd(e.d).slice(8)}</td><td style="text-align:left;white-space:normal;min-width:110px">${esc(e.text)}${mine ? `<small><button class="btn small" data-act="cashedit" data-id="${e.id}">Bearbeiten</button> <button class="btn small danger" data-act="cashdel" data-id="${e.id}">Löschen</button></small>` : '<small>automatisch aus Käufe</small>'}</td>
+        <td class="${signCls(e.a)}">${eurS(e.a)}<small class="${e.bal < -0.005 ? 'neg' : ''}">Saldo ${eur(e.bal)}</small></td></tr>`;
+    });
+    h += `</tbody></table></div>`;
+  }
+  return h + `</div>`;
+}
+function saveCash(){
+  const msg = $('#cashmsg'), date = parseDate($('#c-date').value), type = $('#c-type').value, a = parseNum($('#c-amount').value), note = $('#c-note').value.trim();
+  if (!date) return void (msg.textContent = 'Bitte ein gültiges Datum wählen.');
+  if (!CASH_TYPES[type]) return void (msg.textContent = 'Bitte eine Art wählen.');
+  if (!(a > 0)) return void (msg.textContent = 'Der Betrag muss größer als 0 sein.');
+  const edit = ui.cashEdit ? state.cash.find(c => c.id === ui.cashEdit) : null;
+  if (edit) Object.assign(edit, {date, type, amount:a, note}); else state.cash.push({id:uid(), date, type, amount:a, note});
+  ui.cashEdit = null; ui.lastCashDate = date;
+  saveState(); render(); toast((edit ? 'Änderung gespeichert' : 'Gespeichert') + `. Konto: ${eur(cashInfo().bal)}`, 3200);
 }
 
 /* ======================================================================
@@ -727,8 +833,8 @@ async function importJSON(file){
   try {
     const o = JSON.parse(await file.text());
     const s = normalizeState(o && o.data ? o.data : o);
-    if (!s.positions.length && !s.txs.length) { toast('Die Datei enthält keine Depotdaten.', 4000); return; }
-    const ok = await modal({title:'Sicherung einlesen?', text:`Die Datei enthält ${s.positions.length} Positionen und ${s.txs.length} Transaktionen.\nDie aktuell gespeicherten Daten (${state.positions.length} Positionen, ${state.txs.length} Transaktionen) werden dadurch ersetzt.`, ok:'Ersetzen', danger:true});
+    if (!hasData(s)) { toast('Die Datei enthält keine Depotdaten.', 4000); return; }
+    const ok = await modal({title:'Sicherung einlesen?', text:`Die Datei enthält ${sumState(s)}.\nDie aktuell gespeicherten Daten (${sumState(state)}) werden dadurch ersetzt.`, ok:'Ersetzen', danger:true});
     if (!ok) return;
     replaceState(s); render(); toast('Sicherung eingelesen');
   } catch (e) { toast('Die Datei konnte nicht gelesen werden.', 4000); }
@@ -901,6 +1007,7 @@ function loadDemo(){
     const first = s.txs.filter(t => t.posId === p.id).map(t => t.date).sort()[0];
     s.prices[p.id] = D.map((d, i) => ({date:d, price:V[p.id][i]})).filter(e => e.price && e.date >= first);
   });
+  s.cash = [{id:uid(), date:'2026-01-02', type:'in', amount:20000, note:'Startkapital'}, {id:uid(), date:'2026-05-20', type:'ertrag', amount:120, note:'Dividende Beispiel Industrie AG'}];
   s.meta.lastBackup = state.meta.lastBackup;
   replaceState(s);
 }
@@ -922,13 +1029,15 @@ function viewCharts(){
         `<div class="legend"><span><i class="sw dot" style="background:var(--s1)"></i>Kauf (Größe = Stück)</span><span><i class="sw dia" style="background:var(--s2)"></i>aktueller Kurs</span><span><i class="sw line" style="background:var(--text2);width:3px;height:14px"></i>Ø-Einstiegspreis</span></div>`)
     + card('c-val', 'Eingesetztes Kapital und aktueller Wert', 'In Euro, je Position.',
         `<div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Einstand</span><span><i class="sw" style="background:var(--s2)"></i>aktueller Wert</span></div>`)
-    + `<section class="card"><h2>Gewichtung im Depot</h2><p class="hint" style="margin-top:0">Anteil am aktuellen Depotwert.</p><div class="chart" id="c-donut"></div><details><summary>Werte als Tabelle</summary><div id="c-donut-t"></div></details></section>`
+    + `<section class="card"><h2>${cashOn() ? 'Gewichtung inklusive Kapital' : 'Gewichtung im Depot'}</h2><p class="hint" style="margin-top:0">${cashOn() ? 'Anteil am Gesamtvermögen: Positionen zum aktuellen Wert und verfügbares Kapital auf dem Konto.' : 'Anteil am aktuellen Depotwert.'}</p><div class="chart" id="c-donut"></div><details><summary>Werte als Tabelle</summary><div id="c-donut-t"></div></details></section>`
     + `<section class="card"><h2>Verlauf einer Position</h2><p class="hint" style="margin-top:0">Kursverlauf mit deinen Käufen und Verkäufen und dem gleitenden Ø-Einstiegspreis, darunter der Bestand in Stück.</p>
         <label>Position<select id="detailSel">${detailOpts}</select></label>
         <div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Kurs</span><span><i class="sw dash" style="border-color:var(--s2)"></i>Ø-Einstiegspreis</span><span><i class="sw dot" style="background:var(--s2)"></i>Kauf (Größe = Stück)</span><span>▽ Verkauf</span></div>
         <div class="chart" id="c-detail"></div><details><summary>Werte als Tabelle</summary><div id="c-detail-t"></div></details></section>`
     + card('c-depot', 'Depotwert im Zeitverlauf', 'Wert aus Stückzahl mal letztem bekannten Kurs, dazu das eingesetzte Kapital. Je öfter du Kurse erfasst, desto genauer die Linie.',
-        `<div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Depotwert</span><span><i class="sw line" style="background:var(--s2)"></i>Eingesetzt (Einstand)</span></div>`);
+        `<div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Depotwert</span><span><i class="sw line" style="background:var(--s2)"></i>Eingesetzt (Einstand)</span></div>`)
+    + (cashOn() ? card('c-konto', 'Gesamtvermögen im Zeitverlauf', 'Depotwert plus Kapital auf dem Konto, verglichen mit dem Geld, das du netto eingezahlt hast. Der Abstand der beiden Linien ist dein Gesamtergebnis.',
+        `<div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Gesamtvermögen</span><span><i class="sw line" style="background:var(--s2)"></i>Netto eingezahlt</span></div>`) : '');
 }
 
 /* --- Helfer --- */
@@ -1017,12 +1126,14 @@ function dotChart(w, rows){
 }
 
 /* --- Donut --- */
-function donutChart(rows){
+function donutChart(rows, cashBal){
   const open = rows.filter(r => r.open && isFinite(r.value) && r.value > 0).sort((a, b) => b.value - a.value);
-  const total = open.reduce((a, r) => a + r.value, 0);
-  if (!open.length) return null;
+  const withCash = cashBal > 0.005;
+  const total = open.reduce((a, r) => a + r.value, 0) + (withCash ? cashBal : 0);
+  if (!open.length && !withCash) return null;
   let items = open.slice(0, 7).map((r, i) => ({name:r.pos.name, value:r.value, color:PALETTE[i]}));
   if (open.length > 7) items.push({name:`Sonstige (${open.length - 7})`, value:open.slice(7).reduce((a, r) => a + r.value, 0), color:'var(--other)'});
+  if (withCash) items.push({name:'Kapital auf dem Konto', value:cashBal, color:PALETTE[7]});
   const S = 220, c = S / 2, R = 104, r0 = 64;
   const pt = (rad, a) => [c + rad * Math.sin(a), c - rad * Math.cos(a)];
   let a0 = 0, g = '';
@@ -1036,7 +1147,7 @@ function donutChart(rows){
     else g += seg(a0, a1, it, frac, tip);
     a0 = a1;
   });
-  g += `<text class="tm" x="${c}" y="${c - 6}" text-anchor="middle">Depotwert</text><text class="tb" x="${c}" y="${c + 14}" text-anchor="middle">${eur(total)}</text>`;
+  g += `<text class="tm" x="${c}" y="${c - 6}" text-anchor="middle">${withCash ? 'Gesamtvermögen' : 'Depotwert'}</text><text class="tb" x="${c}" y="${c + 14}" text-anchor="middle">${eur(total)}</text>`;
   const legend = `<ul>${items.map(it => `<li><i class="sw" style="background:${it.color}"></i><span class="n">${esc(it.name)}</span><span class="p">${pctP(it.value / total)}</span></li>`).join('')}</ul>`;
   return {html:`<div class="donutrow">${svgWrap(S, S, g, 'Gewichtung im Depot')}${legend}</div>`, items, total};
 }
@@ -1106,19 +1217,21 @@ function detailChart(w, posId){
 }
 
 /* --- Depotwert im Zeitverlauf --- */
-function depotSeries(){
+function depotSeries(K){
   const set = new Set();
   state.txs.forEach(t => set.add(t.date));
+  if (K) state.cash.forEach(c => set.add(c.date));
   Object.values(state.prices).forEach(a => a.forEach(e => set.add(e.date)));
   const dates = [...set].sort();
   return dates.map(d => {
     let v = 0, c = 0;
     state.positions.forEach(p => { const st = calcPosition(p.id, d); if (st.qty > 1e-9) { const pr = priceAtDate(p.id, d); if (pr != null) v += st.qty * pr; c += st.cost; } });
+    if (K) { v += cashInfo(d).bal; c = netPaid(d); }
     return {d, v, c};
   });
 }
-function depotChart(w){
-  const pts = depotSeries();
+function depotChart(w, K){
+  const pts = depotSeries(K), L1 = K ? 'Gesamtvermögen' : 'Depotwert', L2 = K ? 'Netto eingezahlt' : 'Eingesetzt', LE = K ? 'Ergebnis' : 'Gewinn/Verlust';
   if (pts.length < 2) return null;
   const t0 = tm(pts[0].d), t1 = tm(pts[pts.length - 1].d);
   const all = pts.flatMap(p => [p.v, p.c]);
@@ -1133,16 +1246,16 @@ function depotChart(w){
   // Hover-Baender
   pts.forEach((p, i) => {
     const xa = i ? (x(tm(pts[i - 1].d)) + x(tm(p.d))) / 2 : L, xb = i < pts.length - 1 ? (x(tm(p.d)) + x(tm(pts[i + 1].d))) / 2 : L + pw;
-    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${H}" data-tip="${esc(`${fd(p.d)}\nDepotwert ${eur(p.v)}\nEingesetzt ${eur(p.c)}\nGewinn/Verlust ${eurS(p.v - p.c)}`)}"/>`;
+    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${H}" data-tip="${esc(`${fd(p.d)}\n${L1} ${eur(p.v)}\n${L2} ${eur(p.c)}\n${LE} ${eurS(p.v - p.c)}`)}"/>`;
   });
   // Einstand (Treppe)
   g += `<path d="${pts.map((p, i) => i ? `H${x(tm(p.d))}V${y(p.c)}` : `M${x(tm(p.d))},${y(p.c)}`).join('')}" style="fill:none;stroke:var(--s2);stroke-width:2"/>`;
   g += `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + x(tm(p.d)) + ',' + y(p.v)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
   if (pts.length <= 40) pts.forEach(p => { g += `<circle cx="${x(tm(p.d))}" cy="${y(p.v)}" r="3" style="fill:var(--s1);stroke:var(--surface);stroke-width:2;pointer-events:none"/>`; });
   const last = pts[pts.length - 1], vAbove = last.v >= last.c;
-  g += `<text class="tv" x="${L + pw}" y="${y(last.v) + (vAbove ? -9 : 17)}" text-anchor="end">Wert ${eur(last.v)}</text>`;
-  g += `<text class="tv" x="${L + pw}" y="${y(last.c) + (vAbove ? 17 : -9)}" text-anchor="end">Einstand ${eur(last.c)}</text>`;
-  return {svg:svgWrap(w, h, g, 'Depotwert und eingesetztes Kapital im Zeitverlauf'), pts};
+  g += `<text class="tv" x="${L + pw}" y="${y(last.v) + (vAbove ? -9 : 17)}" text-anchor="end">${K ? 'Vermögen' : 'Wert'} ${eur(last.v)}</text>`;
+  g += `<text class="tv" x="${L + pw}" y="${y(last.c) + (vAbove ? 17 : -9)}" text-anchor="end">${K ? 'Eingezahlt' : 'Einstand'} ${eur(last.c)}</text>`;
+  return {svg:svgWrap(w, h, g, K ? 'Gesamtvermögen und netto eingezahltes Kapital im Zeitverlauf' : 'Depotwert und eingesetztes Kapital im Zeitverlauf'), pts};
 }
 
 /* --- alles zeichnen --- */
@@ -1165,7 +1278,7 @@ function drawCharts(){
       [{color:'var(--s1)'}, {color:'var(--s2)'}], v => eur(v).replace(/ €/, ' €'), 'Eingesetztes Kapital und aktueller Wert'),
       tableHTML(['Position', 'Einstand', 'Wert', 'G/V'], withVal.map(r => [esc(r.pos.name), eur(r.cost), eur(r.value), eurS(r.gv)])));
 
-  const dn = donutChart(rows);
+  const dn = donutChart(rows, cashOn() ? cashInfo().bal : 0);
   put('c-donut', dn ? dn.html : '<p class="hint">Noch keine Kurse oder Werte.</p>', dn ? tableHTML(['Position', 'Wert', 'Anteil'], dn.items.map(i => [esc(i.name), eur(i.value), pctP(i.value / dn.total)])) : '');
 
   drawDetail();
@@ -1173,6 +1286,11 @@ function drawCharts(){
   const dp = depotChart(W('c-depot'));
   put('c-depot', dp ? dp.svg : '<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen (Transaktionen oder erfasste Kurse).</p>',
       dp ? tableHTML(['Datum', 'Depotwert', 'Eingesetzt', 'G/V'], dp.pts.slice().reverse().map(p => [fd(p.d), eur(p.v), eur(p.c), eurS(p.v - p.c)])) : '');
+  if (cashOn()) {
+    const dk = depotChart(W('c-konto'), true);
+    put('c-konto', dk ? dk.svg : '<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen.</p>',
+        dk ? tableHTML(['Datum', 'Gesamtvermögen', 'Netto eingezahlt', 'Ergebnis'], dk.pts.slice().reverse().map(p => [fd(p.d), eur(p.v), eur(p.c), eurS(p.v - p.c)])) : '');
+  }
 }
 function drawDetail(){
   const el = $('#c-detail'); if (!el) return;
@@ -1214,11 +1332,11 @@ document.addEventListener('click', async e => {
     case 'goto': go(b.dataset.tab); break;
     case 'sort': { const k = b.dataset.key; ui.sort = ui.sort.key === k ? {key:k, dir:-ui.sort.dir} : {key:k, dir:k === 'name' ? 1 : -1}; render(); break; }
     case 'demo': {
-      if (state.positions.length || state.txs.length) { if (!await modal({title:'Beispieldaten laden?', text:'Die vorhandenen Daten werden durch erfundene Beispieldaten ersetzt. Das lässt sich nicht rückgängig machen.', ok:'Ersetzen', danger:true})) break; }
+      if (hasData(state)) { if (!await modal({title:'Beispieldaten laden?', text:'Die vorhandenen Daten werden durch erfundene Beispieldaten ersetzt. Das lässt sich nicht rückgängig machen.', ok:'Ersetzen', danger:true})) break; }
       loadDemo(); go('uebersicht'); toast('Beispieldaten geladen'); break;
     }
     case 'wipe': {
-      if (!await modal({title:'Alle Daten löschen?', text:'Alle Positionen, Transaktionen und Kurse in diesem Browser werden gelöscht. Hast du vorher eine Sicherung gespeichert?', ok:'Endgültig löschen', danger:true})) break;
+      if (!await modal({title:'Alle Daten löschen?', text:'Alle Positionen, Transaktionen, Kurse und Kontobuchungen in diesem Browser werden gelöscht. Hast du vorher eine Sicherung gespeichert?', ok:'Endgültig löschen', danger:true})) break;
       replaceState(emptyState()); ui.txEdit = null; render(); toast('Alle Daten gelöscht. Der vorherige Stand bleibt als Notkopie im Reiter Daten.', 4500); break;
     }
     case 'exportjson': exportJSON(); break;
@@ -1253,6 +1371,13 @@ Der aktuelle Stand (${sumState(state)}) wird ersetzt und bleibt seinerseits als 
       if (!await modal({title:'Transaktion löschen?', text:`${t.type === 'buy' ? 'Kauf' : 'Verkauf'} vom ${fd(t.date)}: ${qty(t.qty)} Stück ${p ? p.name : ''} zu ${price(t.price)}`, ok:'Löschen', danger:true})) break;
       state.txs = state.txs.filter(x => x.id !== t.id); if (ui.txEdit === t.id) ui.txEdit = null; saveState(); render(); toast('Transaktion gelöscht'); break;
     }
+    case 'cashedit': ui.cashEdit = b.dataset.id; render(); window.scrollTo(0, 0); break;
+    case 'cashcancel': ui.cashEdit = null; render(); break;
+    case 'cashdel': {
+      const c = state.cash.find(x => x.id === b.dataset.id); if (!c) break;
+      if (!await modal({title:'Kontobuchung löschen?', text:`${CASH_TYPES[c.type]} vom ${fd(c.date)}: ${eur(c.amount)}${c.note ? ' (' + c.note + ')' : ''}`, ok:'Löschen', danger:true})) break;
+      state.cash = state.cash.filter(x => x.id !== c.id); if (ui.cashEdit === c.id) ui.cashEdit = null; saveState(); render(); toast('Kontobuchung gelöscht'); break;
+    }
     case 'posedit': {
       const p = posById(b.dataset.id); if (!p) break;
       const r = await modal({title:'Position bearbeiten', fields:[{label:'Name', value:p.name}, {label:'Kürzel oder WKN (optional)', value:p.sym}], ok:'Speichern'});
@@ -1274,6 +1399,7 @@ document.addEventListener('submit', e => {
   e.preventDefault();
   if (e.target.id === 'txform') saveTx();
   else if (e.target.id === 'kursform') saveKurse();
+  else if (e.target.id === 'cashform') saveCash();
 });
 document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#txform')) updateTxSum(); });
 document.addEventListener('change', e => {
@@ -1433,16 +1559,17 @@ function canon(s){
   return JSON.stringify({
     p:s.positions.slice().sort(by).map(p => [p.id, p.name, p.sym]),
     t:s.txs.slice().sort(by).map(t => [t.id, t.posId, t.type, t.date, t.qty, t.price, t.fee || 0]),
-    k:Object.keys(s.prices).sort().map(k => [k, s.prices[k].map(e => [e.date, e.price])])
+    k:Object.keys(s.prices).sort().map(k => [k, s.prices[k].map(e => [e.date, e.price])]),
+    c:(s.cash || []).slice().sort(by).map(c => [c.id, c.date, c.type, c.amount, c.note])
   });
 }
 function sumState(s){
   let last = ''; Object.values(s.prices).forEach(a => a.forEach(e => { if (e.date > last) last = e.date; }));
-  return `${s.positions.length} Positionen, ${s.txs.length} Transaktionen` + (last ? `, letzter Kurs ${fd(last)}` : ', noch keine Kurse');
+  return `${s.positions.length} Positionen, ${s.txs.length} Transaktionen` + (s.cash && s.cash.length ? `, ${s.cash.length} Kontobuchungen` : '') + (last ? `, letzter Kurs ${fd(last)}` : ', noch keine Kurse');
 }
 /* Vereinigung zweier Staende ueber die IDs. Geloeschte Eintraege koennen dabei zurueckkehren. */
 function mergeStates(a, b){
-  const s = JSON.parse(JSON.stringify(a)), pm = {}; let addP = 0, addT = 0, addK = 0, diffK = 0;
+  const s = JSON.parse(JSON.stringify(a)), pm = {}; let addP = 0, addT = 0, addK = 0, diffK = 0, addC = 0;
   b.positions.forEach(p => {
     let m = s.positions.find(x => x.id === p.id) || s.positions.find(x => x.name.toLowerCase() === p.name.toLowerCase());
     if (!m) { m = {id:p.id, name:p.name, sym:p.sym}; s.positions.push(m); addP++; } else if (!m.sym && p.sym) m.sym = p.sym;
@@ -1450,13 +1577,15 @@ function mergeStates(a, b){
   });
   const ids = new Set(s.txs.map(t => t.id));
   b.txs.forEach(t => { if (ids.has(t.id) || !pm[t.posId]) return; s.txs.push(Object.assign({}, t, {posId:pm[t.posId]})); ids.add(t.id); addT++; });
+  s.cash = s.cash || []; const cids = new Set(s.cash.map(c => c.id));
+  (b.cash || []).forEach(c => { if (!cids.has(c.id)) { s.cash.push(Object.assign({}, c)); cids.add(c.id); addC++; } });
   Object.keys(b.prices).forEach(pid => {
     const tid = pm[pid]; if (!tid) return;
     const arr = (s.prices[tid] = s.prices[tid] || []);
     b.prices[pid].forEach(e => { const ex = arr.find(x => x.date === e.date); if (!ex) { arr.push({date:e.date, price:e.price}); addK++; } else if (ex.price !== e.price) diffK++; });
     arr.sort((x, y) => x.date < y.date ? -1 : 1);
   });
-  return {state:normalizeState(s), addP, addT, addK, diffK};
+  return {state:normalizeState(s), addP, addT, addK, diffK, addC};
 }
 
 /* ---------- Sicherungskopien in Drive ---------- */
@@ -1518,7 +1647,7 @@ async function driveSync(opts = {}){
       if (f) { remote = f; if (dm.fileId && f.id !== dm.fileId) dm.version = ''; dm.fileId = f.id; saveDM(); }
       else if (dm.fileId) { lost = true; dm.fileId = ''; dm.version = ''; saveDM(); }
     }
-    const localHas = state.positions.length > 0 || state.txs.length > 0;
+    const localHas = hasData(state);
     const upload = async tag => {
       const my = rev, content = payload();
       if (remote) { await dbackup(tag || dd.nextTag || ''); dd.nextTag = ''; const res = await dupdate(remote.id, content); dm.version = res.version; }
@@ -1548,7 +1677,7 @@ async function driveSync(opts = {}){
           const mg = mergeStates(state, rs);
           replaceState(mg.state, {noSync:true}); dm.dirty = true; rev++;
           await upload('vor-zusammenfuehren'); render();
-          toast(`Zusammengeführt: ${mg.addT} Transaktionen, ${mg.addK} Kurse, ${mg.addP} Positionen aus Drive ergänzt` + (mg.diffK ? `. ${mg.diffK} abweichende Kurse: lokaler Wert behalten.` : ''), 6000);
+          toast(`Zusammengeführt: ${mg.addT} Transaktionen, ${mg.addK} Kurse, ${mg.addP} Positionen, ${mg.addC} Kontobuchungen aus Drive ergänzt` + (mg.diffK ? `. ${mg.diffK} abweichende Kurse: lokaler Wert behalten.` : ''), 6000);
         } else {
           if (opts.connecting) { dm.on = false; saveDM(); setStatus('off'); return; }
           dd.hold = true; setStatus('conflict'); return;

@@ -20,6 +20,8 @@
   v1.9  Mehrere Depots (Auswahl oben, Musterdepots, Kopieren), Sicherung und Drive umfassen alle Depots
   v1.5  Vorschaudiagramm auf der Uebersicht: Depotwert, Netto-Rendite und vorhandene Kursdaten
   v1.4  Reiter Konto: Einzahlungen, Auszahlungen, Ertraege; Kaeufe und Verkaeufe buchen automatisch gegen das Konto; Gesamtvermoegen und Gesamtergebnis
+  v1.10.1 Verlauf einer Position steht oben, Start- und Enddatum fuer den Chart-Ausschnitt tagesgenau
+  v1.10.0 Charts im Stil von TradingView (Kerzen, hohle Kerzen, Heikin-Ashi, Balken, Linien; Kerzenstil flach, 3D, metallisch; Farben, Intervall, Zeitrahmen, Werteachse mit Minimum, Maximum, Intervall, Prozent, log; Fadenkreuz, Indikatoren), Reiter Einstellungen mit Reihenfolge und Sichtbarkeit von Reitern, Uebersichtsbloecken und Diagrammen
   v1.9.1 Linux-Anbindung: Block linuxHandOff am Ende (Anmeldung fuer die Linux-App, nur aktiv mit ?linuxport=...), Logo Seiffert Apps in der Kopfzeile
 -->
 <style>
@@ -120,7 +122,31 @@ summary{cursor:pointer;color:var(--text2);padding:6px 0;min-height:32px}
 .sw.dia{transform:rotate(45deg);width:10px;height:10px;border-radius:1px}
 .sw.line{height:3px;width:18px;border-radius:2px}
 .sw.dash{height:0;width:18px;border-top:3px dashed}
-.chart{width:100%;overflow:hidden}
+.chart{width:100%;overflow:hidden;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.chart.tvdark{background:#0f0f0f;border-radius:10px;--grid:#1c1c1c;--line:#2a2e39;--text:#d1d4dc;--text2:#b2b5be;--muted:#787b86;--surface:#0f0f0f}
+.chart.tvlight{background:#fff;border-radius:10px;--grid:#f0f3fa;--line:#e0e3eb;--text:#131722;--text2:#434651;--muted:#787b86;--surface:#fff}
+.tvlg{font-size:.78rem;color:var(--text2);padding:3px 8px 2px;min-height:1.5em;font-variant-numeric:tabular-nums;line-height:1.4}
+.tvlg b{color:var(--text)}
+.chtool{margin-bottom:12px}
+.card .chtool{margin:0 0 8px}
+.chrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 10px}
+.chdates{display:flex;flex-wrap:wrap;gap:0 12px;align-items:end;margin-top:8px}
+.chdates label{flex:1 1 170px;max-width:240px}
+.chdates .btn{margin-bottom:10px}
+.chrow2{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between}
+.rng{display:inline-flex;flex-wrap:wrap;gap:4px}
+.rbtn{padding:5px 11px;min-height:34px;border:1px solid var(--line);background:var(--surface);color:var(--text2);border-radius:6px;font:inherit;font-size:.85rem;cursor:pointer}
+.rbtn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.chset{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px}
+.chk{display:flex;align-items:center;gap:0;font-size:.92rem;color:var(--text);margin-bottom:8px}
+.chk input{flex:none}
+.maRow{display:grid;grid-template-columns:minmax(170px,1.2fr) 1fr 90px;gap:8px;align-items:center;margin-bottom:6px}
+.maRow select,.maRow input{margin-top:0}
+input[type=color]{padding:2px;height:44px;cursor:pointer}
+.laylist{list-style:none;margin:0 0 6px;padding:0}
+.laylist li{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--grid)}
+.btn.sm{min-height:34px;padding:2px 10px}
+@media (max-width:560px){.maRow{grid-template-columns:1fr 1fr}.maRow .chk{grid-column:1/-1}}
 .chart svg{display:block;max-width:100%;height:auto}
 svg .t{fill:var(--text2);font-size:12px}
 svg .tm{fill:var(--muted);font-size:11px}
@@ -175,6 +201,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
       <button role="tab" data-tab="kaeufe">Käufe</button>
       <button role="tab" data-tab="konto">Konto</button>
       <button role="tab" data-tab="daten">Daten</button>
+      <button role="tab" data-tab="einstellungen">Einstellungen</button>
     </nav>
   </div>
 </header>
@@ -188,7 +215,7 @@ pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;pa
 /* ======================================================================
    Seifferts Depot v1.0
    ====================================================================== */
-const VERSION = '1.9.1';
+const VERSION = '1.10.1';
 const LS_KEY = 'seifferts_depot_v1';
 const PALETTE = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
 
@@ -253,6 +280,49 @@ const linkHTML = p => p && p.url ? `<a class="chartlink" href="${esc(p.url)}" ta
 function emptyState(){ return {positions:[], txs:[], prices:{}, cash:[], meta:{lastBackup:null}}; }
 const isWS = o => !!o && Array.isArray(o.depots);
 const hasData = s => isWS(s) ? (s.depots.length > 1 || s.depots.some(d => hasData(d.state))) : !!(s.positions.length || s.txs.length || (s.cash && s.cash.length));
+/* ---------- Chart-Einstellungen (Stil wie TradingView) ----------
+   Gespeichert unter meta.chart, beim Laden streng geprueft (cleanChart). */
+const TV = {up:'#089981', down:'#f23645'};
+const CH_TYPES = {candle:'Kerzen', hollow:'Hohle Kerzen', ha:'Heikin-Ashi', bars:'Balken (OHLC)', line:'Linie', linedots:'Linie mit Punkten', area:'Fläche', step:'Treppenlinie'};
+const CH_INT = {day:'Tag', week:'Woche', month:'Monat', quarter:'Quartal', year:'Jahr'};
+const CH_STYLE = {flat:'Flach (TradingView)', '3d':'3D-Körper', metal:'Metallisch (Zylinder)'};
+const CH_RANGE = {'1m':'1M', '3m':'3M', '6m':'6M', ytd:'YTD', '1y':'1J', '5y':'5J', all:'Alle'};
+const CH_BG = {theme:'Wie Farbschema', tvdark:'TradingView dunkel', tvlight:'TradingView hell'};
+const CH_GRID = {both:'Horizontal und vertikal', h:'Nur horizontal', v:'Nur vertikal', none:'Kein Raster'};
+const CH_AXIS = {index:'Handelstage', time:'Kalenderzeit'};
+const CH_MODE = {abs:'Preis', pct:'Prozent (ab erster sichtbarer Kerze)'};
+const CH_DEFAULT = {type:'line', interval:'day', style:'flat', range:'all', from:null, to:null, axis:'time', bg:'theme', grid:'both', mode:'abs', log:false,
+  up:TV.up, down:TV.down, vmin:null, vmax:null, vstep:null, cross:true, last:true, hl:true, legend:true,
+  ma1:{on:false, k:'sma', n:20}, ma2:{on:false, k:'ema', n:50}, bb:false};
+function cleanChart(o){
+  if (!o || typeof o !== 'object') return null;
+  const has = Object.prototype.hasOwnProperty, pick = (v, map, d) => has.call(map, v) ? v : d;
+  const col = (v, d) => /^#[0-9a-fA-F]{6}$/.test(String(v)) ? String(v).toLowerCase() : d;
+  const nn = v => { const n = typeof v === 'number' ? v : parseNum(v); return isFinite(n) ? n : null; };
+  const ma = (m, k, n) => { m = m && typeof m === 'object' ? m : {}; const x = Math.round(Number(m.n)); return {on:!!m.on, k:m.k === 'ema' ? 'ema' : m.k === 'sma' ? 'sma' : k, n:x >= 2 && x <= 400 ? x : n}; };
+  const st = nn(o.vstep), dt = v => { v = String(v || ''); return /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v)) ? v : null; };
+  let dfrom = dt(o.from), dto = dt(o.to); if (dfrom && dto && dfrom > dto) { dfrom = null; dto = null; }
+  return {type:pick(o.type, CH_TYPES, CH_DEFAULT.type), interval:pick(o.interval, CH_INT, CH_DEFAULT.interval), style:pick(o.style, CH_STYLE, 'flat'),
+    range:pick(o.range, CH_RANGE, 'all'), from:dfrom, to:dto, axis:pick(o.axis, CH_AXIS, 'time'), bg:pick(o.bg, CH_BG, 'theme'), grid:pick(o.grid, CH_GRID, 'both'),
+    mode:o.mode === 'pct' ? 'pct' : 'abs', log:!!o.log, up:col(o.up, TV.up), down:col(o.down, TV.down), vmin:nn(o.vmin), vmax:nn(o.vmax), vstep:st > 0 ? st : null,
+    cross:o.cross !== false, last:o.last !== false, hl:o.hl !== false, legend:o.legend !== false, ma1:ma(o.ma1, 'sma', 20), ma2:ma(o.ma2, 'ema', 50), bb:!!o.bb};
+}
+/* ---------- Aufbau: Reihenfolge und Sichtbarkeit (meta.layout) ---------- */
+const LAY_OV = [['vorschau', 'Vorschau-Diagramm'], ['methode', 'Berechnungsmethode'], ['kennzahlen', 'Kennzahlen'], ['rendite', 'Rendite'], ['positionen', 'Positionen (Tabelle)'], ['vergleich', 'Vergleich der Methoden']];
+const LAY_CH = [['detail', 'Verlauf einer Position'], ['qty', 'Stückzahlen je Position'], ['dots', 'Einstiegspreise der Käufe'], ['val', 'Eingesetztes Kapital und aktueller Wert'], ['donut', 'Gewichtung'], ['depot', 'Depotwert im Zeitverlauf'], ['ttwror', 'Wertentwicklung (TTWROR)'], ['konto', 'Gesamtvermögen im Zeitverlauf (nur mit Konto)']];
+const TAB_NAMES = {uebersicht:'Übersicht', diagramme:'Diagramme', kurse:'Kurse', kaeufe:'Käufe', konto:'Konto', daten:'Daten', einstellungen:'Einstellungen'};
+function cleanOrder(arr, known){
+  const out = [];
+  (Array.isArray(arr) ? arr : []).forEach(id => { if (known.includes(id) && !out.includes(id)) out.push(id); });
+  known.forEach(id => { if (!out.includes(id)) out.push(id); });
+  return out;
+}
+function cleanHide(arr, known){ const out = []; (Array.isArray(arr) ? arr : []).forEach(id => { if (known.includes(id) && !out.includes(id)) out.push(id); }); return out; }
+function cleanLayout(o){
+  o = o && typeof o === 'object' ? o : {};
+  const ov = LAY_OV.map(x => x[0]), ch = LAY_CH.map(x => x[0]), tabs = Object.keys(TAB_NAMES);
+  return {ov:cleanOrder(o.ov, ov), ovHide:cleanHide(o.ovHide, ov), ch:cleanOrder(o.ch, ch), chHide:cleanHide(o.chHide, ch), tabs:cleanOrder(o.tabs, tabs), start:tabs.includes(o.start) ? o.start : ''};
+}
 function normalizeState(o){
   const s = emptyState();
   if (!o || typeof o !== 'object') return s;
@@ -291,6 +361,8 @@ function normalizeState(o){
   if (o.meta && ['avg', 'fifo', 'lifo', 'net'].includes(o.meta.method)) s.meta.method = o.meta.method;
   if (o.meta && ['line', 'candle'].includes(o.meta.chartType)) s.meta.chartType = o.meta.chartType;
   if (o.meta && ['day', 'week', 'month'].includes(o.meta.candleGrid)) s.meta.candleGrid = o.meta.candleGrid;
+  if (o.meta && o.meta.chart) { const cch = cleanChart(o.meta.chart); if (cch) s.meta.chart = cch; }
+  if (o.meta && o.meta.layout) s.meta.layout = cleanLayout(o.meta.layout);
   if (o.meta && ['all', 'ytd', '1y', '6m', '3m', '1m'].includes(o.meta.perfPeriod)) s.meta.perfPeriod = o.meta.perfPeriod;
   return s;
 }
@@ -709,7 +781,7 @@ function ttwrorChart(w, series){
 }
 
 /* ---------- UI-Helfer ---------- */
-const ui = {tab:'uebersicht', sort:{key:'value', dir:-1}, showClosed:false, txEdit:null, txFilter:'', detailPos:'', lastDate:null, openHist:null};
+const ui = {tab:'uebersicht', sort:{key:'value', dir:-1}, showClosed:false, txEdit:null, txFilter:'', detailPos:'', lastDate:null, openHist:null, view:{}, chOpen:false};
 let toastT;
 function toast(msg, ms = 2600){
   const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
@@ -746,20 +818,22 @@ function download(name, text, mime){
 /* ======================================================================
    Navigation
    ====================================================================== */
-const TABS = ['uebersicht', 'diagramme', 'kurse', 'kaeufe', 'konto', 'daten'];
+const TABS = ['uebersicht', 'diagramme', 'kurse', 'kaeufe', 'konto', 'daten', 'einstellungen'];
 function go(tab){
   if (!TABS.includes(tab)) tab = 'uebersicht';
-  ui.tab = tab;
+  ui.tab = tab; ui.view = {};
   if (location.hash !== '#' + tab) { try { history.replaceState(null, '', '#' + tab); } catch (e) {} }
   render(); window.scrollTo(0, 0);
 }
 function render(){
+  { const nv0 = $('#nav'); if (nv0) curLayout().tabs.forEach(t => { const b0 = nv0.querySelector('[data-tab="' + t + '"]'); if (b0) nv0.appendChild(b0); }); }
   document.querySelectorAll('#nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === ui.tab ? 'true' : 'false'));
   { const nv = $('#nav'), sel = nv && nv.querySelector('[aria-selected="true"]'); if (sel) nv.scrollLeft = Math.max(0, sel.offsetLeft - (nv.clientWidth - sel.offsetWidth) / 2); }
   const v = $('#view');
-  v.innerHTML = ({uebersicht:viewOverview, diagramme:viewCharts, kurse:viewKurse, kaeufe:viewKaeufe, konto:viewKonto, daten:viewDaten})[ui.tab]();
+  v.innerHTML = ({uebersicht:viewOverview, diagramme:viewCharts, kurse:viewKurse, kaeufe:viewKaeufe, konto:viewKonto, daten:viewDaten, einstellungen:viewEinstellungen})[ui.tab]();
   if (ui.tab === 'diagramme') drawCharts();
   if (ui.tab === 'uebersicht') drawPreview();
+  if (ui.tab === 'einstellungen') drawDepot('c-set');
   fillDepotSel();
 }
 
@@ -804,11 +878,15 @@ function viewOverview(){
   if (tot.fallback) h += `<div class="note">${tot.fallback} Position${tot.fallback > 1 ? 'en haben' : ' hat'} noch keinen eigenen Kurs. Dort wird der letzte Transaktionspreis angesetzt (Gewinn/Verlust bleibt deshalb bei etwa null). <a href="#kurse" data-act="goto" data-tab="kurse">Kurse erfassen</a></div>`;
   if (tot.stale) h += `<div class="note">${tot.stale} Kurs${tot.stale > 1 ? 'e sind' : ' ist'} älter als 7 Tage und in der Tabelle als veraltet markiert.</div>`;
   h += cashNote();
+  const seg = {head:h}; h = '';
   h += `<section class="card" id="prevcard"><h2>Vorschau</h2>
+    ${chartToolbar(true)}
     <div class="legend"><span><i class="sw line" style="background:var(--s1)"></i>Depotwert</span><span><i class="sw line" style="background:var(--s2)"></i>Netto-Rendite</span><span><i class="sw" style="background:var(--muted);width:2px;height:12px;border-radius:0"></i>Kurs erfasst</span></div>
     <div class="chart" id="c-prev"></div><p class="hint" id="c-prev-s" style="margin:6px 0 0"></p>
     <details><summary>Werte als Tabelle und Berechnung</summary><p class="hint">Netto-Rendite ist das Gesamtergebnis nach Gebühren (Kursgewinn, Verkaufsgewinne und Erträge) in Prozent des eingesetzten Kapitals. ${cashOn() ? 'Eingesetztes Kapital ist hier das netto eingezahlte Geld aus dem Reiter Konto.' : 'Eingesetztes Kapital ist hier die Summe aller bisherigen Kaufbeträge inklusive Gebühren.'} Sie ist bei jeder Berechnungsmethode gleich.</p><div id="c-prev-t"></div></details></section>`;
+  seg.vorschau = h; h = '';
   h += methodBar();
+  seg.methode = h; h = '';
   h += `<div class="kpis">
     <div class="kpi"><div class="l">Depotwert</div><div class="v">${eur(tot.value)}</div><div class="s">${tot.openCount} offene Position${tot.openCount === 1 ? '' : 'en'}</div></div>
     <div class="kpi"><div class="l">Eingesetzt (Einstand)</div><div class="v">${eur(tot.cost)}</div><div class="s">${METHODS[curMethod()].kpi}</div></div>
@@ -816,7 +894,9 @@ function viewOverview(){
     <div class="kpi"><div class="l">Realisiert (Verkäufe)</div><div class="v ${signCls(tot.realized)}">${eurS(tot.realized)}</div><div class="s">${tot.lastKurs ? 'Letzter Kurs: ' + fd(tot.lastKurs) : 'noch keine Kurse'}</div></div>
   </div>`;
   if (cashOn()) h += cashKpis(tot);
+  seg.kennzahlen = h; h = '';
   h += perfCard();
+  seg.rendite = h; h = '';
   const SORTS = [['value','Wert'],['gvPct','Gewinn/Verlust %'],['gv','Gewinn/Verlust €'],['share','Anteil'],['name','Name'],['cost','Einstand']];
   h += `<label class="sortm">Sortieren nach<select id="sortSel">${SORTS.map(([k, l]) => `<option value="${k}"${ui.sort.key === k ? ' selected' : ''}>${l}${k === 'name' ? ' (A–Z)' : ' (absteigend)'}</option>`).join('')}</select></label>`;
   h += `<div class="cards-m">${shown.length ? shown.map(r => `<div class="pcard${r.errors.length ? ' err' : ''}"><div class="ph"><div><strong>${esc(r.pos.name)}</strong>${r.pos.sym ? `<span class="sub">${esc(r.pos.sym)}${r.open ? '' : ' · geschlossen'}</span>` : (r.open ? '' : '<span class="sub">geschlossen</span>')}<span class="sub">${r.pos.url ? linkHTML(r.pos) : addLinkHTML(r.pos)}</span></div>
@@ -840,9 +920,12 @@ function viewOverview(){
   if (shown.length > 1 || tot.openCount) h += `<tfoot><tr><td>Gesamt</td><td></td><td></td><td></td><td>${eur(tot.cost)}</td><td>${eur(tot.value)}</td><td class="${signCls(tot.gv)}">${eurS(tot.gv)}</td><td class="${signCls(tot.gv)}">${pctS(tot.gvPct)}</td><td>${tot.value > 0 ? '100,0 %' : '–'}</td></tr></tfoot>`;
   h += `</table></div>`;
   if (closedCount) h += `<div class="checkrow" style="margin-top:12px"><input type="checkbox" id="showClosed"${ui.showClosed ? ' checked' : ''}><label for="showClosed" style="margin:0">Geschlossene Positionen anzeigen (${closedCount})</label></div>`;
+  seg.positionen = h; h = '';
   h += methodCompare(rows);
   h += `<p class="hint">Ø Einstieg ist der Einstiegspreis je Stück ohne Gebühren, Einstand der eingesetzte Betrag inklusive Gebühren (bei Netto-Einstand abzüglich der Verkaufserlöse). Beides richtet sich nach der gewählten Berechnungsmethode. Der angesetzte Kurs ist der jeweils neueste erfasste Kurs.</p>`;
-  return h;
+  seg.vergleich = h;
+  const Lv = curLayout();
+  return seg.head + Lv.ov.filter(id => !Lv.ovHide.includes(id)).map(id => seg[id] || '').join('');
 }
 
 /* ======================================================================
@@ -1327,23 +1410,26 @@ function viewCharts(){
   if (!open.length) return `<div class="card"><p>Keine offenen Positionen, daher gibt es nichts zu zeichnen.</p></div>`;
   if (!open.find(r => r.pos.id === ui.detailPos)) ui.detailPos = open[0].pos.id;
   const detailOpts = state.positions.map(p => `<option value="${p.id}"${p.id === ui.detailPos ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
-  const bar = methodBar() + chartBar(), candle = curChart().type === 'candle';
+  const bar = methodBar() + chartToolbar(), candle = isCandleType(curChart().type);
   const card = (id, title, sub, extra = '') => `<section class="card"><h2>${title}</h2>${sub ? `<p class="hint" style="margin-top:0">${sub}</p>` : ''}${extra}<div class="chart" id="${id}"></div><details><summary>Werte als Tabelle</summary><div id="${id}-t"></div></details></section>`;
-  return bar + card('c-qty', 'Stückzahlen je Position', 'Aktueller Bestand nach allen Käufen und Verkäufen.')
-    + card('c-dots', 'Einstiegspreise der Käufe im Vergleich zum Durchschnitt', 'Jede Zeile zeigt, wie weit die einzelnen Käufe und der aktuelle Kurs vom eigenen Ø-Einstiegspreis entfernt liegen (Mitte = Ø). Die Größe der Punkte entspricht der gekauften Stückzahl.',
-        `<div class="legend"><span><i class="sw dot" style="background:var(--s1)"></i>Kauf (Größe = Stück)</span><span><i class="sw dia" style="background:var(--s2)"></i>aktueller Kurs</span><span><i class="sw line" style="background:var(--text2);width:3px;height:14px"></i>Ø-Einstiegspreis</span></div>`)
-    + card('c-val', 'Eingesetztes Kapital und aktueller Wert', 'In Euro, je Position.',
-        `<div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Einstand</span><span><i class="sw" style="background:var(--s2)"></i>aktueller Wert</span></div>`)
-    + `<section class="card"><h2>${cashOn() ? 'Gewichtung inklusive Kapital' : 'Gewichtung im Depot'}</h2><p class="hint" style="margin-top:0">${cashOn() ? 'Anteil am Gesamtvermögen: Positionen zum aktuellen Wert und verfügbares Kapital auf dem Konto.' : 'Anteil am aktuellen Depotwert.'}</p><div class="chart" id="c-donut"></div><details><summary>Werte als Tabelle</summary><div id="c-donut-t"></div></details></section>`
-    + `<section class="card"><h2>Verlauf einer Position</h2><p class="hint" style="margin-top:0">Kursverlauf mit deinen Käufen und Verkäufen und dem gleitenden Ø-Einstiegspreis, darunter der Bestand in Stück.</p>
-        <label>Position<select id="detailSel">${detailOpts}</select></label><p class="hint" id="detailLink" style="margin:-4px 0 8px"></p>
+  const blocks = {};
+  blocks.qty = card('c-qty', 'Stückzahlen je Position', 'Aktueller Bestand nach allen Käufen und Verkäufen.');
+  blocks.dots = card('c-dots', 'Einstiegspreise der Käufe im Vergleich zum Durchschnitt', 'Jede Zeile zeigt, wie weit die einzelnen Käufe und der aktuelle Kurs vom eigenen Ø-Einstiegspreis entfernt liegen (Mitte = Ø). Die Größe der Punkte entspricht der gekauften Stückzahl.',
+        `<div class="legend"><span><i class="sw dot" style="background:var(--s1)"></i>Kauf (Größe = Stück)</span><span><i class="sw dia" style="background:var(--s2)"></i>aktueller Kurs</span><span><i class="sw line" style="background:var(--text2);width:3px;height:14px"></i>Ø-Einstiegspreis</span></div>`);
+  blocks.val = card('c-val', 'Eingesetztes Kapital und aktueller Wert', 'In Euro, je Position.',
+        `<div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Einstand</span><span><i class="sw" style="background:var(--s2)"></i>aktueller Wert</span></div>`);
+  blocks.donut = `<section class="card"><h2>${cashOn() ? 'Gewichtung inklusive Kapital' : 'Gewichtung im Depot'}</h2><p class="hint" style="margin-top:0">${cashOn() ? 'Anteil am Gesamtvermögen: Positionen zum aktuellen Wert und verfügbares Kapital auf dem Konto.' : 'Anteil am aktuellen Depotwert.'}</p><div class="chart" id="c-donut"></div><details><summary>Werte als Tabelle</summary><div id="c-donut-t"></div></details></section>`;
+  blocks.detail = `<section class="card"><h2>Verlauf einer Position</h2><p class="hint" style="margin-top:0">Kursverlauf mit deinen Käufen und Verkäufen und dem gleitenden Ø-Einstiegspreis, darunter der Bestand in Stück.</p>
+        <label>Position<select id="detailSel">${detailOpts}</select></label><div class="btns" style="margin:-2px 0 8px"><button type="button" class="btn sm" data-act="chfirst">Ab erstem Kauf anzeigen</button></div><p class="hint" id="detailLink" style="margin:-4px 0 8px"></p>
         <div class="legend">${candle ? candleLegend() : '<span><i class="sw line" style="background:var(--s1)"></i>Kurs</span>'}<span><i class="sw dash" style="border-color:var(--s2)"></i>Ø-Einstiegspreis</span><span><i class="sw dot" style="background:var(--s2)"></i>Kauf (Größe = Stück)</span><span>▽ Verkauf</span></div>
-        <div class="chart" id="c-detail"></div><details><summary>Werte als Tabelle</summary><div id="c-detail-t"></div></details></section>`
-    + card('c-depot', 'Depotwert im Zeitverlauf', 'Wert aus Stückzahl mal letztem bekannten Kurs, dazu das eingesetzte Kapital. Je öfter du Kurse erfasst, desto genauer die Linie.',
-        `<div class="legend">${candle ? candleLegend() : '<span><i class="sw line" style="background:var(--s1)"></i>Depotwert</span>'}<span><i class="sw line" style="background:var(--s2)"></i>Eingesetzt (Einstand)</span></div>`)
-    + card('c-ttwror', 'Wertentwicklung (TTWROR)', 'Kumulierte zeitgewichtete Rendite seit Beginn des gewählten Zeitraums, bereinigt um Ein- und Auszahlungen. Erklärung in der Übersicht unter Rendite.', perfSelHTML())
-    + (cashOn() ? card('c-konto', 'Gesamtvermögen im Zeitverlauf', 'Depotwert plus Kapital auf dem Konto, verglichen mit dem Geld, das du netto eingezahlt hast. Der Abstand der beiden Linien ist dein Gesamtergebnis.',
+        <div class="chart" id="c-detail"></div><details><summary>Werte als Tabelle</summary><div id="c-detail-t"></div></details></section>`;
+  blocks.depot = card('c-depot', 'Depotwert im Zeitverlauf', 'Wert aus Stückzahl mal letztem bekannten Kurs, dazu das eingesetzte Kapital. Je öfter du Kurse erfasst, desto genauer die Linie.',
+        `<div class="legend">${candle ? candleLegend() : '<span><i class="sw line" style="background:var(--s1)"></i>Depotwert</span>'}<span><i class="sw line" style="background:var(--s2)"></i>Eingesetzt (Einstand)</span></div>`);
+  blocks.ttwror = card('c-ttwror', 'Wertentwicklung (TTWROR)', 'Kumulierte zeitgewichtete Rendite seit Beginn des gewählten Zeitraums, bereinigt um Ein- und Auszahlungen. Erklärung in der Übersicht unter Rendite.', perfSelHTML());
+  blocks.konto = (cashOn() ? card('c-konto', 'Gesamtvermögen im Zeitverlauf', 'Depotwert plus Kapital auf dem Konto, verglichen mit dem Geld, das du netto eingezahlt hast. Der Abstand der beiden Linien ist dein Gesamtergebnis.',
         `<div class="legend">${candle ? candleLegend() : '<span><i class="sw line" style="background:var(--s1)"></i>Gesamtvermögen</span>'}<span><i class="sw line" style="background:var(--s2)"></i>Netto eingezahlt</span></div>`) : '');
+  const Ly = curLayout(), shown = Ly.ch.filter(id => !Ly.chHide.includes(id) && blocks[id]);
+  return bar + (shown.length ? shown.map(id => blocks[id]).join('') : '<div class="card"><p>Alle Diagramme sind ausgeblendet. Unter Einstellungen kannst du sie wieder einblenden.</p></div>');
 }
 
 /* --- Helfer --- */
@@ -1371,19 +1457,34 @@ const tm = d => Date.parse(d);
 const tdate = t => new Date(t).toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'2-digit', timeZone:'UTC'});
 function timeTicks(t0, t1, n){ const a = []; for (let i = 0; i <= n; i++) a.push(t0 + (t1 - t0) * i / n); return a; }
 
-/* --- Kerzen-Charts --- */
-const curChart = () => ({type:state.meta.chartType === 'candle' ? 'candle' : 'line', grid:['day', 'week', 'month'].includes(state.meta.candleGrid) ? state.meta.candleGrid : 'week'});
-function setChartPref(k, v){ state.meta[k] = v; saveState(); const y = window.scrollY; render(); window.scrollTo(0, y); }
-function chartBar(){
-  const c = curChart(), o = (v, t, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${t}</option>`;
-  return `<div class="card" style="padding:10px 14px"><div class="grid2">
-    <label style="margin:0">Darstellung der Verläufe<select id="chartTypeSel">${o('line', 'Linie', c.type)}${o('candle', 'Kerzen', c.type)}</select></label>
-    <label style="margin:0">Kerzenlänge<select id="candleGridSel"${c.type === 'candle' ? '' : ' disabled'}>${o('day', 'Tag', c.grid)}${o('week', 'Woche', c.grid)}${o('month', 'Monat', c.grid)}</select></label></div>
-    <details><summary>Wie lese ich Kerzen?</summary><p class="hint" style="margin-top:0">Eine Kerze zeigt Eröffnung, Hoch, Tief und Schluss eines Zeitraums. Hohle blaue Kerze: Schluss über Eröffnung (gestiegen). Gefüllte rote Kerze: Schluss unter Eröffnung (gefallen). Der dünne Strich reicht vom Tief bis zum Hoch. Gilt für den Kursverlauf einer Position und die Verläufe von Depotwert und Gesamtvermögen. Hast du keine Werte für Eröffnung, Hoch und Tief erfasst (Reiter Kurse, auch per CSV mit Open, High, Low), werden sie aus den erfassten Schlusskursen abgeleitet: Eröffnung ist der Schluss des Vorzeitraums, Hoch und Tief sind der höchste und niedrigste erfasste Kurs im Zeitraum. Das sind dann Näherungen, keine echten Tageshochs.</p></details></div>`;
+/* --- Preis-Charts im Stil von TradingView: Kerzen, Balken, Linien; 3D und metallisch; Zeitrahmen, Intervall, Werteachse --- */
+const isCandleType = t => t === 'candle' || t === 'hollow' || t === 'ha' || t === 'bars';
+function curChart(){
+  const m = state.meta;
+  if (m.chart) return Object.assign({}, CH_DEFAULT, m.chart);
+  const cd = m.chartType === 'candle';   /* aeltere Daten: bisherige Einstellung uebernehmen */
+  return Object.assign({}, CH_DEFAULT, {type:cd ? 'candle' : 'line', interval:cd ? (CH_INT[m.candleGrid] ? m.candleGrid : 'week') : 'day', axis:cd ? 'index' : 'time'});
+}
+function setChart(patch){
+  const next = cleanChart(Object.assign({}, curChart(), patch));
+  if ('interval' in patch || 'range' in patch || 'axis' in patch || 'type' in patch || 'from' in patch || 'to' in patch) ui.view = {};
+  state.meta.chart = next; saveState();
+  const y = window.scrollY; render(); window.scrollTo(0, y);
+}
+const nfCache = {};
+const fmtDec = (v, d) => (nfCache[d] || (nfCache[d] = new Intl.NumberFormat('de-DE', {minimumFractionDigits:d, maximumFractionDigits:d}))).format(v);
+const r1 = v => Math.round(v * 10) / 10;
+function hexRGB(h){ const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+/* f < 1 dunkler, f > 1 heller (Mischung mit Weiss, f = 2 ist Weiss) */
+function shade(h, f){
+  const r = hexRGB(h).map(v => f <= 1 ? v * f : v + (255 - v) * (f - 1));
+  return '#' + r.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
 }
 function bucketKey(date, g){
   if (g === 'day') return date;
   if (g === 'month') return date.slice(0, 7);
+  if (g === 'quarter') return date.slice(0, 4) + 'Q' + (Math.floor((+date.slice(5, 7) - 1) / 3) + 1);
+  if (g === 'year') return date.slice(0, 4);
   const t = Date.parse(date), dow = (new Date(t).getUTCDay() + 6) % 7;
   return new Date(t - dow * 864e5).toISOString().slice(0, 10);
 }
@@ -1403,29 +1504,243 @@ function makeCandles(pts, g){
   out.forEach(c => { c.h = Math.max(c.h, c.o); c.l = Math.min(c.l, c.o); });
   return out;
 }
-function candleWidth(cs, pw, t0, t1){
-  if (cs.length < 2) return 12;
-  let gap = Infinity;
-  for (let i = 1; i < cs.length; i++) gap = Math.min(gap, (tm(cs[i].d1) - tm(cs[i - 1].d1)) / (t1 - t0) * pw);
-  return Math.max(2, Math.min(16, gap * 0.62));
-}
-function candleTip(c, g, fmt, name, extra){
-  const per = g === 'day' || c.d0 === c.d1 ? fd(c.d1) : `${fd(c.d0)} bis ${fd(c.d1)} (${c.n} Kurse)`, ch = c.o ? (c.c - c.o) / c.o : 0;
-  return `${name ? name + ' ' : ''}${per}\nEröffnung ${fmt(c.o)}\nHoch ${fmt(c.h)}\nTief ${fmt(c.l)}\nSchluss ${fmt(c.c)} (${pctS(ch)})` + (c.real ? '' : '\nHoch/Tief aus den erfassten Schlusskursen') + (extra ? '\n' + extra : '');
-}
-/* Zeichnet Kerzen samt Hover-Baendern. X: Kerze -> x, Y: Wert -> y */
-function candleGfx(cs, X, Y, T, H, L, pw, bw, tip){
-  let g = '';
+function haCandles(cs){
+  const out = [];
   cs.forEach((c, i) => {
-    const cx = X(c), up = c.c >= c.o, col = up ? 'var(--pos)' : 'var(--neg)', yt = Y(Math.max(c.o, c.c)), yb = Y(Math.min(c.o, c.c)), bh = Math.max(1.5, yb - yt);
-    g += `<line x1="${cx}" x2="${cx}" y1="${Y(c.h)}" y2="${Y(c.l)}" style="stroke:${col};stroke-width:1.5;pointer-events:none"/>`;
-    g += `<rect x="${cx - bw / 2}" y="${yt}" width="${bw}" height="${bh}" rx="1" style="fill:${up ? 'var(--surface)' : col};stroke:${col};stroke-width:1.5;pointer-events:none"/>`;
-    const xa = i ? (X(cs[i - 1]) + cx) / 2 : L, xb = i < cs.length - 1 ? (cx + X(cs[i + 1])) / 2 : L + pw;
-    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${H}" data-tip="${esc(tip(c))}"/>`;
+    const hc = (c.o + c.h + c.l + c.c) / 4, ho = i ? (out[i - 1].o + out[i - 1].c) / 2 : (c.o + c.c) / 2;
+    out.push(Object.assign({}, c, {o:ho, c:hc, h:Math.max(c.h, ho, hc), l:Math.min(c.l, ho, hc)}));
   });
-  return g;
+  return out;
 }
-const candleLegend = () => `<span><i class="sw" style="background:var(--surface);border:2px solid var(--pos);box-sizing:border-box"></i>gestiegen (hohl)</span><span><i class="sw" style="background:var(--neg)"></i>gefallen (gefüllt)</span>`;
+function smaArr(a, n){ const o = new Array(a.length).fill(null); let s = 0; a.forEach((v, i) => { s += v; if (i >= n) s -= a[i - n]; if (i >= n - 1) o[i] = s / n; }); return o; }
+function emaArr(a, n){ const k = 2 / (n + 1); let e = null; return a.map((v, i) => { e = e === null ? v : v * k + e * (1 - k); return i >= n - 1 ? e : null; }); }
+function bbArr(a, n, m){
+  const mid = smaArr(a, n), u = [], l = [];
+  a.forEach((v, i) => {
+    if (mid[i] === null) { u.push(null); l.push(null); return; }
+    let s = 0; for (let j = i - n + 1; j <= i; j++) s += (a[j] - mid[i]) * (a[j] - mid[i]);
+    const sd = Math.sqrt(s / n); u.push(mid[i] + m * sd); l.push(mid[i] - m * sd);
+  });
+  return {m:mid, u, l};
+}
+function logTicks(lo, hi){
+  let out = [];
+  for (const m of [[1, 2, 5], [1, 1.5, 2, 3, 5, 7], [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9]]) {
+    out = [];
+    for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) m.forEach(f => { const v = f * Math.pow(10, e); if (v >= lo && v <= hi) out.push(+v.toPrecision(6)); });
+    if (out.length >= 4) break;
+  }
+  return out.length >= 2 ? out : [];
+}
+function axisLabel(t, g){
+  const d = new Date(t), y = d.getUTCFullYear();
+  if (g === 'year') return String(y);
+  if (g === 'month' || g === 'quarter') return pad2(d.getUTCMonth() + 1) + '.' + y;
+  return tdate(t);
+}
+/* Sichtbarer Ausschnitt (Index der ersten und letzten Kerze): Zeitrahmen oder vom Nutzer verschoben/gezoomt */
+function rangeCut(last, r){
+  if (r === 'ytd') return last.slice(0, 4) + '-01-01';
+  const d = new Date(Date.parse(last));
+  if (r === '1m') d.setUTCMonth(d.getUTCMonth() - 1); else if (r === '3m') d.setUTCMonth(d.getUTCMonth() - 3); else if (r === '6m') d.setUTCMonth(d.getUTCMonth() - 6);
+  else if (r === '1y') d.setUTCFullYear(d.getUTCFullYear() - 1); else if (r === '5y') d.setUTCFullYear(d.getUTCFullYear() - 5);
+  return d.toISOString().slice(0, 10);
+}
+function viewWindow(cid, cs, cc){
+  const n = cs.length; let i0 = 0, i1 = n - 1; const v = ui.view[cid];
+  if (v) { i0 = v.i0; i1 = v.i1; }
+  else if (cc.from || cc.to) {
+    if (cc.from) { const k = cs.findIndex(c => c.d1 >= cc.from); i0 = k < 0 ? n - 1 : k; }
+    if (cc.to) { let k = -1; cs.forEach((c, j) => { if (c.d0 <= cc.to) k = j; }); i1 = k < 0 ? 0 : k; }
+  }
+  else if (cc.range !== 'all' && n > 2) {
+    const cut = rangeCut(cs[n - 1].d1, cc.range), k = cs.findIndex(c => c.d1 >= cut);
+    i0 = Math.min(k < 0 ? n - 1 : k, n - 2);
+  }
+  const minSpan = !v && (cc.from || cc.to) ? 0 : Math.min(n - 1, 4);
+  i1 = Math.max(0, Math.min(n - 1, i1)); i0 = Math.max(0, Math.min(i0, i1 - minSpan));
+  if (i1 - i0 < minSpan) i1 = Math.min(n - 1, i0 + minSpan);
+  return {i0, i1};
+}
+/* Abbildung Kerze/Datum -> x. 'index': jede Kerze gleich breit (Handelstage), 'time': maßstabsgetreue Kalenderzeit */
+function makeLayout(cs, i0, i1, L, pw, mode){
+  const n = i1 - i0 + 1, times = cs.map(c => tm(c.d1)), clampI = i => Math.max(i0, Math.min(i1, i));
+  if (mode === 'index') {
+    const sw = pw / Math.max(1, n), avg = cs.length > 1 ? (times[times.length - 1] - times[0]) / (cs.length - 1) || 864e5 : 864e5;
+    const xi = i => L + (i - i0 + 0.5) * sw;
+    const fidx = t => {
+      const last = times.length - 1;
+      if (t <= times[0]) return (t - times[0]) / avg;
+      if (t >= times[last]) return last + (t - times[last]) / avg;
+      let lo = 0, hi = last;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (times[m] <= t) lo = m; else hi = m; }
+      return lo + (t - times[lo]) / (times[hi] - times[lo]);
+    };
+    return {xi, xt:t => L + (fidx(t) - i0 + 0.5) * sw, bw:Math.max(1.5, Math.min(40, sw * 0.72)), nearest:px => clampI(Math.round((px - L) / sw - 0.5 + i0)),
+      ticks:k => { const o = []; for (let j = 0; j <= k; j++) { const i = Math.round(i0 + (i1 - i0) * j / k); if (!o.length || o[o.length - 1].i !== i) o.push({i, x:xi(i), t:times[i]}); } return o; }};
+  }
+  let gap = Infinity;
+  for (let i = i0 + 1; i <= i1; i++) gap = Math.min(gap, times[i] - times[i - 1]);
+  const ta = times[i0], span = Math.max(times[i1] - ta, 864e5), inner = pw - 24;
+  const bw = isFinite(gap) ? Math.max(1.5, Math.min(40, gap / span * inner * 0.72)) : 14, pad = bw / 2 + 5;
+  const xt = t => i1 === i0 ? L + pw / 2 : L + pad + (t - ta) / span * (pw - 2 * pad);
+  return {xi:i => xt(times[i]), xt, bw, nearest:px => { let b = i0, bd = Infinity; for (let i = i0; i <= i1; i++) { const d = Math.abs(xt(times[i]) - px); if (d < bd) { bd = d; b = i; } } return b; },
+    ticks:k => { const o = []; for (let j = 0; j <= k; j++) { const t = ta + span * j / k; o.push({x:xt(t), t}); } return i1 === i0 ? [{x:xt(ta), t:ta}] : o; }};
+}
+const lgrad3 = (id, c) => `<linearGradient id="${id}" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${shade(c, 1.3)}"/><stop offset=".5" stop-color="${c}"/><stop offset="1" stop-color="${shade(c, .72)}"/></linearGradient>`;
+const lgradM = (id, c) => `<linearGradient id="${id}" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${shade(c, .48)}"/><stop offset=".14" stop-color="${shade(c, 1.08)}"/><stop offset=".3" stop-color="${shade(c, 1.78)}"/><stop offset=".46" stop-color="${shade(c, 1.2)}"/><stop offset=".74" stop-color="${shade(c, .76)}"/><stop offset="1" stop-color="${shade(c, .4)}"/></linearGradient>`;
+const axTag = (x, w, y, txt, fill) => `<rect x="${x}" y="${r1(y - 9)}" width="${w}" height="18" rx="2" style="fill:${fill}"/><text x="${x + 6}" y="${r1(y + 4)}" style="fill:#fff;font-size:11px;font-variant-numeric:tabular-nums">${esc(txt)}</text>`;
+/* Kurspanel: Raster, Achsen, Serie, Indikatoren, Marken. Liefert Teile, die der Aufrufer zum fertigen SVG zusammensetzt. */
+function pricePlot(o){
+  const cc = o.cc, cs = o.cs, cid = o.cid, L = o.L, pw = o.pw, T = o.T, H = o.H, RA = o.w - L - pw;
+  const win = viewWindow(cid, cs, cc), i0 = win.i0, i1 = win.i1;
+  const lay = makeLayout(cs, i0, i1, L, pw, cc.axis), isC = isCandleType(cc.type), hide = !!o.hideSeries;
+  const disp = cc.type === 'ha' ? haCandles(cs) : cs, vis = disp.slice(i0, i1 + 1);
+  const closes = cs.map(c => c.c), ind = [];
+  [cc.ma1, cc.ma2].forEach((m, k) => { if (m.on && !hide) ind.push({name:(m.k === 'ema' ? 'EMA ' : 'SMA ') + m.n, col:k ? '#ff6d00' : '#2962ff', arr:m.k === 'ema' ? emaArr(closes, m.n) : smaArr(closes, m.n)}); });
+  const bb = cc.bb && !hide ? bbArr(closes, 20, 2) : null;
+  const base = vis.length ? vis[0].c : 1, pct = cc.mode === 'pct' && base > 0, tf = pct ? v => (v / base - 1) * 100 : v => v;
+  let vals = [];
+  if (!hide) vis.forEach(c => { if (isC) vals.push(c.h, c.l); else vals.push(c.c); });
+  ind.forEach(s => { for (let i = i0; i <= i1; i++) if (s.arr[i] != null) vals.push(s.arr[i]); });
+  if (bb) for (let i = i0; i <= i1; i++) if (bb.u[i] != null) vals.push(bb.u[i], bb.l[i]);
+  const ta = tm(cs[i0].d0), tb = tm(cs[i1].d1);
+  (o.extras || []).forEach(e => { if (e.t >= ta - 864e5 && e.t <= tb + 864e5) vals.push(e.v); });
+  vals = vals.filter(isFinite).map(tf);
+  if (!vals.length) vals = [0, 1];
+  let lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  const logOK = cc.log && !pct && lo > 0;
+  if (logOK) { const r = hi > lo ? Math.pow(hi / lo, 0.06) : 1.1; lo /= r; hi *= r; }
+  else { const sp = (hi - lo) || Math.abs(hi) * 0.1 || 1; lo -= sp * 0.08; hi += sp * 0.08; }
+  const mlo = cc.vmin != null ? cc.vmin : lo, mhi = cc.vmax != null ? cc.vmax : hi;
+  if (mlo < mhi && !(logOK && mlo <= 0)) { lo = mlo; hi = mhi; }
+  let ticks = [], step = 0;
+  if (logOK) ticks = logTicks(lo, hi);
+  if (!ticks.length) {
+    step = cc.vstep && (hi - lo) / cc.vstep <= 40 ? cc.vstep : niceStep(hi - lo, Math.max(3, Math.round(H / 30)));
+    for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + step * 1e-6; v += step) ticks.push(+v.toFixed(10));
+  }
+  const tfmt = step ? axisFmt(step) : v => fmtDec(v, hi < 100 ? 2 : hi < 1000 ? 1 : 0);
+  const Yd = v => { const f = logOK ? (Math.log(Math.max(v, 1e-12)) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) : (v - lo) / (hi - lo); return r1(T + H - f * H); };
+  const Y = v => Yd(tf(v));
+  const inv = py => { const f = (T + H - py) / H; return logOK ? Math.exp(Math.log(lo) + f * (Math.log(hi) - Math.log(lo))) : lo + f * (hi - lo); };
+  const vfmt = v => pct ? (v > 0 ? '+' : '') + fmtDec(v, 2) + ' %' : fmtDec(v, 2);
+  const upC = cc.up, dnC = cc.down, X0 = L + pw;
+  const defs = [`<clipPath id="${cid}-cp"><rect x="${L}" y="${T}" width="${pw}" height="${H}"/></clipPath>`];
+  let back = '', body = '', front = '';
+  /* Raster und Achsen */
+  if (cc.grid === 'both' || cc.grid === 'h') ticks.forEach(v => { back += `<line class="grid" x1="${L}" x2="${X0}" y1="${Yd(v)}" y2="${Yd(v)}"/>`; });
+  const xt = lay.ticks(o.w < 420 ? 3 : 5);
+  if (cc.grid === 'both' || cc.grid === 'v') xt.forEach(k => { back += `<line class="grid" x1="${r1(k.x)}" x2="${r1(k.x)}" y1="${T}" y2="${o.vBottom}"/>`; });
+  xt.forEach((k, i, a) => { front += `<text class="tm" x="${r1(k.x)}" y="${o.axisY}" text-anchor="${a.length === 1 ? 'middle' : i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${axisLabel(k.t, cc.interval)}</text>`; });
+  ticks.forEach(v => { front += `<text class="tm" x="${X0 + 8}" y="${Yd(v) + 4}">${pct ? (v > 0 ? '+' : '') + tfmt(v) + ' %' : tfmt(v)}</text>`; });
+  back += `<line class="axis" x1="${X0}" x2="${X0}" y1="${T}" y2="${T + H}"/><line class="axis" x1="${L}" x2="${X0}" y1="${T + H}" y2="${T + H}"/>`;
+  /* Bollinger-Baender */
+  if (bb) {
+    let seg = [], up = '', dn = '', mid = '', run = false;
+    const flush = () => { if (seg.length > 1) body += `<path d="M${seg.map(p => p[0] + ',' + p[1]).join('L')}L${seg.slice().reverse().map(p => p[0] + ',' + p[2]).join('L')}Z" style="fill:#2962ff;fill-opacity:.1;stroke:none"/>`; seg = []; };
+    for (let i = i0; i <= i1; i++) {
+      if (bb.u[i] == null) { run = false; flush(); continue; }
+      const x = r1(lay.xi(i)), yu = Y(bb.u[i]), yl = Y(bb.l[i]), ym = Y(bb.m[i]);
+      seg.push([x, yu, yl]); up += (run ? 'L' : 'M') + x + ',' + yu; dn += (run ? 'L' : 'M') + x + ',' + yl; mid += (run ? 'L' : 'M') + x + ',' + ym; run = true;
+    }
+    flush();
+    body += `<path d="${up}" style="fill:none;stroke:#2962ff;stroke-width:1"/><path d="${dn}" style="fill:none;stroke:#2962ff;stroke-width:1"/><path d="${mid}" style="fill:none;stroke:#ff6d00;stroke-width:1"/>`;
+  }
+  /* Serie */
+  const sty = cc.type === 'bars' || lay.bw < 5 ? 'flat' : cc.style;
+  if (!hide && vis.length) {
+    if (isC) {
+      if (sty === '3d') defs.push(lgrad3(cid + '-u3', upC), lgrad3(cid + '-d3', dnC));
+      if (sty === 'metal') defs.push(lgradM(cid + '-um', upC), lgradM(cid + '-dm', dnC));
+      const bw = lay.bw;
+      for (let i = i0; i <= i1; i++) {
+        const c = disp[i], up = c.c >= c.o, col = up ? upC : dnC, cx = r1(lay.xi(i)), yh = Y(c.h), yl = Y(c.l), yo = Y(c.o), yc = Y(c.c);
+        if (cc.type === 'bars') {
+          body += `<path d="M${cx},${yh}V${yl}M${r1(cx - bw / 2)},${yo}H${cx}M${cx},${yc}H${r1(cx + bw / 2)}" style="fill:none;stroke:${col};stroke-width:${r1(Math.max(1, Math.min(2, bw * .2)))}"/>`;
+          continue;
+        }
+        const yt = Math.min(yo, yc), bh = Math.max(sty === 'flat' ? 1.5 : 3, Math.abs(yo - yc)), yb = r1(yt + bh), wk = r1(Math.max(1, Math.min(2, bw * .16)));
+        const hollow = cc.type === 'hollow' && up, x0 = r1(cx - bw / 2);
+        if (sty === 'flat') {
+          if (hollow) body += `<path d="M${cx},${yh}V${yt}M${cx},${yb}V${yl}" style="fill:none;stroke:${col};stroke-width:${wk}"/>`;
+          else body += `<line x1="${cx}" x2="${cx}" y1="${yh}" y2="${yl}" style="stroke:${col};stroke-width:${wk}"/>`;
+          body += `<rect x="${x0}" y="${yt}" width="${r1(bw)}" height="${r1(bh)}" style="fill:${hollow ? 'none' : col};stroke:${col};stroke-width:1"/>`;
+        } else if (sty === '3d') {
+          const dx = r1(Math.min(6, bw * .28)), dy = r1(dx * .6), fw = r1(bw - dx), wx = r1(x0 + fw / 2), op = hollow ? .4 : 1;
+          body += `<line x1="${wx}" x2="${wx}" y1="${yh}" y2="${yl}" style="stroke:${shade(col, .85)};stroke-width:${wk}"/>`;
+          body += `<rect x="${x0}" y="${yt}" width="${fw}" height="${r1(bh)}" style="fill:url(#${cid}-${up ? 'u' : 'd'}3);opacity:${op}"/>`;
+          body += `<path d="M${x0},${yt}L${r1(x0 + dx)},${r1(yt - dy)}H${r1(x0 + fw + dx)}L${r1(x0 + fw)},${yt}Z" style="fill:${shade(col, 1.5)};opacity:${op}"/>`;
+          body += `<path d="M${r1(x0 + fw)},${yt}L${r1(x0 + fw + dx)},${r1(yt - dy)}V${r1(yb - dy)}L${r1(x0 + fw)},${yb}Z" style="fill:${shade(col, .6)};opacity:${op}"/>`;
+          if (hollow) body += `<rect x="${x0}" y="${yt}" width="${fw}" height="${r1(bh)}" style="fill:none;stroke:${col};stroke-width:1"/>`;
+        } else {
+          const rx = r1(bw / 2), ry = r1(Math.min(4.5, bw * .2)), x1 = r1(x0 + bw), op = hollow ? .45 : 1;
+          body += `<line x1="${cx}" x2="${cx}" y1="${yh}" y2="${yl}" style="stroke:${shade(col, .9)};stroke-width:${r1(wk + .4)}"/><line x1="${r1(cx - .4)}" x2="${r1(cx - .4)}" y1="${yh}" y2="${yl}" style="stroke:#fff;stroke-opacity:.5;stroke-width:.6"/>`;
+          body += `<path d="M${x0},${yt}V${yb}A${rx},${ry} 0 0 0 ${x1},${yb}V${yt}Z" style="fill:url(#${cid}-${up ? 'u' : 'd'}m);opacity:${op}"/>`;
+          body += `<rect x="${r1(x0 + bw * .2)}" y="${yt}" width="${r1(Math.max(1, bw * .1))}" height="${r1(bh)}" style="fill:#fff;fill-opacity:.3;opacity:${op}"/>`;
+          body += `<ellipse cx="${cx}" cy="${yt}" rx="${rx}" ry="${ry}" style="fill:${shade(col, 1.65)};stroke:${shade(col, .5)};stroke-width:.6;opacity:${op}"/>`;
+          if (hollow) body += `<path d="M${x0},${yt}V${yb}A${rx},${ry} 0 0 0 ${x1},${yb}V${yt}" style="fill:none;stroke:${col};stroke-width:1"/>`;
+        }
+      }
+    } else {
+      const pts = []; for (let i = i0; i <= i1; i++) pts.push([r1(lay.xi(i)), Y(disp[i].c)]);
+      const d = cc.type === 'step' ? pts.map((p, k) => k ? `H${p[0]}V${p[1]}` : `M${p[0]},${p[1]}`).join('') : pts.map((p, k) => (k ? 'L' : 'M') + p[0] + ',' + p[1]).join('');
+      if (cc.type === 'area' || o.lineFill) {
+        defs.push(`<linearGradient id="${cid}-ar" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--s1)" stop-opacity="${cc.type === 'area' ? .35 : .16}"/><stop offset="1" stop-color="var(--s1)" stop-opacity="0"/></linearGradient>`);
+        body += `<path d="${d}L${pts[pts.length - 1][0]},${T + H}L${pts[0][0]},${T + H}Z" style="fill:url(#${cid}-ar);stroke:none"/>`;
+      }
+      body += `<path d="${d}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
+      if (cc.type === 'linedots' || (pts.length <= 40 && cc.type === 'line' && o.dots)) pts.forEach(p => { body += `<circle cx="${p[0]}" cy="${p[1]}" r="2.8" style="fill:var(--s1);stroke:var(--surface);stroke-width:1.5"/>`; });
+    }
+  }
+  /* gleitende Durchschnitte */
+  ind.forEach(s => {
+    let d = '', run = false;
+    for (let i = i0; i <= i1; i++) { if (s.arr[i] == null) { run = false; continue; } d += (run ? 'L' : 'M') + r1(lay.xi(i)) + ',' + Y(s.arr[i]); run = true; }
+    body += `<path d="${d}" style="fill:none;stroke:${s.col};stroke-width:1.5;stroke-linejoin:round"/>`;
+  });
+  /* Marken am Rand: letzter Kurs, Hoch und Tief */
+  let yLast = null;
+  if (!hide && vis.length) {
+    const lc = vis[vis.length - 1], upL = isC ? lc.c >= lc.o : vis.length < 2 || lc.c >= vis[vis.length - 2].c, colL = isC ? (upL ? upC : dnC) : 'var(--s1)';
+    yLast = Y(lc.c);
+    if (cc.last) {
+      body += `<line x1="${r1(lay.xi(i1))}" x2="${X0}" y1="${yLast}" y2="${yLast}" style="stroke:${colL};stroke-width:1;stroke-dasharray:2 3;opacity:.85"/>`;
+      front += axTag(X0, RA, yLast, vfmt(tf(lc.c)), colL);
+    }
+    if (cc.hl && vis.length > 1) {
+      let hi2 = 0, lo2 = 0; vis.forEach((c, k) => { if ((isC ? c.h : c.c) > (isC ? vis[hi2].h : vis[hi2].c)) hi2 = k; if ((isC ? c.l : c.c) < (isC ? vis[lo2].l : vis[lo2].c)) lo2 = k; });
+      const vh = isC ? vis[hi2].h : vis[hi2].c, vl = isC ? vis[lo2].l : vis[lo2].c, yh2 = Y(vh), yl2 = Y(vl);
+      const near = (a, b) => b !== null && Math.abs(a - b) < 19;
+      if (!near(yh2, yLast)) front += axTag(X0, RA, yh2, vfmt(tf(vh)), '#142e61');
+      if (!near(yl2, yLast) && !near(yl2, yh2)) front += axTag(X0, RA, yl2, vfmt(tf(vl)), '#142e61');
+    }
+  }
+  return {defs:defs.join(''), back, body, front, lay, Y, Yd, inv, vfmt, disp, ind, isC, i0, i1, n:cs.length, pct, tf};
+}
+/* Legende ueber dem Chart (wie in TradingView): Name, Intervall, E/H/T/S und Veraenderung der gerade gezeigten Kerze */
+function chartLegend(P, cc, name, extraFn){
+  const f = v => fmtDec(v, 2);
+  return i => {
+    if (!cc.legend) return '';
+    const c = P.disp[i];
+    if (!c) return '';
+    const prev = i > 0 ? P.disp[i - 1].c : c.o, up = P.isC ? c.c >= c.o : c.c >= prev, col = up ? cc.up : cc.down, ch = prev ? (c.c - prev) / prev : 0;
+    const per = c.d0 === c.d1 ? fd(c.d1) : `${fd(c.d0)} bis ${fd(c.d1)}`;
+    let h = `<b>${esc(name)}</b> · ${CH_INT[cc.interval]} · ${per}`;
+    if (P.isC) h += ` · E <span style="color:${col}">${f(c.o)}</span> H <span style="color:${col}">${f(c.h)}</span> T <span style="color:${col}">${f(c.l)}</span> S <span style="color:${col}">${f(c.c)}</span>`;
+    else h += ` · S <span style="color:${col}">${f(c.c)}</span>`;
+    h += ` <span style="color:${col}">${pctS(ch)}</span>`;
+    P.ind.forEach(s => { if (s.arr[i] != null) h += ` <span style="color:${s.col}">${s.name} ${f(s.arr[i])}</span>`; });
+    return h + (extraFn ? extraFn(i) : '');
+  };
+}
+const chartReg = {}, chartRedraw = {};
+function regChart(cid, o, P, legend, cc){ chartReg[cid] = {w:o.w, L:o.L, pw:o.pw, T:o.T, H:o.H, vb:o.vBottom, axisY:o.axisY, P, legend, cc}; }
+const legendBox = (cid, legend, P) => `<div class="tvlg" id="${cid}-lg">${legend(P.i1)}</div>`;
+function chartHost(el, cc){ el.className = 'chart' + (cc.bg === 'tvdark' ? ' tvdark' : cc.bg === 'tvlight' ? ' tvlight' : ''); }
+const chartW = el => Math.max(280, el.clientWidth || 320);
+const candleLegend = () => { const c = curChart(); return `<span><i class="sw" style="background:${c.up}"></i>gestiegen</span><span><i class="sw" style="background:${c.down}"></i>gefallen</span>`; };
 
 /* --- Horizontale Balken (1 oder 2 Serien) --- */
 function hbarChart(w, items, series, fmt, label){
@@ -1520,65 +1835,56 @@ function avgTimeline(list){
   for (const t of sortTxs(list)) { const c = calcFrom(list, t.date); out.push({date:t.date, qty:c.qty, avg:c.avg}); }
   return out;
 }
+const byDate = (a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0;
 function detailChart(w, posId){
-  const txs = sortTxs(txsOf(posId)), manual = state.prices[posId] || [];
+  const cid = 'c-detail', cc = curChart();
+  const txs = sortTxs(txsOf(posId)), manual = (state.prices[posId] || []).slice();
   if (!txs.length && !manual.length) return null;
-  const dates = txs.map(t => t.date).concat(manual.map(m => m.date)).sort();
-  let t0 = tm(dates[0]), t1 = tm(dates[dates.length - 1]);
-  if (t1 - t0 < 14 * 864e5) { const m = (14 * 864e5 - (t1 - t0)) / 2; t0 -= m; t1 += m; }
-  const steps = avgTimeline(txs);
-  const cc = curChart(), cd = cc.type === 'candle' && manual.length ? makeCandles(manual.map(m => ({d:m.date, c:m.price, o:m.o, h:m.h, l:m.l})), cc.grid) : null;
-  const allP = manual.map(m => m.price).concat(txs.map(t => t.price), steps.filter(s => s.qty > 0).map(s => s.avg), cd ? cd.flatMap(c => [c.h, c.l]) : []);
-  let pmin = Math.min(...allP), pmax = Math.max(...allP); const sp = (pmax - pmin) || pmax * 0.1 || 1;
-  const yr = niceRange(pmin - sp * 0.08, pmax + sp * 0.08, 4);
-  const maxQ = Math.max(1, ...steps.map(s => s.qty));
-  const qr = niceRange(0, maxQ, 2);
-  const L = 56, R = 16, T = 10, H1 = 190, GAP = 34, H2 = 80, B = 28, pw = Math.max(80, w - L - R);
-  const h = T + H1 + GAP + H2 + B;
-  const bw = cd ? candleWidth(cd, pw, t0, t1) : 0, pad = cd ? bw / 2 + 3 : 0;
-  const x = t => L + pad + (t - t0) / (t1 - t0) * (pw - 2 * pad), y1 = v => T + H1 - (v - yr.lo) / (yr.hi - yr.lo) * H1;
-  const y2Top = T + H1 + GAP, y2 = v => y2Top + H2 - (v - qr.lo) / (qr.hi - qr.lo) * H2;
-  const af = axisFmt(yr.step), qf = axisFmt(qr.step);
-  let g = '';
-  timeTicks(t0, t1, w < 420 ? 3 : 5).forEach((t, i, a) => {
-    g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T + H1}"/><line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${y2Top}" y2="${y2Top + H2}"/>`;
-    g += `<text class="tm" x="${x(t)}" y="${h - 8}" text-anchor="${i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${tdate(t)}</text>`;
-  });
-  yr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y1(v)}" y2="${y1(v)}"/><text class="tm" x="${L - 6}" y="${y1(v) + 4}" text-anchor="end">${af(v)}</text>`; });
-  qr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y2(v)}" y2="${y2(v)}"/><text class="tm" x="${L - 6}" y="${y2(v) + 4}" text-anchor="end">${qf(v)}</text>`; });
-  g += `<text class="t" x="${L}" y="${y2Top - 12}">Bestand in Stück</text>`;
-  // Kurs
-  if (cd) g += candleGfx(cd, c => x(tm(c.d1)), y1, T, H1, L, pw, bw, c => candleTip(c, cc.grid, price));
-  else if (manual.length > 1) g += `<path d="${manual.map((m, i) => (i ? 'L' : 'M') + x(tm(m.date)) + ',' + y1(m.price)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
-  if (!cd) manual.forEach(m => {
-    if (manual.length <= 40 || manual.length === 1) g += `<circle cx="${x(tm(m.date))}" cy="${y1(m.price)}" r="3" style="fill:var(--s1);stroke:var(--surface);stroke-width:2"/>`;
-    g += `<circle cx="${x(tm(m.date))}" cy="${y1(m.price)}" r="12" class="hit" data-tip="${esc(`Kurs ${fd(m.date)}\n${price(m.price)}`)}"/>`;
-  });
-  // Ø-Einstieg
+  const steps = avgTimeline(txs), hide = !manual.length;
+  const src = (hide ? txs.map(t => ({d:t.date, c:t.price})) : manual.map(m => ({d:m.date, c:m.price, o:m.o, h:m.h, l:m.l}))).sort(byDate);
+  const cs = makeCandles(src, cc.interval);
+  const L = 8, T = 10, H1 = 190, GAP = 34, H2 = 80, B = 28, pw = Math.max(80, w - L - 62), h = T + H1 + GAP + H2 + B, y2Top = T + H1 + GAP;
+  const extras = txs.map(t => ({t:tm(t.date), v:t.price})).concat(steps.filter(s => s.qty > 0).map(s => ({t:tm(s.date), v:s.avg})));
+  const o = {cid, cc, cs, w, L, pw, T, H:H1, vBottom:y2Top + H2, axisY:h - 8, extras, hideSeries:hide, dots:true};
+  const P = pricePlot(o), X = P.lay.xt, Y = P.Y, X0 = L + pw;
+  const maxQ = Math.max(1, ...steps.map(s => s.qty)), qr = niceRange(0, maxQ, 2), qf = axisFmt(qr.step);
+  const y2 = v => r1(y2Top + H2 - (v - qr.lo) / (qr.hi - qr.lo) * H2);
+  let mid = '', qb = '', qg = '', qfront = '';
+  /* Ø-Einstieg */
   let d = '', inRun = false;
   steps.forEach((s, i) => {
-    const xs = x(tm(s.date)), xn = i + 1 < steps.length ? x(tm(steps[i + 1].date)) : x(t1);
-    if (s.qty > 0) { d += inRun ? `V${y1(s.avg)}` : `M${xs},${y1(s.avg)}`; d += `H${xn}`; inRun = true; } else inRun = false;
+    const xs = r1(X(tm(s.date))), xn = i + 1 < steps.length ? r1(X(tm(steps[i + 1].date))) : X0;
+    if (s.qty > 0) { d += inRun ? `V${Y(s.avg)}` : `M${xs},${Y(s.avg)}`; d += `H${xn}`; inRun = true; } else inRun = false;
   });
-  if (d) g += `<path d="${d}" style="fill:none;stroke:var(--s2);stroke-width:2;stroke-dasharray:6 4"/>`;
+  if (d) mid += `<path d="${d}" style="fill:none;stroke:var(--s2);stroke-width:2;stroke-dasharray:6 4"/>`;
   const lastS = steps[steps.length - 1];
-  if (lastS && lastS.qty > 0) g += `<text class="t" x="${L + pw}" y="${y1(lastS.avg) - 6}" text-anchor="end" style="fill:var(--text);paint-order:stroke;stroke:var(--surface);stroke-width:4px">Ø ${price(lastS.avg)}</text>`;
-  // Transaktionen
-  txs.forEach((t, i) => {
-    const cx = x(tm(t.date)), cy = y1(t.price), tip = `${t.type === 'buy' ? 'Kauf' : 'Verkauf'} ${fd(t.date)}\n${qty(t.qty)} Stück zu ${price(t.price)}`;
-    if (t.type === 'buy') g += `<circle cx="${cx}" cy="${cy}" r="${(4 + 7 * Math.sqrt(t.qty / maxQ)).toFixed(1)}" style="fill:var(--s2);stroke:var(--surface);stroke-width:2" data-tip="${esc(tip)}"/>`;
-    else g += `<path d="M${cx - 7},${cy - 6}L${cx + 7},${cy - 6}L${cx},${cy + 7}Z" style="fill:var(--surface);stroke:var(--s2);stroke-width:2.5;stroke-linejoin:round" data-tip="${esc(tip)}"/>`;
+  if (lastS && lastS.qty > 0) mid += `<text class="t" x="${X0 - 6}" y="${Y(lastS.avg) - 6}" text-anchor="end" style="fill:var(--text);paint-order:stroke;stroke:var(--surface);stroke-width:4px">Ø ${price(lastS.avg)}</text>`;
+  /* Transaktionen */
+  txs.forEach(t => {
+    const cx = r1(X(tm(t.date))), cy = Y(t.price);
+    if (cx < L - 8 || cx > X0 + 8) return;
+    const tip = `${t.type === 'buy' ? 'Kauf' : 'Verkauf'} ${fd(t.date)}\n${qty(t.qty)} Stück zu ${price(t.price)}`;
+    if (t.type === 'buy') mid += `<circle cx="${cx}" cy="${cy}" r="${(4 + 7 * Math.sqrt(t.qty / maxQ)).toFixed(1)}" style="fill:var(--s2);stroke:var(--surface);stroke-width:2" data-tip="${esc(tip)}"/>`;
+    else mid += `<path d="M${cx - 7},${cy - 6}L${cx + 7},${cy - 6}L${cx},${cy + 7}Z" style="fill:var(--surface);stroke:var(--s2);stroke-width:2.5;stroke-linejoin:round" data-tip="${esc(tip)}"/>`;
   });
-  // Bestand
+  /* Bestand */
+  qr.ticks.forEach(v => {
+    if (cc.grid === 'both' || cc.grid === 'h') qb += `<line class="grid" x1="${L}" x2="${X0}" y1="${y2(v)}" y2="${y2(v)}"/>`;
+    qfront += `<text class="tm" x="${X0 + 8}" y="${y2(v) + 4}">${qf(v)}</text>`;
+  });
+  if (cc.grid === 'both' || cc.grid === 'v') P.lay.ticks(w < 420 ? 3 : 5).forEach(k => { qb += `<line class="grid" x1="${r1(k.x)}" x2="${r1(k.x)}" y1="${y2Top}" y2="${y2Top + H2}"/>`; });
+  qb += `<line class="axis" x1="${X0}" x2="${X0}" y1="${y2Top}" y2="${y2Top + H2}"/><line class="axis" x1="${L}" x2="${X0}" y1="${y2Top + H2}" y2="${y2Top + H2}"/><text class="t" x="${L}" y="${y2Top - 12}">Bestand in Stück</text>`;
   if (steps.length) {
-    let p = `M${x(tm(steps[0].date))},${y2(0)}V${y2(steps[0].qty)}`;
-    steps.forEach((s, i) => { if (i) p += `H${x(tm(s.date))}V${y2(s.qty)}`; });
-    p += `H${x(t1)}`;
-    g += `<path d="${p}V${y2(0)}Z" style="fill:var(--s1);fill-opacity:.16;stroke:none"/><path d="${p}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
-    steps.forEach(s => { g += `<circle cx="${x(tm(s.date))}" cy="${y2(s.qty)}" r="12" class="hit" data-tip="${esc(`Bestand ab ${fd(s.date)}\n${qty(s.qty)} Stück`)}"/>`; });
+    let p = `M${r1(X(tm(steps[0].date)))},${y2(0)}V${y2(steps[0].qty)}`;
+    steps.forEach((s, i) => { if (i) p += `H${r1(X(tm(s.date)))}V${y2(s.qty)}`; });
+    p += `H${X0}`;
+    qg += `<path d="${p}V${y2(0)}Z" style="fill:var(--s1);fill-opacity:.16;stroke:none"/><path d="${p}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
+    steps.forEach(s => { qg += `<circle cx="${r1(X(tm(s.date)))}" cy="${y2(s.qty)}" r="12" class="hit" data-tip="${esc(`Bestand ab ${fd(s.date)}\n${qty(s.qty)} Stück`)}"/>`; });
   }
-  g += `<line class="axis" x1="${L}" x2="${L + pw}" y1="${T + H1}" y2="${T + H1}"/><line class="axis" x1="${L}" x2="${L + pw}" y1="${y2Top + H2}" y2="${y2Top + H2}"/>`;
-  return {svg:svgWrap(w, h, g, 'Kursverlauf mit Käufen, Ø-Einstiegspreis und Bestand'), txs, steps, manual};
+  const legend = chartLegend(P, cc, hide ? 'Transaktionspreise' : 'Kurs');
+  regChart(cid, o, P, legend, cc);
+  const inner = `<defs>${P.defs}<clipPath id="${cid}-cq"><rect x="${L}" y="${y2Top}" width="${pw}" height="${H2}"/></clipPath></defs>${P.back}${qb}<g clip-path="url(#${cid}-cp)">${P.body}${mid}</g><g clip-path="url(#${cid}-cq)">${qg}</g>${qfront}${P.front}<g class="xh" style="pointer-events:none"></g>`;
+  return {svg:legendBox(cid, legend, P) + svgWrap(w, h, inner, 'Kursverlauf mit Käufen, Ø-Einstiegspreis und Bestand'), txs, steps, manual};
 }
 
 /* --- Depotwert im Zeitverlauf --- */
@@ -1595,35 +1901,20 @@ function depotSeries(K){
     return {d, v, c};
   });
 }
-function depotChart(w, K){
+function depotChart(w, K, cid){
+  cid = cid || (K ? 'c-konto' : 'c-depot');
   const pts = depotSeries(K), L1 = K ? 'Gesamtvermögen' : 'Depotwert', L2 = K ? 'Netto eingezahlt' : 'Eingesetzt', LE = K ? 'Ergebnis' : 'Gewinn/Verlust';
   if (pts.length < 2) return null;
-  const t0 = tm(pts[0].d), t1 = tm(pts[pts.length - 1].d);
-  const cc = curChart(), cd = cc.type === 'candle' ? makeCandles(pts.map(p => ({d:p.d, c:p.v, src:p})), cc.grid) : null;
-  const all = pts.flatMap(p => [p.v, p.c]).concat(cd ? cd.flatMap(c => [c.h, c.l]) : []);
-  const lo = Math.min(...all), hi = Math.max(...all), sp = (hi - lo) || hi * 0.1 || 1;
-  const yr = niceRange(lo < 0 ? lo - sp * 0.1 : Math.max(0, lo - sp * 0.1), hi + sp * 0.1, 4);
-  const L = 62, R = 16, T = 16, H = 230, B = 28, pw = Math.max(80, w - L - R), h = T + H + B;
-  const bw = cd ? candleWidth(cd, pw, t0, t1) : 0, pad = cd ? bw / 2 + 3 : 0;
-  const x = t => L + pad + (t - t0) / (t1 - t0) * (pw - 2 * pad), y = v => T + H - (v - yr.lo) / (yr.hi - yr.lo) * H, af = axisFmt(yr.step);
-  let g = '';
-  timeTicks(t0, t1, w < 420 ? 3 : 5).forEach((t, i, a) => { g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T + H}"/><text class="tm" x="${x(t)}" y="${h - 8}" text-anchor="${i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${tdate(t)}</text>`; });
-  yr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y(v)}" y2="${y(v)}"/><text class="tm" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${af(v)}</text>`; });
-  g += `<line class="axis" x1="${L}" x2="${L + pw}" y1="${T + H}" y2="${T + H}"/>`;
-  // Hover-Baender
-  if (!cd) pts.forEach((p, i) => {
-    const xa = i ? (x(tm(pts[i - 1].d)) + x(tm(p.d))) / 2 : L, xb = i < pts.length - 1 ? (x(tm(p.d)) + x(tm(pts[i + 1].d))) / 2 : L + pw;
-    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${H}" data-tip="${esc(`${fd(p.d)}\n${L1} ${eur(p.v)}\n${L2} ${eur(p.c)}\n${LE} ${eurS(p.v - p.c)}`)}"/>`;
-  });
-  // Einstand (Treppe)
-  g += `<path d="${pts.map((p, i) => i ? `H${x(tm(p.d))}V${y(p.c)}` : `M${x(tm(p.d))},${y(p.c)}`).join('')}" style="fill:none;stroke:var(--s2);stroke-width:2"/>`;
-  if (cd) g += candleGfx(cd, c => x(tm(c.d1)), y, T, H, L, pw, bw, c => candleTip(c, cc.grid, eur, L1, `${L2} ${eur(c.last.src.c)} (Stand ${fd(c.d1)})\n${LE} ${eurS(c.c - c.last.src.c)}`));
-  else g += `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + x(tm(p.d)) + ',' + y(p.v)).join('')}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round"/>`;
-  if (!cd && pts.length <= 40) pts.forEach(p => { g += `<circle cx="${x(tm(p.d))}" cy="${y(p.v)}" r="3" style="fill:var(--s1);stroke:var(--surface);stroke-width:2;pointer-events:none"/>`; });
-  const last = pts[pts.length - 1], vAbove = last.v >= last.c;
-  g += `<text class="tv" x="${L + pw}" y="${y(last.v) + (vAbove ? -9 : 17)}" text-anchor="end">${K ? 'Vermögen' : 'Wert'} ${eur(last.v)}</text>`;
-  g += `<text class="tv" x="${L + pw}" y="${y(last.c) + (vAbove ? 17 : -9)}" text-anchor="end">${K ? 'Eingezahlt' : 'Einstand'} ${eur(last.c)}</text>`;
-  return {svg:svgWrap(w, h, g, K ? 'Gesamtvermögen und netto eingezahltes Kapital im Zeitverlauf' : 'Depotwert und eingesetztes Kapital im Zeitverlauf'), pts};
+  const cc = curChart(), cs = makeCandles(pts.map(p => ({d:p.d, c:p.v, src:p})), cc.interval);
+  const L = 8, T = 16, H = 230, B = 28, pw = Math.max(80, w - L - 62), h = T + H + B;
+  const o = {cid, cc, cs, w, L, pw, T, H, vBottom:T + H, axisY:h - 8, extras:pts.map(p => ({t:tm(p.d), v:p.c}))};
+  const P = pricePlot(o), X = P.lay.xt;
+  let mid = '';
+  mid += `<path d="${pts.map((p, i) => i ? `H${r1(X(tm(p.d)))}V${P.Y(p.c)}` : `M${r1(X(tm(p.d)))},${P.Y(p.c)}`).join('')}" style="fill:none;stroke:var(--s2);stroke-width:2"/>`;
+  const legend = chartLegend(P, cc, L1, i => { const s = cs[i].last.src; return ` <span style="color:var(--s2)">${L2} ${eur(s.c)}</span> · ${LE} ${eurS(cs[i].c - s.c)}`; });
+  regChart(cid, o, P, legend, cc);
+  const inner = `<defs>${P.defs}</defs>${P.back}<g clip-path="url(#${cid}-cp)">${P.body}${mid}</g>${P.front}<g class="xh" style="pointer-events:none"></g>`;
+  return {svg:legendBox(cid, legend, P) + svgWrap(w, h, inner, K ? 'Gesamtvermögen und netto eingezahltes Kapital im Zeitverlauf' : 'Depotwert und eingesetztes Kapital im Zeitverlauf'), pts};
 }
 
 /* --- Vorschaudiagramm der Übersicht: Depotwert, Netto-Rendite, vorhandene Kursdaten --- */
@@ -1647,49 +1938,39 @@ function previewData(){
 }
 function previewChart(w, pts){
   if (pts.length < 2) return null;
-  const t0 = tm(pts[0].d), t1 = tm(pts[pts.length - 1].d);
-  const L = 50, R = 10, T = 6, H1 = 74, GAP = 30, H2 = 54, RUG = 12, B = 20, pw = Math.max(80, w - L - R);
+  const cid = 'c-prev', cc = curChart(), cs = makeCandles(pts.map(p => ({d:p.d, c:p.v, src:p})), cc.interval);
+  const L = 8, T = 6, H1 = 112, GAP = 30, H2 = 54, RUG = 12, B = 22, pw = Math.max(80, w - L - 62);
   const T2 = T + H1 + GAP, TR = T2 + H2 + 8, h = TR + RUG + B;
-  const x = t => L + (t - t0) / (t1 - t0) * pw;
-  // Panel 1: Depotwert
-  const vs = pts.map(p => p.v), vlo = Math.min(...vs), vhi = Math.max(...vs), vsp = (vhi - vlo) || vhi * 0.1 || 1;
-  const y1r = niceRange(Math.max(0, vlo - vsp * 0.1), vhi + vsp * 0.1, 2), y1 = v => T + H1 - (v - y1r.lo) / (y1r.hi - y1r.lo) * H1, f1 = axisFmt(y1r.step);
-  // Panel 2: Netto-Rendite in Prozent, Nulllinie immer sichtbar
-  const rs = pts.filter(p => p.rend !== null).map(p => p.rend * 100);
-  const rlo = Math.min(0, ...rs), rhi = Math.max(0, ...rs);
-  const y2r = niceRange(rlo, rhi, 2), y2 = v => T2 + H2 - (v - y2r.lo) / (y2r.hi - y2r.lo) * H2, f2 = axisFmt(y2r.step);
-  let g = '';
-  timeTicks(t0, t1, w < 420 ? 2 : 4).forEach((t, i, a) => { g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T2 + H2}"/><text class="tm" x="${x(t)}" y="${h - 5}" text-anchor="${i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle'}">${tdate(t)}</text>`; });
-  y1r.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y1(v)}" y2="${y1(v)}"/><text class="tm" x="${L - 6}" y="${y1(v) + 4}" text-anchor="end">${f1(v)}</text>`; });
-  y2r.ticks.forEach(v => { g += `<line class="${Math.abs(v) < 1e-9 ? 'axis' : 'grid'}" x1="${L}" x2="${L + pw}" y1="${y2(v)}" y2="${y2(v)}"/><text class="tm" x="${L - 6}" y="${y2(v) + 4}" text-anchor="end">${f2(v)} %</text>`; });
-  g += `<text class="tm" x="${L}" y="${T2 - 8}">Netto-Rendite in Prozent</text>`;
-  // Hover-Baender
-  pts.forEach((p, i) => {
-    const xa = i ? (x(tm(pts[i - 1].d)) + x(tm(p.d))) / 2 : L, xb = i < pts.length - 1 ? (x(tm(p.d)) + x(tm(pts[i + 1].d))) / 2 : L + pw;
-    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${T2 + H2 - T}" data-tip="${esc(`${fd(p.d)}\nDepotwert ${eur(p.v)}\nNetto-Rendite ${p.rend === null ? '–' : pctS(p.rend)}\n${p.kurs ? p.kurs + ' Kurs' + (p.kurs > 1 ? 'e' : '') + ' erfasst' : 'kein Kurs erfasst'}`)}"/>`;
+  const o = {cid, cc, cs, w, L, pw, T, H:H1, vBottom:TR + RUG, axisY:h - 5, extras:[], lineFill:true};
+  const P = pricePlot(o), X = P.lay.xt, X0 = L + pw;
+  const ta = cs[P.i0].d0, tb = cs[P.i1].d1, inWin = pts.filter(p => p.d >= ta && p.d <= tb);
+  const rs = inWin.filter(p => p.rend !== null).map(p => p.rend * 100), rlo = Math.min(0, ...rs), rhi = Math.max(0, ...rs);
+  const y2r = niceRange(rlo, rhi, 2), y2 = v => r1(T2 + H2 - (v - y2r.lo) / (y2r.hi - y2r.lo) * H2), f2 = axisFmt(y2r.step);
+  let back = '', g = '';
+  y2r.ticks.forEach(v => {
+    back += `<line class="${Math.abs(v) < 1e-9 ? 'axis' : 'grid'}" x1="${L}" x2="${X0}" y1="${y2(v)}" y2="${y2(v)}"/>`;
+    g += `<text class="tm" x="${X0 + 8}" y="${y2(v) + 4}">${f2(v)} %</text>`;
   });
-  // Depotwert: Flaeche und Linie
-  const lineV = pts.map((p, i) => (i ? 'L' : 'M') + x(tm(p.d)) + ',' + y1(p.v)).join('');
-  g += `<path d="${lineV}L${x(t1)},${y1(y1r.lo)}L${x(t0)},${y1(y1r.lo)}Z" style="fill:var(--s1);fill-opacity:.12;stroke:none;pointer-events:none"/>`;
-  g += `<path d="${lineV}" style="fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round;pointer-events:none"/>`;
-  // Netto-Rendite: Linie, bei fehlender Basis unterbrochen
-  let seg = '', open = false;
-  pts.forEach(p => { if (p.rend === null) { open = false; return; } seg += (open ? 'L' : 'M') + x(tm(p.d)) + ',' + y2(p.rend * 100); open = true; });
-  g += `<path d="${seg}" style="fill:none;stroke:var(--s2);stroke-width:2;stroke-linejoin:round;pointer-events:none"/>`;
+  back += `<line class="axis" x1="${X0}" x2="${X0}" y1="${T2}" y2="${T2 + H2}"/><text class="tm" x="${L}" y="${T2 - 8}">Netto-Rendite in Prozent</text>`;
+  let seg = '', run = false;
+  pts.forEach(p => { if (p.rend === null) { run = false; return; } seg += (run ? 'L' : 'M') + r1(X(tm(p.d))) + ',' + y2(p.rend * 100); run = true; });
+  const rend = `<path d="${seg}" style="fill:none;stroke:var(--s2);stroke-width:2;stroke-linejoin:round"/>`;
   const last = pts[pts.length - 1];
-  g += `<text class="tv" x="${L + pw}" y="${y1(last.v) + (y1(last.v) - T < 14 ? 14 : -6)}" text-anchor="end">${eur(last.v)}</text>`;
-  if (last.rend !== null) g += `<text class="tv" x="${L + pw}" y="${y2(last.rend * 100) + (y2(last.rend * 100) - T2 < 14 ? 14 : -6)}" text-anchor="end">${pctS(last.rend)}</text>`;
-  // Kursdaten: ein Strich je Tag mit erfasstem Kurs
-  g += `<text class="tm" x="${L - 6}" y="${TR + 9}" text-anchor="end">Kurse</text>`;
-  pts.filter(p => p.kurs).forEach(p => {
-    const xx = x(tm(p.d));
-    g += `<line x1="${xx}" x2="${xx}" y1="${TR}" y2="${TR + RUG}" style="stroke:var(--muted);stroke-width:2"/><rect class="hit" x="${xx - 5}" y="${TR - 2}" width="10" height="${RUG + 4}" data-tip="${esc(`${fd(p.d)}\n${p.kurs} Kurs${p.kurs > 1 ? 'e' : ''} erfasst`)}"/>`;
+  let front = `<text class="tm" x="${L}" y="${TR + 9}">Kurse</text>`, rug = '';
+  inWin.filter(p => p.kurs).forEach(p => {
+    const xx = r1(X(tm(p.d)));
+    rug += `<line x1="${xx}" x2="${xx}" y1="${TR}" y2="${TR + RUG}" style="stroke:var(--muted);stroke-width:2"/><rect class="hit" x="${xx - 5}" y="${TR - 2}" width="10" height="${RUG + 4}" data-tip="${esc(`${fd(p.d)}\n${p.kurs} Kurs${p.kurs > 1 ? 'e' : ''} erfasst`)}"/>`;
   });
-  return {svg:svgWrap(w, h, g, 'Vorschau: Depotwert, Netto-Rendite und erfasste Kursdaten im Zeitverlauf'), pts};
+  const at = d => { let r = null; for (const p of pts) { if (p.d <= d) r = p; else break; } return r; };
+  const legend = chartLegend(P, cc, 'Depotwert', i => { const p = at(cs[i].d1); return p ? ` · Netto-Rendite <span style="color:var(--s2)">${p.rend === null ? '–' : pctS(p.rend)}</span>${p.kurs ? '' : ' · kein Kurs erfasst'}` : ''; });
+  regChart(cid, o, P, legend, cc);
+  const inner = `<defs>${P.defs}<clipPath id="${cid}-cq"><rect x="${L}" y="${T2}" width="${pw}" height="${H2 + RUG + 16}"/></clipPath></defs>${P.back}${back}<g clip-path="url(#${cid}-cp)">${P.body}</g><g clip-path="url(#${cid}-cq)">${rend}${rug}</g>${g}${front}${P.front}<g class="xh" style="pointer-events:none"></g>`;
+  return {svg:legendBox(cid, legend, P) + svgWrap(w, h, inner, 'Vorschau: Depotwert, Netto-Rendite und erfasste Kursdaten im Zeitverlauf'), pts};
 }
 function drawPreview(){
   const el = $('#c-prev'); if (!el) return;
-  const w = Math.max(280, el.clientWidth || 320), pts = previewData(), pc = previewChart(w, pts), {tot} = computeRows();
+  chartHost(el, curChart());
+  const w = chartW(el), pts = previewData(), pc = previewChart(w, pts), {tot} = computeRows();
   el.innerHTML = pc ? pc.svg : '<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen (Transaktionen oder erfasste Kurse).</p>';
   const last = pts[pts.length - 1], nK = Object.values(state.prices).reduce((a, arr) => a + arr.length, 0);
   const s = $('#c-prev-s');
@@ -1697,6 +1978,31 @@ function drawPreview(){
   const t = $('#c-prev-t');
   if (t) t.innerHTML = pts.length ? tableHTML(['Datum', 'Depotwert', 'Netto-Rendite', 'Kurse erfasst'], pts.slice().reverse().map(p => [fd(p.d), eur(p.v), p.rend === null ? '–' : pctS(p.rend), p.kurs || '–'])) : '';
 }
+function drawDepot(id, K){
+  const el = $('#' + id); if (!el) return;
+  chartHost(el, curChart());
+  const dp = depotChart(chartW(el), K, id);
+  el.innerHTML = dp ? dp.svg : `<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen${K ? '' : ' (Transaktionen oder erfasste Kurse)'}.</p>`;
+  const t = $('#' + id + '-t');
+  if (t) t.innerHTML = dp ? (K ? tableHTML(['Datum', 'Gesamtvermögen', 'Netto eingezahlt', 'Ergebnis'], dp.pts.slice().reverse().map(p => [fd(p.d), eur(p.v), eur(p.c), eurS(p.v - p.c)]))
+    : tableHTML(['Datum', 'Depotwert', 'Eingesetzt', 'G/V'], dp.pts.slice().reverse().map(p => [fd(p.d), eur(p.v), eur(p.c), eurS(p.v - p.c)]))) : '';
+}
+function drawDetail(){
+  const dl = $('#detailLink'), dp0 = posById(ui.detailPos); if (dl) dl.innerHTML = !dp0 ? '' : dp0.url ? `Chart bei der Quelle: ${linkHTML(dp0)} · <a href="#" data-act="poslink" data-id="${dp0.id}">Link ändern</a>` : `Kein Chart-Link hinterlegt: ${addLinkHTML(dp0)}`;
+  const el = $('#c-detail'); if (!el) return;
+  chartHost(el, curChart());
+  const dt = detailChart(chartW(el), ui.detailPos);
+  el.innerHTML = dt ? dt.svg : '<p class="hint">Für diese Position liegen noch keine Daten vor.</p>';
+  const t = $('#c-detail-t');
+  if (t) t.innerHTML = dt ? tableHTML(['Datum', 'Ereignis', 'Stück', 'Kurs'],
+    dt.txs.map(x => ({d:x.date, c:[fd(x.date), x.type === 'buy' ? 'Kauf' : 'Verkauf', qty(x.qty), price(x.price)]}))
+      .concat(dt.manual.map(m => ({d:m.date, c:[fd(m.date), 'Kurs', '', price(m.price) + (m.o ? ` (E ${price(m.o)}, H ${price(m.h)}, T ${price(m.l)})` : '')]})))
+      .sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : 0).map(o => o.c)) : '';
+}
+chartRedraw['c-detail'] = () => drawDetail();
+chartRedraw['c-prev'] = () => drawPreview();
+chartRedraw['c-depot'] = () => drawDepot('c-depot');
+chartRedraw['c-konto'] = () => drawDepot('c-konto', true);
 
 /* --- alles zeichnen --- */
 function drawCharts(){
@@ -1723,30 +2029,98 @@ function drawCharts(){
 
   drawDetail();
 
-  const dp = depotChart(W('c-depot'));
-  put('c-depot', dp ? dp.svg : '<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen (Transaktionen oder erfasste Kurse).</p>',
-      dp ? tableHTML(['Datum', 'Depotwert', 'Eingesetzt', 'G/V'], dp.pts.slice().reverse().map(p => [fd(p.d), eur(p.v), eur(p.c), eurS(p.v - p.c)])) : '');
+  drawDepot('c-depot');
   const P = perfAll(), tc = P && P.total.ok ? ttwrorChart(W('c-ttwror'), P.total.series) : null;
   put('c-ttwror', tc ? tc.svg : '<p class="hint">Der Verlauf erscheint, sobald Transaktionen und Kurse von mindestens zwei verschiedenen Tagen im gewählten Zeitraum vorliegen.</p>',
       tc ? tableHTML(['Datum', 'TTWROR seit Beginn'], tc.series.slice(1).reverse().map(p => [fd(p.d), pctS(p.r)])) : '');
-  if (cashOn()) {
-    const dk = depotChart(W('c-konto'), true);
-    put('c-konto', dk ? dk.svg : '<p class="hint">Der Verlauf erscheint, sobald Daten von mindestens zwei verschiedenen Tagen vorliegen.</p>',
-        dk ? tableHTML(['Datum', 'Gesamtvermögen', 'Netto eingezahlt', 'Ergebnis'], dk.pts.slice().reverse().map(p => [fd(p.d), eur(p.v), eur(p.c), eurS(p.v - p.c)])) : '');
-  }
+  if (cashOn()) drawDepot('c-konto', true);
 }
-function drawDetail(){
-  const dl = $('#detailLink'), dp0 = posById(ui.detailPos); if (dl) dl.innerHTML = !dp0 ? '' : dp0.url ? `Chart bei der Quelle: ${linkHTML(dp0)} · <a href="#" data-act="poslink" data-id="${dp0.id}">Link ändern</a>` : `Kein Chart-Link hinterlegt: ${addLinkHTML(dp0)}`;
-  const el = $('#c-detail'); if (!el) return;
-  const w = Math.max(280, el.clientWidth || 320);
-  const dt = detailChart(w, ui.detailPos);
-  el.innerHTML = dt ? dt.svg : '<p class="hint">Für diese Position liegen noch keine Daten vor.</p>';
-  const t = $('#c-detail-t');
-  if (t) t.innerHTML = dt ? tableHTML(['Datum', 'Ereignis', 'Stück', 'Kurs'],
-    dt.txs.map(x => ({d:x.date, c:[fd(x.date), x.type === 'buy' ? 'Kauf' : 'Verkauf', qty(x.qty), price(x.price)]}))
-      .concat(dt.manual.map(m => ({d:m.date, c:[fd(m.date), 'Kurs', '', price(m.price) + (m.o ? ` (E ${price(m.o)}, H ${price(m.h)}, T ${price(m.l)})` : '')]})))
-      .sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : 0).map(o => o.c)) : '';
+/* --- Schnellleiste ueber den Diagrammen --- */
+function dateFields(c){
+  return `<label>Anzeigen von (Startdatum)<input type="date" data-cs="from" value="${c.from || ''}"></label><label>bis (Enddatum)<input type="date" data-cs="to" value="${c.to || ''}"></label>
+    <button type="button" class="btn sm" data-act="chdates0"${c.from || c.to ? '' : ' disabled'}>Datum löschen</button>`;
 }
+function chartToolbar(inner){
+  const c = curChart();
+  const sel = (k, map, label) => `<label>${label}<select data-cs="${k}">${Object.keys(map).map(v => `<option value="${v}"${v === c[k] ? ' selected' : ''}>${esc(map[v])}</option>`).join('')}</select></label>`;
+  const cust = !!(c.from || c.to), rng = Object.keys(CH_RANGE).map(k => `<button type="button" class="rbtn${!cust && c.range === k ? ' on' : ''}" data-act="chrange" data-v="${k}" aria-pressed="${!cust && c.range === k}">${CH_RANGE[k]}</button>`).join('');
+  return `<div class="${inner ? '' : 'card '}chtool"><div class="chrow">${sel('type', CH_TYPES, 'Darstellung')}${sel('interval', CH_INT, 'Kerzenlänge / Intervall')}${isCandleType(c.type) && c.type !== 'bars' ? sel('style', CH_STYLE, 'Kerzenstil') : ''}</div>
+    <div class="chrow2"><span class="rng" role="group" aria-label="Zeitrahmen">${rng}</span><a href="#einstellungen" data-act="goto" data-tab="einstellungen" class="linkadd">Alle Chart-Einstellungen</a></div>
+    <div class="chdates">${dateFields(c)}</div>
+    <p class="hint" style="margin:6px 0 0">Ziehen verschiebt, Strg + Mausrad zoomt, Doppelklick setzt zurück.</p></div>`;
+}
+/* --- Reiter Einstellungen --- */
+function layList(key, all, hideKey, order, hidden, note){
+  return `<ol class="laylist">${order.map((id, i) => {
+    const name = key === 'tabs' ? TAB_NAMES[id] : (all.find(x => x[0] === id) || [id, id])[1];
+    return `<li><label class="chk" style="margin:0;flex:1">${hideKey ? `<input type="checkbox" data-lay="${hideKey}" data-id="${id}"${hidden.includes(id) ? '' : ' checked'} aria-label="${esc(name)} anzeigen">` : ''}<span>${esc(name)}</span></label>
+      <button class="btn sm" data-act="layup" data-list="${key}" data-id="${id}"${i === 0 ? ' disabled' : ''} aria-label="${esc(name)} nach oben">▲</button>
+      <button class="btn sm" data-act="laydown" data-list="${key}" data-id="${id}"${i === order.length - 1 ? ' disabled' : ''} aria-label="${esc(name)} nach unten">▼</button></li>`;
+  }).join('')}</ol>${note ? `<p class="hint">${note}</p>` : ''}`;
+}
+function viewEinstellungen(){
+  const c = curChart(), L = curLayout();
+  const sel = (k, map, label) => `<label>${label}<select data-cs="${k}">${Object.keys(map).map(v => `<option value="${v}"${v === c[k] ? ' selected' : ''}>${esc(map[v])}</option>`).join('')}</select></label>`;
+  const chk = (k, label, val) => `<label class="chk"><input type="checkbox" data-cs="${k}"${val ? ' checked' : ''}><span>${label}</span></label>`;
+  const num = (k, label, val, ph) => `<label>${label}<input type="text" inputmode="decimal" data-cs="${k}" value="${val == null ? '' : String(val).replace('.', ',')}" placeholder="${ph}"></label>`;
+  const maRow = (k, lab) => `<div class="maRow"><label class="chk"><input type="checkbox" data-cs="${k}on"${c[k].on ? ' checked' : ''}><span>${lab}</span></label>
+    <select data-cs="${k}k" aria-label="${lab}: Art"><option value="sma"${c[k].k === 'sma' ? ' selected' : ''}>SMA (einfach)</option><option value="ema"${c[k].k === 'ema' ? ' selected' : ''}>EMA (exponentiell)</option></select>
+    <input type="number" min="2" max="400" step="1" data-cs="${k}n" value="${c[k].n}" aria-label="${lab}: Periode in Kerzen"></div>`;
+  const cust = !!(c.from || c.to), rng = Object.keys(CH_RANGE).map(k => `<button type="button" class="rbtn${!cust && c.range === k ? ' on' : ''}" data-act="chrange" data-v="${k}" aria-pressed="${!cust && c.range === k}">${CH_RANGE[k]}</button>`).join('');
+  const startOpts = Object.keys(TAB_NAMES).map(t => `<option value="${t}"${L.start === t ? ' selected' : ''}>${TAB_NAMES[t]}</option>`).join('');
+  return `<section class="card"><h2>Vorschau</h2><p class="hint" style="margin-top:0">So sieht der Depotwert mit den gewählten Einstellungen aus. Jede Änderung wirkt sofort auf alle Diagramme.</p><div class="chart" id="c-set"></div></section>
+  <section class="card"><h2>Darstellung der Verläufe</h2>
+    <div class="chset">${sel('type', CH_TYPES, 'Darstellungsart')}${sel('interval', CH_INT, 'Kerzenlänge / Intervall')}${sel('style', CH_STYLE, 'Kerzenstil')}${sel('axis', CH_AXIS, 'Zeitachse')}</div>
+    <p class="hint" style="margin-bottom:4px">Zeitrahmen (sichtbarer Ausschnitt)</p><span class="rng" role="group" aria-label="Zeitrahmen">${rng}</span>
+    <div class="chdates" style="margin-top:10px">${dateFields(c)}</div>
+    <p class="hint">Mit Start- und Enddatum stellst du den Ausschnitt tagesgenau ein; sie ersetzen die Knöpfe 1M bis Alle. Gezeigt wird ab der ersten Kerze, die den Starttag enthält oder danach endet, bis zur letzten Kerze, die am Endtag oder davor beginnt. Für den Starttag auf den Tag genau eignet sich das Intervall Tag. Ziehen oder Zoomen im Diagramm ändert den Ausschnitt nur vorübergehend, ein Doppelklick auf das Diagramm kehrt zu den Datumsfeldern zurück.</p>
+    <details style="margin-top:10px"><summary>Wie lese ich Kerzen?</summary><p class="hint" style="margin-top:0">Eine Kerze zeigt Eröffnung, Hoch, Tief und Schluss eines Zeitraums. Der dünne Strich reicht vom Tief bis zum Hoch, der Körper von der Eröffnung bis zum Schluss. Gestiegene Kerzen sind grün, gefallene rot (Farben unten einstellbar). Der Kerzenstil (flach, 3D, metallisch) gilt für Kerzen, hohle Kerzen und Heikin-Ashi. Handelstage zeichnet jede Kerze gleich breit ohne Lücken, Kalenderzeit hält die Abstände zwischen den Daten maßstabsgetreu. Hohle Kerzen: gestiegene nur als Rahmen. Heikin-Ashi glättet die Kerzen, Balken (OHLC) zeigen Eröffnung links und Schluss rechts als Strich. Hast du keine Werte für Eröffnung, Hoch und Tief erfasst (Reiter Kurse, auch per CSV mit Open, High, Low), werden sie aus den erfassten Schlusskursen abgeleitet: Eröffnung ist der Schluss des Vorzeitraums, Hoch und Tief sind der höchste und niedrigste erfasste Kurs im Zeitraum. Das sind dann Näherungen, keine echten Tageshochs. Volumen und Zeichenwerkzeuge gibt es nicht.</p></details></section>
+  <section class="card"><h2>Farben und Hintergrund</h2>
+    <div class="chset"><label>Farbe gestiegen<input type="color" data-cs="up" value="${c.up}"></label><label>Farbe gefallen<input type="color" data-cs="down" value="${c.down}"></label>
+    ${sel('bg', CH_BG, 'Hintergrund der Diagramme')}${sel('grid', CH_GRID, 'Raster')}</div>
+    <div class="btns"><button class="btn" data-act="chtv">TradingView-Farben setzen</button></div></section>
+  <section class="card"><h2>Werteachse</h2>
+    <div class="chset">${sel('mode', CH_MODE, 'Werte als')}${num('vmin', 'Kleinster Wert (Minimum)', c.vmin, 'automatisch')}${num('vmax', 'Größter Wert (Maximum)', c.vmax, 'automatisch')}${num('vstep', 'Werteintervall (Schritt)', c.vstep, 'automatisch')}</div>
+    <div class="chset" style="margin-top:6px">${chk('log', 'Logarithmische Skala (nur bei Preisen)', c.log)}</div>
+    <p class="hint">Leer lassen heißt automatisch. Minimum und Maximum gelten für alle Preis-Diagramme, bei Prozentwerten in Prozent. Das Werteintervall legt fest, in welchen Abständen Achsenmarken und Rasterlinien stehen.</p></section>
+  <section class="card"><h2>Anzeige</h2>
+    <div class="chset">${chk('cross', 'Fadenkreuz mit Datum und Wert', c.cross)}${chk('last', 'Marke für den letzten Kurs', c.last)}${chk('hl', 'Marken für Hoch und Tief im Ausschnitt', c.hl)}${chk('legend', 'Legende mit Eröffnung, Hoch, Tief, Schluss', c.legend)}</div></section>
+  <section class="card"><h2>Indikatoren</h2>${maRow('ma1', 'Gleitender Durchschnitt 1')}${maRow('ma2', 'Gleitender Durchschnitt 2')}
+    <div class="chset" style="margin-top:6px">${chk('bb', 'Bollinger-Bänder (20 Kerzen, 2 Standardabweichungen)', c.bb)}</div>
+    <p class="hint">Die Perioden zählen Kerzen des gewählten Intervalls.</p></section>
+  <section class="card"><h2>Reihenfolge und Sichtbarkeit</h2>
+    <h3 style="font-size:1rem;margin:0 0 4px">Reiter</h3>${layList('tabs', null, null, L.tabs, [], 'Die Reihenfolge der Reiter oben im Kopf.')}
+    <label style="max-width:320px">Beim Start öffnen<select data-lay="start"><option value=""${L.start ? '' : ' selected'}>Zuletzt geöffnet bzw. Übersicht</option>${startOpts}</select></label>
+    <h3 style="font-size:1rem;margin:14px 0 4px">Blöcke der Übersicht</h3>${layList('ov', LAY_OV, 'ovHide', L.ov, L.ovHide, 'Häkchen = sichtbar. Hinweise (Sicherung, fehlende Kurse) bleiben immer oben.')}
+    <h3 style="font-size:1rem;margin:14px 0 4px">Diagramme</h3>${layList('ch', LAY_CH, 'chHide', L.ch, L.chHide, 'Häkchen = sichtbar. Das Gesamtvermögen erscheint nur, wenn das Konto genutzt wird.')}</section>
+  <section class="card"><h2>Zurücksetzen</h2><div class="btns"><button class="btn" data-act="chreset">Diagramm-Einstellungen zurücksetzen</button><button class="btn" data-act="layreset">Reihenfolge und Sichtbarkeit zurücksetzen</button></div>
+    <p class="hint">Die Einstellungen gehören zum jeweiligen Depot und werden mit der Sicherung gespeichert.</p></section>`;
+}
+function curLayout(){ return cleanLayout(state.meta.layout); }
+function setLayout(patch){ state.meta.layout = cleanLayout(Object.assign({}, curLayout(), patch)); saveState(); const y = window.scrollY; render(); window.scrollTo(0, y); }
+function layMove(list, id, dir){
+  const L = curLayout(), a = L[list].slice(), i = a.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= a.length) return;
+  [a[i], a[j]] = [a[j], a[i]]; setLayout({[list]:a});
+}
+function chartChange(t){
+  const k = t.dataset.cs, c = curChart(), p = {};
+  let v = t.type === 'checkbox' ? t.checked : t.value;
+  if (k === 'from' || k === 'to') v = v || null;
+  if (k === 'vmin' || k === 'vmax' || k === 'vstep') { const n = parseNum(v); v = isFinite(n) ? n : null; if (k === 'vstep' && !(v > 0)) v = null; }
+  const m = /^(ma[12])(on|k|n)$/.exec(k);
+  if (m) { const cur = Object.assign({}, c[m[1]]); if (m[2] === 'on') cur.on = v; else if (m[2] === 'k') cur.k = v; else cur.n = Number(v); p[m[1]] = cur; }
+  else p[k] = v;
+  setChart(p);
+}
+function layChange(t){
+  const k = t.dataset.lay;
+  if (k === 'start') { setLayout({start:t.value}); return; }
+  const L = curLayout(), id = t.dataset.id, h = L[k].filter(x => x !== id);
+  if (!t.checked) h.push(id);
+  setLayout({[k]:h});
+}
+chartRedraw['c-set'] = () => drawDepot('c-set');
 
 /* ======================================================================
    Ereignisse
@@ -1765,6 +2139,70 @@ document.addEventListener('pointerover', e => { const el = e.target.closest && e
 document.addEventListener('pointermove', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e); else hideTip(); });
 document.addEventListener('pointerdown', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e); else hideTip(); });
 window.addEventListener('scroll', hideTip, {passive:true});
+/* --- Fadenkreuz, Verschieben, Zoomen der Preis-Charts --- */
+function chartPoint(e){
+  const host = e.target && e.target.closest ? e.target.closest('.chart') : null;
+  if (!host || !chartReg[host.id]) return null;
+  const svg = host.querySelector('svg'); if (!svg) return null;
+  const r = svg.getBoundingClientRect(), reg = chartReg[host.id], k = reg.w / (r.width || reg.w);
+  return {host, reg, id:host.id, k, x:(e.clientX - r.left) * k, y:(e.clientY - r.top) * k};
+}
+let xhActive = null;
+function crossOff(id){
+  const host = document.getElementById(id), reg = chartReg[id]; if (!host || !reg) return;
+  const g = host.querySelector('svg .xh'); if (g) g.innerHTML = '';
+  const lg = host.querySelector('.tvlg'); if (lg) lg.innerHTML = reg.legend(reg.P.i1);
+  reg.cur = null;
+}
+function crossAt(cp){
+  const reg = cp.reg, g = cp.host.querySelector('svg .xh'); if (!g) return;
+  if (!reg.cc.cross || cp.x < reg.L || cp.x > reg.L + reg.pw || cp.y < reg.T || cp.y > reg.vb) { crossOff(cp.id); return; }
+  const P = reg.P, i = P.lay.nearest(cp.x), cx = r1(P.lay.xi(i)), c = P.disp[i], X0 = reg.L + reg.pw;
+  let s = `<line x1="${cx}" x2="${cx}" y1="${reg.T}" y2="${reg.vb}" style="stroke:#787b86;stroke-width:1;stroke-dasharray:4 3"/>`;
+  if (cp.y <= reg.T + reg.H) s += `<line x1="${reg.L}" x2="${X0}" y1="${r1(cp.y)}" y2="${r1(cp.y)}" style="stroke:#787b86;stroke-width:1;stroke-dasharray:4 3"/>` + axTag(X0, reg.w - X0, cp.y, P.vfmt(P.inv(cp.y)), '#363a45');
+  const lx = Math.max(2, Math.min(reg.w - 70, cx - 34));
+  s += `<rect x="${r1(lx)}" y="${reg.axisY - 12}" width="68" height="17" rx="2" style="fill:#363a45"/><text x="${r1(lx + 34)}" y="${reg.axisY + 1}" text-anchor="middle" style="fill:#fff;font-size:11px">${fd(c.d1)}</text>`;
+  g.innerHTML = s;
+  if (reg.cur !== i) { reg.cur = i; const lg = cp.host.querySelector('.tvlg'); if (lg) lg.innerHTML = reg.legend(i); }
+}
+function setView(id, i0, i1){
+  const reg = chartReg[id]; if (!reg) return;
+  const n = reg.P.n, span = Math.max(Math.min(4, n - 1), i1 - i0);
+  i0 = Math.max(0, Math.min(i0, n - 1 - span)); i1 = Math.min(n - 1, i0 + span);
+  ui.view[id] = {i0, i1}; if (chartRedraw[id]) chartRedraw[id]();
+}
+let chDrag = null;
+document.addEventListener('pointermove', e => {
+  if (chDrag) {
+    const reg = chartReg[chDrag.id]; if (!reg) { chDrag = null; return; }
+    const span = chDrag.i1 - chDrag.i0 + 1, shift = Math.round((e.clientX - chDrag.x0) * chDrag.k / (reg.pw / span));
+    if (shift !== chDrag.shift) { chDrag.shift = shift; hideTip(); setView(chDrag.id, chDrag.i0 - shift, chDrag.i1 - shift); }
+    return;
+  }
+  const cp = chartPoint(e);
+  if (xhActive && (!cp || cp.id !== xhActive)) crossOff(xhActive);
+  if (cp) { xhActive = cp.id; crossAt(cp); } else xhActive = null;
+});
+document.addEventListener('pointerdown', e => {
+  const cp = chartPoint(e);
+  if (cp) crossAt(cp);
+  if (cp && e.pointerType === 'mouse' && e.button === 0) chDrag = {id:cp.id, x0:e.clientX, k:cp.k, i0:cp.reg.P.i0, i1:cp.reg.P.i1, shift:0};
+});
+const endDrag = () => { chDrag = null; };
+document.addEventListener('pointerup', endDrag); document.addEventListener('pointercancel', endDrag);
+document.addEventListener('wheel', e => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const cp = chartPoint(e); if (!cp) return;
+  e.preventDefault();
+  const reg = cp.reg, n = reg.P.n, span = reg.P.i1 - reg.P.i0 + 1, f = Math.max(0, Math.min(1, (cp.x - reg.L) / reg.pw));
+  let ns = e.deltaY > 0 ? Math.ceil(span * 1.2) : Math.floor(span / 1.2);
+  ns = Math.max(Math.min(5, n), Math.min(n, ns));
+  if (ns === span) return;
+  const anchor = reg.P.i0 + f * (span - 1), i0 = Math.round(anchor - f * (ns - 1));
+  setView(cp.id, i0, i0 + ns - 1);
+}, {passive:false});
+document.addEventListener('dblclick', e => { const cp = chartPoint(e); if (cp && ui.view[cp.id]) { delete ui.view[cp.id]; chartRedraw[cp.id](); } });
+document.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.keep === 'chset') ui.chOpen = d.open; }, true);
 
 document.addEventListener('click', async e => {
   const nav = e.target.closest('#nav button'); if (nav) { go(nav.dataset.tab); return; }
@@ -1774,6 +2212,14 @@ document.addEventListener('click', async e => {
   if (b.tagName === 'A') e.preventDefault();
   switch (act) {
     case 'goto': go(b.dataset.tab); break;
+    case 'chrange': setChart({range:b.dataset.v, from:null, to:null}); break;
+    case 'chdates0': setChart({from:null, to:null}); break;
+    case 'chfirst': { const ds = (ui.detailPos ? txsOf(ui.detailPos) : state.txs).map(t => t.date).sort(); if (ds.length) setChart({from:ds[0], to:null}); break; }
+    case 'chtv': setChart({up:TV.up, down:TV.down}); break;
+    case 'chreset': { const c0 = curChart(); setChart(Object.assign({}, CH_DEFAULT, {type:c0.type, interval:c0.interval, range:c0.range, axis:c0.axis})); break; }
+    case 'layup': layMove(b.dataset.list, b.dataset.id, -1); break;
+    case 'laydown': layMove(b.dataset.list, b.dataset.id, 1); break;
+    case 'layreset': state.meta.layout = cleanLayout(null); saveState(); render(); break;
     case 'sort': { const k = b.dataset.key; ui.sort = ui.sort.key === k ? {key:k, dir:-ui.sort.dir} : {key:k, dir:k === 'name' ? 1 : -1}; render(); break; }
     case 'demo': {
       if (hasData(state)) { if (!await modal({title:'Beispieldaten laden?', text:(depots.length > 1 ? `Die Daten des Depots „${activeDepot().name}“ werden durch erfundene Beispieldaten ersetzt. Andere Depots bleiben unverändert. ` : 'Die vorhandenen Daten werden durch erfundene Beispieldaten ersetzt. ') + 'Der vorherige Stand bleibt als Notkopie im Reiter Daten.', ok:'Ersetzen', danger:true})) break; }
@@ -1887,8 +2333,8 @@ document.addEventListener('change', e => {
     else switchDepot(t.value);
   }
   else if (t.id === 'perfSel') setPerfPeriod(t.value);
-  else if (t.id === 'chartTypeSel') setChartPref('chartType', t.value);
-  else if (t.id === 'candleGridSel') setChartPref('candleGrid', t.value);
+  else if (t.dataset && t.dataset.cs) chartChange(t);
+  else if (t.dataset && t.dataset.lay) layChange(t);
   else if (t.id === 'sortSel') { ui.sort = {key:t.value, dir:t.value === 'name' ? 1 : -1}; render(); }
   else if (t.id === 'txFilter') { ui.txFilter = t.value; const y = window.scrollY; render(); window.scrollTo(0, y); }
   else if (t.id === 'detailSel') { ui.detailPos = t.value; drawDetail(); }
@@ -1905,7 +2351,7 @@ document.addEventListener('keydown', e => {
   }
 });
 let rsT;
-window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (ui.tab === 'diagramme') drawCharts(); if (ui.tab === 'uebersicht') drawPreview(); }, 150); });
+window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (ui.tab === 'diagramme') drawCharts(); if (ui.tab === 'uebersicht') drawPreview(); if (ui.tab === 'einstellungen') drawDepot('c-set'); }, 150); });
 window.addEventListener('hashchange', () => { const t = location.hash.slice(1); if (TABS.includes(t) && t !== ui.tab) { ui.tab = t; render(); } });
 
 /* ======================================================================
@@ -2303,7 +2749,7 @@ document.addEventListener('visibilitychange', () => {
 /* Start */
 $('#ver').textContent = 'v' + VERSION;
 (function init(){
-  const t = location.hash.slice(1); if (TABS.includes(t)) ui.tab = t;
+  const t = location.hash.slice(1); if (TABS.includes(t)) ui.tab = t; else if (curLayout().start) ui.tab = curLayout().start;
   render(); updateTxSum(); updatePill(); driveStart();
 })();
 </script>

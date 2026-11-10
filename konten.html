@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Seifferts Konten</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<!--
+  Seifferts Konten - woechentliche Kontostaende erfassen und auswerten, eine einzelne HTML-Datei ohne Build, ohne Server.
+  Daten liegen im localStorage dieses Browsers (Sicherung ueber den Reiter Daten, optional Google Drive).
+  v1.2.0 Konten im Kurzbericht ausblenden (je Bericht oder dauerhaft pro Konto), Bilanz im Bericht, weitere Kontoarten (Immobilie, Aktien, Fonds, ...)
+  v1.1.0 Kurzbericht als LaTeX (.tex) mit Torten- und Verlaufsgrafiken (TikZ) im Reiter Diagramme
+  v1.0.0 Erste Fassung: schnelle Eingabe geaenderter Kontostaende mit Datum, Uebersicht, frei erweiterbare Auswertungen
+         (Verlauf als Linien, Anteile als Torte; Gruppierung und Filter nach Kontoart, Bank, Besitzer, Gruppe, Konto),
+         Tabelle aller Staende, JSON/CSV, Google Drive, Block linuxHandOff fuer die Linux-App
+-->
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#f4f4f1; --surface:#fcfcfb; --surface2:#f0efec; --line:#d9d7d0; --grid:#e8e7e2;
+  --text:#0b0b0b; --text2:#52514e; --muted:#76756e;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#6250d6; --s8:#e34948;
+  --other:#9a9992; --pos:#1c5cab; --neg:#c0302f; --accent:#2a78d6; --warnbg:#fdf3dc; --warnline:#e3b24a;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#121211; --surface:#1a1a19; --surface2:#252523; --line:#3a3a37; --grid:#2b2b29;
+    --text:#f0efec; --text2:#c3c2b7; --muted:#8f8e86;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+    --other:#6f6e68; --pos:#6da7ec; --neg:#ef8584; --accent:#3987e5; --warnbg:#33290f; --warnline:#8a6a1c;
+  }
+}
+a{color:var(--accent)}
+.chartlink,.linkadd{font-size:.85rem;white-space:nowrap}
+.cards-m{display:none}
+.sortm{display:none}
+.pcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.pcard.err{background:var(--warnbg);border-color:var(--warnline)}
+.ph{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ph strong{font-size:1rem}
+.pg{text-align:right;font-weight:650;font-size:1.1rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pg small{display:block;font-weight:500;font-size:.82rem}
+.pgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 10px;margin:10px 0 0}
+.pgrid div{min-width:0}
+.pgrid dt{font-size:.74rem;color:var(--muted)}
+.pgrid dd{margin:0;font-size:.92rem;font-variant-numeric:tabular-nums}
+.pgrid dd small{color:var(--muted);font-size:.74rem}
+@media(max-width:640px){
+  .tbl-d{display:none}
+  .cards-m{display:block}
+  .sortm{display:block}
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding:0 12px}
+header.top{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
+header.top h1{margin:0;padding:10px 0 4px;font-size:1.15rem;font-weight:650}
+.ver{font-size:.75rem;font-weight:500;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle}
+nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:0 0 auto;min-height:40px;padding:6px 14px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text2);font:inherit;font-size:.95rem;cursor:pointer}
+@media(max-width:480px){nav button{padding:6px 8px;font-size:.9rem}}
+nav button[aria-selected="true"]{background:var(--surface2);border-color:var(--line);color:var(--text);font-weight:600}
+main{padding-top:14px;padding-bottom:60px}
+h2{font-size:1.05rem;margin:0 0 8px}
+h3{font-size:.95rem;margin:14px 0 6px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.hint{color:var(--muted);font-size:.88rem;margin:6px 0}
+.msg{color:var(--neg);font-size:.92rem;min-height:1.2em;margin:6px 0}
+.note{background:var(--warnbg);border:1px solid var(--warnline);border-radius:10px;padding:9px 12px;margin-bottom:14px;font-size:.92rem}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+@media(min-width:720px){.kpis{grid-template-columns:repeat(4,1fr)}}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.kpi .l{font-size:.8rem;color:var(--muted)}
+.kpi .v{font-size:1.3rem;font-weight:650;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:.85rem;color:var(--text2);font-variant-numeric:tabular-nums}
+.pos{color:var(--pos)} .neg{color:var(--neg)}
+.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.92rem;font-variant-numeric:tabular-nums}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--grid)}
+th:first-child,td:first-child{text-align:left}
+.sticky1 td:first-child,.sticky1 th:first-child{position:sticky;left:0;z-index:1}
+.sticky1 td:first-child{background:var(--surface)}
+thead th{background:var(--surface2);font-weight:600;font-size:.82rem;color:var(--text2)}
+th button{all:unset;cursor:pointer;display:inline-block;padding:2px 0}
+th button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+tfoot td,.sticky1 tfoot td:first-child{font-weight:650;background:var(--surface2);border-bottom:none}
+td small,.sub{display:block;color:var(--muted);font-size:.78rem}
+tr.err td{background:var(--warnbg)}
+label{display:block;font-size:.85rem;color:var(--text2);margin-bottom:10px}
+input,select,textarea{display:block;width:100%;min-height:44px;margin-top:3px;padding:8px 10px;font:inherit;font-size:16px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;-moz-appearance:none;appearance:none}
+select{background-image:linear-gradient(45deg,transparent 50%,var(--text2) 50%),linear-gradient(135deg,var(--text2) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
+input[type=date]{-moz-appearance:none;appearance:none}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+input[type=checkbox]{display:inline-block;width:20px;min-height:20px;margin:0 8px 0 0;vertical-align:middle;-moz-appearance:auto;appearance:auto}
+.checkrow{display:flex;align-items:center;font-size:.92rem;color:var(--text2);margin:6px 0 10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px}
+@media(max-width:560px){.grid3{grid-template-columns:1fr 1fr}.grid3 label:first-child{grid-column:1/3}}
+button.btn,button.primary,a.btn{display:inline-block;min-height:44px;padding:8px 16px;font:inherit;font-size:.95rem;border-radius:8px;border:1px solid var(--line);background:var(--surface2);color:var(--text);cursor:pointer;text-decoration:none;text-align:center}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.danger{color:var(--neg)}
+button.small{min-height:34px;padding:4px 10px;font-size:.85rem}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+details{margin:8px 0}
+summary{cursor:pointer;color:var(--text2);padding:6px 0;min-height:32px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.85rem;color:var(--text2);margin:2px 0 8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px}
+.sw.dot{border-radius:50%}
+.sw.dia{transform:rotate(45deg);width:10px;height:10px;border-radius:1px}
+.sw.line{height:3px;width:18px;border-radius:2px}
+.sw.dash{height:0;width:18px;border-top:3px dashed}
+.chart{width:100%;overflow:hidden}
+.chart svg{display:block;max-width:100%;height:auto}
+svg .t{fill:var(--text2);font-size:12px}
+svg .tm{fill:var(--muted);font-size:11px}
+svg .tv{fill:var(--text);font-size:11px;font-variant-numeric:tabular-nums}
+svg .tb{fill:var(--text);font-size:12px;font-weight:600}
+svg .grid{stroke:var(--grid);stroke-width:1}
+svg .axis{stroke:var(--line);stroke-width:1}
+svg .hit{fill:transparent}
+svg .hit:hover{fill:rgba(128,128,128,.14)}
+svg [data-tip]{cursor:default}
+.donutrow{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.donutrow ul{list-style:none;padding:0;margin:0;flex:1 1 220px;font-size:.92rem}
+.donutrow li{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--grid)}
+.donutrow li span.n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.donutrow li span.p{font-variant-numeric:tabular-nums;color:var(--text2)}
+#tip{position:fixed;display:none;z-index:50;max-width:260px;padding:7px 10px;background:var(--text);color:var(--bg);border-radius:8px;font-size:.82rem;line-height:1.35;white-space:pre-line;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;background:var(--text);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:.9rem;display:none;max-width:92vw}
+.overlay{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px}
+.dlg{background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:18px;width:100%;max-width:420px}
+.dlg h2{margin-top:0}
+.dlg p{white-space:pre-line}
+.hero{text-align:center;padding:30px 14px}
+.hero p{max-width:520px;margin:8px auto}
+code,pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85rem}
+pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;overflow-x:auto;margin:6px 0}
+.pill{display:inline-block;font-size:.75rem;border:1px solid var(--line);border-radius:999px;padding:0 8px;color:var(--text2);margin-left:4px}
+.pill.warn{border-color:var(--warnline);background:var(--warnbg)}
+.histlist{max-height:220px;overflow:auto;border:1px solid var(--grid);border-radius:8px}
+.histlist div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 10px;border-bottom:1px solid var(--grid);font-variant-numeric:tabular-nums;font-size:.9rem}
+.kursrow{display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--grid)}
+.kursrow input{margin-top:0}
+
+.titlerow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dpill{flex:0 1 auto;min-height:32px;margin-top:6px;padding:3px 12px;font:inherit;font-size:.8rem;color:var(--text2);background:var(--surface2);border:1px solid var(--line);border-radius:999px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dpill[data-st="ok"]{border-color:var(--s3)}
+.dpill[data-st="pending"],.dpill[data-st="busy"]{border-color:var(--s4)}
+.dpill[data-st="auth"],.dpill[data-st="conflict"],.dpill[data-st="error"],.dpill[data-st="unavail"]{border-color:var(--warnline);background:var(--warnbg);color:var(--text);font-weight:600}
+.btns.col{flex-direction:column}
+.btns.col button{text-align:left}
+
+/* --- Seifferts Konten --- */
+.erow{display:grid;grid-template-columns:minmax(0,1fr) 150px 160px 110px;gap:8px 12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--grid)}
+.erow.head{font-size:.8rem;color:var(--muted);font-weight:600;padding:4px 0}
+.erow .en strong{word-break:break-word}
+.erow .el{font-variant-numeric:tabular-nums;text-align:right}
+.erow .el small{display:block;color:var(--muted);font-size:.76rem}
+.erow .ei input{margin:0;text-align:right}
+.erow .ed{text-align:right;font-variant-numeric:tabular-nums;font-size:.9rem}
+.esum{margin:12px 0 4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;font-variant-numeric:tabular-nums}
+input[aria-invalid="true"]{outline:2px solid var(--neg);outline-offset:1px}
+@media(max-width:700px){
+  .erow{grid-template-columns:1fr 1fr;gap:4px 10px}
+  .erow.head{display:none}
+  .erow .en{grid-column:1/3}
+  .erow .el{text-align:left}
+  .erow .ed{grid-column:1/3;text-align:right;min-height:1.2em}
+}
+td.cell{cursor:pointer}
+td.cell:hover,td.cell:focus-visible{background:var(--surface2);outline:none}
+td.nocell{color:var(--muted)}
+.gtable th{white-space:normal;min-width:96px}
+.gtable td:first-child .btn{min-height:26px;padding:0 8px;margin-right:6px}
+.fdet{margin:6px 0;border:1px solid var(--grid);border-radius:8px;padding:2px 10px}
+.fdet .chk{max-height:200px;overflow:auto;padding:4px 0 6px}
+.fdet .checkrow{margin:2px 0}
+.vcard .vbtns{justify-content:flex-end}
+.vcard .legend b{font-variant-numeric:tabular-nums;color:var(--text)}
+.sw.dash{border-top-style:dashed}
+.chart details{margin-top:8px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="titlerow"><h1><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAJtUlEQVRoge1aa2xcxRU+Z2bu3n2/H7Z3vbbX6/UjthMTQ2JIAk5NiGkIjxQKKbSAeESERyvRiFao0EqpQlVFRRUSaUopBAQKbQCpFaDQNrQUaFEjUkSgvPKo86qD8/Dbe++c/hh72axJ2Os1MbR8v2buzs4935xvzpwzuxhv6oQvMthMG1AqviQw0/iSwHSAiIhoat/9XBDQhGBs3BKrZD4XBLKGQVKqtqZpOTLFYAYIEJHNpuUvMyLmOtlsVk6QKQYz44FsNpvfJSKX06EoISIiFj/VDBBARCLItxIRB4eGLdmdw4ztAafDzk7kMLV5ThcBIk0T+bofHBo2rWj9ZLBGoGDzfSJ8XvcnLqdus+V3rWr9ZLBGoKIs+qljhodHPoEk4sDg0LRYXABrBHbv3fepRoxljdJMsoZS98Cnxmwi4pxP9kk46CciRGSsJLeUREBKamttPPWuIIJoODD56eG+o4ioacJ24t6wCiyxIsudPqVMUgoseCA/zco1csFk8keW5tRtNl2fiissEPB4XOlUEgA45y1NderFrbMyyooF88+QUhJR+5xZxfuDMVYZLwMAU0ppTuVY4N5ITfGjpZTDI6MAIE05NDwCgNlsdmR0DAD29hxQ3th34FDxiiKiY8f7EVFKaSmHy6HUPTDjsCIhtytVnQAAh11Pp5IqCM5qSOePkURN9bVEQET16WoikpLq6yw42SqshVGEQm1IkicOgKGhYaWg/sEhAECE3sN902DpyUw6vRIimLQEJcKCB3xet4pCLqcjU1uljtjGTIqIOGNKVESUSVer8XWpKvUknUoiAhGkqisRkYjq62oK6kaXy1EeCwOApomGupriY7EFAg67PRTwA4Cu20LBAAAIzmLRECIyzqLhoHppLBJU4/0+DwEQgaYJAMw/IT7qO1Jg4ujo2NFjAwCQzRrvvLer+ED8/xSF/D6PkpDb5ayrrSIiTYy7W3CerkmqRa2rrVLja6oSSkKJeJla0URFTMX+WCTEGQOAWCRUYhpigUA4FGjMpBST5oY0ANjt+pyWBlXozG6uJwIEaGttBADGsHVWRpnbVF/LGCeghkxK5Z6ViXIhBACUl0U4LymhtCCh/LxNHQInNmBGMjoL7AM+b12qSkkok64mIk0TjZkUEQjBVVwCgMyEhFITEqqMlyEiEMUnJBQJBdTCBwM+FY48bpemCRXidCsJtgUCtTWVi85uJ6LyssjiRfMAIOj3XbD4HADyuF3d5y8EACH4hUsWMUQhRHfXQmXc+Z1n2zQBiIsXnKVpggjmtbe6nU4AOKO10e1yAEFTQ204GACAynhZODSpfjg5SotCSvWAOXWdQmb5GTgRqVH5YybPUAwseMDrcVVVVgCA0+moTsaJSLNptdVJAtI0oQSDiKnqSpVTqMFElKiIqUS1ojzKGCoJCcGVhFQ48nrcNpumJKQa009g7pxZK7/2VSJqSFdfu/ISAIiXx26+7gogjISCq29ciYgOu/7tVddwznVdv+2mbwjBEXHV9V93Ou0AcMM1K5wOBxFdcenSUNAPAMuXdobDQSJavGieItze1qyWoEhYi0JExBgjIknEVUNKJXQpSe1L0zQ5ZwBomibnHABMUzLGEEGaknE1WCqf5BqnQ0IetyuZKFderknGicimaelUFQBqQtTWJNS71RNErKlKKNrJRLkK/4l4TJkYjYTUORCe0JLP69aVhFyfVRSihR1zb/zW5UQ0u7n+9puvBoB0KrnmjusRIV4Ru/vOVZxzn9dz71232DTN5XTcs+YWu13nnP1gzSq/z8MY3nnrdcGAj4hW33BVoiJGANeuvERtp0uXdTVkUoj4lUUds1vqiydgQUKIyBkzTBMBOOeGaQKR0IRhmKpQNgwDAIQQEw2e+0hKkwA4Y6YpAVBt5fGFmQhEHy/VpCengAUJ2TTh8bgAQGiaz+dR6XTA7wMgxljA71UkQwGfknXA71Nf9Ps8CIiAPq8HEdW5oXaO2+VUUchh1wXn6npCE6J4q4olQETLLjjvh3etliQXdpzx0x/dCQCtzfUb1t8DgOmayocfWCuEiIQCj2/8id2u+32exzas83rcNk3b9OC6aCTEOf/Fz+6Nl0cJYP3aNfXpaiK4967Vs1sapKQ7Vl3TcdZsRPzmlcu7zusovh6wdpBxxtSdOOdMyUMTwjBNIsoJJl85pmkiAOMfK0eFnYKT64TzDgCsSMiCs9TtzXjDHLfDME1lR+5JrpGzVcrCzC8/UBY0UNXRReNz8StlKfjCE7AgISJqa228bFlXz/5DjzzxzNhY9rqrLyuLhrJZ44FfPlFRHk0myrdue/Xaqy5Wt4VPbnlOE2LF8iUAtGvPvs1PP7/6hqvcbufRY/0bfv3U3DlNXed2ZLPG1m2vvPHmOy1NmYuWnqu2xMZHf1v8TYwFD+g227p7vrPx0d943K5FZ7cD4vLuzie3PP/Ik8+OjI4mKmJntjWTlN1dC3/3wksPPbalZ9+hRDym27RfPfb0cy/+hQu+ZPE5D23asvmZ503TbMrUftR3ZPPTz629+/aAz/veB7sff+r3C+bP3fDw5r4jx4q3ygIBwzQPHOq9/OILXvjjX1986TUAYIjtbbNUTZO/F9taGxvSNaNjY4gYr4jNm9uiNqZus501t6W2upIAEMHjcYfDQSnJlHJkdKz3cJ9hGAd7PzJN8zMhIKW89btrX339jdtuWnnZsi71sL9/cGBwuGBk/8CgupYDgrHRsWP9A8omSfJ4/+Dg0Ihi2liX+vl93//x+o3H+weKN2PqBITg96/73tFj/f98691oJAgERPThnp6Dh3rzwzYRvfb6ju07dgIiAezu2f/Sy6/3DwyqRPWDXXsP9x1BAALauu3V+x/ctKSzY8rWW7tel5J27em5csWFx/sHHnniWcMwnS7H/PbWpvraf+zYSUSDg8Mf7u1xOZ1v7nx3dCyrOA8MDO3asw8QEDAQ8M0/c3ZNMr59x04heO/hvj+9/PemhvRbb7+fNQxA0HV9+46dlv7sYbmktJRpnYY5LZ8DJ3uTKnRy3YKcPr9LRLrNVvBvFatmfPzeKX/zhFkYW3P79S6nQ3Wj4eCKi7qWd3eqH12SlRUXX9jZ3bVQGd3e1tzdtUDVRtPw6mmZpTpZceBQ75zWxvFJGfP7PAcOjm9uwZnP69l/8D/q03/vOyiltJQznwLTM0s0HNy+4+1oJKjUnM0af/jz3/71/m5FYGRkbOu2V3bv3a+6DruuW7l3ODWm53Zalfa5Ar+gMJ9Up5NhmJzzaQkG0+MBZXcu/BVYNslQFNOkn/+FbPRLAjONLzyB/wLRlxsUgybm6gAAAABJRU5ErkJggg==" alt="" width="28" height="28" style="vertical-align:middle;border-radius:6px;margin:-3px 8px 0 0">Seifferts Konten <span class="ver" id="ver"></span></h1><button id="drivepill" class="dpill" type="button" data-st="off"></button></div>
+    <nav id="nav" role="tablist" aria-label="Bereiche">
+      <button role="tab" data-tab="eingabe">Eingabe</button>
+      <button role="tab" data-tab="uebersicht">Übersicht</button>
+      <button role="tab" data-tab="diagramme">Diagramme</button>
+      <button role="tab" data-tab="tabelle">Tabelle</button>
+      <button role="tab" data-tab="konten">Konten</button>
+      <button role="tab" data-tab="daten">Daten</button>
+    </nav>
+  </div>
+</header>
+<main class="wrap" id="view"></main>
+<div id="tip" role="tooltip"></div>
+<div id="toast" role="status"></div>
+<div id="modal-root"></div>
+
+<script>
+'use strict';
+/* ======================================================================
+   Seifferts Konten v1.0
+   ====================================================================== */
+const VERSION = '1.2.0';
+const LS_KEY = 'seifferts_konten_v1';
+const PALETTE = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
+const FDIMS = ['type', 'bank', 'owner', 'tag', 'acc'];
+const FDIM_NAMES = {type:'Kontoart', bank:'Bank', owner:'Besitzer', tag:'Gruppe', acc:'Einzelne Konten'};
+const GROUPS = {sum:'Gesamtsumme', konto:'Konto', type:'Kontoart', bank:'Bank', owner:'Besitzer', tag:'Gruppe'};
+const RANGES = {all:'Gesamter Zeitraum', ytd:'Laufendes Jahr', '1y':'Letzte 12 Monate', '6m':'Letzte 6 Monate', '3m':'Letzte 3 Monate'};
+const TYPE_SUGGEST = ['Girokonto', 'Tagesgeld', 'Festgeld', 'Sparkonto', 'Depot', 'Bargeld', 'Kreditkarte', 'Darlehen', 'Immobilie', 'Aktien', 'Fonds und ETF', 'Edelmetalle', 'Fahrzeug', 'Altersvorsorge', 'Sonstiges'];
+const LAST = '9999-12-31';
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let _uid = 0;
+const uid = () => Date.now().toString(36) + (_uid++).toString(36) + Math.random().toString(36).slice(2, 6);
+
+/* ---------- Formate ---------- */
+const fEur  = new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR'});
+const fEurS = new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR', signDisplay:'exceptZero'});
+const fPct  = new Intl.NumberFormat('de-DE', {minimumFractionDigits:1, maximumFractionDigits:1, signDisplay:'exceptZero'});
+const fPct0 = new Intl.NumberFormat('de-DE', {minimumFractionDigits:1, maximumFractionDigits:1});
+const eur  = v => isFinite(v) ? fEur.format(v) : '–';
+const eurS = v => isFinite(v) ? fEurS.format(v) : '–';
+const pctS = r => isFinite(r) ? fPct.format(r * 100) + ' %' : '–';
+const pctP = r => isFinite(r) ? fPct0.format(r * 100) + ' %' : '–';
+const signCls = v => v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : '';
+
+function pad2(n){ return String(n).padStart(2, '0'); }
+function todayISO(){ const d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+function fd(iso){ if(!iso) return '–'; const [y, m, d] = iso.split('-'); return d + '.' + m + '.' + y; }
+function fdShort(iso){ const [y, m, d] = iso.split('-'); return d + '.' + m + '.'; }
+function daysBetween(a, b){ return Math.round((Date.parse(b) - Date.parse(a)) / 864e5); }
+function isoMinusMonths(d, m){
+  const [y, mo, da] = d.split('-').map(Number), dt = new Date(Date.UTC(y, mo - 1 - m, 1));
+  const last = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate();
+  dt.setUTCDate(Math.min(da, last)); return dt.toISOString().slice(0, 10);
+}
+function rangeFrom(r){
+  const t = todayISO();
+  return r === 'ytd' ? t.slice(0, 4) + '-01-01' : r === '1y' ? isoMinusMonths(t, 12) : r === '6m' ? isoMinusMonths(t, 6) : r === '3m' ? isoMinusMonths(t, 3) : '';
+}
+function parseNum(s){
+  if (typeof s === 'number') return s;
+  s = String(s == null ? '' : s).trim().replace(/\s/g, '').replace(/€/g, '');
+  if (!s) return NaN;
+  const lc = s.lastIndexOf(','), ld = s.lastIndexOf('.');
+  if (lc >= 0 && ld >= 0) s = lc > ld ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  else if (lc >= 0) s = s.replace(',', '.');
+  else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, '');
+  return /^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(s) ? Number(s) : NaN;
+}
+function parseDate(s){
+  s = String(s || '').trim();
+  let y, m, d, mm;
+  if ((mm = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) { y = +mm[1]; m = +mm[2]; d = +mm[3]; }
+  else if ((mm = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/))) { d = +mm[1]; m = +mm[2]; y = +mm[3]; if (y < 100) y += 2000; }
+  else return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return y + '-' + pad2(m) + '-' + pad2(d);
+}
+const round2 = v => Math.round(v * 100) / 100;
+const collator = new Intl.Collator('de', {numeric:true, sensitivity:'base'});
+
+/* ======================================================================
+   Daten: Konten und Kontostände
+   Konto: {id, name, type, bank, owner, tags[], liab, norep (im Kurzbericht standardmäßig ausgeblendet), archived}
+   Kontostand: {id, accId, date, amount, note}  (je Konto und Tag höchstens einer)
+   Auswertung (meta.views): gespeicherte Diagramm-Einstellungen
+   ====================================================================== */
+function defaultViews(){
+  const F = () => ({type:[], bank:[], owner:[], tag:[], acc:[]});
+  return [
+    {id:'v-gesamt', title:'Gesamtvermögen im Verlauf', kind:'line', group:'sum', f:F(), range:'all', at:'', archiv:true, total:false},
+    {id:'v-art-verlauf', title:'Verlauf nach Kontoart', kind:'line', group:'type', f:F(), range:'all', at:'', archiv:true, total:true},
+    {id:'v-art-anteile', title:'Anteile nach Kontoart', kind:'pie', group:'type', f:F(), range:'all', at:'', archiv:false, total:false},
+    {id:'v-bank-anteile', title:'Anteile nach Bank', kind:'pie', group:'bank', f:F(), range:'all', at:'', archiv:false, total:false}
+  ];
+}
+function normView(v){
+  if (!v || typeof v !== 'object') return null;
+  const f = {}; FDIMS.forEach(k => { f[k] = Array.isArray(v.f && v.f[k]) ? v.f[k].map(x => String(x).slice(0, 80)).slice(0, 300) : []; });
+  return {
+    id:String(v.id == null ? '' : v.id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || uid(),
+    title:String(v.title || 'Auswertung').trim().slice(0, 80) || 'Auswertung',
+    kind:v.kind === 'pie' ? 'pie' : 'line',
+    group:GROUPS[v.group] ? v.group : 'type',
+    f, range:RANGES[v.range] ? v.range : 'all', at:parseDate(v.at) || '', archiv:!!v.archiv, total:!!v.total
+  };
+}
+function emptyState(){ return {accounts:[], entries:[], meta:{lastBackup:null, views:defaultViews()}}; }
+const hasData = s => !!(s && (s.accounts.length || s.entries.length));
+const cleanTxt = (x, n = 60) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
+function cleanTags(t){
+  const list = Array.isArray(t) ? t : String(t == null ? '' : t).split(/[,;]/);
+  const out = []; list.forEach(x => { x = cleanTxt(x, 40); if (x && !out.some(y => y.toLowerCase() === x.toLowerCase())) out.push(x); });
+  return out.slice(0, 20);
+}
+function normalizeState(o){
+  const s = emptyState();
+  if (!o || typeof o !== 'object') return s;
+  const ids = new Set();
+  (Array.isArray(o.accounts) ? o.accounts : []).forEach(a => {
+    if (!a || a.id == null || !cleanTxt(a.name, 80) || ids.has(String(a.id))) return;
+    ids.add(String(a.id));
+    s.accounts.push({id:String(a.id), name:cleanTxt(a.name, 80), type:cleanTxt(a.type), bank:cleanTxt(a.bank), owner:cleanTxt(a.owner), tags:cleanTags(a.tags), liab:!!a.liab, norep:!!a.norep, archived:!!a.archived});
+  });
+  const seen = new Map();
+  (Array.isArray(o.entries) ? o.entries : []).forEach(e => {
+    if (!e || !ids.has(String(e.accId))) return;
+    const d = parseDate(e.date), v = Number(e.amount);
+    if (!d || !isFinite(v)) return;
+    seen.set(String(e.accId) + '|' + d, {id:String(e.id || uid()), accId:String(e.accId), date:d, amount:round2(v), note:String(e.note || '').slice(0, 200)});
+  });
+  s.entries = [...seen.values()].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  if (o.meta && o.meta.lastBackup) s.meta.lastBackup = String(o.meta.lastBackup);
+  if (o.meta && Array.isArray(o.meta.views)) {
+    const vs = [], vids = new Set();
+    o.meta.views.forEach(v => { const n = normView(v); if (n && !vids.has(n.id)) { vids.add(n.id); vs.push(n); } });
+    s.meta.views = vs.slice(0, 40);
+  }
+  return s;
+}
+let storageOK = true;
+function loadState(){
+  try { const raw = localStorage.getItem(LS_KEY); if (raw) return normalizeState(JSON.parse(raw)); }
+  catch (e) { storageOK = false; console.warn('Laden fehlgeschlagen', e); }
+  return emptyState();
+}
+let state = loadState();
+let cache = {};
+function persist(){
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch (e) { storageOK = false; toast('Achtung: Speichern im Browser nicht möglich. Bitte Sicherung exportieren.', 5000); }
+}
+function saveState(opts){
+  cache = {};
+  persist();
+  if (!(opts && opts.noSync)) driveTouch();
+}
+/* Ersetzt den kompletten Bestand. Der bisherige Stand bleibt als Notkopie im Browser (Reiter Daten). */
+function replaceState(ns, opts){
+  opts = opts || {};
+  if (opts.keepPrev !== false && hasData(state)) {
+    try { localStorage.setItem(LS_KEY + '_prev', JSON.stringify({saved:new Date().toISOString(), state})); } catch (e) {}
+  }
+  state = ns; ui.vedit = null; ui.accEdit = null; saveState({noSync:!!opts.noSync});
+}
+function wsObj(){ return state; }
+
+/* ---------- Berechnung ---------- */
+const accById = id => state.accounts.find(a => a.id === id);
+const sgn = a => a.liab ? -1 : 1;
+function entriesBy(){
+  if (cache.by) return cache.by;
+  const m = new Map(); state.accounts.forEach(a => m.set(a.id, []));
+  state.entries.forEach(e => { const l = m.get(e.accId); if (l) l.push(e); });
+  m.forEach(l => l.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return (cache.by = m);
+}
+/* Letzter Eintrag eines Kontos bis einschließlich d (Stand wird bis zum nächsten Eintrag fortgeschrieben) */
+function valueAt(accId, d){
+  const l = entriesBy().get(accId) || [];
+  for (let i = l.length - 1; i >= 0; i--) if (l[i].date <= d) return l[i];
+  return null;
+}
+function firstDate(accId){ const l = entriesBy().get(accId) || []; return l.length ? l[0].date : null; }
+function totalAt(accs, d){
+  let sum = 0, n = 0;
+  accs.forEach(a => { const e = valueAt(a.id, d); if (e) { sum += sgn(a) * e.amount; n++; } });
+  return {sum, n};
+}
+const activeAccounts = () => state.accounts.filter(a => !a.archived);
+function sortAccs(list){
+  return list.slice().sort((a, b) => (!a.bank - !b.bank) || collator.compare(a.bank, b.bank) || collator.compare(a.type, b.type) || collator.compare(a.name, b.name));
+}
+function labelsOf(a, dim){
+  switch (dim) {
+    case 'konto': return [a.name];
+    case 'type': return [a.type || 'Ohne Kontoart'];
+    case 'bank': return [a.bank || 'Ohne Bank'];
+    case 'owner': return [a.owner || 'Ohne Besitzer'];
+    case 'tag': return a.tags.length ? a.tags : ['Ohne Gruppe'];
+    default: return ['Gesamt'];
+  }
+}
+function accMatches(a, f, archiv){
+  if (a.archived && !archiv) return false;
+  if (f.acc.length && !f.acc.includes(a.id)) return false;
+  for (const k of ['type', 'bank', 'owner', 'tag']) if (f[k].length && !labelsOf(a, k).some(l => f[k].includes(l))) return false;
+  return true;
+}
+function filterOptions(dim){
+  if (dim === 'acc') return sortAccs(state.accounts).map(a => ({value:a.id, label:a.name + (a.archived ? ' (archiviert)' : '')}));
+  const set = new Set(); state.accounts.forEach(a => labelsOf(a, dim).forEach(l => set.add(l)));
+  return [...set].sort(collator.compare).map(l => ({value:l, label:l}));
+}
+
+/* ---------- Auswertungen: Daten für Linien und Torten ---------- */
+function groupAccounts(accs, group){
+  const g = new Map();
+  accs.forEach(a => labelsOf(a, group).forEach(l => { if (!g.has(l)) g.set(l, []); g.get(l).push(a); }));
+  return g;
+}
+function lineData(v){
+  const accs = state.accounts.filter(a => accMatches(a, v.f, v.archiv));
+  if (!accs.length) return {empty:'Kein Konto entspricht dem Filter.'};
+  const ids = new Set(accs.map(a => a.id));
+  let dates = [...new Set(state.entries.filter(e => ids.has(e.accId)).map(e => e.date))].sort();
+  if (!dates.length) return {empty:'Für diese Konten sind noch keine Kontostände erfasst.'};
+  const from = rangeFrom(v.range);
+  if (from) {
+    const before = dates.filter(d => d < from), inR = dates.filter(d => d >= from);
+    dates = before.length && (!inR.length || inR[0] > from) ? [from, ...inR] : inR;
+  }
+  if (dates.length < 2) return {empty:'Ein Verlauf erscheint, sobald mindestens zwei verschiedene Erfassungstermine im Zeitraum liegen.'};
+  const mk = (name, list) => {
+    const fs = list.map(a => firstDate(a.id)).filter(Boolean).sort()[0];
+    return {name, vals:dates.map(d => !fs || d < fs ? null : totalAt(list, d).sum)};
+  };
+  let series;
+  if (v.group === 'sum') series = [mk('Gesamt', accs)];
+  else {
+    series = [...groupAccounts(accs, v.group)].map(([n, l]) => mk(n, l));
+    const lastV = s => { for (let i = s.vals.length - 1; i >= 0; i--) if (s.vals[i] != null) return Math.abs(s.vals[i]); return 0; };
+    series.sort((a, b) => lastV(b) - lastV(a) || collator.compare(a.name, b.name));
+    if (series.length > 8) {
+      const rest = series.slice(7);
+      series = series.slice(0, 7);
+      series.push({name:`Weitere (${rest.length})`, vals:dates.map((d, i) => { const x = rest.map(s => s.vals[i]).filter(z => z != null); return x.length ? x.reduce((p, q) => p + q, 0) : null; }), other:true});
+    }
+    if (v.total) series.push(Object.assign(mk('Gesamt', accs), {dash:true}));
+  }
+  let ci = 0;
+  series.forEach(s => { s.color = s.dash ? 'var(--text2)' : s.other ? 'var(--other)' : PALETTE[ci++ % PALETTE.length]; });
+  return {dates, series, count:accs.length};
+}
+function pieData(v){
+  const accs = state.accounts.filter(a => accMatches(a, v.f, v.archiv));
+  const at = v.at || LAST, map = new Map();
+  let liab = 0, neg = 0, any = 0;
+  accs.forEach(a => {
+    const e = valueAt(a.id, at); if (!e) return;
+    if (a.liab) { liab++; return; }
+    if (e.amount <= 0) { neg++; return; }
+    any++;
+    labelsOf(a, v.group).forEach(l => map.set(l, (map.get(l) || 0) + e.amount));
+  });
+  let items = [...map].map(([name, value]) => ({name, value})).sort((a, b) => b.value - a.value || collator.compare(a.name, b.name));
+  if (items.length > 8) { const rest = items.slice(7); items = items.slice(0, 7); items.push({name:`Weitere (${rest.length})`, value:rest.reduce((p, q) => p + q.value, 0), other:true}); }
+  let ci = 0; items.forEach(it => { it.color = it.other ? 'var(--other)' : PALETTE[ci++ % PALETTE.length]; });
+  const total = items.reduce((p, q) => p + q.value, 0);
+  const multi = v.group === 'tag' && accs.some(a => a.tags.length > 1);
+  return {items, total, liab, neg, multi, any};
+}
+
+/* ---------- Diagramme ---------- */
+function niceStep(range, n){ const raw = range / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * mag; }
+function niceRange(lo, hi, n = 4){
+  if (hi - lo < 1e-9) { const d = Math.abs(hi) * 0.1 || 1; lo -= d; hi += d; }
+  const step = niceStep(hi - lo, n), a = Math.floor(lo / step + 1e-9) * step, b = Math.ceil(hi / step - 1e-9) * step, ticks = [];
+  for (let v = a; v <= b + step * 1e-6; v += step) ticks.push(+v.toFixed(10));
+  return {lo:a, hi:b, step, ticks};
+}
+function axisFmt(step){
+  const d = Math.abs(step - Math.round(step)) < 1e-9 ? 0 : Math.abs(step * 10 - Math.round(step * 10)) < 1e-9 ? 1 : 2;
+  const f = new Intl.NumberFormat('de-DE', {minimumFractionDigits:d, maximumFractionDigits:d});
+  return v => f.format(v);
+}
+const svgWrap = (w, h, inner, label) => `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${esc(label)}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+const tableHTML = (head, rows) => `<div class="tablewrap"><table><thead><tr>${head.map((h, i) => `<th${i === 0 ? ' style="text-align:left"' : ''}>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+const tm = d => Date.parse(d);
+const tdate = t => new Date(t).toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'2-digit', timeZone:'UTC'});
+function timeTicks(t0, t1, n){ const a = []; for (let i = 0; i <= n; i++) a.push(t0 + (t1 - t0) * i / n); return a; }
+
+function lineSVG(w, data, label){
+  const {dates, series} = data;
+  const t0 = tm(dates[0]), t1 = tm(dates[dates.length - 1]);
+  const vals = series.flatMap(s => s.vals.filter(x => x != null));
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const sp = (hi - lo) || Math.abs(hi) * 0.1 || 1;
+  let a = lo - sp * 0.08; const b = hi + sp * 0.08;
+  if (lo >= 0) a = lo < 0.35 * hi ? 0 : Math.max(0, a);
+  const yr = niceRange(a, b, 4);
+  const L = 70, R = 16, T = 14, H = 240, B = 28, pw = Math.max(80, w - L - R), h = T + H + B;
+  const x = t => L + (t - t0) / (t1 - t0) * pw, y = v => T + H - (v - yr.lo) / (yr.hi - yr.lo) * H, af = axisFmt(yr.step);
+  let g = '';
+  timeTicks(t0, t1, w < 420 ? 3 : 5).forEach((t, i, arr) => { g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T + H}"/><text class="tm" x="${x(t)}" y="${h - 8}" text-anchor="${i === 0 ? 'start' : i === arr.length - 1 ? 'end' : 'middle'}">${tdate(t)}</text>`; });
+  yr.ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${y(v)}" y2="${y(v)}"/><text class="tm" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${af(v)}</text>`; });
+  g += `<line class="axis" x1="${L}" x2="${L + pw}" y1="${T + H}" y2="${T + H}"/>`;
+  dates.forEach((d, i) => {
+    const xa = i ? (x(tm(dates[i - 1])) + x(tm(d))) / 2 : L, xb = i < dates.length - 1 ? (x(tm(d)) + x(tm(dates[i + 1]))) / 2 : L + pw;
+    const tip = fd(d) + '\n' + series.map(s => `${s.name}: ${s.vals[i] == null ? '–' : eur(s.vals[i])}`).join('\n');
+    g += `<rect class="hit" x="${xa}" y="${T}" width="${Math.max(2, xb - xa)}" height="${H}" data-tip="${esc(tip)}"/>`;
+  });
+  series.forEach(s => {
+    let p = '', on = false;
+    s.vals.forEach((v, i) => { if (v == null) return; p += (on ? 'L' : 'M') + x(tm(dates[i])).toFixed(1) + ',' + y(v).toFixed(1); on = true; });
+    g += `<path d="${p}" style="fill:none;stroke:${s.color};stroke-width:2;stroke-linejoin:round${s.dash ? ';stroke-dasharray:6 4' : ''}"/>`;
+    if (dates.length <= 26 && !s.dash) s.vals.forEach((v, i) => { if (v != null) g += `<circle cx="${x(tm(dates[i])).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" style="fill:${s.color};stroke:var(--surface);stroke-width:1.5;pointer-events:none"/>`; });
+  });
+  return svgWrap(w, h, g, label);
+}
+function lineLegend(data){
+  return `<div class="legend">${data.series.map(s => {
+    let last = null; for (let i = s.vals.length - 1; i >= 0; i--) if (s.vals[i] != null) { last = s.vals[i]; break; }
+    return `<span><i class="sw ${s.dash ? 'dash' : 'line'}" style="${s.dash ? 'border-color' : 'background'}:${s.color}"></i>${esc(s.name)} <b>${eur(last)}</b></span>`;
+  }).join('')}</div>`;
+}
+function lineTable(data){
+  const head = ['Datum'].concat(data.series.map(s => esc(s.name)));
+  const rows = data.dates.map((d, i) => [fd(d)].concat(data.series.map(s => s.vals[i] == null ? '–' : eur(s.vals[i])))).reverse();
+  return `<details><summary>Werte als Tabelle</summary>${tableHTML(head, rows)}</details>`;
+}
+function donutSVG(pd, centerLabel){
+  const S = 220, c = S / 2, R = 104, r0 = 64, total = pd.total;
+  const pt = (rad, a) => [c + rad * Math.sin(a), c - rad * Math.cos(a)];
+  let a0 = 0, g = '';
+  const seg = (a, b, it, tip) => {
+    const [x1, y1] = pt(R, a), [x2, y2] = pt(R, b), [x3, y3] = pt(r0, b), [x4, y4] = pt(r0, a), large = b - a > Math.PI ? 1 : 0;
+    return `<path d="M${x1},${y1}A${R},${R} 0 ${large} 1 ${x2},${y2}L${x3},${y3}A${r0},${r0} 0 ${large} 0 ${x4},${y4}Z" style="fill:${it.color};stroke:var(--surface);stroke-width:2" data-tip="${esc(tip)}"/>`;
+  };
+  pd.items.forEach(it => {
+    const frac = it.value / total, a1 = a0 + frac * 2 * Math.PI, tip = `${it.name}\n${eur(it.value)} (${pctP(frac)})`;
+    if (frac > 0.9999) g += seg(0, Math.PI, it, tip) + seg(Math.PI, 2 * Math.PI - 1e-6, it, tip);
+    else g += seg(a0, a1, it, tip);
+    a0 = a1;
+  });
+  g += `<text class="tm" x="${c}" y="${c - 6}" text-anchor="middle">${esc(centerLabel)}</text><text class="tb" x="${c}" y="${c + 14}" text-anchor="middle">${eur(total)}</text>`;
+  return svgWrap(S, S, g, 'Anteile');
+}
+function pieHTML(pd, v){
+  const legend = `<ul>${pd.items.map(it => `<li><i class="sw" style="background:${it.color}"></i><span class="n">${esc(it.name)}</span><span class="p">${eur(it.value)} · ${pctP(it.value / pd.total)}</span></li>`).join('')}</ul>`;
+  let notes = '';
+  if (pd.liab) notes += `<p class="hint">${pd.liab} Verbindlichkeit${pd.liab === 1 ? '' : 'en'} wird nicht dargestellt (Anteile zeigen nur Guthaben).</p>`;
+  if (pd.neg) notes += `<p class="hint">${pd.neg} Konto${pd.neg === 1 ? '' : 'en'} mit Stand 0 oder im Minus nicht dargestellt.</p>`;
+  if (pd.multi) notes += `<p class="hint">Konten mit mehreren Gruppen zählen in jeder ihrer Gruppen mit, die Summe kann deshalb höher sein als dein Vermögen.</p>`;
+  return `<div class="donutrow">${donutSVG(pd, v.at ? 'Stand ' + fdShort(v.at) + v.at.slice(2, 4) : 'Summe')}${legend}</div>${notes}`
+    + `<details><summary>Werte als Tabelle</summary>${tableHTML([GROUPS[v.group], 'Betrag', 'Anteil'], pd.items.map(it => [esc(it.name), eur(it.value), pctP(it.value / pd.total)]))}</details>`;
+}
+function viewSummary(v){
+  const parts = [v.kind === 'line' ? 'Verlauf' : 'Anteile', v.group === 'sum' ? 'Gesamtsumme' : 'nach ' + GROUPS[v.group],
+    v.kind === 'line' ? RANGES[v.range] : (v.at ? 'Stand ' + fd(v.at) : 'aktueller Stand')];
+  FDIMS.forEach(k => {
+    if (!v.f[k].length) return;
+    const names = k === 'acc' ? v.f[k].map(id => (accById(id) || {name:'(gelöscht)'}).name) : v.f[k];
+    parts.push(FDIM_NAMES[k] + ': ' + names.join(', '));
+  });
+  if (v.archiv) parts.push('mit archivierten Konten');
+  if (v.kind === 'line' && v.total && v.group !== 'sum') parts.push('mit Gesamtlinie');
+  return parts.join(' · ');
+}
+function drawView(v, w){
+  const el = $('#vc-' + v.id), t = $('#vc-' + v.id + '-t'); if (!el) return;
+  if (v.kind === 'line') {
+    const d = lineData(v);
+    el.innerHTML = d.empty ? `<p class="hint">${esc(d.empty)}</p>` : lineLegend(d) + lineSVG(w, d, v.title);
+    if (t) t.innerHTML = d.empty ? '' : lineTable(d);
+  } else {
+    const pd = pieData(v);
+    el.innerHTML = pd.total > 0 ? pieHTML(pd, v) : `<p class="hint">Keine Guthaben zum Darstellen (Filter, Stichtag oder Kontostände prüfen).</p>`;
+    if (t) t.innerHTML = '';
+  }
+}
+function drawCharts(){
+  state.meta.views.forEach(v => {
+    const el = $('#vc-' + v.id);
+    drawView(v, Math.max(280, el ? el.clientWidth || 320 : 320));
+  });
+}
+function drawPreview(){
+  const el = $('#c-prev'); if (!el) return;
+  const v = normView({id:'prev', kind:'line', group:'sum', range:'all', f:{}});
+  const d = lineData(v);
+  el.innerHTML = d.empty ? `<p class="hint">${esc(d.empty)}</p>` : lineSVG(Math.max(280, el.clientWidth || 320), d, 'Gesamtvermögen im Verlauf');
+}
+
+/* ======================================================================
+   Oberfläche: Hilfen
+   ====================================================================== */
+const ui = {tab:'eingabe', sort:{key:'value', dir:-1}, showArch:false, edate:null, accEdit:null, vedit:null, tableAll:false};
+let toastT;
+function toast(msg, ms = 2600){
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', ms);
+}
+function modal({title, text = '', fields = [], ok = 'OK', cancel = 'Abbrechen', danger = false}){
+  return new Promise(resolve => {
+    const root = $('#modal-root');
+    const prevFocus = document.activeElement;
+    root.innerHTML = `<div class="overlay"><form class="dlg" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+      <h2>${esc(title)}</h2>${text ? `<p>${esc(text)}</p>` : ''}
+      ${fields.map((f, i) => `<label>${esc(f.label)}<input data-f="${i}" value="${esc(f.value || '')}" autocomplete="off"${f.mode ? ` inputmode="${f.mode}"` : ''}></label>`).join('')}
+      <div class="btns"><button class="primary${danger ? ' danger' : ''}" type="submit"${danger ? ' style="background:var(--neg);border-color:var(--neg)"' : ''}>${esc(ok)}</button>
+      ${cancel ? `<button class="btn" type="button" data-cancel>${esc(cancel)}</button>` : ''}</div></form></div>`;
+    const form = root.querySelector('form');
+    const close = v => { root.innerHTML = ''; document.removeEventListener('keydown', onKey, true); if (prevFocus && prevFocus.focus) try { prevFocus.focus(); } catch (e) {} resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); close(fields.length ? null : false); } };
+    document.addEventListener('keydown', onKey, true);
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      close(fields.length ? fields.map((f, i) => form.querySelector(`[data-f="${i}"]`).value) : true);
+    });
+    const c = form.querySelector('[data-cancel]'); if (c) c.addEventListener('click', () => close(fields.length ? null : false));
+    const first = form.querySelector('input') || form.querySelector('button'); if (first) { first.focus(); if (first.select) first.select(); }
+  });
+}
+function choose({title, text, options}){
+  return new Promise(resolve => {
+    const root = $('#modal-root');
+    root.innerHTML = `<div class="overlay"><div class="dlg" role="dialog" aria-modal="true" aria-label="${esc(title)}" style="max-height:92vh;overflow:auto"><h2>${esc(title)}</h2><p>${esc(text)}</p>
+      <div class="btns col">${options.map(o => `<button type="button" class="${o.primary ? 'primary' : 'btn'}" data-k="${o.key}">${esc(o.label)}${o.sub ? `<span class="sub" style="color:inherit;opacity:.8">${esc(o.sub)}</span>` : ''}</button>`).join('')}</div></div></div>`;
+    root.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { root.innerHTML = ''; resolve(b.dataset.k); }));
+    const f = root.querySelector('button'); if (f) f.focus();
+  });
+}
+function download(name, text, mime){
+  const blob = new Blob([text], {type:mime || 'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
+}
+const datalists = () => {
+  const u = k => [...new Set(state.accounts.map(a => a[k]).filter(Boolean))];
+  const opt = l => l.sort(collator.compare).map(x => `<option value="${esc(x)}"></option>`).join('');
+  return `<datalist id="dl-type">${opt([...new Set(TYPE_SUGGEST.concat(u('type')))])}</datalist><datalist id="dl-bank">${opt(u('bank'))}</datalist><datalist id="dl-owner">${opt(u('owner'))}</datalist>`;
+};
+
+/* ======================================================================
+   Navigation
+   ====================================================================== */
+const TABS = ['eingabe', 'uebersicht', 'diagramme', 'tabelle', 'konten', 'daten'];
+function go(tab){
+  if (!TABS.includes(tab)) tab = 'eingabe';
+  ui.tab = tab;
+  if (location.hash !== '#' + tab) { try { history.replaceState(null, '', '#' + tab); } catch (e) {} }
+  render(); window.scrollTo(0, 0);
+}
+function render(){
+  document.querySelectorAll('#nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === ui.tab ? 'true' : 'false'));
+  { const nv = $('#nav'), sel = nv && nv.querySelector('[aria-selected="true"]'); if (sel) nv.scrollLeft = Math.max(0, sel.offsetLeft - (nv.clientWidth - sel.offsetWidth) / 2); }
+  const v = $('#view');
+  const keep = ui.tab === 'eingabe' ? [...v.querySelectorAll('.kinput')].filter(i => i.value).map(i => [i.dataset.acc, i.value]) : [];
+  v.innerHTML = datalists() + ({eingabe:viewEingabe, uebersicht:viewOverview, diagramme:viewCharts, tabelle:viewTabelle, konten:viewKonten, daten:viewDaten})[ui.tab]();
+  keep.forEach(([id, val]) => { const i = v.querySelector(`.kinput[data-acc="${CSS.escape(id)}"]`); if (i) i.value = val; });
+  if (ui.tab === 'eingabe') updateESum();
+  if (ui.tab === 'diagramme') { toggleVF(); drawCharts(); }
+  if (ui.tab === 'uebersicht') drawPreview();
+}
+
+/* ======================================================================
+   Eingabe
+   ====================================================================== */
+function hero(){
+  return `<div class="card hero"><h2>Noch keine Konten</h2>
+    <p>Lege zuerst deine Konten an (Name, Kontoart, Bank, Besitzer, Gruppen). Danach tippst du hier jede Woche nur die Kontostände ein, die sich geändert haben. Datum und Verlauf ergeben sich von selbst.</p>
+    <div class="btns" style="justify-content:center"><button class="primary" data-act="goto" data-tab="konten">Erstes Konto anlegen</button>
+    <button class="btn" data-act="demo">Beispieldaten laden</button></div>
+    <p class="hint">Alle Daten bleiben in diesem Browser auf diesem Gerät. Es gibt keine Verbindung ins Internet.</p></div>`;
+}
+function viewEingabe(){
+  const accs = sortAccs(activeAccounts());
+  if (!accs.length) return hero();
+  const date = ui.edate || todayISO();
+  const rows = accs.map(a => {
+    const e = valueAt(a.id, LAST), age = e ? daysBetween(e.date, todayISO()) : null;
+    const sub = [a.type, a.bank, a.owner].filter(Boolean).join(' · ');
+    return `<div class="erow"><div class="en"><strong>${esc(a.name)}</strong>${a.liab ? ' <span class="pill">Verbindlichkeit</span>' : ''}<span class="sub">${esc(sub)}</span></div>
+      <div class="el">${e ? `${eur(e.amount)}<small>Stand ${fd(e.date)}${age > 0 ? ` (vor ${age} Tag${age === 1 ? '' : 'en'})` : ''}</small>` : '<small>noch kein Stand</small>'}</div>
+      <div class="ei"><input class="kinput" data-acc="${esc(a.id)}" inputmode="decimal" autocomplete="off" placeholder="unverändert" aria-label="Neuer Stand ${esc(a.name)}"></div>
+      <div class="ed" data-dacc="${esc(a.id)}"></div></div>`;
+  }).join('');
+  return `<div class="card"><h2>Kontostände erfassen</h2>
+    <p class="hint" style="margin-top:0">Trage nur die Konten ein, deren Stand sich geändert hat. Leere Felder bleiben unverändert (der letzte Stand gilt weiter). Mit Enter springst du zum nächsten Feld.</p>
+    <form id="eform" autocomplete="off">
+      <label style="max-width:220px">Datum der Erfassung<input type="date" id="edate" value="${esc(date)}" max="${todayISO()}"></label>
+      <div class="erow head"><div>Konto</div><div>Letzter Stand</div><div>Neuer Stand in €</div><div>Änderung</div></div>
+      ${rows}
+      <p id="esum" class="esum" role="status"></p>
+      <div class="btns"><button class="primary" type="submit">Speichern</button><button class="btn" type="button" data-act="eclear">Felder leeren</button></div>
+    </form></div>`;
+}
+function updateESum(){
+  let before = 0, after = 0, filled = 0, bad = 0;
+  activeAccounts().forEach(a => {
+    const inp = document.querySelector(`.kinput[data-acc="${CSS.escape(a.id)}"]`), cell = document.querySelector(`[data-dacc="${CSS.escape(a.id)}"]`);
+    const e = valueAt(a.id, LAST), last = e ? e.amount : 0;
+    before += sgn(a) * last;
+    let val = last;
+    if (inp) {
+      const raw = inp.value.trim(); let txt = '', cls = '';
+      inp.setAttribute('aria-invalid', 'false');
+      if (raw) {
+        const n = parseNum(raw);
+        if (!isFinite(n)) { bad++; inp.setAttribute('aria-invalid', 'true'); txt = 'keine Zahl'; cls = 'neg'; }
+        else { filled++; val = n; const dlt = n - last; txt = e ? (Math.abs(dlt) < 0.005 ? 'gleich' : eurS(dlt)) : 'neu'; cls = signCls(sgn(a) * dlt); }
+      }
+      if (cell) { cell.textContent = txt; cell.className = 'ed ' + cls; }
+    }
+    after += sgn(a) * val;
+  });
+  const el = $('#esum'); if (!el) return;
+  el.innerHTML = filled || bad ? `Gesamt bisher <strong>${eur(before)}</strong>, mit den neuen Werten <strong>${eur(after)}</strong> <span class="${signCls(after - before)}">(${eurS(after - before)})</span> · ${filled} ${filled === 1 ? 'Konto' : 'Konten'} ausgefüllt${bad ? `, <span class="neg">${bad} ungültig</span>` : ''}`
+    : `Gesamt aktuell <strong>${eur(before)}</strong>`;
+}
+function saveEingabe(){
+  const date = parseDate($('#edate').value);
+  if (!date) { toast('Bitte ein gültiges Datum wählen.'); return; }
+  if (date > todayISO()) { toast('Das Datum liegt in der Zukunft.'); return; }
+  const items = [], bad = [];
+  document.querySelectorAll('.kinput').forEach(i => {
+    const raw = i.value.trim(); if (!raw) return;
+    const n = parseNum(raw), a = accById(i.dataset.acc);
+    if (!a) return;
+    if (!isFinite(n)) bad.push(a.name); else items.push({a, v:round2(n)});
+  });
+  if (bad.length) { toast('Keine gültige Zahl bei: ' + bad.join(', '), 5000); const f = document.querySelector('.kinput[aria-invalid="true"]'); if (f) f.focus(); return; }
+  if (!items.length) { toast('Es ist kein Kontostand eingetragen.'); return; }
+  let neu = 0, ers = 0;
+  items.forEach(({a, v}) => {
+    const ex = state.entries.find(e => e.accId === a.id && e.date === date);
+    if (ex) { if (ex.amount !== v) { ex.amount = v; ers++; } } else { state.entries.push({id:uid(), accId:a.id, date, amount:v, note:''}); neu++; }
+  });
+  state.entries.sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+  ui.edate = null; saveState(); render();
+  toast(`${neu + ers} ${neu + ers === 1 ? 'Kontostand' : 'Kontostände'} für ${fd(date)} gespeichert` + (ers ? ` (${ers} ersetzt)` : ''), 4000);
+}
+
+/* ======================================================================
+   Übersicht
+   ====================================================================== */
+const OCOLS = [
+  ['name', 'Konto'], ['type', 'Kontoart'], ['owner', 'Besitzer'], ['tags', 'Gruppen'], ['value', 'Stand'], ['date', 'Datum'], ['delta', 'Änderung'], ['share', 'Anteil']
+];
+function overviewRows(){
+  const accs = state.accounts.filter(a => ui.showArch || !a.archived);
+  const act = accs.filter(a => !a.archived);
+  const assets = act.reduce((p, a) => { const e = valueAt(a.id, LAST); return p + (e && !a.liab && e.amount > 0 ? e.amount : 0); }, 0);
+  return accs.map(a => {
+    const l = entriesBy().get(a.id) || [], e = l[l.length - 1] || null, pv = l.length > 1 ? l[l.length - 2] : null;
+    const val = e ? sgn(a) * e.amount : NaN;
+    return {a, e, val, date:e ? e.date : '', delta:e && pv ? sgn(a) * (e.amount - pv.amount) : NaN, dpct:e && pv && pv.amount ? (e.amount - pv.amount) / Math.abs(pv.amount) : NaN,
+            share:e && !a.liab && e.amount > 0 && !a.archived && assets > 0 ? e.amount / assets : NaN};
+  });
+}
+function sortOverview(rows){
+  const k = ui.sort.key, d = ui.sort.dir;
+  const get = r => ({name:r.a.name, type:r.a.type, owner:r.a.owner, tags:r.a.tags.join(', '), value:r.val, date:r.date, delta:r.delta, share:r.share})[k];
+  return rows.slice().sort((x, y) => {
+    const a = get(x), b = get(y);
+    if (typeof a === 'number' || typeof b === 'number') { const na = isFinite(a), nb = isFinite(b); if (na !== nb) return na ? -1 : 1; return (a - b) * d || collator.compare(x.a.name, y.a.name); }
+    return collator.compare(a || '', b || '') * d || collator.compare(x.a.name, y.a.name);
+  });
+}
+function viewOverview(){
+  const act = activeAccounts();
+  if (!act.length) return hero();
+  const dates = [...new Set(state.entries.filter(e => act.some(a => a.id === e.accId)).map(e => e.date))].sort();
+  if (!dates.length) return `<div class="card"><p>Es sind noch keine Kontostände erfasst.</p><div class="btns"><button class="primary" data-act="goto" data-tab="eingabe">Kontostände erfassen</button></div></div>`;
+  const last = dates[dates.length - 1], now = totalAt(act, LAST).sum;
+  const base = d => { const t = totalAt(act, d); return t.n ? t.sum : NaN; };
+  const kpi = (l, v, s, c) => `<div class="kpi"><div class="l">${l}</div><div class="v ${c || ''}">${v}</div><div class="s">${s || ''}</div></div>`;
+  const cmp = (label, b) => { const dl = now - b; return isFinite(b) ? kpi(label, eurS(dl), `${pctS(b ? dl / Math.abs(b) : NaN)} · vorher ${eur(b)}`, signCls(dl)) : kpi(label, '–', 'noch keine Daten aus dieser Zeit'); };
+  const prev = dates.length > 1 ? dates[dates.length - 2] : null;
+  const yearEnd = (Number(last.slice(0, 4)) - 1) + '-12-31';
+  const kp = kpi('Gesamtvermögen', eur(now), 'Stand ' + fd(last))
+    + (prev ? cmp('Seit ' + fd(prev), base(prev)) : kpi('Seit letzter Erfassung', '–', 'erst ein Erfassungstermin'))
+    + cmp('Seit Jahresbeginn', base(yearEnd)) + cmp('Letzte 12 Monate', base(isoMinusMonths(last, 12)));
+  const rows = sortOverview(overviewRows());
+  const sum = rows.filter(r => !r.a.archived).reduce((p, r) => p + (isFinite(r.val) ? r.val : 0), 0);
+  const th = ([k, l]) => `<th${['name', 'type', 'owner', 'tags'].includes(k) ? ' style="text-align:left"' : ''}><button data-act="sort" data-key="${k}" aria-label="Sortieren nach ${l}">${l}${ui.sort.key === k ? (ui.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</button></th>`;
+  const body = rows.map(r => `<tr${r.a.archived ? ' style="opacity:.6"' : ''}><td><strong>${esc(r.a.name)}</strong>${r.a.archived ? ' <span class="pill">archiviert</span>' : ''}${r.a.liab ? ' <span class="pill">Verbindlichkeit</span>' : ''}<small>${esc(r.a.bank)}</small></td>
+    <td style="text-align:left">${esc(r.a.type)}</td><td style="text-align:left">${esc(r.a.owner)}</td><td style="text-align:left">${esc(r.a.tags.join(', '))}</td>
+    <td>${isFinite(r.val) ? eur(r.val) : '–'}</td><td>${r.date ? fd(r.date) : '–'}</td>
+    <td class="${signCls(r.delta)}">${isFinite(r.delta) ? eurS(r.delta) : '–'}${isFinite(r.dpct) ? `<small>${pctS(r.dpct)}</small>` : ''}</td><td>${isFinite(r.share) ? pctP(r.share) : '–'}</td></tr>`).join('');
+  return `<div class="kpis">${kp}</div>
+    <div class="card"><h2>Gesamtvermögen im Verlauf</h2><div id="c-prev" class="chart"></div></div>
+    <div class="card"><div class="titlerow"><h2>Konten</h2><div class="checkrow" style="margin:0"><input type="checkbox" id="showArch"${ui.showArch ? ' checked' : ''}><label for="showArch" style="margin:0">Archivierte zeigen</label></div></div>
+      <div class="tablewrap"><table class="sticky1"><thead><tr>${OCOLS.map(th).join('')}</tr></thead><tbody>${body}</tbody>
+      <tfoot><tr><td>Summe</td><td></td><td></td><td></td><td>${eur(sum)}</td><td></td><td></td><td></td></tr></tfoot></table></div>
+      <p class="hint">Änderung = letzter Stand gegenüber der vorherigen Erfassung dieses Kontos. Verbindlichkeiten zählen negativ. Anteil bezieht sich auf alle aktuellen Guthaben.</p></div>`;
+}
+
+/* ======================================================================
+   Diagramme (gespeicherte Auswertungen, frei erweiterbar)
+   ====================================================================== */
+function viewCharts(){
+  if (!state.accounts.length) return hero();
+  const vs = state.meta.views;
+  let h = `<div class="card"><div class="titlerow"><h2>Auswertungen</h2><button class="primary" data-act="vnew">Neue Auswertung</button></div>
+    <p class="hint" style="margin-bottom:0">Jede Auswertung ist ein Verlaufs- oder Anteilsdiagramm mit eigener Gruppierung und eigenem Filter. Du kannst beliebig viele anlegen, ändern, kopieren und sortieren. Sie werden mit deinen Daten gesichert.</p></div>`;
+  if (ui.vedit) h += viewEditor();
+  if (!vs.length) h += `<div class="card"><p class="hint">Keine Auswertung vorhanden. Mit „Neue Auswertung“ legst du eine an.</p></div>`;
+  vs.forEach((v, i) => {
+    h += `<div class="card vcard"><div class="titlerow"><h2>${esc(v.title)}</h2><div class="btns vbtns" style="margin:0">
+      <button class="btn small" data-act="vup" data-id="${v.id}"${i ? '' : ' disabled'} aria-label="Nach oben">↑</button><button class="btn small" data-act="vdown" data-id="${v.id}"${i < vs.length - 1 ? '' : ' disabled'} aria-label="Nach unten">↓</button>
+      <button class="btn small" data-act="vedit" data-id="${v.id}">Ändern</button><button class="btn small" data-act="vdup" data-id="${v.id}">Kopieren</button><button class="btn small danger" data-act="vdel" data-id="${v.id}">Löschen</button></div></div>
+      <p class="hint" style="margin-top:2px">${esc(viewSummary(v))}</p><div id="vc-${v.id}" class="chart"></div><div id="vc-${v.id}-t"></div></div>`;
+  });
+  if (vs.length || state.accounts.length) h += viewReportCard();
+  return h;
+}
+function checkList(dim, selected){
+  const opts = filterOptions(dim);
+  if (!opts.length) return '';
+  return `<details class="fdet"${selected.length ? ' open' : ''}><summary>${FDIM_NAMES[dim]}${selected.length ? ` <span class="pill">${selected.length} gewählt</span>` : ' <span class="hint">alle</span>'}</summary>
+    <div class="chk">${opts.map(o => `<label class="checkrow"><input type="checkbox" data-fd="${dim}" value="${esc(o.value)}"${selected.includes(o.value) ? ' checked' : ''}>${esc(o.label)}</label>`).join('')}</div></details>`;
+}
+function viewEditor(){
+  const d = ui.vedit.draft, isNew = ui.vedit.id === 'new';
+  const sel = (id, map, cur) => `<select id="${id}">${Object.keys(map).map(k => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(map[k])}</option>`).join('')}</select>`;
+  const dates = [...new Set(state.entries.map(e => e.date))].sort().reverse();
+  const atSel = `<select id="vf-at"><option value="">Aktueller Stand</option>${dates.map(x => `<option value="${x}"${x === d.at ? ' selected' : ''}>${fd(x)}</option>`).join('')}</select>`;
+  return `<div class="card" id="vedcard"><h2>${isNew ? 'Neue Auswertung' : 'Auswertung ändern'}</h2>
+    <form id="viewform" autocomplete="off">
+      <label>Titel<input id="vf-title" value="${esc(d.title)}"></label>
+      <div class="grid2"><label>Diagrammart${sel('vf-kind', {line:'Verlauf (Linien)', pie:'Anteile (Torte)'}, d.kind)}</label>
+        <label>Gruppieren nach${sel('vf-group', GROUPS, d.group)}</label></div>
+      <div class="grid2"><label data-kind="line">Zeitraum${sel('vf-range', RANGES, d.range)}</label><label data-kind="pie">Stichtag${atSel}</label></div>
+      <h3>Filter <span class="hint">(nichts gewählt = alle)</span></h3>
+      ${FDIMS.map(k => checkList(k, d.f[k])).join('')}
+      <div class="checkrow"><input type="checkbox" id="vf-archiv"${d.archiv ? ' checked' : ''}><label for="vf-archiv" style="margin:0">Archivierte Konten einbeziehen</label></div>
+      <div class="checkrow" data-kind="line"><input type="checkbox" id="vf-total"${d.total ? ' checked' : ''}><label for="vf-total" style="margin:0">Gesamtsumme zusätzlich als gestrichelte Linie</label></div>
+      <div class="btns"><button class="primary" type="submit">Speichern</button><button class="btn" type="button" data-act="vcancel">Abbrechen</button></div>
+    </form></div>`;
+}
+function toggleVF(){
+  const f = $('#viewform'); if (!f) return;
+  const kind = $('#vf-kind').value;
+  f.querySelectorAll('[data-kind]').forEach(el => { el.style.display = el.dataset.kind === kind ? '' : 'none'; });
+}
+function readViewForm(){
+  const f = $('#viewform'), fl = {}; FDIMS.forEach(k => { fl[k] = [...f.querySelectorAll(`input[data-fd="${k}"]:checked`)].map(i => i.value); });
+  return {id:ui.vedit.id === 'new' ? uid() : ui.vedit.id, title:$('#vf-title').value, kind:$('#vf-kind').value, group:$('#vf-group').value, f:fl,
+          range:$('#vf-range').value, at:$('#vf-at').value, archiv:$('#vf-archiv').checked, total:$('#vf-total').checked};
+}
+function saveView(){
+  const v = normView(readViewForm());
+  if (!v.title.trim()) { toast('Der Titel darf nicht leer sein.'); return; }
+  const i = state.meta.views.findIndex(x => x.id === v.id);
+  if (i >= 0) state.meta.views[i] = v; else state.meta.views.push(v);
+  ui.vedit = null; saveState(); render(); toast('Auswertung gespeichert');
+}
+
+/* ======================================================================
+   Tabelle: alle erfassten Werte je Datum und Konto
+   ====================================================================== */
+function viewTabelle(){
+  if (!state.entries.length) return state.accounts.length ? `<div class="card"><p>Noch keine Kontostände erfasst.</p></div>` : hero();
+  const accs = sortAccs(state.accounts.filter(a => (entriesBy().get(a.id) || []).length));
+  const dates = [...new Set(state.entries.map(e => e.date))].sort().reverse();
+  const shown = ui.tableAll ? dates : dates.slice(0, 60);
+  const map = new Map(state.entries.map(e => [e.accId + '|' + e.date, e]));
+  const act = accs.filter(a => !a.archived);
+  const head = `<tr><th style="text-align:left">Datum</th>${accs.map(a => `<th title="${esc([a.type, a.bank, a.owner].filter(Boolean).join(' · '))}">${esc(a.name)}${a.archived ? ' (arch.)' : ''}</th>`).join('')}<th>Summe</th></tr>`;
+  const rows = shown.map(d => `<tr><td><button class="btn small" data-act="datedel" data-date="${d}" title="Alle Werte dieses Tages löschen" aria-label="Alle Werte vom ${fd(d)} löschen">×</button> ${fd(d)}</td>
+    ${accs.map(a => { const e = map.get(a.id + '|' + d); return `<td class="cell${e ? '' : ' nocell'}" data-act="cell" data-acc="${esc(a.id)}" data-date="${d}" tabindex="0" role="button" aria-label="${esc(a.name)} am ${fd(d)} ${e ? 'ändern' : 'eintragen'}">${e ? eur(e.amount) : '·'}</td>`; }).join('')}
+    <td><strong>${eur(totalAt(act, d).sum)}</strong></td></tr>`).join('');
+  return `<div class="card"><h2>Alle Kontostände</h2>
+    <p class="hint" style="margin-top:0">Ein Feld zeigt nur dort einen Betrag, wo an dem Tag wirklich ein Stand erfasst wurde (Punkt = unverändert übernommen). Zum Ändern, Eintragen oder Löschen auf das Feld klicken. Die Summe schreibt die letzten Stände fort und zählt Verbindlichkeiten negativ, archivierte Konten sind nicht enthalten.</p>
+    <div class="tablewrap"><table class="sticky1 gtable"><thead>${head}</thead><tbody>${rows}</tbody></table></div>
+    ${dates.length > shown.length ? `<div class="btns"><button class="btn" data-act="tablemore">Alle ${dates.length} Termine anzeigen</button></div>` : ''}</div>`;
+}
+async function editCell(accId, date){
+  const a = accById(accId); if (!a) return;
+  const ex = state.entries.find(e => e.accId === accId && e.date === date);
+  const r = await modal({title:`${a.name} am ${fd(date)}`, text:ex ? 'Betrag ändern. Ein leeres Feld löscht den Eintrag.' : 'Betrag für diesen Tag eintragen.', fields:[{label:'Betrag in €', value:ex ? String(ex.amount).replace('.', ',') : '', mode:'decimal'}], ok:'Speichern'});
+  if (!r) return;
+  const raw = r[0].trim();
+  if (!raw) { if (ex) { state.entries = state.entries.filter(e => e !== ex); saveState(); render(); toast('Eintrag gelöscht'); } return; }
+  const n = parseNum(raw); if (!isFinite(n)) { toast('Das ist keine gültige Zahl.', 3500); return; }
+  if (ex) ex.amount = round2(n); else { state.entries.push({id:uid(), accId, date, amount:round2(n), note:''}); state.entries.sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0); }
+  saveState(); render(); toast('Gespeichert');
+}
+
+/* ======================================================================
+   Konten verwalten
+   ====================================================================== */
+function viewKonten(){
+  const ed = ui.accEdit, a = ed && ed !== 'new' ? accById(ed) : null;
+  const v = a || {name:'', type:'', bank:'', owner:'', tags:[], liab:false, norep:false};
+  const form = `<div class="card" id="acccard"><h2>${a ? 'Konto ändern' : 'Neues Konto'}</h2>
+    <form id="acform" autocomplete="off">
+      <label>Name<input id="af-name" value="${esc(v.name)}" placeholder="zum Beispiel Girokonto ING"></label>
+      <div class="grid3"><label>Kontoart<input id="af-type" list="dl-type" value="${esc(v.type)}" placeholder="Girokonto, Depot, …"></label>
+        <label>Bank oder Institut<input id="af-bank" list="dl-bank" value="${esc(v.bank)}"></label>
+        <label>Besitzer<input id="af-owner" list="dl-owner" value="${esc(v.owner)}"></label></div>
+      <label>Gruppen (mit Komma trennen)<input id="af-tags" value="${esc(v.tags.join(', '))}" placeholder="zum Beispiel Notgroschen, Altersvorsorge"></label>
+      <div class="checkrow"><input type="checkbox" id="af-liab"${v.liab ? ' checked' : ''}><label for="af-liab" style="margin:0">Verbindlichkeit (Kredit, Darlehen, Schulden): Restschuld als positive Zahl eintragen, zählt im Vermögen negativ</label></div>
+      <div class="checkrow"><input type="checkbox" id="af-norep"${v.norep ? ' checked' : ''}><label for="af-norep" style="margin:0">Im Kurzbericht (LaTeX) standardmäßig ausblenden</label></div>
+      <div class="btns"><button class="primary" type="submit">${a ? 'Speichern' : 'Konto anlegen'}</button>${ed ? '<button class="btn" type="button" data-act="acccancel">Abbrechen</button>' : ''}</div>
+    </form></div>`;
+  const rows = sortAccs(state.accounts).map(x => {
+    const n = (entriesBy().get(x.id) || []).length;
+    return `<tr${x.archived ? ' style="opacity:.65"' : ''}><td><strong>${esc(x.name)}</strong>${x.archived ? ' <span class="pill">archiviert</span>' : ''}${x.liab ? ' <span class="pill">Verbindlichkeit</span>' : ''}</td>
+      <td style="text-align:left">${esc(x.type)}</td><td style="text-align:left">${esc(x.bank)}</td><td style="text-align:left">${esc(x.owner)}</td><td style="text-align:left">${esc(x.tags.join(', '))}</td><td>${n}</td>
+      <td><div class="btns" style="margin:0;justify-content:flex-end"><button class="btn small" data-act="accedit" data-id="${esc(x.id)}">Ändern</button>
+      <button class="btn small" data-act="accarch" data-id="${esc(x.id)}">${x.archived ? 'Wieder aktivieren' : 'Archivieren'}</button><button class="btn small danger" data-act="accdel" data-id="${esc(x.id)}">Löschen</button></div></td></tr>`;
+  }).join('');
+  return form + (state.accounts.length ? `<div class="card"><h2>Konten (${state.accounts.length})</h2>
+    <div class="tablewrap"><table class="sticky1"><thead><tr><th style="text-align:left">Name</th><th style="text-align:left">Kontoart</th><th style="text-align:left">Bank</th><th style="text-align:left">Besitzer</th><th style="text-align:left">Gruppen</th><th>Stände</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint">Archivierte Konten erscheinen nicht mehr in der Eingabe und in der Übersicht. Ihr Verlauf bleibt für Auswertungen erhalten, wenn „Archivierte Konten einbeziehen“ gewählt ist. Trage vor dem Archivieren am besten den Endstand 0 ein, damit der Verlauf stimmt.</p></div>` : '');
+}
+function saveAcc(){
+  const name = cleanTxt($('#af-name').value, 80);
+  if (!name) { toast('Der Name darf nicht leer sein.'); return; }
+  const ed = ui.accEdit, cur = ed && ed !== 'new' ? accById(ed) : null;
+  if (state.accounts.some(x => x !== cur && x.name.toLowerCase() === name.toLowerCase())) { toast('Ein Konto mit diesem Namen gibt es schon.', 3500); return; }
+  const vals = {name, type:cleanTxt($('#af-type').value), bank:cleanTxt($('#af-bank').value), owner:cleanTxt($('#af-owner').value), tags:cleanTags($('#af-tags').value), liab:$('#af-liab').checked, norep:$('#af-norep').checked};
+  if (cur) Object.assign(cur, vals); else state.accounts.push(Object.assign({id:uid(), archived:false}, vals));
+  ui.accEdit = null; saveState(); render(); toast(cur ? 'Konto gespeichert' : 'Konto angelegt');
+  if (!cur) { const n = $('#af-name'); if (n) n.focus(); }
+}
+
+/* ======================================================================
+   Daten: Sicherung, CSV, Beispiel
+   ====================================================================== */
+function prevInfo(){
+  try { const o = JSON.parse(localStorage.getItem(LS_KEY + '_prev') || 'null'); if (o && o.state) return {saved:o.saved, state:normalizeState(o.state)}; } catch (e) {}
+  return null;
+}
+function viewDaten(){
+  const bk = state.meta.lastBackup, pv = prevInfo();
+  return `<div class="card"><h2>Google Drive</h2><div id="drivecard">${driveCardInner()}</div></div>
+  <div class="card"><h2>Sicherungsdatei (manuell)</h2>
+    <p class="hint">Deine Daten liegen nur im Speicher dieses Browsers auf diesem Gerät. Am Handy und am Rechner sind das zwei getrennte Bestände. Eine Sicherungsdatei überträgt alles von einem Gerät auf das andere.</p>
+    <p>Letzte Sicherung: <strong>${bk ? fd(bk.slice(0, 10)) : 'noch nie'}</strong>${storageOK ? '' : ' <span class="pill warn">Browser-Speicher nicht verfügbar</span>'}</p>
+    <div class="btns"><button class="primary" data-act="exportjson">Sicherung speichern (JSON)</button>
+      <button class="btn" data-act="importjson">Sicherung einlesen</button></div>
+    <input type="file" id="jsonfile" accept=".json,application/json" hidden></div>
+  <div class="card"><h2>CSV</h2>
+    <p class="hint">Export für Excel oder LibreOffice (Semikolon, Dezimalkomma).</p>
+    <div class="btns"><button class="btn" data-act="exportcsv">Kontostände als Liste (CSV)</button><button class="btn" data-act="exportwide">Kontostände als Tabelle (CSV)</button></div>
+    <h3>Kontostände importieren</h3>
+    <p class="hint">Erste Zeile mit Spaltenüberschriften, Trennzeichen Semikolon, Komma oder Tab. Erkannt werden diese Spalten (Reihenfolge egal):</p>
+    <pre>Datum;Konto;Betrag;Kontoart;Bank;Besitzer;Gruppen
+09.11.2026;Girokonto ING;1234,56;Girokonto;ING;Heiko;Alltag</pre>
+    <p class="hint">Nur Datum, Konto und Betrag sind Pflicht. Unbekannte Konten werden angelegt, vorhandene Werte am selben Tag ersetzt.</p>
+    <div class="btns"><button class="btn" data-act="importcsv">CSV-Datei wählen</button></div>
+    <input type="file" id="csvfile" accept=".csv,.txt,text/csv,text/plain" hidden></div>
+  <div class="card"><h2>Weitere Aktionen</h2><div class="btns">
+    <button class="btn" data-act="demo">Beispieldaten laden</button>
+    <button class="btn danger" data-act="wipe">Alle Daten löschen</button></div>
+    ${pv ? `<h3>Notkopie</h3><p class="hint">Beim Ersetzen des Bestands (Einlesen, Drive, Beispieldaten, Löschen) bleibt der vorherige Stand hier erhalten: ${esc(sumState(pv.state))}, gesichert am ${fdt(pv.saved)}.</p><div class="btns"><button class="btn" data-act="prevrestore">Vorherigen Stand wiederherstellen</button></div>` : ''}
+    <p class="hint">Version ${VERSION}. Diese Datei sendet nichts an Dritte.</p></div>`;
+}
+function exportJSON(){
+  state.meta.lastBackup = new Date().toISOString();
+  download('konten-sicherung-' + todayISO() + '.json', payload(), 'application/json');
+  saveState(); toast('Sicherung gespeichert'); if (ui.tab === 'daten') render();
+}
+async function importJSON(file){
+  try {
+    const rs = parsePayload(await file.text());
+    if (!hasData(rs)) { toast('Die Datei enthält keine Kontodaten.', 4000); return; }
+    const ok = await modal({title:'Sicherung einlesen?', text:`Die Datei enthält ${sumState(rs)}.\nDie aktuell gespeicherten Daten (${sumState(state)}) werden dadurch ersetzt.`, ok:'Ersetzen', danger:true});
+    if (!ok) return;
+    replaceState(rs); render(); toast('Sicherung eingelesen');
+  } catch (e) { toast('Die Datei konnte nicht gelesen werden.', 4000); }
+}
+function csvCell(v){ v = String(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+const dec = v => String(v).replace('.', ',');
+function exportCSV(){
+  const lines = [['Datum', 'Konto', 'Betrag', 'Kontoart', 'Bank', 'Besitzer', 'Gruppen'].join(';')];
+  state.entries.slice().sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0).forEach(e => {
+    const a = accById(e.accId); lines.push([fd(e.date), csvCell(a.name), dec(e.amount), csvCell(a.type), csvCell(a.bank), csvCell(a.owner), csvCell(a.tags.join(', '))].join(';'));
+  });
+  download('konten-liste-' + todayISO() + '.csv', '﻿' + lines.join('\r\n'), 'text/csv');
+}
+function exportWide(){
+  const accs = sortAccs(state.accounts), act = accs.filter(a => !a.archived);
+  const map = new Map(state.entries.map(e => [e.accId + '|' + e.date, e]));
+  const lines = [['Datum'].concat(accs.map(a => csvCell(a.name)), ['Summe (aktive Konten)']).join(';')];
+  [...new Set(state.entries.map(e => e.date))].sort().forEach(d => {
+    lines.push([fd(d)].concat(accs.map(a => { const e = map.get(a.id + '|' + d); return e ? dec(e.amount) : ''; }), [dec(round2(totalAt(act, d).sum))]).join(';'));
+  });
+  download('konten-tabelle-' + todayISO() + '.csv', '﻿' + lines.join('\r\n'), 'text/csv');
+}
+function parseCSV(text){
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/)[0] || '';
+  const delim = [';', '\t', ','].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === delim) { row.push(cur); cur = ''; }
+    else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+    else if (c !== '\r') cur += c;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+const hnorm = s => s.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]/g, '');
+const HMAP = {datum:'date', date:'date', konto:'name', name:'name', kontoname:'name', bezeichnung:'name',
+  betrag:'amount', stand:'amount', kontostand:'amount', saldo:'amount', wert:'amount', amount:'amount', summe:'amount',
+  kontoart:'type', art:'type', typ:'type', type:'type', bank:'bank', institut:'bank', bankinstitut:'bank', besitzer:'owner', inhaber:'owner', owner:'owner',
+  gruppen:'tags', gruppe:'tags', schlagwoerter:'tags', tags:'tags', kategorie:'tags'};
+async function readTextFile(file){
+  const buf = await file.arrayBuffer();
+  try { return new TextDecoder('utf-8', {fatal:true}).decode(buf); }
+  catch (e) { return new TextDecoder('windows-1252').decode(buf); }
+}
+async function importCSV(file){
+  const rows = parseCSV(await readTextFile(file));
+  if (rows.length < 2) { toast('Die CSV-Datei enthält keine Datenzeilen.', 4000); return; }
+  const col = {}; rows[0].forEach((h, i) => { const k = HMAP[hnorm(h)]; if (k && !(k in col)) col[k] = i; });
+  const miss = ['date', 'name', 'amount'].filter(k => !(k in col));
+  if (miss.length) { await modal({title:'Spalten fehlen', text:'Es fehlen Spalten für: ' + miss.map(k => ({date:'Datum', name:'Konto', amount:'Betrag'})[k]).join(', ') + '.\nErkannte Überschriften: ' + rows[0].join(' | '), ok:'OK', cancel:''}); return; }
+  const good = [], bad = [];
+  rows.slice(1).forEach((r, i) => {
+    const g = k => (k in col ? (r[col[k]] || '').trim() : '');
+    const date = parseDate(g('date')), name = cleanTxt(g('name'), 80), amount = parseNum(g('amount'));
+    const why = !date ? 'Datum' : !name ? 'Konto' : !isFinite(amount) ? 'Betrag' : null;
+    if (why) bad.push(`Zeile ${i + 2}: ${why} ungültig`); else good.push({date, name, amount:round2(amount), type:g('type'), bank:g('bank'), owner:g('owner'), tags:g('tags')});
+  });
+  if (!good.length) { await modal({title:'Nichts importiert', text:bad.slice(0, 8).join('\n'), ok:'OK', cancel:''}); return; }
+  const newNames = [...new Set(good.map(g => g.name).filter(n => !state.accounts.some(a => a.name.toLowerCase() === n.toLowerCase())).map(n => n))];
+  const ok = await modal({title:'CSV importieren?', text:`${good.length} ${good.length === 1 ? 'Kontostand wird' : 'Kontostände werden'} übernommen (vorhandene Werte am selben Tag werden ersetzt).` + (newNames.length ? `\nNeu angelegt ${newNames.length === 1 ? 'wird das Konto' : 'werden die Konten'}: ${newNames.slice(0, 6).join(', ')}${newNames.length > 6 ? ' …' : ''}` : '')
+    + (bad.length ? `\n${bad.length === 1 ? 'Eine Zeile ist fehlerhaft und wird' : bad.length + ' Zeilen sind fehlerhaft und werden'} übersprungen:\n` + bad.slice(0, 6).join('\n') + (bad.length > 6 ? '\n…' : '') : ''), ok:'Importieren'});
+  if (!ok) return;
+  good.forEach(g => {
+    let a = state.accounts.find(x => x.name.toLowerCase() === g.name.toLowerCase());
+    if (!a) { a = {id:uid(), name:g.name, type:cleanTxt(g.type), bank:cleanTxt(g.bank), owner:cleanTxt(g.owner), tags:cleanTags(g.tags), liab:false, norep:false, archived:false}; state.accounts.push(a); }
+    const ex = state.entries.find(e => e.accId === a.id && e.date === g.date);
+    if (ex) ex.amount = g.amount; else state.entries.push({id:uid(), accId:a.id, date:g.date, amount:g.amount, note:''});
+  });
+  state.entries.sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+  saveState(); render(); toast(`${good.length} Kontostände importiert`, 3500);
+}
+function loadDemo(){
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const A = (name, type, bank, owner, tags, liab) => ({id:uid(), name, type, bank, owner, tags, liab:!!liab, archived:false});
+  const giro = A('Girokonto ING', 'Girokonto', 'ING', 'Heiko', ['Alltag']), tag = A('Tagesgeld ING', 'Tagesgeld', 'ING', 'Heiko', ['Notgroschen']),
+    fest = A('Festgeld Sparkasse', 'Festgeld', 'Sparkasse', 'Heiko', ['Altersvorsorge']), dep = A('Depot Smartbroker', 'Depot', 'Smartbroker', 'Heiko', ['Altersvorsorge', 'Geldanlage']),
+    bar = A('Bargeld', 'Bargeld', '', 'Heiko', ['Alltag']), fam = A('Girokonto Familie', 'Girokonto', 'Sparkasse', 'Partner', ['Alltag', 'Familie']), kk = A('Kreditkarte DKB', 'Kreditkarte', 'DKB', 'Heiko', [], true);
+  const s = emptyState(); s.accounts = [giro, tag, fest, dep, bar, fam, kk];
+  const weeks = 40, start = new Date(); start.setDate(start.getDate() - weeks * 7);
+  let g = 2400, t = 8000, f = 10000, d = 15500, b = 120, fm = 900, k = 300;
+  const put = (a, date, v) => s.entries.push({id:uid(), accId:a.id, date, amount:round2(v), note:''});
+  for (let w = 0; w <= weeks; w++) {
+    const dt = new Date(start.getTime() + w * 7 * 864e5), date = dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate());
+    g = Math.max(200, g + (rnd() - 0.5) * 500); put(giro, date, g);
+    if (w % 4 === 0) { t += 150 + rnd() * 100; put(tag, date, t); }
+    if (w === 0 || w === 20) { f = w ? 10350 : 10000; put(fest, date, f); }
+    d = d * (1 + (rnd() - 0.45) * 0.03); put(dep, date, d);
+    if (w % 3 === 0) { b = 40 + rnd() * 160; put(bar, date, b); }
+    if (w % 2 === 1) { fm = Math.max(100, fm + (rnd() - 0.5) * 300); put(fam, date, fm); }
+    if (w % 2 === 0) { k = 80 + rnd() * 600; put(kk, date, k); }
+  }
+  replaceState(normalizeState(s));
+}
+/* ======================================================================
+   Kurzbericht als LaTeX (.tex) mit Torten- und Verlaufsgrafiken in TikZ
+   ====================================================================== */
+const TEX_COLORS = {'var(--s1)':'2a78d6','var(--s2)':'eb6834','var(--s3)':'1baf7a','var(--s4)':'eda100','var(--s5)':'e87ba4','var(--s6)':'008300','var(--s7)':'6250d6','var(--s8)':'e34948','var(--other)':'9a9992','var(--text2)':'55544f'};
+function texEsc(s){
+  return String(s == null ? '' : s).replace(/[\\{}&%$#_~^<>|"]/g, c => ({'\\':'\\textbackslash{}', '{':'\\{', '}':'\\}', '&':'\\&', '%':'\\%', '$':'\\$', '#':'\\#', '_':'\\_', '~':'\\textasciitilde{}', '^':'\\textasciicircum{}', '<':'\\textless{}', '>':'\\textgreater{}', '|':'\\textbar{}', '"':'\\textquotedbl{}'}[c]));
+}
+/* formatierte Zahl/Text aus der App (Intl-Ausgabe) für LaTeX: NBSP, Euro, Minus */
+function texNum(s){
+  return String(s).replace(/[\u00a0\u202f]/g, '~').replace(/€/g, '\\texteuro{}').replace(/[−–]/g, c => c === '−' ? '\\textminus{}' : '--').replace(/%/g, '\\%').replace(/-(?=\d)/g, '\\textminus{}');
+}
+const texEur = v => isFinite(v) ? texNum(eur(v)) : '--';
+const texEurS = v => isFinite(v) ? texNum(eurS(v)) : '--';
+const texPct = r => isFinite(r) ? texNum(pctP(r)) : '--';
+const texPctS = r => isFinite(r) ? texNum(pctS(r)) : '--';
+const texCol = c => 'kc' + Object.keys(TEX_COLORS).indexOf(c);
+const f3 = x => (Math.round(x * 1000) / 1000).toString();
+
+function texLine(data, w = 14.4, h = 6.2){
+  const {dates, series} = data;
+  const t0 = tm(dates[0]), t1 = tm(dates[dates.length - 1]);
+  let lo = Infinity, hi = -Infinity;
+  series.forEach(s => s.vals.forEach(x => { if (x != null) { lo = Math.min(lo, x); hi = Math.max(hi, x); } }));
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  const R = niceRange(lo, hi, 4), fmt = axisFmt(R.step);
+  const X = d => t1 > t0 ? (tm(d) - t0) / (t1 - t0) * w : w / 2;
+  const Y = v => (v - R.lo) / (R.hi - R.lo) * h;
+  let o = '\\begin{tikzpicture}[x=1cm,y=1cm,font=\\footnotesize]\n';
+  R.ticks.forEach(v => {
+    o += `\\draw[gray!30,line width=0.3pt] (0,${f3(Y(v))}) -- (${w},${f3(Y(v))});\n`;
+    o += `\\node[anchor=east,gray!60!black] at (-0.12,${f3(Y(v))}) {${texNum(fmt(v))}};\n`;
+  });
+  if (R.lo < 0 && R.hi > 0) o += `\\draw[gray!60,line width=0.6pt] (0,${f3(Y(0))}) -- (${w},${f3(Y(0))});\n`;
+  timeTicks(t0, t1, Math.min(4, dates.length - 1)).forEach((t, i, a) => {
+    const x = (t - t0) / ((t1 - t0) || 1) * w;
+    o += `\\draw[gray!60] (${f3(x)},0) -- (${f3(x)},-0.1);\n\\node[anchor=north,gray!60!black] at (${f3(x)},-0.1) {${tdate(t)}};\n`;
+  });
+  o += `\\draw[gray!60] (0,0) -- (${w},0) (0,0) -- (0,${h});\n`;
+  series.forEach(s => {
+    let seg = [];
+    const flush = () => {
+      if (seg.length > 1) o += `\\draw[${texCol(s.color)},line width=${s.dash ? '0.9' : '1.3'}pt,line join=round${s.dash ? ',dash pattern=on 4pt off 3pt' : ''}] ${seg.join(' -- ')};\n`;
+      else if (seg.length === 1) o += `\\fill[${texCol(s.color)}] ${seg[0]} circle (1.6pt);\n`;
+      seg = [];
+    };
+    s.vals.forEach((v, i) => { if (v == null) flush(); else seg.push(`(${f3(X(dates[i]))},${f3(Y(v))})`); });
+    flush();
+  });
+  return o + '\\end{tikzpicture}\n';
+}
+function texLineLegend(series){
+  return '\\begin{center}\\footnotesize\n' + series.map(s =>
+    `\\tikz[baseline=-0.5ex]\\draw[${texCol(s.color)},line width=${s.dash ? '0.9' : '1.6'}pt${s.dash ? ',dash pattern=on 3pt off 2pt' : ''}] (0,0) -- (0.6,0);~${texEsc(s.name)}`).join('\\quad\n') + '\n\\end{center}\n';
+}
+function texPie(pd, centerLabel, R = 2.6){
+  let o = '\\begin{tikzpicture}[font=\\small]\n', cum = 0;
+  pd.items.forEach(it => {
+    const fr = it.value / pd.total, a1 = 90 - cum * 360, a2 = 90 - (cum + fr) * 360;
+    if (fr >= 0.9999) o += `\\fill[${texCol(it.color)}] (0,0) circle (${R});\n`;
+    else o += `\\fill[${texCol(it.color)}] (0,0) -- (${f3(a1)}:${R}) arc (${f3(a1)}:${f3(a2)}:${R}) -- cycle;\n`;
+    cum += fr;
+  });
+  if (pd.items.length > 1) { cum = 0; pd.items.forEach(it => { const a = 90 - cum * 360; o += `\\draw[white,line width=1pt] (0,0) -- (${f3(a)}:${R});\n`; cum += it.value / pd.total; }); }
+  o += `\\fill[white] (0,0) circle (${f3(R * 0.58)});\n`;
+  o += `\\node[align=center] at (0,0) {{\\scriptsize ${texEsc(centerLabel)}}\\\\[-1pt]\\textbf{${texEur(pd.total)}}};\n`;
+  return o + '\\end{tikzpicture}\n';
+}
+function texTable(spec, head, rows, foot){
+  let o = `\\begin{tabular}{${spec}}\n\\toprule\n${head.join(' & ')} \\\\\n\\midrule\n`;
+  rows.forEach(r => { o += r.join(' & ') + ' \\\\\n'; });
+  if (foot) o += '\\midrule\n' + foot.join(' & ') + ' \\\\\n';
+  return o + '\\bottomrule\n\\end{tabular}\n';
+}
+function buildReportTex(opt){
+  const hide = new Set(opt.hide || []), saved = state;
+  state = Object.assign({}, state, {accounts:state.accounts.filter(a => !hide.has(a.id))}); cache.by = null;
+  try { return buildReportTexInner(opt, hide.size); } finally { state = saved; cache.by = null; }
+}
+function buildReportTexInner(opt, nHidden){
+  const title = (opt.title || 'Kontenbericht').trim(), today = todayISO();
+  const act = activeAccounts();
+  const dates = [...new Set(state.entries.filter(e => act.some(a => a.id === e.accId)).map(e => e.date))].sort();
+  const last = dates.length ? dates[dates.length - 1] : today;
+  const views = state.meta.views.filter(v => opt.views.includes(v.id));
+  const used = new Set(['var(--other)', 'var(--text2)']);
+  PALETTE.forEach(c => used.add(c));
+  let o = `% Kurzbericht, erzeugt von Seifferts Konten ${VERSION} am ${fd(today)}
+% Übersetzen mit: pdflatex bericht.tex (zweimal ist nicht nötig)
+\\documentclass[11pt,a4paper]{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage[T1]{fontenc}
+\\usepackage{lmodern}
+\\IfFileExists{ngerman.ldf}{\\usepackage[ngerman]{babel}}{}
+\\usepackage[margin=2.2cm]{geometry}
+\\usepackage{booktabs}
+\\usepackage{xcolor}
+\\usepackage{textcomp}
+\\usepackage{tikz}
+\\usepackage{needspace}
+\\setlength{\\parindent}{0pt}
+\\setlength{\\parskip}{0.6em}
+`;
+  Object.keys(TEX_COLORS).forEach(c => { o += `\\definecolor{${texCol(c)}}{HTML}{${TEX_COLORS[c].toUpperCase()}}\n`; });
+  o += `\\title{${texEsc(title)}}
+\\author{}
+\\date{Stand: ${fd(last)}}
+\\begin{document}
+\\maketitle
+\\vspace{-2em}
+`;
+  /* Kennzahlen */
+  if (dates.length) {
+    const now = totalAt(act, LAST).sum, base = d => { const t = totalAt(act, d); return t.n ? t.sum : NaN; };
+    const prev = dates.length > 1 ? dates[dates.length - 2] : null, yearEnd = (Number(last.slice(0, 4)) - 1) + '-12-31';
+    const rows = [];
+    const add = (l, b) => rows.push([l, texEur(b), isFinite(b) ? texEurS(now - b) : '--', isFinite(b) && b ? texPctS((now - b) / Math.abs(b)) : '--']);
+    if (prev) add('Vergleich mit ' + fd(prev), base(prev));
+    add('Seit Jahresbeginn', base(yearEnd));
+    add('Letzte 12 Monate', base(isoMinusMonths(last, 12)));
+    let as = 0, ds = 0;
+    act.forEach(a => { const e = valueAt(a.id, LAST); if (e) { if (a.liab) ds += e.amount; else as += e.amount; } });
+    o += `\\section*{Kennzahlen}\n` + texTable('lr', ['Bilanz', 'Stand ' + fd(last)], [['Vermögenswerte', texEur(as)], ['Verbindlichkeiten', texEur(-ds)]], ['Nettovermögen', texEur(as - ds)]) + '\\medskip\n\n' + texTable('lrrr', ['', 'Vergleichsstand', 'Änderung', 'in \\%'], rows);
+  } else o += '\\emph{Es sind noch keine Kontostände erfasst.}\n';
+  /* Kontenliste */
+  if (opt.accounts && act.length) {
+    const rows = sortOverview(overviewRows()).filter(r => !r.a.archived);
+    const sum = rows.reduce((p, r) => p + (isFinite(r.val) ? r.val : 0), 0);
+    o += `\\section*{Konten}\n{\\small\n` + texTable('llllrr', ['Konto', 'Bank', 'Art', 'Besitzer', 'Stand', 'Datum'],
+      rows.map(r => [texEsc(r.a.name) + (r.a.liab ? ' (Verb.)' : ''), texEsc(r.a.bank), texEsc(r.a.type), texEsc(r.a.owner), isFinite(r.val) ? texEur(r.val) : '--', r.date ? fd(r.date) : '--']),
+      ['Summe', '', '', '', texEur(sum), '']) + '}\n';
+  }
+  /* Auswertungen */
+  views.forEach(v => {
+    o += `\\Needspace{${v.kind === 'line' ? 11 : 10}cm}\n\\section*{${texEsc(v.title)}}\n{\\footnotesize\\textcolor{gray}{${texEsc(viewSummary(v))}}}\n\n`;
+    if (v.kind === 'line') {
+      const d = lineData(v);
+      if (d.empty) { o += `\\emph{${texEsc(d.empty)}}\n`; return; }
+      o += `\\begin{center}\n${texLine(d)}\n${texLineLegend(d.series)}\\end{center}\n`;
+      const rows = d.series.map(s => {
+        const vs = s.vals, fi = vs.findIndex(x => x != null); let li = -1; vs.forEach((x, i) => { if (x != null) li = i; });
+        const a = fi >= 0 ? vs[fi] : NaN, b = li >= 0 ? vs[li] : NaN;
+        return [texEsc(s.name), texEur(a), texEur(b), texEurS(b - a), isFinite(a) && a ? texPctS((b - a) / Math.abs(a)) : '--'];
+      });
+      o += `{\\small\n${texTable('lrrrr', ['Reihe', 'Anfang (' + fd(d.dates[0]) + ')', 'Ende (' + fd(d.dates[d.dates.length - 1]) + ')', 'Änderung', 'in \\%'], rows)}}\n`;
+    } else {
+      const pd = pieData(v);
+      if (!(pd.total > 0)) { o += '\\emph{Keine Guthaben zum Darstellen.}\n'; return; }
+      o += `\\begin{center}\n${texPie(pd, v.at ? 'Stand ' + fd(v.at) : 'Summe')}\\end{center}\n`;
+      o += `{\\small\\begin{center}\n\\begin{tabular}{llrr}\n\\toprule\n & ${texEsc(GROUPS[v.group])} & Betrag & Anteil \\\\\n\\midrule\n`
+        + pd.items.map(it => `\\tikz[baseline=-0.6ex]\\fill[${texCol(it.color)}] (0,-0.1) rectangle (0.3,0.2); & ${texEsc(it.name)} & ${texEur(it.value)} & ${texPct(it.value / pd.total)} \\\\\n`).join('')
+        + `\\midrule\n & Summe & ${texEur(pd.total)} & 100,0~\\% \\\\\n\\bottomrule\n\\end{tabular}\n\\end{center}}\n`;
+      if (pd.liab || pd.neg) { const parts = []; if (pd.liab) parts.push(pd.liab + (pd.liab === 1 ? ' Verbindlichkeit' : ' Verbindlichkeiten')); if (pd.neg) parts.push(pd.neg + (pd.neg === 1 ? ' Konto' : ' Konten') + ' ohne Guthaben'); o += `{\\footnotesize\\textcolor{gray}{Nicht dargestellt: ${parts.join(', ')}.}}\n`; }
+      if (pd.multi) o += '{\\footnotesize\\textcolor{gray}{Konten mit mehreren Gruppen z\u00e4hlen in jeder ihrer Gruppen mit.}}\n';
+    }
+  });
+  if (nHidden) o += `\n\\bigskip{\\footnotesize\\textcolor{gray}{${nHidden} ${nHidden === 1 ? 'Konto wurde' : 'Konten wurden'} auf Wunsch aus diesem Bericht ausgeblendet; alle Summen und Grafiken enthalten sie nicht.}}\n`;
+  return o + '\n\\end{document}\n';
+}
+function exportReportTex(){
+  const sel = [...document.querySelectorAll('[data-rv]')].filter(x => x.checked).map(x => x.dataset.rv);
+  const tex = buildReportTex({title:($('#rep-title') || {}).value, views:sel, accounts:!!($('#rep-acc') || {}).checked, hide:[...document.querySelectorAll('[data-ra]')].filter(x => !x.checked).map(x => x.dataset.ra)});
+  download('konten-bericht-' + todayISO() + '.tex', tex, 'application/x-tex');
+  toast('Bericht als .tex gespeichert');
+}
+function viewReportCard(){
+  const vs = state.meta.views;
+  return `<div class="card"><h2>Kurzbericht als LaTeX</h2>
+    <p class="hint">Erzeugt eine .tex-Datei mit Kennzahlen, Kontenliste und den gewählten Auswertungen. Die Grafiken (Torte, Verlauf) sind als TikZ eingebettet, es werden keine Bilddateien benötigt. Übersetzen mit pdflatex.</p>
+    <label>Titel des Berichts<input id="rep-title" value="Kontenbericht ${new Date().getFullYear()}"></label>
+    <div class="checkrow"><input type="checkbox" id="rep-acc" checked><label for="rep-acc" style="margin:0">Kontenliste mit aktuellen Ständen</label></div>
+    <details class="fdet"><summary>Konten im Bericht <span class="hint">(abgewählte werden überall ausgeblendet: Kennzahlen, Liste, Grafiken)</span></summary>
+      <div class="chk">${sortAccs(activeAccounts()).map(a => `<label class="checkrow"><input type="checkbox" data-ra="${a.id}"${a.norep ? '' : ' checked'}>${esc(a.name)}${a.liab ? ' <span class="hint">(Verbindlichkeit)</span>' : ''}</label>`).join('')}</div></details>
+    <h3>Auswertungen</h3>
+    ${vs.map(v => `<div class="checkrow"><input type="checkbox" data-rv="${v.id}" id="rv-${v.id}" checked><label for="rv-${v.id}" style="margin:0">${esc(v.title)} <span class="hint">(${v.kind === 'line' ? 'Verlauf' : 'Anteile'})</span></label></div>`).join('')}
+    <div class="btns"><button class="primary" data-act="reptex">Bericht als .tex speichern</button></div></div>`;
+}
+const CLIENT_ID = '22658520266-72537b3ef6bi63gmfaavt4r5snnjv0ln.apps.googleusercontent.com';
+const D_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const D_FOLDER = 'Seifferts Konten', D_BACKUP = 'Sicherungen', D_FILE = 'konten-daten.json', D_KEEP = 30;
+const DK = 'seifferts_konten_drive_v1';
+const D_API = 'https://www.googleapis.com/drive/v3/', D_UP = 'https://www.googleapis.com/upload/drive/v3/';
+let D_DEBOUNCE = 2500;
+
+function loadDM(){
+  const def = {on:false, fileId:'', folderId:'', backupId:'', version:'', lastSaved:'', dirty:false, auto:true, backupDay:''};
+  try { const o = JSON.parse(localStorage.getItem(DK) || 'null'); if (o && typeof o === 'object') return Object.assign(def, o); } catch (e) {}
+  return def;
+}
+let dm = loadDM();
+const saveDM = () => { try { localStorage.setItem(DK, JSON.stringify(dm)); } catch (e) {} };
+const dd = {state:dm.on ? 'auth' : 'off', msg:'', token:null, exp:0, tc:null, pending:null, timer:null, q:Promise.resolve(), hold:false, backups:null, nextTag:'', lastCheck:0};
+let rev = 0;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const dq = fn => (dd.q = dd.q.then(fn, fn).catch(() => {}));
+function fdt(iso){ if (!iso) return '–'; const d = new Date(iso); return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+
+/* ---------- Status und Anzeige ---------- */
+function driveLabel(){
+  const t = dm.lastSaved ? new Date(dm.lastSaved) : null, hm = t ? pad2(t.getHours()) + ':' + pad2(t.getMinutes()) : '';
+  return ({
+    off:['Drive: aus', 'Nicht mit Google Drive verbunden'],
+    busy:['Drive: synchronisiert …', 'Synchronisiere mit Google Drive'],
+    ok:['Drive: gesichert' + (hm ? ' ' + hm : ''), 'Alles ist in Google Drive gesichert'],
+    pending:['Drive: ungesichert', 'Änderungen sind noch nicht in Google Drive gespeichert'],
+    auth:['Drive: anmelden', 'Anmeldung bei Google nötig. Änderungen sind nur lokal gespeichert.'],
+    conflict:['Drive: Konflikt', 'Drive und dieser Browser haben unterschiedliche Stände. Bitte klären.'],
+    error:['Drive: Fehler', 'Fehler bei Google Drive'],
+    unavail:['Drive: nur über https', 'Die Google-Anmeldung funktioniert nicht bei einer lokal geöffneten Datei.']
+  })[dd.state];
+}
+function updatePill(){
+  const b = $('#drivepill'); if (!b) return;
+  const [s, l] = driveLabel();
+  b.textContent = s; b.title = l + (dd.msg ? '\n' + dd.msg : ''); b.dataset.st = dd.state;
+}
+function setStatus(st, msg){
+  dd.state = st; dd.msg = msg || ''; updatePill();
+  const el = $('#drivecard'); if (el) el.innerHTML = driveCardInner();
+}
+function handleErr(e){
+  console.warn('Drive', e);
+  const msg = e && e.message ? e.message : String(e);
+  if (e && (e.code === 'nogis' || e.code === 'timeout' || e.status === 401 || /Anmeldung/.test(msg))) setStatus('auth', msg);
+  else if (e instanceof TypeError) setStatus('error', 'Keine Verbindung zu Google (offline?). Änderungen bleiben lokal gespeichert und werden später hochgeladen.');
+  else setStatus('error', msg);
+}
+
+/* ---------- Token (Google Identity Services) ---------- */
+const gisOK = () => !!(window.google && google.accounts && google.accounts.oauth2);
+function initTC(){
+  if (dd.tc) return true; if (!gisOK()) return false;
+  dd.tc = google.accounts.oauth2.initTokenClient({
+    client_id:CLIENT_ID, scope:D_SCOPE,
+    callback:r => { const t = dd.pending; dd.pending = null; if (!t) return;
+      if (r && r.access_token) { dd.token = r.access_token; dd.exp = Date.now() + (+r.expires_in || 3600) * 1000; t.res(r); }
+      else t.rej(new Error('Anmeldung fehlgeschlagen' + (r && r.error ? ' (' + r.error + ')' : ''))); },
+    error_callback:e => { const t = dd.pending; dd.pending = null; if (t) t.rej(new Error('Anmeldung nicht möglich (' + ((e && e.type) || 'Fehler') + ')')); }
+  });
+  return true;
+}
+function requestToken(interactive){
+  return new Promise((res, rej) => {
+    if (!initTC()) return rej(Object.assign(new Error('Google-Anmeldung nicht geladen (offline?)'), {code:'nogis'}));
+    const to = setTimeout(() => { if (dd.pending) { dd.pending = null; rej(Object.assign(new Error('Zeitüberschreitung bei der Anmeldung'), {code:'timeout'})); } }, interactive ? 120000 : 15000);
+    dd.pending = {res:v => { clearTimeout(to); res(v); }, rej:e => { clearTimeout(to); rej(e); }};
+    try { dd.tc.requestAccessToken({prompt:''}); } catch (e) { clearTimeout(to); dd.pending = null; rej(e); }
+  });
+}
+const tokenValid = () => !!(dd.token && Date.now() < dd.exp - 60000);
+async function ensureToken(interactive){ if (!tokenValid()) await requestToken(interactive); }
+/* Fuer Knoepfe: das Anmelde-Fenster muss direkt aus dem Klick heraus geoeffnet werden. */
+async function gestureToken(){ if (!tokenValid()) await requestToken(true); }
+
+async function dapi(url, opts = {}, interactive = false, retried = false){
+  await ensureToken(interactive);
+  const h = Object.assign({Authorization:'Bearer ' + dd.token}, opts.headers || {});
+  const r = await fetch(url, Object.assign({}, opts, {headers:h}));
+  if (r.status === 401 && !retried) { dd.token = null; return dapi(url, opts, interactive, true); }
+  if (!r.ok) {
+    let m = ''; try { const j = await r.json(); m = (j.error && (j.error.message || j.error)) || ''; } catch (e) {}
+    const err = new Error('Drive ' + r.status + (m ? ': ' + String(m).slice(0, 160) : '')); err.status = r.status; throw err;
+  }
+  return r;
+}
+const qs = o => Object.entries(o).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
+async function dlist(q, fields = 'files(id,name,version,modifiedTime,size)', extra = {}){
+  const r = await dapi(D_API + 'files?' + qs(Object.assign({q, fields, spaces:'drive', pageSize:'100'}, extra)));
+  return (await r.json()).files || [];
+}
+async function dmeta(id){ const r = await dapi(D_API + 'files/' + encodeURIComponent(id) + '?' + qs({fields:'id,name,version,modifiedTime,trashed,parents'})); return r.json(); }
+async function ensureFolder(name, parent, knownId, create = true){
+  if (knownId) { try { const f = await dmeta(knownId); if (f && !f.trashed) return knownId; } catch (e) { if (e.status !== 404) throw e; } }
+  const l = await dlist(`name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false` + (parent ? ` and '${parent}' in parents` : ''), 'files(id,name)');
+  if (l.length) return l[0].id;
+  if (!create) return '';
+  const body = {name, mimeType:'application/vnd.google-apps.folder'}; if (parent) body.parents = [parent];
+  const r = await dapi(D_API + 'files?fields=id', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  return (await r.json()).id;
+}
+async function dfind(folderId){
+  const l = await dlist(`'${folderId}' in parents and name='${D_FILE}' and trashed=false`, 'files(id,name,version,modifiedTime)', {orderBy:'modifiedTime desc'});
+  return l[0] || null;
+}
+async function dcreate(folderId, content){
+  const b = 'dpb' + Math.random().toString(36).slice(2);
+  const meta = JSON.stringify({name:D_FILE, parents:[folderId], mimeType:'application/json', appProperties:{app:'seifferts-konten'}});
+  const body = `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${content}\r\n--${b}--`;
+  const r = await dapi(D_UP + 'files?uploadType=multipart&fields=id,version,modifiedTime', {method:'POST', headers:{'Content-Type':'multipart/related; boundary=' + b}, body});
+  return r.json();
+}
+async function dupdate(id, content){
+  const r = await dapi(D_UP + 'files/' + encodeURIComponent(id) + '?uploadType=media&fields=id,version,modifiedTime', {method:'PATCH', headers:{'Content-Type':'application/json; charset=UTF-8'}, body:content});
+  return r.json();
+}
+async function dread(id){ const r = await dapi(D_API + 'files/' + encodeURIComponent(id) + '?alt=media'); return r.text(); }
+
+/* ---------- Inhalt ---------- */
+function payload(){
+  return JSON.stringify({app:'seifferts-konten', format:1, saved:new Date().toISOString(), data:state}, null, 1);
+}
+function parsePayload(txt){ const o = JSON.parse(txt); return normalizeState(o && o.data && typeof o.data === 'object' ? o.data : o); }
+function canon(s){
+  return JSON.stringify({
+    a:s.accounts.slice().sort((x, y) => x.id < y.id ? -1 : 1).map(a => [a.id, a.name, a.type, a.bank, a.owner, a.tags, a.liab, a.archived, !!a.norep]),
+    e:s.entries.map(e => [e.accId, e.date, e.amount, e.note]).sort((x, y) => (x[0] + x[1]) < (y[0] + y[1]) ? -1 : 1),
+    v:s.meta.views.map(v => [v.id, v.title, v.kind, v.group, v.f, v.range, v.at, v.archiv, v.total])
+  });
+}
+function sumState(s){
+  const last = s.entries.reduce((m, e) => e.date > m ? e.date : m, '');
+  return `${s.accounts.length} Konten, ${s.entries.length} Kontostände` + (last ? `, letzter Stand ${fd(last)}` : '');
+}
+/* Vereinigung zweier Staende. Geloeschte Eintraege koennen dabei zurueckkehren, bei abweichenden Betraegen gilt der lokale Wert. */
+function mergeStates(a, b){
+  const s = JSON.parse(JSON.stringify(a)), am = {}; let addA = 0, addE = 0, diffE = 0, addV = 0;
+  b.accounts.forEach(x => {
+    let m = s.accounts.find(y => y.id === x.id) || s.accounts.find(y => y.name.toLowerCase() === x.name.toLowerCase());
+    if (!m) { m = JSON.parse(JSON.stringify(x)); s.accounts.push(m); addA++; }
+    am[x.id] = m.id;
+  });
+  b.entries.forEach(e => {
+    const id = am[e.accId]; if (!id) return;
+    const ex = s.entries.find(y => y.accId === id && y.date === e.date);
+    if (!ex) { s.entries.push(Object.assign({}, e, {accId:id, id:uid()})); addE++; } else if (ex.amount !== e.amount) diffE++;
+  });
+  const vids = new Set(s.meta.views.map(v => v.id));
+  b.meta.views.forEach(v => { if (!vids.has(v.id)) { s.meta.views.push(JSON.parse(JSON.stringify(v))); addV++; } });
+  return {state:normalizeState(s), addA, addE, diffE, addV};
+}
+
+/* ---------- Sicherungskopien in Drive ---------- */
+async function dbackup(tag){
+  if (!dm.fileId) return;
+  const day = todayISO();
+  if (!tag && dm.backupDay === day) return;
+  dm.backupId = await ensureFolder(D_BACKUP, dm.folderId, dm.backupId); saveDM();
+  const list = await dlist(`'${dm.backupId}' in parents and trashed=false`, 'files(id,name)', {orderBy:'name desc'});
+  let name;
+  if (tag) { const n = new Date(); name = `konten-sicherung-${day}-${pad2(n.getHours())}${pad2(n.getMinutes())}-${tag}.json`; }
+  else { name = `konten-sicherung-${day}.json`; if (list.some(f => f.name === name)) { dm.backupDay = day; saveDM(); await dprune(list.slice(D_KEEP)); return; } }
+  await dapi(D_API + 'files/' + encodeURIComponent(dm.fileId) + '/copy?fields=id,name', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, parents:[dm.backupId]})});
+  if (!tag) { dm.backupDay = day; saveDM(); }
+  await dprune(list.slice(D_KEEP - 1));
+}
+/* Aeltere Sicherungskopien in den Drive-Papierkorb verschieben (nur die ueber dem Limit). */
+async function dprune(old){
+  for (const f of old) {
+    try { await dapi(D_API + 'files/' + encodeURIComponent(f.id), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({trashed:true})}); } catch (e) { console.warn('Aufräumen', e); }
+  }
+}
+
+/* ---------- Abfrage bei Konflikt ---------- */
+function resolveConflict(rs, remote){
+  return choose({
+    title:'Unterschiedliche Stände',
+    text:`Google Drive: ${sumState(rs)}\n(zuletzt geändert ${fdt(remote.modifiedTime)})\n\nDieser Browser: ${sumState(wsObj())}\n\nNichts geht verloren: Vor jedem Überschreiben in Drive wird eine Sicherungskopie angelegt, und ein ersetzter lokaler Stand bleibt als Notkopie im Browser.`,
+    options:[
+      {key:'merge', label:'Beide zusammenführen', sub:'Empfohlen. Gelöschte Einträge können zurückkehren.', primary:true},
+      {key:'remote', label:'Stand aus Drive übernehmen', sub:'Lokale Änderungen werden ersetzt.'},
+      {key:'local', label:'Diesen Browser nach Drive hochladen', sub:'Der Drive-Stand wird ersetzt (vorher kopiert).'},
+      {key:'cancel', label:'Später entscheiden'}
+    ]});
+}
+
+/* ---------- Synchronisation ---------- */
+async function driveSync(opts = {}){
+  if (!dm.on) return;
+  if (dd.hold && !opts.force) return;
+  dd.hold = false;
+  setStatus('busy');
+  try {
+    await ensureToken(!!opts.interactive);
+    dm.folderId = await ensureFolder(D_FOLDER, null, dm.folderId); saveDM();
+    let remote = null, lost = false;
+    if (dm.fileId) { try { const m = await dmeta(dm.fileId); if (!m.trashed) remote = m; } catch (e) { if (e.status !== 404) throw e; } }
+    if (!remote) {
+      const f = await dfind(dm.folderId);
+      if (f) { remote = f; if (dm.fileId && f.id !== dm.fileId) dm.version = ''; dm.fileId = f.id; saveDM(); }
+      else if (dm.fileId) { lost = true; dm.fileId = ''; dm.version = ''; saveDM(); }
+    }
+    const localHas = hasData(wsObj());
+    const upload = async tag => {
+      const my = rev, content = payload();
+      if (remote) { await dbackup(tag || dd.nextTag || ''); dd.nextTag = ''; const res = await dupdate(remote.id, content); dm.version = res.version; }
+      else { const res = await dcreate(dm.folderId, content); dm.fileId = res.id; dm.version = res.version; remote = {id:res.id, version:res.version}; }
+      dm.lastSaved = new Date().toISOString();
+      if (rev === my) dm.dirty = false;
+      saveDM();
+    };
+    const takeRemote = (rs, msg) => { replaceState(rs, {noSync:true}); dm.version = remote.version; dm.dirty = false; saveDM(); render(); if (msg) toast(msg, 3500); };
+
+    if (!remote) {
+      if (localHas) { if (lost) toast('Die Drive-Datei war gelöscht und wird neu angelegt.', 4500); await upload(); }
+      else { dm.dirty = false; saveDM(); }
+    } else if (remote.version === dm.version) {
+      if (dm.dirty || opts.force) await upload();
+    } else {
+      const rs = parsePayload(await dread(remote.id));
+      if (canon(rs) === canon(wsObj())) { dm.version = remote.version; dm.dirty = false; saveDM(); }
+      else if (!localHas) takeRemote(rs, 'Stand aus Google Drive geladen');
+      else if (dm.version && !dm.dirty) takeRemote(rs, 'Neuerer Stand aus Google Drive geladen (anderes Gerät)');
+      else {
+        setStatus('conflict');
+        const ch = await resolveConflict(rs, remote);
+        if (ch === 'remote') takeRemote(rs, 'Stand aus Drive übernommen');
+        else if (ch === 'local') { await upload('vor-ueberschreiben'); toast('Lokaler Stand nach Drive hochgeladen'); }
+        else if (ch === 'merge') {
+          const mg = mergeStates(wsObj(), rs);
+          replaceState(mg.state, {noSync:true}); dm.dirty = true; rev++;
+          await upload('vor-zusammenfuehren'); render();
+          toast(`Zusammengeführt: ${mg.addE} Kontostände, ${mg.addA} Konten, ${mg.addV} Auswertungen aus Drive ergänzt` + (mg.diffE ? `. ${mg.diffE} abweichende Beträge: lokaler Wert behalten.` : ''), 6000);
+        } else {
+          if (opts.connecting) { dm.on = false; saveDM(); setStatus('off'); return; }
+          dd.hold = true; setStatus('conflict'); return;
+        }
+      }
+    }
+    dd.lastCheck = Date.now();
+    if (dm.dirty) { setStatus('pending'); clearTimeout(dd.timer); dd.timer = setTimeout(() => dq(() => driveSync({})), D_DEBOUNCE); }
+    else setStatus('ok');
+  } catch (e) { handleErr(e); }
+}
+function driveTouch(){
+  if (!dm.on) return;
+  rev++; dm.dirty = true; saveDM();
+  if (dd.state === 'auth' || dd.state === 'conflict' || dd.state === 'unavail') { updatePill(); return; }
+  setStatus('pending');
+  if (!dm.auto) return;
+  clearTimeout(dd.timer); dd.timer = setTimeout(() => dq(() => driveSync({})), D_DEBOUNCE);
+}
+async function driveConnect(){
+  if (location.protocol === 'file:') { setStatus('unavail'); return; }
+  try { setStatus('busy'); await requestToken(true); } catch (e) { dm.on ? handleErr(e) : (setStatus('off'), toast(e.message, 4000)); return; }
+  dm.on = true; saveDM(); dq(() => driveSync({connecting:true}));
+}
+async function driveSignIn(){
+  try { setStatus('busy'); await requestToken(true); } catch (e) { handleErr(e); return; }
+  dq(() => driveSync({}));
+}
+async function driveStart(){
+  if (!dm.on) { updatePill(); return; }
+  if (location.protocol === 'file:') { setStatus('unavail'); return; }
+  for (let i = 0; i < 160 && !gisOK(); i++) await sleep(50);
+  if (!gisOK()) { setStatus('auth', 'Google-Anmeldung nicht geladen (offline?)'); return; }
+  dq(() => driveSync({}));
+}
+function driveSaveNow(){
+  gestureToken().then(() => { dd.hold = false; dq(() => driveSync({force:true, interactive:true})); }).catch(handleErr);
+}
+function driveLoadNow(){
+  gestureToken().then(() => dq(async () => {
+    try {
+      setStatus('busy');
+      dm.folderId = await ensureFolder(D_FOLDER, null, dm.folderId, false); saveDM();
+      const remote = dm.folderId ? await dfind(dm.folderId) : null;
+      if (!remote) { toast('In Drive gibt es noch keine Datei.', 3500); setStatus(dm.dirty ? 'pending' : 'ok'); return; }
+      const rs = parsePayload(await dread(remote.id));
+      setStatus(dm.dirty ? 'pending' : 'ok');
+      const ok = await modal({title:'Stand aus Drive laden?', text:`Drive: ${sumState(rs)}\nDieser Browser: ${sumState(wsObj())}\n\nDer lokale Stand wird ersetzt` + (dm.dirty ? ' (noch nicht gesicherte Änderungen gehen dabei verloren)' : '') + '. Er bleibt als Notkopie im Browser erhalten.', ok:'Ersetzen', danger:true});
+      if (!ok) return;
+      dm.fileId = remote.id; dm.version = remote.version; dm.dirty = false; dd.hold = false;
+      replaceState(rs, {noSync:true}); saveDM(); setStatus('ok'); render(); toast('Stand aus Drive geladen');
+    } catch (e) { handleErr(e); }
+  })).catch(handleErr);
+}
+function driveListBackups(){
+  gestureToken().then(() => dq(async () => {
+    try {
+      setStatus('busy');
+      dm.folderId = await ensureFolder(D_FOLDER, null, dm.folderId, false);
+      dm.backupId = dm.folderId ? await ensureFolder(D_BACKUP, dm.folderId, dm.backupId, false) : ''; saveDM();
+      dd.backups = dm.backupId ? await dlist(`'${dm.backupId}' in parents and trashed=false`, 'files(id,name,modifiedTime,size)', {orderBy:'name desc'}) : [];
+      setStatus(dm.dirty ? 'pending' : 'ok');
+    } catch (e) { handleErr(e); }
+  })).catch(handleErr);
+}
+function driveRestore(id, name){
+  gestureToken().then(() => dq(async () => {
+    try {
+      setStatus('busy');
+      const rs = parsePayload(await dread(id));
+      setStatus(dm.dirty ? 'pending' : 'ok');
+      const ok = await modal({title:'Sicherung einlesen?', text:`${name}\n${sumState(rs)}\n\nDer aktuelle Stand (${sumState(wsObj())}) wird ersetzt. In Drive wird vorher eine Sicherungskopie des aktuellen Standes angelegt.`, ok:'Einlesen', danger:true});
+      if (!ok) return;
+      dd.nextTag = 'vor-wiederherstellung'; replaceState(rs); render(); toast('Sicherung eingelesen, wird nach Drive gespeichert', 4000);
+    } catch (e) { handleErr(e); }
+  })).catch(handleErr);
+}
+async function driveDisconnect(){
+  if (!await modal({title:'Verbindung trennen?', text:'Die Dateien in Google Drive und die Daten in diesem Browser bleiben unverändert erhalten. Es wird nur nicht mehr synchronisiert.', ok:'Trennen'})) return;
+  if (dd.token && gisOK()) { try { google.accounts.oauth2.revoke(dd.token, () => {}); } catch (e) {} }
+  dd.token = null; dd.exp = 0; dd.backups = null; dd.hold = false; clearTimeout(dd.timer);
+  dm = Object.assign(loadDM(), {on:false, fileId:'', folderId:'', backupId:'', version:'', lastSaved:'', dirty:false, backupDay:''}); saveDM();
+  setStatus('off'); toast('Verbindung getrennt');
+}
+function pillClick(){
+  const st = dd.state;
+  if (st === 'auth') driveSignIn();
+  else if (st === 'conflict') driveSaveNow();
+  else if (st === 'error') dq(() => driveSync({}));
+  else go('daten');
+}
+
+function driveCardInner(){
+  const [lab, long] = driveLabel();
+  if (!dm.on) {
+    return `<p class="hint">Deine Konten werden als Datei <code>${D_FILE}</code> im Drive-Ordner „${D_FOLDER}“ gespeichert, mit täglicher Sicherungskopie. So hast du am Handy und am Rechner denselben Stand. Das Tool sieht in Drive nur Dateien, die es selbst angelegt hat.</p>`
+      + (location.protocol === 'file:' ? `<p class="note">Die Google-Anmeldung funktioniert nur, wenn das Tool über seine https-Adresse geöffnet wird (GitHub Pages), nicht als lokale Datei.</p>` : '')
+      + `<div class="btns"><button class="primary" data-act="driveconnect"${location.protocol === 'file:' ? ' disabled' : ''}>Mit Google Drive verbinden</button></div>${dd.msg ? `<p class="msg">${esc(dd.msg)}</p>` : ''}`;
+  }
+  const fl = dm.fileId ? `<a href="https://drive.google.com/file/d/${encodeURIComponent(dm.fileId)}/view" target="_blank" rel="noopener">${D_FILE}</a>` : D_FILE + ' (wird beim ersten Speichern angelegt)';
+  const fo = dm.folderId ? `<a href="https://drive.google.com/drive/folders/${encodeURIComponent(dm.folderId)}" target="_blank" rel="noopener">${D_FOLDER}</a>` : D_FOLDER;
+  let h = `<p><strong>${esc(lab)}</strong><span class="sub">${esc(long)}</span></p>${dd.msg ? `<p class="msg">${esc(dd.msg)}</p>` : ''}
+    <p class="hint" style="margin-top:0">Ordner: ${fo}<br>Datei: ${fl}<br>Letzte Speicherung: ${dm.lastSaved ? fdt(dm.lastSaved) : 'noch keine'}<br>Sicherungskopien: täglich im Unterordner „${D_BACKUP}“, die letzten ${D_KEEP} bleiben erhalten.</p>
+    <div class="btns"><button class="primary" data-act="drivesave">Jetzt speichern</button><button class="btn" data-act="driveload">Stand aus Drive laden</button><button class="btn" data-act="drivebackups">Sicherungen anzeigen</button><button class="btn" data-act="drivedisconnect">Verbindung trennen</button></div>
+    <div class="checkrow" style="margin-top:12px"><input type="checkbox" id="driveAuto"${dm.auto ? ' checked' : ''}><label for="driveAuto" style="margin:0">Änderungen automatisch nach Drive speichern</label></div>`;
+  if (dd.backups) {
+    h += `<h3>Sicherungen in Drive (${dd.backups.length})</h3>`;
+    h += dd.backups.length ? `<div class="histlist">${dd.backups.map(f => `<div><span>${esc(f.name.replace(/^konten-sicherung-/, '').replace(/\.json$/, ''))}</span><button class="btn small" data-act="driverestore" data-id="${esc(f.id)}" data-name="${esc(f.name)}">Einlesen</button></div>`).join('')}</div>` : `<p class="hint">Noch keine Sicherungskopien. Die erste entsteht beim ersten Überschreiben der Datei.</p>`;
+  }
+  return h;
+}
+
+window.addEventListener('online', () => { if (dm.on && dm.dirty && dd.state === 'error') dq(() => driveSync({})); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !dm.on || dd.hold || !tokenValid() || dd.state === 'busy') return;
+  if ($('#modal-root').innerHTML) return;
+  if (Date.now() - dd.lastCheck > 60000) dq(() => driveSync({}));
+});
+
+
+/* ======================================================================
+   Tooltips und Ereignisse
+   ====================================================================== */
+const tipEl = $('#tip');
+function showTip(el, e){
+  tipEl.textContent = el.getAttribute('data-tip'); tipEl.style.display = 'block';
+  const r = tipEl.getBoundingClientRect(); let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + r.width > innerWidth - 6) x = innerWidth - r.width - 6;
+  if (x < 6) x = 6;
+  if (y + r.height > innerHeight - 6) y = Math.max(6, e.clientY - r.height - 14);
+  tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
+}
+const hideTip = () => { tipEl.style.display = 'none'; };
+document.addEventListener('pointerover', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e); });
+document.addEventListener('pointermove', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e); else hideTip(); });
+document.addEventListener('pointerdown', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e); else hideTip(); });
+window.addEventListener('scroll', hideTip, {passive:true});
+
+function moveView(id, d){
+  const vs = state.meta.views, i = vs.findIndex(v => v.id === id), j = i + d;
+  if (i < 0 || j < 0 || j >= vs.length) return;
+  [vs[i], vs[j]] = [vs[j], vs[i]]; saveState(); render();
+}
+document.addEventListener('click', async e => {
+  const nav = e.target.closest('#nav button'); if (nav) { go(nav.dataset.tab); return; }
+  if (e.target.closest('#drivepill')) { pillClick(); return; }
+  const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
+  const act = b.dataset.act;
+  if (b.tagName === 'A') e.preventDefault();
+  switch (act) {
+    case 'goto': go(b.dataset.tab); break;
+    case 'sort': { const k = b.dataset.key; ui.sort = ui.sort.key === k ? {key:k, dir:-ui.sort.dir} : {key:k, dir:['name', 'type', 'owner', 'tags'].includes(k) ? 1 : -1}; render(); break; }
+    case 'eclear': document.querySelectorAll('.kinput').forEach(i => { i.value = ''; }); updateESum(); break;
+    case 'demo': {
+      if (hasData(state)) { if (!await modal({title:'Beispieldaten laden?', text:'Die vorhandenen Daten werden durch erfundene Beispieldaten ersetzt. Der vorherige Stand bleibt als Notkopie im Reiter Daten.', ok:'Ersetzen', danger:true})) break; }
+      loadDemo(); go('uebersicht'); toast('Beispieldaten geladen'); break;
+    }
+    case 'wipe': {
+      if (!await modal({title:'Alle Daten löschen?', text:'Alle Konten, Kontostände und Auswertungen in diesem Browser werden gelöscht. Hast du vorher eine Sicherung gespeichert?', ok:'Endgültig löschen', danger:true})) break;
+      replaceState(emptyState()); render(); toast('Alle Daten gelöscht. Der vorherige Stand bleibt als Notkopie im Reiter Daten.', 4500); break;
+    }
+    case 'reptex': exportReportTex(); break;
+    case 'exportjson': exportJSON(); break;
+    case 'importjson': $('#jsonfile').click(); break;
+    case 'exportcsv': exportCSV(); break;
+    case 'exportwide': exportWide(); break;
+    case 'importcsv': $('#csvfile').click(); break;
+    case 'driveconnect': driveConnect(); break;
+    case 'drivesave': driveSaveNow(); break;
+    case 'driveload': driveLoadNow(); break;
+    case 'drivebackups': driveListBackups(); break;
+    case 'driverestore': driveRestore(b.dataset.id, b.dataset.name); break;
+    case 'drivedisconnect': driveDisconnect(); break;
+    case 'prevrestore': {
+      const pv = prevInfo(); if (!pv) break;
+      if (!await modal({title:'Vorherigen Stand wiederherstellen?', text:`${sumState(pv.state)}\ngesichert am ${fdt(pv.saved)}\n\nDer aktuelle Stand (${sumState(state)}) wird ersetzt und bleibt seinerseits als Notkopie erhalten.`, ok:'Wiederherstellen', danger:true})) break;
+      replaceState(pv.state); render(); toast('Vorheriger Stand wiederhergestellt'); break;
+    }
+    case 'accedit': ui.accEdit = b.dataset.id; render(); window.scrollTo(0, 0); break;
+    case 'acccancel': ui.accEdit = null; render(); break;
+    case 'accarch': {
+      const a = accById(b.dataset.id); if (!a) break;
+      const lastE = valueAt(a.id, LAST);
+      if (!a.archived && lastE && Math.abs(lastE.amount) > 0.004 && !await modal({title:`„${a.name}“ archivieren?`, text:`Der letzte Stand beträgt ${eur(lastE.amount)} (${fd(lastE.date)}). Das Konto verschwindet aus Eingabe und Übersicht. In Auswertungen mit archivierten Konten bleibt dieser Stand weiterhin stehen. Trage ggf. vorher den Endstand 0 ein.`, ok:'Archivieren'})) break;
+      a.archived = !a.archived; saveState(); render(); toast(a.archived ? 'Konto archiviert' : 'Konto wieder aktiv'); break;
+    }
+    case 'accdel': {
+      const a = accById(b.dataset.id); if (!a) break;
+      const n = (entriesBy().get(a.id) || []).length;
+      if (!await modal({title:`Konto „${a.name}“ löschen?`, text:`Das Konto wird mit ${n} ${n === 1 ? 'Kontostand' : 'Kontoständen'} endgültig gelöscht. Zum Ausblenden ist Archivieren besser.`, ok:'Endgültig löschen', danger:true})) break;
+      state.accounts = state.accounts.filter(x => x.id !== a.id); state.entries = state.entries.filter(x => x.accId !== a.id);
+      state.meta.views.forEach(v => { v.f.acc = v.f.acc.filter(x => x !== a.id); });
+      if (ui.accEdit === a.id) ui.accEdit = null; saveState(); render(); toast('Konto gelöscht'); break;
+    }
+    case 'cell': editCell(b.dataset.acc, b.dataset.date); break;
+    case 'datedel': {
+      const d = b.dataset.date, n = state.entries.filter(x => x.date === d).length;
+      if (!await modal({title:`Alle Werte vom ${fd(d)} löschen?`, text:`${n} Kontostand${n === 1 ? '' : 'e'} an diesem Tag werden gelöscht.`, ok:'Löschen', danger:true})) break;
+      state.entries = state.entries.filter(x => x.date !== d); saveState(); render(); toast('Gelöscht'); break;
+    }
+    case 'tablemore': ui.tableAll = true; render(); break;
+    case 'vnew': ui.vedit = {id:'new', draft:normView({id:'x', title:'Neue Auswertung', kind:'line', group:'type', range:'all', archiv:false, f:{}})}; render(); { const c = $('#vedcard'); if (c) c.scrollIntoView(); } break;
+    case 'vedit': { const v = state.meta.views.find(x => x.id === b.dataset.id); if (!v) break; ui.vedit = {id:v.id, draft:JSON.parse(JSON.stringify(v))}; render(); const c = $('#vedcard'); if (c) c.scrollIntoView(); break; }
+    case 'vcancel': ui.vedit = null; render(); break;
+    case 'vdup': {
+      const i = state.meta.views.findIndex(x => x.id === b.dataset.id); if (i < 0) break;
+      const c = JSON.parse(JSON.stringify(state.meta.views[i])); c.id = 'v' + uid().replace(/[^A-Za-z0-9]/g, ''); c.title = (c.title + ' (Kopie)').slice(0, 80);
+      state.meta.views.splice(i + 1, 0, c); saveState(); render(); toast('Auswertung kopiert'); break;
+    }
+    case 'vdel': {
+      const v = state.meta.views.find(x => x.id === b.dataset.id); if (!v) break;
+      if (!await modal({title:'Auswertung löschen?', text:`„${v.title}“ wird gelöscht. Deine Kontostände bleiben unverändert.`, ok:'Löschen', danger:true})) break;
+      state.meta.views = state.meta.views.filter(x => x.id !== v.id); saveState(); render(); toast('Auswertung gelöscht'); break;
+    }
+    case 'vup': moveView(b.dataset.id, -1); break;
+    case 'vdown': moveView(b.dataset.id, 1); break;
+  }
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('cell')) { e.preventDefault(); editCell(e.target.dataset.acc, e.target.dataset.date); return; }
+  if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('kinput')) {
+    e.preventDefault();
+    const all = [...document.querySelectorAll('.kinput')], i = all.indexOf(e.target);
+    if (i < all.length - 1) all[i + 1].focus(); else saveEingabe();
+  }
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.id === 'eform') saveEingabe();
+  else if (e.target.id === 'acform') saveAcc();
+  else if (e.target.id === 'viewform') saveView();
+});
+document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('kinput')) updateESum(); });
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'showArch') { ui.showArch = t.checked; render(); }
+  else if (t.id === 'edate') ui.edate = t.value || null;
+  else if (t.id === 'vf-kind') toggleVF();
+  else if (t.id === 'driveAuto') { dm.auto = t.checked; saveDM(); if (dm.auto && dm.dirty) driveTouch(); else updatePill(); }
+  else if (t.id === 'jsonfile' && t.files[0]) { importJSON(t.files[0]); t.value = ''; }
+  else if (t.id === 'csvfile' && t.files[0]) { importCSV(t.files[0]); t.value = ''; }
+});
+let rsT;
+window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (ui.tab === 'diagramme') drawCharts(); if (ui.tab === 'uebersicht') drawPreview(); }, 150); });
+window.addEventListener('hashchange', () => { const t = location.hash.slice(1); if (TABS.includes(t) && t !== ui.tab) { ui.tab = t; render(); } });
+
+/* Start */
+$('#ver').textContent = 'v' + VERSION;
+(function init(){
+  const t = location.hash.slice(1); if (TABS.includes(t)) ui.tab = t;
+  render(); toggleVF(); updatePill(); driveStart();
+})();
+
+</script>
+<!-- LINUXHANDOFF BEGIN -->
+<script id="linuxHandOff">
+/* Anmeldung fuer die Linux-App von Seifferts Konten. Nur aktiv, wenn diese Seite mit ?linuxport=...&linuxstate=... geoeffnet wird
+   (das macht die Linux-App). Die Seite meldet mit der vorhandenen Client-ID bei Google an und reicht das Token per Weiterleitung an
+   127.0.0.1 weiter, also an die Linux-App auf diesem Rechner. Ohne diese Parameter geschieht nichts. Dieser Block muss erhalten bleiben. */
+(function(){
+  var q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  var port = q.get('linuxport'), st = q.get('linuxstate');
+  if (!port || !st) return;
+  if (!/^[0-9]{2,5}$/.test(port) || !/^[A-Za-z0-9_-]{8,128}$/.test(st)) return;
+  /* In diesem Modus ruhen die Oberflaeche des Tools und seine Drive-Synchronisation. */
+  window.driveSync = async function(){}; window.driveStart = async function(){}; window.driveTouch = function(){}; window.render = function(){};
+  document.body.innerHTML = '<div class="wrap" style="padding-top:40px"><div class="card hero"><h2>Anmeldung für Seifferts Konten (Linux-App)</h2>'
+    + '<p>Mit dem Knopf meldest du dich bei Google an. Danach geht die Anmeldung an die Linux-App auf diesem Rechner, und du kannst diesen Browser-Tab schließen.</p>'
+    + '<div class="btns" style="justify-content:center"><button class="primary" id="lxBtn" type="button">Bei Google anmelden</button></div>'
+    + '<p class="msg" id="lxMsg" role="status" style="color:var(--text2)"></p></div></div>';
+  var btn = document.getElementById('lxBtn'), msg = document.getElementById('lxMsg');
+  function post(fields){
+    /* wie beim Stammbaum: Weiterleitung (GET) an die Linux-App auf diesem Rechner */
+    fields.state = st;
+    var qs = Object.keys(fields).map(function(k){ return encodeURIComponent(k) + '=' + encodeURIComponent(String(fields[k])); }).join('&');
+    location.href = 'http://127.0.0.1:' + port + '/handoff?' + qs;
+  }
+  btn.addEventListener('click', function(){
+    if (!(window.google && google.accounts && google.accounts.oauth2)) { msg.textContent = 'Die Google-Anmeldung ist noch nicht geladen. Bitte kurz warten und noch einmal klicken (Internetverbindung nötig).'; return; }
+    btn.disabled = true; msg.textContent = 'Bitte im Fenster von Google anmelden …';
+    try {
+      google.accounts.oauth2.initTokenClient({client_id: CLIENT_ID, scope: D_SCOPE,
+        callback: function(r){
+          if (r && r.access_token) { msg.textContent = 'Anmeldung wird übermittelt …'; post({access_token: r.access_token, expires_in: r.expires_in || 3600}); }
+          else { btn.disabled = false; msg.textContent = 'Anmeldung fehlgeschlagen' + (r && r.error ? ' (' + r.error + ')' : '') + '. Du kannst es noch einmal versuchen.'; }
+        },
+        error_callback: function(e){ btn.disabled = false; msg.textContent = 'Anmeldung nicht möglich (' + ((e && e.type) || 'Fehler') + '). Bitte erlaube Pop-up-Fenster für diese Seite und versuche es noch einmal.'; }
+      }).requestAccessToken({prompt: ''});
+    } catch (e) { btn.disabled = false; msg.textContent = 'Anmeldung nicht möglich: ' + e.message; }
+  });
+})();
+</script>
+<!-- LINUXHANDOFF END -->
+</body>
+</html>

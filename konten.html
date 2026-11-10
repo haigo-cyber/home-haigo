@@ -9,6 +9,8 @@
 <!--
   Seifferts Konten - woechentliche Kontostaende erfassen und auswerten, eine einzelne HTML-Datei ohne Build, ohne Server.
   Daten liegen im localStorage dieses Browsers (Sicherung ueber den Reiter Daten, optional Google Drive).
+  v1.4.0 Ansichten: Komplettansicht und frei definierbare Teilansichten (Standard ohne Immobilie), Auswahl oben in Uebersicht und Diagramme
+  v1.3.0 Kategorien (Konto, Aktienfonds, Immobilie, Sachgut, frei erweiterbar) und neuer Reiter Einrichten: Kategorien standardmaessig aus Uebersichten ausblenden
   v1.2.0 Konten im Kurzbericht ausblenden (je Bericht oder dauerhaft pro Konto), Bilanz im Bericht, weitere Kontoarten (Immobilie, Aktien, Fonds, ...)
   v1.1.0 Kurzbericht als LaTeX (.tex) mit Torten- und Verlaufsgrafiken (TikZ) im Reiter Diagramme
   v1.0.0 Erste Fassung: schnelle Eingabe geaenderter Kontostaende mit Datum, Uebersicht, frei erweiterbare Auswertungen
@@ -196,6 +198,7 @@ td.nocell{color:var(--muted)}
       <button role="tab" data-tab="tabelle">Tabelle</button>
       <button role="tab" data-tab="konten">Konten</button>
       <button role="tab" data-tab="daten">Daten</button>
+      <button role="tab" data-tab="einrichten">Einrichten</button>
     </nav>
   </div>
 </header>
@@ -209,12 +212,12 @@ td.nocell{color:var(--muted)}
 /* ======================================================================
    Seifferts Konten v1.0
    ====================================================================== */
-const VERSION = '1.2.0';
+const VERSION = '1.4.0';
 const LS_KEY = 'seifferts_konten_v1';
 const PALETTE = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
-const FDIMS = ['type', 'bank', 'owner', 'tag', 'acc'];
-const FDIM_NAMES = {type:'Kontoart', bank:'Bank', owner:'Besitzer', tag:'Gruppe', acc:'Einzelne Konten'};
-const GROUPS = {sum:'Gesamtsumme', konto:'Konto', type:'Kontoart', bank:'Bank', owner:'Besitzer', tag:'Gruppe'};
+const FDIMS = ['cls', 'type', 'bank', 'owner', 'tag', 'acc'];
+const FDIM_NAMES = {cls:'Kategorie', type:'Kontoart', bank:'Bank', owner:'Besitzer', tag:'Gruppe', acc:'Einzelne Konten'};
+const GROUPS = {sum:'Gesamtsumme', cls:'Kategorie', konto:'Konto', type:'Kontoart', bank:'Bank', owner:'Besitzer', tag:'Gruppe'};
 const RANGES = {all:'Gesamter Zeitraum', ytd:'Laufendes Jahr', '1y':'Letzte 12 Monate', '6m':'Letzte 6 Monate', '3m':'Letzte 3 Monate'};
 const TYPE_SUGGEST = ['Girokonto', 'Tagesgeld', 'Festgeld', 'Sparkonto', 'Depot', 'Bargeld', 'Kreditkarte', 'Darlehen', 'Immobilie', 'Aktien', 'Fonds und ETF', 'Edelmetalle', 'Fahrzeug', 'Altersvorsorge', 'Sonstiges'];
 const LAST = '9999-12-31';
@@ -274,12 +277,16 @@ const collator = new Intl.Collator('de', {numeric:true, sensitivity:'base'});
 
 /* ======================================================================
    Daten: Konten und Kontostände
-   Konto: {id, name, type, bank, owner, tags[], liab, norep (im Kurzbericht standardmäßig ausgeblendet), archived}
+   Konto: {id, name, type, bank, owner, tags[], cls (Kategorie), liab, norep (im Kurzbericht standardmäßig ausgeblendet), archived}
    Kontostand: {id, accId, date, amount, note}  (je Konto und Tag höchstens einer)
    Auswertung (meta.views): gespeicherte Diagramm-Einstellungen
    ====================================================================== */
+const DEFAULT_CLASSES = [['Konto', true], ['Aktienfonds', true], ['Immobilie', true], ['Sachgut', true]];
+const defaultClasses = () => DEFAULT_CLASSES.map(([name]) => ({name}));
+const defaultAnsichten = () => [{id:'a-standard', name:'Standard', cls:['Konto', 'Aktienfonds', 'Sachgut']}];
+const CLASS_GUESS = {'immobilie':'Immobilie', 'aktien':'Aktienfonds', 'fonds und etf':'Aktienfonds', 'edelmetalle':'Sachgut', 'fahrzeug':'Sachgut'};
 function defaultViews(){
-  const F = () => ({type:[], bank:[], owner:[], tag:[], acc:[]});
+  const F = () => ({cls:[], type:[], bank:[], owner:[], tag:[], acc:[]});
   return [
     {id:'v-gesamt', title:'Gesamtvermögen im Verlauf', kind:'line', group:'sum', f:F(), range:'all', at:'', archiv:true, total:false},
     {id:'v-art-verlauf', title:'Verlauf nach Kontoart', kind:'line', group:'type', f:F(), range:'all', at:'', archiv:true, total:true},
@@ -295,12 +302,13 @@ function normView(v){
     title:String(v.title || 'Auswertung').trim().slice(0, 80) || 'Auswertung',
     kind:v.kind === 'pie' ? 'pie' : 'line',
     group:GROUPS[v.group] ? v.group : 'type',
-    f, range:RANGES[v.range] ? v.range : 'all', at:parseDate(v.at) || '', archiv:!!v.archiv, total:!!v.total
+    f, range:RANGES[v.range] ? v.range : 'all', at:parseDate(v.at) || '', archiv:!!v.archiv, hid:!!v.hid, total:!!v.total
   };
 }
-function emptyState(){ return {accounts:[], entries:[], meta:{lastBackup:null, views:defaultViews()}}; }
+function emptyState(){ return {accounts:[], entries:[], meta:{lastBackup:null, views:defaultViews(), classes:defaultClasses(), ansichten:defaultAnsichten()}}; }
 const hasData = s => !!(s && (s.accounts.length || s.entries.length));
 const cleanTxt = (x, n = 60) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, n);
+function guessCls(type){ const n = CLASS_GUESS[cleanTxt(type).toLowerCase()], c = n && state.meta.classes.find(x => x.name === n); return (c || state.meta.classes[0]).name; }
 function cleanTags(t){
   const list = Array.isArray(t) ? t : String(t == null ? '' : t).split(/[,;]/);
   const out = []; list.forEach(x => { x = cleanTxt(x, 40); if (x && !out.some(y => y.toLowerCase() === x.toLowerCase())) out.push(x); });
@@ -309,11 +317,39 @@ function cleanTags(t){
 function normalizeState(o){
   const s = emptyState();
   if (!o || typeof o !== 'object') return s;
+  if (o.meta && Array.isArray(o.meta.classes)) {
+    const cl = [];
+    o.meta.classes.forEach(c => { const n = cleanTxt(c && c.name, 30); if (n && !cl.some(x => x.name.toLowerCase() === n.toLowerCase())) cl.push({name:n}); });
+    if (cl.length) s.meta.classes = cl.slice(0, 20);
+  }
+  {
+    const names = s.meta.classes.map(c => c.name), canonCls = n => names.find(x => x.toLowerCase() === String(n || '').toLowerCase());
+    if (o.meta && Array.isArray(o.meta.ansichten)) {
+      const as = [], aid = new Set();
+      o.meta.ansichten.forEach(a => {
+        const id = String(a && a.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || uid(), nm = cleanTxt(a && a.name, 40);
+        if (!nm || aid.has(id)) return; aid.add(id);
+        as.push({id, name:nm, cls:[...new Set((Array.isArray(a.cls) ? a.cls : []).map(x => canonCls(cleanTxt(x, 30))).filter(Boolean))]});
+      });
+      s.meta.ansichten = as.slice(0, 12);
+    } else if (o.meta && Array.isArray(o.meta.classes)) {
+      /* Alt (Version 1.3): Schalter je Kategorie. Wird zur Teilansicht Standard; waren alle sichtbar, entfällt Immobilie. */
+      const hidden = o.meta.classes.filter(c => c && c.show === false).map(c => cleanTxt(c.name, 30).toLowerCase());
+      let keep = names.filter(n => !hidden.includes(n.toLowerCase()));
+      if (!hidden.length) keep = keep.filter(n => n.toLowerCase() !== 'immobilie');
+      s.meta.ansichten = [{id:'a-standard', name:'Standard', cls:keep}];
+    } else s.meta.ansichten = defaultAnsichten().map(a => Object.assign(a, {cls:a.cls.map(canonCls).filter(Boolean)}));
+  }
+  const clsOf = (a) => {
+    const names = s.meta.classes, find = n => names.find(c => c.name.toLowerCase() === String(n || '').toLowerCase());
+    let c = a.cls != null ? find(cleanTxt(a.cls, 30)) : find(CLASS_GUESS[cleanTxt(a.type).toLowerCase()]);
+    return (c || names[0]).name;
+  };
   const ids = new Set();
   (Array.isArray(o.accounts) ? o.accounts : []).forEach(a => {
     if (!a || a.id == null || !cleanTxt(a.name, 80) || ids.has(String(a.id))) return;
     ids.add(String(a.id));
-    s.accounts.push({id:String(a.id), name:cleanTxt(a.name, 80), type:cleanTxt(a.type), bank:cleanTxt(a.bank), owner:cleanTxt(a.owner), tags:cleanTags(a.tags), liab:!!a.liab, norep:!!a.norep, archived:!!a.archived});
+    s.accounts.push({id:String(a.id), name:cleanTxt(a.name, 80), type:cleanTxt(a.type), bank:cleanTxt(a.bank), owner:cleanTxt(a.owner), tags:cleanTags(a.tags), cls:clsOf(a), liab:!!a.liab, norep:!!a.norep, archived:!!a.archived});
   });
   const seen = new Map();
   (Array.isArray(o.entries) ? o.entries : []).forEach(e => {
@@ -387,6 +423,7 @@ function sortAccs(list){
 function labelsOf(a, dim){
   switch (dim) {
     case 'konto': return [a.name];
+    case 'cls': return [a.cls];
     case 'type': return [a.type || 'Ohne Kontoart'];
     case 'bank': return [a.bank || 'Ohne Bank'];
     case 'owner': return [a.owner || 'Ohne Besitzer'];
@@ -394,10 +431,20 @@ function labelsOf(a, dim){
     default: return ['Gesamt'];
   }
 }
-function accMatches(a, f, archiv){
+/* Kategorien (Konto, Aktienfonds, Immobilie, Sachgut ...), die im Reiter Einrichten standardmäßig ausgeblendet werden können */
+let forceHid = false;
+const ANS_KEY = 'seifferts_konten_ansicht';
+let ansichtSel = ''; try { ansichtSel = localStorage.getItem(ANS_KEY) || ''; } catch (e) {}
+/* Ansicht: 'komplett' = alle Kategorien, sonst eine Teilansicht (meta.ansichten); ohne Wahl gilt die erste Teilansicht */
+function curAnsicht(){ if (ansichtSel === 'komplett') return null; return state.meta.ansichten.find(a => a.id === ansichtSel) || state.meta.ansichten[0] || null; }
+const classShown = n => { const a = curAnsicht(); return !a || a.cls.includes(n); };
+const shownAccounts = () => activeAccounts().filter(a => classShown(a.cls));
+function setAnsicht(id){ ansichtSel = id; try { localStorage.setItem(ANS_KEY, id); } catch (e) {} render(); }
+function accMatches(a, f, archiv, hid){
   if (a.archived && !archiv) return false;
   if (f.acc.length && !f.acc.includes(a.id)) return false;
-  for (const k of ['type', 'bank', 'owner', 'tag']) if (f[k].length && !labelsOf(a, k).some(l => f[k].includes(l))) return false;
+  for (const k of ['cls', 'type', 'bank', 'owner', 'tag']) if (f[k].length && !labelsOf(a, k).some(l => f[k].includes(l))) return false;
+  if (!hid && !forceHid && !f.cls.length && !classShown(a.cls)) return false;
   return true;
 }
 function filterOptions(dim){
@@ -413,7 +460,7 @@ function groupAccounts(accs, group){
   return g;
 }
 function lineData(v){
-  const accs = state.accounts.filter(a => accMatches(a, v.f, v.archiv));
+  const accs = state.accounts.filter(a => accMatches(a, v.f, v.archiv, v.hid));
   if (!accs.length) return {empty:'Kein Konto entspricht dem Filter.'};
   const ids = new Set(accs.map(a => a.id));
   let dates = [...new Set(state.entries.filter(e => ids.has(e.accId)).map(e => e.date))].sort();
@@ -446,7 +493,7 @@ function lineData(v){
   return {dates, series, count:accs.length};
 }
 function pieData(v){
-  const accs = state.accounts.filter(a => accMatches(a, v.f, v.archiv));
+  const accs = state.accounts.filter(a => accMatches(a, v.f, v.archiv, v.hid));
   const at = v.at || LAST, map = new Map();
   let liab = 0, neg = 0, any = 0;
   accs.forEach(a => {
@@ -557,6 +604,7 @@ function viewSummary(v){
     parts.push(FDIM_NAMES[k] + ': ' + names.join(', '));
   });
   if (v.archiv) parts.push('mit archivierten Konten');
+  if (v.hid) parts.push('alle Kategorien, unabhängig von der Ansicht');
   if (v.kind === 'line' && v.total && v.group !== 'sum') parts.push('mit Gesamtlinie');
   return parts.join(' · ');
 }
@@ -639,7 +687,7 @@ const datalists = () => {
 /* ======================================================================
    Navigation
    ====================================================================== */
-const TABS = ['eingabe', 'uebersicht', 'diagramme', 'tabelle', 'konten', 'daten'];
+const TABS = ['eingabe', 'uebersicht', 'diagramme', 'tabelle', 'konten', 'daten', 'einrichten'];
 function go(tab){
   if (!TABS.includes(tab)) tab = 'eingabe';
   ui.tab = tab;
@@ -651,7 +699,7 @@ function render(){
   { const nv = $('#nav'), sel = nv && nv.querySelector('[aria-selected="true"]'); if (sel) nv.scrollLeft = Math.max(0, sel.offsetLeft - (nv.clientWidth - sel.offsetWidth) / 2); }
   const v = $('#view');
   const keep = ui.tab === 'eingabe' ? [...v.querySelectorAll('.kinput')].filter(i => i.value).map(i => [i.dataset.acc, i.value]) : [];
-  v.innerHTML = datalists() + ({eingabe:viewEingabe, uebersicht:viewOverview, diagramme:viewCharts, tabelle:viewTabelle, konten:viewKonten, daten:viewDaten})[ui.tab]();
+  v.innerHTML = datalists() + (ui.tab === 'uebersicht' || ui.tab === 'diagramme' ? ansichtBar() : '') + ({eingabe:viewEingabe, uebersicht:viewOverview, diagramme:viewCharts, tabelle:viewTabelle, konten:viewKonten, daten:viewDaten, einrichten:viewEinrichten})[ui.tab]();
   keep.forEach(([id, val]) => { const i = v.querySelector(`.kinput[data-acc="${CSS.escape(id)}"]`); if (i) i.value = val; });
   if (ui.tab === 'eingabe') updateESum();
   if (ui.tab === 'diagramme') { toggleVF(); drawCharts(); }
@@ -743,7 +791,7 @@ const OCOLS = [
   ['name', 'Konto'], ['type', 'Kontoart'], ['owner', 'Besitzer'], ['tags', 'Gruppen'], ['value', 'Stand'], ['date', 'Datum'], ['delta', 'Änderung'], ['share', 'Anteil']
 ];
 function overviewRows(){
-  const accs = state.accounts.filter(a => ui.showArch || !a.archived);
+  const accs = state.accounts.filter(a => (ui.showArch || !a.archived) && (forceHid || classShown(a.cls)));
   const act = accs.filter(a => !a.archived);
   const assets = act.reduce((p, a) => { const e = valueAt(a.id, LAST); return p + (e && !a.liab && e.amount > 0 ? e.amount : 0); }, 0);
   return accs.map(a => {
@@ -763,8 +811,9 @@ function sortOverview(rows){
   });
 }
 function viewOverview(){
-  const act = activeAccounts();
-  if (!act.length) return hero();
+  const act = shownAccounts();
+  if (!activeAccounts().length) return hero();
+  if (!act.length) return `<div class="card"><p>In der gewählten Ansicht ist kein Konto enthalten. Wähle oben die Komplettansicht oder ändere die Teilansicht im Reiter Einrichten.</p></div>`;
   const dates = [...new Set(state.entries.filter(e => act.some(a => a.id === e.accId)).map(e => e.date))].sort();
   if (!dates.length) return `<div class="card"><p>Es sind noch keine Kontostände erfasst.</p><div class="btns"><button class="primary" data-act="goto" data-tab="eingabe">Kontostände erfassen</button></div></div>`;
   const last = dates[dates.length - 1], now = totalAt(act, LAST).sum;
@@ -779,7 +828,7 @@ function viewOverview(){
   const rows = sortOverview(overviewRows());
   const sum = rows.filter(r => !r.a.archived).reduce((p, r) => p + (isFinite(r.val) ? r.val : 0), 0);
   const th = ([k, l]) => `<th${['name', 'type', 'owner', 'tags'].includes(k) ? ' style="text-align:left"' : ''}><button data-act="sort" data-key="${k}" aria-label="Sortieren nach ${l}">${l}${ui.sort.key === k ? (ui.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</button></th>`;
-  const body = rows.map(r => `<tr${r.a.archived ? ' style="opacity:.6"' : ''}><td><strong>${esc(r.a.name)}</strong>${r.a.archived ? ' <span class="pill">archiviert</span>' : ''}${r.a.liab ? ' <span class="pill">Verbindlichkeit</span>' : ''}<small>${esc(r.a.bank)}</small></td>
+  const body = rows.map(r => `<tr${r.a.archived ? ' style="opacity:.6"' : ''}><td><strong>${esc(r.a.name)}</strong>${r.a.archived ? ' <span class="pill">archiviert</span>' : ''}${r.a.liab ? ' <span class="pill">Verbindlichkeit</span>' : ''}<small>${esc([state.meta.classes.length > 1 ? r.a.cls : '', r.a.bank].filter(Boolean).join(' · '))}</small></td>
     <td style="text-align:left">${esc(r.a.type)}</td><td style="text-align:left">${esc(r.a.owner)}</td><td style="text-align:left">${esc(r.a.tags.join(', '))}</td>
     <td>${isFinite(r.val) ? eur(r.val) : '–'}</td><td>${r.date ? fd(r.date) : '–'}</td>
     <td class="${signCls(r.delta)}">${isFinite(r.delta) ? eurS(r.delta) : '–'}${isFinite(r.dpct) ? `<small>${pctS(r.dpct)}</small>` : ''}</td><td>${isFinite(r.share) ? pctP(r.share) : '–'}</td></tr>`).join('');
@@ -830,6 +879,7 @@ function viewEditor(){
       <h3>Filter <span class="hint">(nichts gewählt = alle)</span></h3>
       ${FDIMS.map(k => checkList(k, d.f[k])).join('')}
       <div class="checkrow"><input type="checkbox" id="vf-archiv"${d.archiv ? ' checked' : ''}><label for="vf-archiv" style="margin:0">Archivierte Konten einbeziehen</label></div>
+      <div class="checkrow"><input type="checkbox" id="vf-hid"${d.hid ? ' checked' : ''}><label for="vf-hid" style="margin:0">Alle Kategorien einbeziehen, unabhängig von der gewählten Ansicht</label></div>
       <div class="checkrow" data-kind="line"><input type="checkbox" id="vf-total"${d.total ? ' checked' : ''}><label for="vf-total" style="margin:0">Gesamtsumme zusätzlich als gestrichelte Linie</label></div>
       <div class="btns"><button class="primary" type="submit">Speichern</button><button class="btn" type="button" data-act="vcancel">Abbrechen</button></div>
     </form></div>`;
@@ -842,7 +892,7 @@ function toggleVF(){
 function readViewForm(){
   const f = $('#viewform'), fl = {}; FDIMS.forEach(k => { fl[k] = [...f.querySelectorAll(`input[data-fd="${k}"]:checked`)].map(i => i.value); });
   return {id:ui.vedit.id === 'new' ? uid() : ui.vedit.id, title:$('#vf-title').value, kind:$('#vf-kind').value, group:$('#vf-group').value, f:fl,
-          range:$('#vf-range').value, at:$('#vf-at').value, archiv:$('#vf-archiv').checked, total:$('#vf-total').checked};
+          range:$('#vf-range').value, at:$('#vf-at').value, archiv:$('#vf-archiv').checked, hid:$('#vf-hid').checked, total:$('#vf-total').checked};
 }
 function saveView(){
   const v = normView(readViewForm());
@@ -888,13 +938,14 @@ async function editCell(accId, date){
    ====================================================================== */
 function viewKonten(){
   const ed = ui.accEdit, a = ed && ed !== 'new' ? accById(ed) : null;
-  const v = a || {name:'', type:'', bank:'', owner:'', tags:[], liab:false, norep:false};
+  const v = a || {name:'', type:'', bank:'', owner:'', tags:[], cls:state.meta.classes[0].name, liab:false, norep:false};
   const form = `<div class="card" id="acccard"><h2>${a ? 'Konto ändern' : 'Neues Konto'}</h2>
     <form id="acform" autocomplete="off">
       <label>Name<input id="af-name" value="${esc(v.name)}" placeholder="zum Beispiel Girokonto ING"></label>
       <div class="grid3"><label>Kontoart<input id="af-type" list="dl-type" value="${esc(v.type)}" placeholder="Girokonto, Depot, …"></label>
         <label>Bank oder Institut<input id="af-bank" list="dl-bank" value="${esc(v.bank)}"></label>
         <label>Besitzer<input id="af-owner" list="dl-owner" value="${esc(v.owner)}"></label></div>
+      <label>Kategorie<select id="af-cls">${state.meta.classes.map(c => `<option${c.name === v.cls ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       <label>Gruppen (mit Komma trennen)<input id="af-tags" value="${esc(v.tags.join(', '))}" placeholder="zum Beispiel Notgroschen, Altersvorsorge"></label>
       <div class="checkrow"><input type="checkbox" id="af-liab"${v.liab ? ' checked' : ''}><label for="af-liab" style="margin:0">Verbindlichkeit (Kredit, Darlehen, Schulden): Restschuld als positive Zahl eintragen, zählt im Vermögen negativ</label></div>
       <div class="checkrow"><input type="checkbox" id="af-norep"${v.norep ? ' checked' : ''}><label for="af-norep" style="margin:0">Im Kurzbericht (LaTeX) standardmäßig ausblenden</label></div>
@@ -903,12 +954,12 @@ function viewKonten(){
   const rows = sortAccs(state.accounts).map(x => {
     const n = (entriesBy().get(x.id) || []).length;
     return `<tr${x.archived ? ' style="opacity:.65"' : ''}><td><strong>${esc(x.name)}</strong>${x.archived ? ' <span class="pill">archiviert</span>' : ''}${x.liab ? ' <span class="pill">Verbindlichkeit</span>' : ''}</td>
-      <td style="text-align:left">${esc(x.type)}</td><td style="text-align:left">${esc(x.bank)}</td><td style="text-align:left">${esc(x.owner)}</td><td style="text-align:left">${esc(x.tags.join(', '))}</td><td>${n}</td>
+      <td style="text-align:left">${esc(x.cls)}</td><td style="text-align:left">${esc(x.type)}</td><td style="text-align:left">${esc(x.bank)}</td><td style="text-align:left">${esc(x.owner)}</td><td style="text-align:left">${esc(x.tags.join(', '))}</td><td>${n}</td>
       <td><div class="btns" style="margin:0;justify-content:flex-end"><button class="btn small" data-act="accedit" data-id="${esc(x.id)}">Ändern</button>
       <button class="btn small" data-act="accarch" data-id="${esc(x.id)}">${x.archived ? 'Wieder aktivieren' : 'Archivieren'}</button><button class="btn small danger" data-act="accdel" data-id="${esc(x.id)}">Löschen</button></div></td></tr>`;
   }).join('');
   return form + (state.accounts.length ? `<div class="card"><h2>Konten (${state.accounts.length})</h2>
-    <div class="tablewrap"><table class="sticky1"><thead><tr><th style="text-align:left">Name</th><th style="text-align:left">Kontoart</th><th style="text-align:left">Bank</th><th style="text-align:left">Besitzer</th><th style="text-align:left">Gruppen</th><th>Stände</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="tablewrap"><table class="sticky1"><thead><tr><th style="text-align:left">Name</th><th style="text-align:left">Kategorie</th><th style="text-align:left">Kontoart</th><th style="text-align:left">Bank</th><th style="text-align:left">Besitzer</th><th style="text-align:left">Gruppen</th><th>Stände</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="hint">Archivierte Konten erscheinen nicht mehr in der Eingabe und in der Übersicht. Ihr Verlauf bleibt für Auswertungen erhalten, wenn „Archivierte Konten einbeziehen“ gewählt ist. Trage vor dem Archivieren am besten den Endstand 0 ein, damit der Verlauf stimmt.</p></div>` : '');
 }
 function saveAcc(){
@@ -916,7 +967,7 @@ function saveAcc(){
   if (!name) { toast('Der Name darf nicht leer sein.'); return; }
   const ed = ui.accEdit, cur = ed && ed !== 'new' ? accById(ed) : null;
   if (state.accounts.some(x => x !== cur && x.name.toLowerCase() === name.toLowerCase())) { toast('Ein Konto mit diesem Namen gibt es schon.', 3500); return; }
-  const vals = {name, type:cleanTxt($('#af-type').value), bank:cleanTxt($('#af-bank').value), owner:cleanTxt($('#af-owner').value), tags:cleanTags($('#af-tags').value), liab:$('#af-liab').checked, norep:$('#af-norep').checked};
+  const vals = {name, type:cleanTxt($('#af-type').value), bank:cleanTxt($('#af-bank').value), owner:cleanTxt($('#af-owner').value), tags:cleanTags($('#af-tags').value), cls:$('#af-cls').value, liab:$('#af-liab').checked, norep:$('#af-norep').checked};
   if (cur) Object.assign(cur, vals); else state.accounts.push(Object.assign({id:uid(), archived:false}, vals));
   ui.accEdit = null; saveState(); render(); toast(cur ? 'Konto gespeichert' : 'Konto angelegt');
   if (!cur) { const n = $('#af-name'); if (n) n.focus(); }
@@ -1032,7 +1083,7 @@ async function importCSV(file){
   if (!ok) return;
   good.forEach(g => {
     let a = state.accounts.find(x => x.name.toLowerCase() === g.name.toLowerCase());
-    if (!a) { a = {id:uid(), name:g.name, type:cleanTxt(g.type), bank:cleanTxt(g.bank), owner:cleanTxt(g.owner), tags:cleanTags(g.tags), liab:false, norep:false, archived:false}; state.accounts.push(a); }
+    if (!a) { a = {id:uid(), name:g.name, type:cleanTxt(g.type), bank:cleanTxt(g.bank), owner:cleanTxt(g.owner), tags:cleanTags(g.tags), cls:guessCls(g.type), liab:false, norep:false, archived:false}; state.accounts.push(a); }
     const ex = state.entries.find(e => e.accId === a.id && e.date === g.date);
     if (ex) ex.amount = g.amount; else state.entries.push({id:uid(), accId:a.id, date:g.date, amount:g.amount, note:''});
   });
@@ -1041,10 +1092,11 @@ async function importCSV(file){
 }
 function loadDemo(){
   let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const A = (name, type, bank, owner, tags, liab) => ({id:uid(), name, type, bank, owner, tags, liab:!!liab, archived:false});
+  const A = (name, type, bank, owner, tags, liab) => ({id:uid(), name, type, bank, owner, tags, cls:'Konto', liab:!!liab, archived:false});
   const giro = A('Girokonto ING', 'Girokonto', 'ING', 'Heiko', ['Alltag']), tag = A('Tagesgeld ING', 'Tagesgeld', 'ING', 'Heiko', ['Notgroschen']),
     fest = A('Festgeld Sparkasse', 'Festgeld', 'Sparkasse', 'Heiko', ['Altersvorsorge']), dep = A('Depot Smartbroker', 'Depot', 'Smartbroker', 'Heiko', ['Altersvorsorge', 'Geldanlage']),
     bar = A('Bargeld', 'Bargeld', '', 'Heiko', ['Alltag']), fam = A('Girokonto Familie', 'Girokonto', 'Sparkasse', 'Partner', ['Alltag', 'Familie']), kk = A('Kreditkarte DKB', 'Kreditkarte', 'DKB', 'Heiko', [], true);
+  dep.cls = 'Aktienfonds';
   const s = emptyState(); s.accounts = [giro, tag, fest, dep, bar, fam, kk];
   const weeks = 40, start = new Date(); start.setDate(start.getDate() - weeks * 7);
   let g = 2400, t = 8000, f = 10000, d = 15500, b = 120, fm = 900, k = 300;
@@ -1060,6 +1112,81 @@ function loadDemo(){
     if (w % 2 === 0) { k = 80 + rnd() * 600; put(kk, date, k); }
   }
   replaceState(normalizeState(s));
+}
+/* ======================================================================
+   Einrichten: Kategorien und Ansichten (Komplettansicht, Teilansichten)
+   ====================================================================== */
+function ansichtBar(){
+  if (!state.accounts.length) return '';
+  const cur = curAnsicht(), as = state.meta.ansichten;
+  const out = activeAccounts().filter(a => !classShown(a.cls)).length;
+  return `<div class="card" style="padding:10px 16px"><div class="checkrow" style="margin:0;gap:10px;flex-wrap:wrap"><label for="ansichtsel" style="margin:0"><strong>Ansicht</strong></label>
+    <select id="ansichtsel" style="width:auto"><option value="komplett"${cur ? '' : ' selected'}>Komplettansicht (alle Kategorien)</option>${as.map(a => `<option value="${esc(a.id)}"${cur && cur.id === a.id ? ' selected' : ''}>Teilansicht: ${esc(a.name)}</option>`).join('')}</select>
+    <span class="hint">${cur ? `enthält ${esc(cur.cls.join(', ') || 'keine Kategorie')}${out ? `; ${out} ${out === 1 ? 'Konto liegt' : 'Konten liegen'} außerhalb` : ''}` : 'zeigt alle Konten'}</span></div></div>`;
+}
+function viewEinrichten(){
+  const cl = state.meta.classes, as = state.meta.ansichten;
+  const rows = cl.map((c, i) => {
+    const n = state.accounts.filter(a => a.cls === c.name).length;
+    return `<tr><td style="text-align:left"><input data-cn="${i}" value="${esc(c.name)}" maxlength="30" aria-label="Name der Kategorie" style="min-width:9em"></td>
+      <td>${n}</td><td><button class="btn small danger" data-act="clsdel" data-i="${i}"${n || cl.length < 2 ? ' disabled' : ''}>Löschen</button></td></tr>`;
+  }).join('');
+  const ans = as.map((a, i) => `<div class="card" style="margin:10px 0;box-shadow:none;border:1px solid var(--border,#ddd)"><div class="titlerow"><input data-ai="${i}" data-f="name" value="${esc(a.name)}" maxlength="40" aria-label="Name der Teilansicht" style="max-width:18em"><button class="btn small danger" data-act="ansdel" data-i="${i}">Löschen</button></div>
+    <div class="chk">${cl.map((c, k) => `<label class="checkrow"><input type="checkbox" data-ai="${i}" data-ak="${k}"${a.cls.includes(c.name) ? ' checked' : ''}>${esc(c.name)}</label>`).join('')}</div></div>`).join('');
+  return `<div class="card"><h2>Ansichten</h2>
+    <p class="hint" style="margin-top:0">Es gibt immer die Komplettansicht mit allen Kategorien. Dazu definierst du hier beliebig viele Teilansichten, indem du ihre Kategorien ankreuzt. Oben in den Reitern Übersicht und Diagramme wählst du, welche Ansicht gilt. Ohne Wahl gilt die erste Teilansicht, vorbelegt als Standard ohne Immobilie. Die Wahl wird nur in diesem Programm auf diesem Rechner gemerkt. Eine Auswertung kann mit dem Haken „Alle Kategorien einbeziehen“ die Ansicht übergehen. Eingabe, Tabelle und Konten zeigen immer alle Konten.</p>
+    ${ans || '<p class="hint">Keine Teilansicht vorhanden, es gilt immer die Komplettansicht.</p>'}
+    <form id="ansform" autocomplete="off" class="btns" style="margin-top:12px"><input id="ans-new" placeholder="Neue Teilansicht" maxlength="40" aria-label="Neue Teilansicht"><button class="primary" type="submit">Hinzufügen</button></form></div>
+  <div class="card"><h2>Kategorien</h2>
+    <p class="hint" style="margin-top:0">Jedes Konto gehört zu einer Kategorie, zum Beispiel Konto, Aktienfonds, Immobilie oder Sachgut (festgelegt im Reiter Konten). Beim Umbenennen wandern die Konten und Ansichten mit, löschen lässt sich nur eine leere Kategorie. Neue Kategorien sind zunächst in allen Teilansichten enthalten.</p>
+    <div class="tablewrap"><table><thead><tr><th style="text-align:left">Name</th><th>Konten</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <form id="clsform" autocomplete="off" class="btns" style="margin-top:12px"><input id="cls-new" placeholder="Neue Kategorie" maxlength="30" aria-label="Neue Kategorie"><button class="primary" type="submit">Hinzufügen</button></form></div>`;
+}
+function setupChange(t){
+  const cl = state.meta.classes, as = state.meta.ansichten;
+  if (t.dataset.ak != null) { const a = as[Number(t.dataset.ai)], c = cl[Number(t.dataset.ak)]; if (!a || !c) return; a.cls = cl.map(x => x.name).filter(n => n === c.name ? t.checked : a.cls.includes(n)); saveState(); return; }
+  if (t.dataset.ai != null) {
+    const a = as[Number(t.dataset.ai)]; if (!a) return; const n = cleanTxt(t.value, 40);
+    if (!n) { t.value = a.name; return; }
+    a.name = n; saveState(); render(); return;
+  }
+  const i = Number(t.dataset.cn), c = cl[i]; if (!c) return;
+  const n = cleanTxt(t.value, 30);
+  if (!n) { t.value = c.name; return; }
+  if (n === c.name) return;
+  if (cl.some((x, j) => j !== i && x.name.toLowerCase() === n.toLowerCase())) { toast('Diese Kategorie gibt es schon.', 3500); t.value = c.name; return; }
+  const old = c.name; c.name = n;
+  state.accounts.forEach(a => { if (a.cls === old) a.cls = n; });
+  state.meta.views.forEach(v => { v.f.cls = v.f.cls.map(x => x === old ? n : x); });
+  as.forEach(a => { a.cls = a.cls.map(x => x === old ? n : x); });
+  saveState(); render(); toast('Kategorie umbenannt');
+}
+function classAdd(){
+  const inp = $('#cls-new'), n = cleanTxt(inp && inp.value, 30);
+  if (!n) { toast('Bitte einen Namen eingeben.'); return; }
+  if (state.meta.classes.some(x => x.name.toLowerCase() === n.toLowerCase())) { toast('Diese Kategorie gibt es schon.', 3500); return; }
+  if (state.meta.classes.length >= 20) { toast('Mehr als 20 Kategorien sind nicht vorgesehen.', 3500); return; }
+  state.meta.classes.push({name:n}); state.meta.ansichten.forEach(a => a.cls.push(n)); saveState(); render(); toast('Kategorie angelegt');
+}
+function classDel(i){
+  const c = state.meta.classes[i]; if (!c) return;
+  if (state.accounts.some(a => a.cls === c.name)) { toast('In dieser Kategorie liegen noch Konten.', 3500); return; }
+  if (state.meta.classes.length < 2) return;
+  state.meta.classes.splice(i, 1);
+  state.meta.views.forEach(v => { v.f.cls = v.f.cls.filter(x => x !== c.name); });
+  state.meta.ansichten.forEach(a => { a.cls = a.cls.filter(x => x !== c.name); });
+  saveState(); render(); toast('Kategorie gelöscht');
+}
+function ansAdd(){
+  const inp = $('#ans-new'), n = cleanTxt(inp && inp.value, 40);
+  if (!n) { toast('Bitte einen Namen eingeben.'); return; }
+  if (state.meta.ansichten.length >= 12) { toast('Mehr als 12 Teilansichten sind nicht vorgesehen.', 3500); return; }
+  state.meta.ansichten.push({id:'a-' + uid().slice(-8), name:n, cls:state.meta.classes.map(c => c.name)}); saveState(); render(); toast('Teilansicht angelegt, bitte die Kategorien ankreuzen');
+}
+function ansDel(i){
+  const a = state.meta.ansichten[i]; if (!a) return;
+  if (ansichtSel === a.id) { ansichtSel = ''; try { localStorage.removeItem(ANS_KEY); } catch (e) {} }
+  state.meta.ansichten.splice(i, 1); saveState(); render(); toast('Teilansicht gelöscht');
 }
 /* ======================================================================
    Kurzbericht als LaTeX (.tex) mit Torten- und Verlaufsgrafiken in TikZ
@@ -1136,8 +1263,8 @@ function texTable(spec, head, rows, foot){
 }
 function buildReportTex(opt){
   const hide = new Set(opt.hide || []), saved = state;
-  state = Object.assign({}, state, {accounts:state.accounts.filter(a => !hide.has(a.id))}); cache.by = null;
-  try { return buildReportTexInner(opt, hide.size); } finally { state = saved; cache.by = null; }
+  state = Object.assign({}, state, {accounts:state.accounts.filter(a => !hide.has(a.id))}); cache.by = null; forceHid = true;
+  try { return buildReportTexInner(opt, hide.size); } finally { state = saved; cache.by = null; forceHid = false; }
 }
 function buildReportTexInner(opt, nHidden){
   const title = (opt.title || 'Kontenbericht').trim(), today = todayISO();
@@ -1180,17 +1307,18 @@ function buildReportTexInner(opt, nHidden){
     if (prev) add('Vergleich mit ' + fd(prev), base(prev));
     add('Seit Jahresbeginn', base(yearEnd));
     add('Letzte 12 Monate', base(isoMinusMonths(last, 12)));
-    let as = 0, ds = 0;
-    act.forEach(a => { const e = valueAt(a.id, LAST); if (e) { if (a.liab) ds += e.amount; else as += e.amount; } });
-    o += `\\section*{Kennzahlen}\n` + texTable('lr', ['Bilanz', 'Stand ' + fd(last)], [['Vermögenswerte', texEur(as)], ['Verbindlichkeiten', texEur(-ds)]], ['Nettovermögen', texEur(as - ds)]) + '\\medskip\n\n' + texTable('lrrr', ['', 'Vergleichsstand', 'Änderung', 'in \\%'], rows);
+    let as = 0, ds = 0; const byCls = new Map();
+    act.forEach(a => { const e = valueAt(a.id, LAST); if (e) { if (a.liab) ds += e.amount; else { as += e.amount; byCls.set(a.cls, (byCls.get(a.cls) || 0) + e.amount); } } });
+    const clsRows = state.meta.classes.filter(c => byCls.has(c.name)).map(c => [texEsc(c.name), texEur(byCls.get(c.name))]);
+    o += `\\section*{Kennzahlen}\n` + texTable('lr', ['Bilanz', 'Stand ' + fd(last)], clsRows.concat(clsRows.length > 1 ? [['\\emph{Vermögenswerte}', '\\emph{' + texEur(as) + '}']] : [], [['Verbindlichkeiten', texEur(-ds)]]), ['Nettovermögen', texEur(as - ds)]) + '\\medskip\n\n' + texTable('lrrr', ['', 'Vergleichsstand', 'Änderung', 'in \\%'], rows);
   } else o += '\\emph{Es sind noch keine Kontostände erfasst.}\n';
   /* Kontenliste */
   if (opt.accounts && act.length) {
     const rows = sortOverview(overviewRows()).filter(r => !r.a.archived);
     const sum = rows.reduce((p, r) => p + (isFinite(r.val) ? r.val : 0), 0);
-    o += `\\section*{Konten}\n{\\small\n` + texTable('llllrr', ['Konto', 'Bank', 'Art', 'Besitzer', 'Stand', 'Datum'],
-      rows.map(r => [texEsc(r.a.name) + (r.a.liab ? ' (Verb.)' : ''), texEsc(r.a.bank), texEsc(r.a.type), texEsc(r.a.owner), isFinite(r.val) ? texEur(r.val) : '--', r.date ? fd(r.date) : '--']),
-      ['Summe', '', '', '', texEur(sum), '']) + '}\n';
+    o += `\\section*{Konten}\n{\\footnotesize\n` + texTable('lllllrr', ['Konto', 'Kategorie', 'Art', 'Bank', 'Besitzer', 'Stand', 'Datum'],
+      rows.map(r => [texEsc(r.a.name) + (r.a.liab ? ' (Verb.)' : ''), texEsc(r.a.cls), texEsc(r.a.type), texEsc(r.a.bank), texEsc(r.a.owner), isFinite(r.val) ? texEur(r.val) : '--', r.date ? fd(r.date) : '--']),
+      ['Summe', '', '', '', '', texEur(sum), '']) + '}\n';
   }
   /* Auswertungen */
   views.forEach(v => {
@@ -1231,8 +1359,8 @@ function viewReportCard(){
     <p class="hint">Erzeugt eine .tex-Datei mit Kennzahlen, Kontenliste und den gewählten Auswertungen. Die Grafiken (Torte, Verlauf) sind als TikZ eingebettet, es werden keine Bilddateien benötigt. Übersetzen mit pdflatex.</p>
     <label>Titel des Berichts<input id="rep-title" value="Kontenbericht ${new Date().getFullYear()}"></label>
     <div class="checkrow"><input type="checkbox" id="rep-acc" checked><label for="rep-acc" style="margin:0">Kontenliste mit aktuellen Ständen</label></div>
-    <details class="fdet"><summary>Konten im Bericht <span class="hint">(abgewählte werden überall ausgeblendet: Kennzahlen, Liste, Grafiken)</span></summary>
-      <div class="chk">${sortAccs(activeAccounts()).map(a => `<label class="checkrow"><input type="checkbox" data-ra="${a.id}"${a.norep ? '' : ' checked'}>${esc(a.name)}${a.liab ? ' <span class="hint">(Verbindlichkeit)</span>' : ''}</label>`).join('')}</div></details>
+    <details class="fdet"><summary>Konten im Bericht <span class="hint">(abgewählte fehlen überall: Kennzahlen, Liste, Grafiken; Konten außerhalb der gewählten Ansicht sind zunächst abgewählt)</span></summary>
+      <div class="chk">${sortAccs(activeAccounts()).map(a => `<label class="checkrow"><input type="checkbox" data-ra="${a.id}"${a.norep || !classShown(a.cls) ? '' : ' checked'}>${esc(a.name)} <span class="hint">(${esc(a.cls)}${a.liab ? ', Verbindlichkeit' : ''})</span></label>`).join('')}</div></details>
     <h3>Auswertungen</h3>
     ${vs.map(v => `<div class="checkrow"><input type="checkbox" data-rv="${v.id}" id="rv-${v.id}" checked><label for="rv-${v.id}" style="margin:0">${esc(v.title)} <span class="hint">(${v.kind === 'line' ? 'Verlauf' : 'Anteile'})</span></label></div>`).join('')}
     <div class="btns"><button class="primary" data-act="reptex">Bericht als .tex speichern</button></div></div>`;
@@ -1364,9 +1492,11 @@ function payload(){
 function parsePayload(txt){ const o = JSON.parse(txt); return normalizeState(o && o.data && typeof o.data === 'object' ? o.data : o); }
 function canon(s){
   return JSON.stringify({
-    a:s.accounts.slice().sort((x, y) => x.id < y.id ? -1 : 1).map(a => [a.id, a.name, a.type, a.bank, a.owner, a.tags, a.liab, a.archived, !!a.norep]),
+    a:s.accounts.slice().sort((x, y) => x.id < y.id ? -1 : 1).map(a => [a.id, a.name, a.type, a.bank, a.owner, a.tags, a.liab, a.archived, !!a.norep, a.cls]),
     e:s.entries.map(e => [e.accId, e.date, e.amount, e.note]).sort((x, y) => (x[0] + x[1]) < (y[0] + y[1]) ? -1 : 1),
-    v:s.meta.views.map(v => [v.id, v.title, v.kind, v.group, v.f, v.range, v.at, v.archiv, v.total])
+    v:s.meta.views.map(v => [v.id, v.title, v.kind, v.group, v.f, v.range, v.at, v.archiv, !!v.hid, v.total]),
+    c:s.meta.classes.map(c => c.name),
+    n:s.meta.ansichten.map(a => [a.id, a.name, a.cls])
   });
 }
 function sumState(s){
@@ -1388,6 +1518,8 @@ function mergeStates(a, b){
   });
   const vids = new Set(s.meta.views.map(v => v.id));
   b.meta.views.forEach(v => { if (!vids.has(v.id)) { s.meta.views.push(JSON.parse(JSON.stringify(v))); addV++; } });
+  b.meta.classes.forEach(c => { if (!s.meta.classes.some(x => x.name.toLowerCase() === c.name.toLowerCase())) s.meta.classes.push(JSON.parse(JSON.stringify(c))); });
+  b.meta.ansichten.forEach(x => { if (!s.meta.ansichten.some(y => y.id === x.id)) s.meta.ansichten.push(JSON.parse(JSON.stringify(x))); });
   return {state:normalizeState(s), addA, addE, diffE, addV};
 }
 
@@ -1633,6 +1765,9 @@ document.addEventListener('click', async e => {
       if (!await modal({title:'Alle Daten löschen?', text:'Alle Konten, Kontostände und Auswertungen in diesem Browser werden gelöscht. Hast du vorher eine Sicherung gespeichert?', ok:'Endgültig löschen', danger:true})) break;
       replaceState(emptyState()); render(); toast('Alle Daten gelöscht. Der vorherige Stand bleibt als Notkopie im Reiter Daten.', 4500); break;
     }
+    case 'clsadd': classAdd(); break;
+    case 'clsdel': classDel(Number(b.dataset.i)); break;
+    case 'ansdel': ansDel(Number(b.dataset.i)); break;
     case 'reptex': exportReportTex(); break;
     case 'exportjson': exportJSON(); break;
     case 'importjson': $('#jsonfile').click(); break;
@@ -1703,11 +1838,15 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'eform') saveEingabe();
   else if (e.target.id === 'acform') saveAcc();
   else if (e.target.id === 'viewform') saveView();
+  else if (e.target.id === 'clsform') classAdd();
+  else if (e.target.id === 'ansform') ansAdd();
 });
 document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('kinput')) updateESum(); });
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.id === 'showArch') { ui.showArch = t.checked; render(); }
+  if (t.id === 'ansichtsel') setAnsicht(t.value);
+  if (t.dataset && (t.dataset.ai != null || t.dataset.cn != null)) setupChange(t);
   else if (t.id === 'edate') ui.edate = t.value || null;
   else if (t.id === 'vf-kind') toggleVF();
   else if (t.id === 'driveAuto') { dm.auto = t.checked; saveDM(); if (dm.auto && dm.dirty) driveTouch(); else updatePill(); }

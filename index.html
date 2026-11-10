@@ -2789,13 +2789,26 @@ function todayLessonsHtml(){
     </div>`; };
   return `<div class="section-title">🏫 Stunden heute (${done.length} von ${rows.length})</div>`+open.map(card).join("")+done.map(card).join("");
 }
+let _gtReloading = false;
+async function reloadGTasksNow(){
+  if(_gtReloading) return; if(!accessToken){ toast("Nicht angemeldet"); return; }
+  _gtReloading = true; toast("Google Tasks werden neu eingelesen …");
+  try{
+    await loadGTasks();
+    if(!gtasksLoadedOk) throw new Error("Google Tasks konnten nicht gelesen werden");
+    await recurringGoalsRun();
+    try{ render(); }catch(e){ logErr("stumm", e); }
+    toast("Google Tasks neu eingelesen: "+allGTasks.length+" offen, "+goalTasks.length+" Ziele heute");
+  }catch(e){ logErr("GTasks neu einlesen", e); toast("Einlesen fehlgeschlagen: "+String((e && e.message)||e).slice(0,100), 5000); }
+  finally{ _gtReloading = false; }
+}
 /* Heute-Ansicht: Suche über ToDos, Gewohnheiten, Pflichtaufgaben, Tagesziele und Google Tasks. Die Treffer sind die normalen Karten (abhaken, bearbeiten, löschen wie sonst). */
 let todaySearch = "";
 function srNorm(s){ return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/ß/g,"ss"); }
 function srTerms(q){ return srNorm(q).split(/\s+/).filter(Boolean); }
 function srHit(terms, ...texts){ const hay = srNorm(texts.join(" ")); return terms.every(t=>hay.includes(t)); }
 function todaySearchBoxHtml(){
-  return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="text" id="todaySearch" enterkeyhint="search" autocomplete="off" placeholder="🔍 Tasks suchen …" value="${esc(todaySearch)}" style="flex:1;margin:0"><button class="mini" data-srclear="1" id="todaySearchClr" style="${todaySearch?"":"display:none"}">✕</button></div>`;
+  return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="text" id="todaySearch" enterkeyhint="search" autocomplete="off" placeholder="🔍 Tasks suchen …" value="${esc(todaySearch)}" style="flex:1;margin:0"><button class="mini" data-srclear="1" id="todaySearchClr" style="${todaySearch?"":"display:none"}">✕</button><button class="mini" data-gtreload="1" title="Google Tasks neu einlesen">↻ GTasks</button></div>`;
 }
 function todaySearchResultsHtml(q){
   const terms = srTerms(q); if(!terms.length) return "";
@@ -3649,6 +3662,10 @@ function render(){
       
       <div class="section-title">Sicherung und Fehler</div>
       <div class="card">
+        <div class="body"><div class="title">Google Tasks neu einlesen</div><div class="sub">Holt Ziele und Aufgaben aus Google Tasks erneut</div></div>
+        <button class="icon-btn" id="gtReloadBtn">Einlesen</button>
+      </div>
+      <div class="card">
         <div class="body"><div class="title">Lokale Sicherung wiederherstellen</div><div class="sub">Dieses Gerät sichert vor jedem Speichern den letzten Stand von Aufgaben und Protokoll</div></div>
         <div style="display:flex;gap:6px"><button class="icon-btn" id="restTasksBtn">Aufgaben</button><button class="icon-btn" id="restLogsBtn">Protokoll</button></div>
       </div>
@@ -3696,6 +3713,7 @@ function render(){
     const mtg=$("minTaskGoalInput"); if(mtg) mtg.onchange=()=>{ minTaskGoal=parseInt(mtg.value)||18; localStorage.setItem("minTaskGoal",minTaskGoal); toast("Mindest-Ziel gesetzt: "+minTaskGoal); };
     $("reloadBtn").onclick=async()=>{ setSync("busy"); await loadAll(); await purgeStaleGoals(); await wsReconcileLinks(); setSync("on"); render(); toast("Aktualisiert"); };
     $("signoutBtn").onclick=signOut;
+    $("gtReloadBtn").onclick=reloadGTasksNow;
     $("restTasksBtn").onclick=()=>restoreLocalBackup("tasks");
     $("restLogsBtn").onclick=()=>restoreLocalBackup("logs");
     $("errShowBtn").onclick=()=>{ const t=errLogText(); if(!t){ toast("Keine Fehler protokolliert"); return; } const w=document.createElement("div"); w.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px"; w.innerHTML='<div style="background:var(--card,#fff);color:inherit;border-radius:12px;padding:14px;max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column"><div style="font-weight:700;margin-bottom:8px">Letzte Fehler</div><pre style="white-space:pre-wrap;word-break:break-word;overflow:auto;font-size:12px;margin:0;flex:1"></pre><button class="icon-btn" style="margin-top:10px">Schließen</button></div>'; w.querySelector("pre").textContent=t; w.querySelector("button").onclick=()=>w.remove(); w.onclick=ev=>{ if(ev.target===w) w.remove(); }; document.body.appendChild(w); };
@@ -4084,7 +4102,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v282";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v283";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -5430,6 +5448,7 @@ function tpChange(e){
     if(!(e.target.closest && e.target.closest("[data-srclear]"))) return;
     todaySearch = ""; render();
   });
+  main.addEventListener("click", e=>{ if(e.target.closest && e.target.closest("[data-gtreload]")) reloadGTasksNow(); });
   main.addEventListener("click", e=>{ if(e.target.closest && e.target.closest("[data-grules]")) recurringGoalsOpen(); });
   main.addEventListener("click", e=>{
     if(view!=="today") return;
@@ -12967,6 +12986,45 @@ setInterval(async()=>{ const k=todayKey(); if(k!==_curDay){ _curDay=k; if(access
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
 }
+</script>
+<!-- linuxHandOff: Übergabe der Google-Anmeldung an die Linux-App (Seifferts ToDo). Ohne ?linuxport=…&linuxstate=… in der Adresse wirkungslos. Diesen Block nicht entfernen. -->
+<script id="linuxHandOff">
+(function(){
+  var q; try{ q = new URLSearchParams(location.search); }catch(e){ return; }
+  var port = q.get("linuxport"), state = q.get("linuxstate");
+  if(!port || !state) return;
+  if(!/^[0-9]{2,5}$/.test(port) || !/^[A-Za-z0-9_-]{16,128}$/.test(state)) return;
+  var scope = (q.get("linuxscope") || "").trim();
+  var parts = scope.split(/\s+/).filter(Boolean);
+  var scopesOk = parts.length > 0 && parts.every(function(s){ return /^https:\/\/www\.googleapis\.com\/auth\/[a-z._]+$/.test(s); });
+  if(!scopesOk) scope = (typeof SCOPES !== "undefined") ? SCOPES : "";
+  var clientId = (typeof CLIENT_ID !== "undefined") ? CLIENT_ID : "";
+  var box = document.createElement("div");
+  box.style.cssText = "position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;background:#0f1b2d;color:#fff;font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px";
+  box.innerHTML = '<h2 style="margin:0 0 12px">Anmeldung für Seifferts ToDo (Linux)</h2>'
+    + '<p style="max-width:30em;margin:0 0 20px;opacity:.85">Nach der Anmeldung bei Google geht die Anmeldung an die Linux-App auf diesem Rechner. Du kannst den Tab danach schließen.</p>'
+    + '<button id="lhBtn" style="font-size:18px;padding:12px 26px;border:0;border-radius:8px;background:#4285f4;color:#fff;cursor:pointer">Mit Google anmelden</button>'
+    + '<p id="lhMsg" style="margin-top:18px;min-height:1.5em"></p>';
+  document.body.appendChild(box);
+  var msg = function(t){ var m = document.getElementById("lhMsg"); if(m) m.textContent = t; };
+  function back(params){ location.replace("http://127.0.0.1:" + port + "/handoff?" + params + "&state=" + encodeURIComponent(state)); }
+  document.getElementById("lhBtn").onclick = function(){
+    if(!(window.google && google.accounts && google.accounts.oauth2)){ msg("Die Google-Bibliothek ist noch nicht geladen. Bitte kurz warten und noch einmal klicken."); return; }
+    if(!clientId){ msg("Die Client-ID fehlt in dieser Seite."); return; }
+    msg("Google-Fenster wird geöffnet …");
+    try{
+      var tc = google.accounts.oauth2.initTokenClient({
+        client_id: clientId, scope: scope,
+        callback: function(r){
+          if(r && r.access_token) back("access_token=" + encodeURIComponent(r.access_token) + "&expires_in=" + encodeURIComponent(r.expires_in || 3600) + "&scope=" + encodeURIComponent(r.scope || scope));
+          else back("error=" + encodeURIComponent((r && r.error) || "unbekannt"));
+        },
+        error_callback: function(e){ msg("Anmeldung nicht abgeschlossen (" + ((e && e.type) || "abgebrochen") + "). Bitte noch einmal klicken."); }
+      });
+      tc.requestAccessToken({ prompt: "" });
+    }catch(e){ msg("Fehler: " + (e && e.message || e)); }
+  };
+})();
 </script>
 </body>
 </html>

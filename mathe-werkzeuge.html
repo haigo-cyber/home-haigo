@@ -5030,12 +5030,13 @@ renderStell();
       for (let e = hi; e >= 0; e--) { const d = Number(s[hi - e]), part = rst + d * P10(e), qd = Math.floor(part / (M * P10(e))), nr = part - qd * M * P10(e); st.push({ e: e, d: d, prev: rst, part: part, qd: qd, piece: qd * P10(e), rest: nr }); rst = nr; }
       const fi = Math.max(0, st.findIndex(x => x.qd > 0)), ez = st[fi].e;
       out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: Wie oft passt " + T(gr(M), "zg") + " in " + T(gr(A), "zs") + "? Ich teile Stelle für Stelle, von links nach rechts. Ich beginne bei der größten Stelle."));
-      const lines = st.map(x => { const M10 = M * P10(x.e); return line(PNd[x.e] + ":", (x.prev ? T(gr(x.prev), "zr") + " Rest, dazu " + T(x.d * P10(x.e) ? gr(x.d * P10(x.e)) : "0", "zs") + " → " : "") + gr(x.part) + " : " + gr(M10) + " = " + T(x.qd, "zo") + (x.qd === 0 ? " (" + gr(M10) + " passt nicht in " + gr(x.part) + ")" : " (" + x.qd + " · " + gr(M10) + " = " + gr(x.qd * M10) + ")") + ", Rest " + T(gr(x.rest), "zr")); }).join("");
-      out.push(step("Stelle für Stelle teilen: der Teiler wandert mit", "Ich teile zuerst die " + PNd[hi] + ", darum teile ich auch durch " + PNd[hi] + ": " + gr(M) + " · " + gr(P10(hi)) + " = " + gr(M * P10(hi)) + (st[0].qd === 0 ? ". Das passt noch nicht, ich schreibe 0, und der Rest wandert zur nächsten Stelle" : "") + ". Bei jeder kleineren Stelle wird der Teiler 10-mal kleiner, bei den Einern teile ich durch " + gr(M) + ". Die Nullen (orange) halten den Platz frei.",
-        window.MWDiv.dgrid(st, hi, A, M, Q, Rm, "z") + '<div class="note">Farben: blau = Zahl aus der Aufgabe, rot = Rest, orange = Ergebnis und Nullen.</div>' + lines));
+      const D = window.MWDiv, s0i = D.start(st);
+      const lines = st.map((x, i) => i < s0i ? "" : line(PNd[x.e] + ":", D.sent(st, A, M, i, PNd))).join("");
+      out.push(step("Stelle für Stelle teilen: der Teiler wandert mit", "Ich frage nach ganzen Stellenwerten: Wie oft passen " + (st[s0i].e > 0 ? M + " " + PNd[st[s0i].e] + " (" + gr(M * P10(st[s0i].e)) + ") in " + D.info(st, A, M, s0i).u + " " + PNd[st[s0i].e] + " (" + gr(D.info(st, A, M, s0i).part) + ")" : M + " in " + A) + "? Das Ergebnis schreibe ich in die Spalte dieser Stelle, und den Rest rechne ich mit der ganzen Zahl weiter. Die Nullen (orange) halten den Platz frei.",
+        D.dgrid(st, hi, A, M, Q, Rm, "z") + '<div class="note">Farben: blau = Zahl aus der Aufgabe, rot = Rest, orange = Ergebnis und Nullen.</div>' + lines));
       const s1 = st.find(x => x.e > 0 && x.qd > 0);
       out.push(step("→ Das Normalverfahren", "Jetzt lasse ich die <b>Nullen</b> weg. Sie sind nur noch <b>grau hinterlegt</b> zu sehen. Die Nullen stehen links und rechts vom Geteilt-Zeichen immer an derselben Stelle, darum ändert sich beim Rechnen nichts" + (s1 ? ": " + gr(s1.part) + " : " + gr(M * P10(s1.e)) + " wird zu " + gr(s1.part / P10(s1.e)) + " : " + gr(M) : "") + ". So entsteht das schriftliche Dividieren: Bleibt ein Rest, tausche ich ihn in die nächstkleinere Einheit und lege die nächste Ziffer dazu.",
-        window.MWDiv.dgrid(st, hi, A, M, Q, Rm, "g") + st.map(x => line(PNd[x.e] + ":", (x.prev ? T(gr(x.prev / P10(x.e)), "zr") + " " + PNd[x.e] + " vom Rest, dazu " + T(x.d, "zs") + " → " : "") + T(gr(x.part / P10(x.e)), "zs") + " : " + gr(M) + " = " + T(x.qd, "zo") + " Rest " + T(gr(x.rest / P10(x.e)), "zr"))).join("")));
+        window.MWDiv.dgrid(st, hi, A, M, Q, Rm, "g") + st.slice(window.MWDiv.start(st)).map(x => line(PNd[x.e] + ":", (x.prev ? T(gr(x.prev / P10(x.e)), "zr") + " " + PNd[x.e] + " vom Rest, dazu " + T(x.d, "zs") + " → " : "") + T(gr(x.part / P10(x.e)), "zs") + " : " + gr(M) + " = " + T(x.qd, "zo") + " Rest " + T(gr(x.rest / P10(x.e)), "zr"))).join("")));
       let rr = '<div class="zbig">' + sf + " = " + T(gr(Q) + (Rm ? " Rest " + Rm : ""), "zo") + "</div>";
       rr += line("Überschlag:", "Ich runde: " + gr(rnd(A)) + " : " + gr(rnd(M)) + " ist ungefähr " + gr(Math.round(rnd(A) / rnd(M))) + ".");
       rr += line("Probe:", "Die Umkehraufgabe: " + gr(Q) + " · " + gr(M) + (Rm ? " + " + Rm : "") + " = " + gr(Q * M + Rm));
@@ -9812,7 +9813,19 @@ renderStell();
       });
       return '<div class="dtw"><table class="snvg">' + rows.join("") + "</table></div>";
     }
-    window.MWDiv = { dgrid: dgrid, nz: nz, zn: zn };
+    /* Erklärung wie im Unterricht: Wie oft passen 12 Zehner (120) in 87 Zehner (870)? Es wird immer vom ganzen Rest abgezogen (875 − 840 = 35). */
+    function dvStart(st) { const i = st.findIndex(x => x.qd > 0); return i < 0 ? st.length - 1 : i; }
+    function dvInfo(st, A, M, i) { const x = st[i], M10 = M * P10(x.e); let tot = A; for (let j = 0; j < i; j++) tot -= st[j].qd * M * P10(st[j].e); const u = Math.floor(tot / P10(x.e)); return { x: x, M10: M10, tot: tot, u: u, part: u * P10(x.e), sub: x.qd * M10, rem: tot - x.qd * M10 }; }
+    function dvAsk(info, M, PNn) { const e = info.x.e; return e > 0 ? "Wie oft passen " + M + " " + PNn[e] + " (" + info.M10 + ") in " + info.u + " " + PNn[e] + " (" + info.part + ")?" : "Wie oft passt " + M + " in " + info.tot + "?"; }
+    function dvSent(st, A, M, i, PNn) {
+      const f = dvInfo(st, A, M, i), x = f.x, e = x.e, st0 = dvStart(st); let s = "";
+      if (i === st0 && st0 > 0) { const a = st[0], f0 = dvInfo(st, A, M, 0); s += (a.e > 0 ? M + " " + PNn[a.e] + " (" + f0.M10 + ") passen nicht in " + f0.u + " " + PNn[a.e] + " (" + f0.part + ")" : "") + (st0 > 1 ? " und so weiter" : "") + ". Darum beginne ich eine Stelle weiter rechts, bei den " + PNn[e] + "n. "; }
+      s += dvAsk(f, M, PNn) + " ";
+      if (x.qd === 0) s += "Es passt 0-mal. Ich schreibe 0 und rechne mit " + f.tot + " weiter.";
+      else s += T(x.qd + " mal", "zo") + ", denn " + x.qd + " · " + f.M10 + " = " + f.sub + ". " + (x.qd + 1) + " · " + f.M10 + " = " + (x.qd + 1) * f.M10 + " wäre schon zu viel. Ich subtrahiere: " + f.tot + " − " + f.sub + " = " + T(f.rem, "zr") + (e === 0 ? ". Das ist der Rest." : " bleiben übrig.");
+      return s;
+    }
+    window.MWDiv = { dgrid: dgrid, nz: nz, zn: zn, start: dvStart, info: dvInfo, ask: dvAsk, sent: dvSent };
     function buildDi(V) {
       const A = V.a, M = V.b, s = String(A), out = [], hi = s.length - 1, sf = T(A, "zs") + " : " + T(M, "zg");
       const pA = partsOf(A); let rest = 0, qtot = 0; const st = [];
@@ -9821,16 +9834,15 @@ renderStell();
       out.push(step("Aufgabe: Zerlegen", "Ich rechne " + sf + ". Ich <b>zerlege</b> den Dividenden in Stellenwerte: " + T(A, "zs") + " = " + pA.map(x => T(x.v, "zs")).join(" + ") + ". Dann teile ich nacheinander: erst die größte Stelle, dann die nächste. Was beim Teilen <b>übrig bleibt</b> (der Rest), nehme ich zur nächsten Stelle mit. Beim Teilen der Hunderter teile ich durch Hunderter, bei den Zehnern durch Zehner: Der Teiler " + T(M, "zg") + " <b>wandert mit</b>.",
         '<div class="zbig">' + A + " : " + M + "</div>" + zal([{ n: A, c: "zs", p: pA }]), undefined, undefined,
         wQ("Wie zerlege ich " + A + " in Stellenwerte?", pA.map(x => x.v).join(" + "), [[digs(A).join(" + "), "Die Ziffern haben einen Stellenwert, die Zahlen sind größer. Hier fehlen die Nullen."], [pA.map((x, i) => i === 0 ? x.v * 10 : x.v).join(" + "), "Die erste Ziffer ist zu groß gewählt. Sie steht in der " + PN[pA[0].e] + "-Stelle."]])));
+      const st0 = dvStart(st);
       st.forEach((x, i) => {
-        const M10 = M * P10(x.e), head = x.part + " : " + M10;
-        const intro = i === 0 ? "Ich beginne bei der größten Stelle: " + T(x.part, "zs") + ". " : x.prev ? "Zum Rest " + T(x.prev, "zr") + " nehme ich die nächste Stelle " + T(x.d * P10(x.e), "zs") + " dazu: " + x.prev + " + " + x.d * P10(x.e) + " = " + T(x.part, "zs") + ". " : "Es ist kein Rest da. Die nächste Stelle ist " + T(x.part, "zs") + ". ";
-        const shift = x.e > 0 ? "Jetzt teile ich in " + PN[x.e] + "-Schritten. Darum wandert der Teiler mit: " + M + " · " + P10(x.e) + " = " + T(M10, "zg") + ". " : "Jetzt teile ich in Einer-Schritten. Der Teiler bleibt " + T(M, "zg") + ". ";
-        const fit = x.qd === 0 ? "Wie oft passt " + M10 + " in " + x.part + "? Schon 1 · " + M10 + " = " + M10 + " ist mehr als " + x.part + ". Es passt 0-mal. Ich schreibe 0, und " + T(x.part, "zr") + " bleibt als Rest." : "Wie oft passt " + M10 + " in " + x.part + "? " + x.qd + " · " + M10 + " = " + x.qd * M10 + " passt. " + (x.qd + 1) + " · " + M10 + " = " + (x.qd + 1) * M10 + " wäre schon zu viel. Der Rest ist " + x.part + " − " + x.qd * M10 + " = " + T(x.rest, "zr") + ".";
-        const res = " Also " + T(head + " = " + x.qd + " Rest " + x.rest, "zo") + ". Im Ergebnis stehen " + x.qd + " " + PN[x.e] + (x.piece ? " = " + x.piece : "") + ".";
-        const wrs = [[(x.qd + 1) + " mal", (x.qd + 1) + " mal " + M10 + " ist " + (x.qd + 1) * M10 + ". Das ist mehr als " + x.part + "."], x.qd >= 1 ? [(x.qd - 1) + " mal", "Es passt noch öfter: " + x.qd + " mal " + M10 + " ist " + x.qd * M10 + ", das ist nicht mehr als " + x.part + "."] : [(x.qd + 2) + " mal", (x.qd + 2) + " mal " + M10 + " ist " + (x.qd + 2) * M10 + ". Das ist viel zu viel."], [(x.qd + 2) + " mal", (x.qd + 2) + " mal " + M10 + " ist " + (x.qd + 2) * M10 + ". Das ist viel zu viel."], [(x.qd + 3) + " mal", (x.qd + 3) + " mal " + M10 + " ist " + (x.qd + 3) * M10 + ". Das ist viel zu viel."]];
-        out.push(step(PN[x.e] + ": " + head, intro + shift + fit + res,
-          '<div class="zbig">' + head + " = " + x.qd + " Rest " + x.rest + "</div>" + line("Bisher:", st.slice(0, i + 1).map(y => y.piece).filter(y => y).join(" + ") + (st.slice(0, i + 1).some(y => y.piece) ? " = " + st.slice(0, i + 1).reduce((a, y) => a + y.piece, 0) : "noch 0")), undefined, undefined,
-          wQ("Wie oft passt " + M10 + " in " + x.part + "?", x.qd + " mal", wrs)));
+        if (i < st0) return;
+        const f = dvInfo(st, A, M, i), M10 = f.M10;
+        const ttl = PN[x.e] + ": " + (x.e > 0 ? f.part + " : " + M10 : f.tot + " : " + M);
+        const wrs = [[(x.qd + 1) + " mal", (x.qd + 1) + " mal " + M10 + " ist " + (x.qd + 1) * M10 + ". Das ist mehr als " + f.part + "."], x.qd >= 1 ? [(x.qd - 1) + " mal", "Es passt noch öfter: " + x.qd + " mal " + M10 + " ist " + x.qd * M10 + ", das ist nicht mehr als " + f.part + "."] : [(x.qd + 2) + " mal", (x.qd + 2) + " mal " + M10 + " ist " + (x.qd + 2) * M10 + ". Das ist viel zu viel."], [(x.qd + 2) + " mal", (x.qd + 2) + " mal " + M10 + " ist " + (x.qd + 2) * M10 + ". Das ist viel zu viel."], [(x.qd + 3) + " mal", (x.qd + 3) + " mal " + M10 + " ist " + (x.qd + 3) * M10 + ". Das ist viel zu viel."]];
+        out.push(step(ttl, dvSent(st, A, M, i, PN),
+          '<div class="zbig">' + (x.e > 0 ? f.part + " : " + M10 : f.tot + " : " + M) + " = " + x.qd + "</div>" + line("Abziehen:", f.tot + " − " + f.sub + " = " + T(f.rem, "zr")) + line("Bisher:", st.slice(0, i + 1).map(y => y.piece).filter(y => y).join(" + ") + (st.slice(0, i + 1).some(y => y.piece) ? " = " + st.slice(0, i + 1).reduce((a, y) => a + y.piece, 0) : "noch 0")), undefined, undefined,
+          wQ(dvAsk(f, M, PN), x.qd + " mal", wrs)));
       });
       const sums = st.filter(x => x.piece).map(x => x.piece);
       out.push(step("Die Teilergebnisse addieren", "Jetzt addiere ich die Teilergebnisse: " + T(sums.length ? sums.join(" + ") : "0", "zo") + " = " + T(Q, "zo") + (R ? " Rest " + T(R, "zr") : ". Es bleibt kein Rest") + ". Also ist " + T(A + " : " + M + " = " + Q + (R ? " Rest " + R : ""), "zo") + ".",
@@ -9841,7 +9853,7 @@ renderStell();
         dgrid(st, hi, A, M, Q, R, "z") + '<div class="note">Farben: blau = Zahl aus der Aufgabe, rot = Rest, orange = Ergebnis und Nullen.</div>'));
       const s1 = st.find(x => x.e > 0 && x.qd > 0);
       out.push(step("→ Das Normalverfahren", "Jetzt lasse ich die <b>Nullen</b> weg. Sie sind nur noch <b>grau hinterlegt</b> zu sehen. Die Nullen stehen links und rechts vom Geteilt-Zeichen immer an derselben Stelle, darum ändert sich beim Rechnen nichts: " + (s1 ? s1.part + " : " + M * P10(s1.e) + " wird zu " + s1.part / P10(s1.e) + " : " + M + ". " : "") + "So entsteht das schriftliche Dividieren: Ich teile Stelle für Stelle, der Rest wird in die kleinere Einheit getauscht und die nächste Ziffer kommt dazu.",
-        dgrid(st, hi, A, M, Q, R, "g") + st.map(x => line(PN[x.e] + ":", (x.prev ? T(x.prev / P10(x.e), "zr") + " " + PN[x.e] + " vom Rest, dazu " + T(x.d, "zs") + " → " : "") + T(x.part / P10(x.e), "zs") + " : " + M + " = " + T(x.qd, "zo") + " Rest " + T(x.rest / P10(x.e), "zr"))).join("") + '<div class="zbig">' + A + " : " + M + " = " + st.map(x => x.qd).join("").replace(/^0+(?=\d)/, "") + (R ? " Rest " + R : "") + "</div>", undefined, undefined,
+        dgrid(st, hi, A, M, Q, R, "g") + st.slice(dvStart(st)).map(x => line(PN[x.e] + ":", (x.prev ? T(x.prev / P10(x.e), "zr") + " " + PN[x.e] + " vom Rest, dazu " + T(x.d, "zs") + " → " : "") + T(x.part / P10(x.e), "zs") + " : " + M + " = " + T(x.qd, "zo") + " Rest " + T(x.rest / P10(x.e), "zr"))).join("") + '<div class="zbig">' + A + " : " + M + " = " + st.map(x => x.qd).join("").replace(/^0+(?=\d)/, "") + (R ? " Rest " + R : "") + "</div>", undefined, undefined,
         s1 ? wQ("Wie sieht " + s1.part + " : " + M * P10(s1.e) + " ohne die Nullen aus?", (s1.part / P10(s1.e)) + " : " + M, [[(s1.part / P10(s1.e)) + " : " + M * P10(s1.e), "Die Nullen fallen links und rechts weg. Dann wird auch aus " + M * P10(s1.e) + " wieder " + M + "."], [s1.part + " : " + M, "Die Nullen müssen auf beiden Seiten wegfallen. Aus " + s1.part + " wird " + s1.part / P10(s1.e) + "."]]) : undefined));
       const pr = sums.map(x => x * M);
       out.push(step("Probe", "<b>Probe:</b> Ich multipliziere die Teilergebnisse mit " + M + ": " + (sums.length ? sums.map(x => x + " · " + M + " = " + x * M).join("; ") : "0") + ". Zusammen: " + (pr.length ? pr.join(" + ") : "0") + (R ? " und dazu der Rest " + R : "") + " ergibt " + A + ". Das ist wieder der Dividend " + T(A, "zs") + ".",

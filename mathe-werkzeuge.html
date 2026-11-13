@@ -254,7 +254,7 @@
   .mrows { display:flex; flex-direction:column; gap:0.5rem; margin-top:0.5rem; }
   .mrow { display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap; }
   .mnum { flex:none; width:1.6rem; height:1.6rem; border-radius:50%; background:#2c3038; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:.85rem; }
-  .mcells { display:inline-flex; gap:2px; padding:5px; border:3px solid #3fb455; border-radius:0.471rem; background:#14161a; }
+  .mcells { display:inline-flex; flex-wrap:wrap; max-width:100%; box-sizing:border-box; gap:2px; padding:5px; border:3px solid #3fb455; border-radius:0.471rem; background:#14161a; }
   .mcells.rest { border-style:dashed; border-color:#f2a900; }
   .msq { display:block; width:var(--s,16px); height:var(--s,16px); border-radius:2px; background:#5aaee8; }
   .msq.off { background:transparent; outline:1px dashed #5c636d; outline-offset:-1px; }
@@ -273,6 +273,10 @@
   .zq i.off { background:transparent; border:2px solid #ff6b5e; box-sizing:border-box; }
   .gfam { display:grid; grid-template-columns:repeat(2,minmax(9rem,max-content)); gap:0.6rem 2.4rem; font-size:1.6rem; font-weight:700; margin:0.5rem 0; }
   .gkun { display:grid; grid-template-columns:repeat(3,max-content); gap:0.9rem 2.6rem; font-size:1.5rem; font-weight:700; margin:0.5rem 0; }
+  html.phone .gfam { grid-template-columns:repeat(2,max-content); gap:0.5rem 1.1rem; font-size:1.3rem; }
+  html.phone .gkun { grid-template-columns:repeat(2,max-content); gap:0.7rem 1rem; font-size:1.2rem; }
+  html.phone .gkun .gbl { width:2.2rem; }
+  html.phone table.snvt { font-size:1.2rem !important; }
   .gbl { display:inline-block; width:3rem; height:1.8rem; border:2px solid var(--hair, #2a2f3a); border-radius:0.3rem; vertical-align:middle; }
   .dtab td.dh, .dtab th.dh { background:rgba(255,255,255,.08); }
   .dtab tr.dres td, .dtab tr.dres th { border-bottom:none; }
@@ -652,7 +656,7 @@
   html.phone .controls:has(> .tab)::-webkit-scrollbar { display:none; }
   html.phone .controls > .tab { flex:none; scroll-snap-align:center; white-space:nowrap; min-height:46px; }
   /* Obere Knopfzeile: die Schrittknöpfe stehen in der Schrittkarte, oben bleibt nur Zufallsaufgabe */
-  html.phone .controls > button[id$="Next"], html.phone .controls > button[id$="Back"], html.phone .controls > button[id$="All"], html.phone .controls > button[id$="Restart"] { display:none; }
+  html.phone .controls > button[id$="Next"]:not(.qzbig), html.phone .controls > button[id$="Back"], html.phone .controls > button[id$="All"], html.phone .controls > button[id$="Restart"] { display:none; }
   html.phone .controls:has(> button[id$="Random"]) { margin-bottom:0.4rem !important; }
   html.phone .controls > button[id$="Random"] { min-height:46px; padding:0.3rem 0.9rem; font-size:0.95rem; }
   html.phone .numrow { gap:0.4rem 0.7rem; justify-content:flex-start; }
@@ -1423,6 +1427,9 @@ window.Predict = (function () {
   const say = t => { try { if (window.Sprache && window.Sprache.auto && window.Sprache.auto()) window.Sprache.say(window.Sprache.spoken(t)); } catch (e) { /* ohne Sprache */ } };
   function gate(host, steps, shown, advance) {
     if (!(on || self) || !host || !host.parentNode || !steps || shown >= steps.length - 1) return false;
+    /* Ist die Frage schon offen, bedeutet ein Tipp auf "Nächster Schritt": die Eingabe abschicken. Die Frage wird nicht neu aufgebaut, sonst ginge die Eingabe verloren. */
+    const open = gates.get(host);
+    if (open && open.parentNode && typeof open._submit === "function") { open._submit(); return true; }
     const list = makeList(steps, shown); if (!list.length) return false;
     clear(host);
     const box = document.createElement("div");
@@ -1445,6 +1452,11 @@ window.Predict = (function () {
         };
         box.querySelector("[data-ok]").addEventListener("click", chk);
         inp.addEventListener("keydown", e => { if (e.key === "Enter") chk(); });
+        box._submit = () => {
+          if (inp.disabled) return;
+          if (inp.value.replace(/\s/g, "") === "") { fb.className = "pfb no"; fb.textContent = "Schreibe zuerst deine Antwort in das Feld."; try { inp.focus({ preventScroll: true }); } catch (e) { /* ohne Fokus */ } return; }
+          chk();
+        };
         try { inp.focus({ preventScroll: true }); } catch (e) { /* ohne Fokus */ }
       } else {
         const opts = shuffle(q.opts.slice());
@@ -1459,6 +1471,10 @@ window.Predict = (function () {
             setTimeout(() => { if (gates.get(host) === box) nextQ(); }, 500);
           } else { b.classList.add("bad"); b.disabled = true; fb.className = "pfb no"; fb.textContent = o.why; say(o.why); }
         }));
+        box._submit = () => {
+          if (box.querySelector(".popt.good")) return;
+          fb.className = "pfb no"; fb.textContent = self ? "Tippe zuerst auf eine Antwort." : "Tippe auf eine Antwort oder auf „Ohne Auswahl weiter“.";
+        };
       }
       const sk = box.querySelector("[data-skip]"); if (sk) sk.addEventListener("click", () => { clear(host); advance(); });
     };
@@ -3144,8 +3160,14 @@ renderStell();
         const chk = () => { const v = inp.value.replace(/\s/g, ""); if (v === "") return; Number(v) === q.ans ? right() : wrong(); };
         box.querySelector("[data-ok]").addEventListener("click", chk);
         inp.addEventListener("keydown", e => { if (e.key === "Enter") chk(); });
+        box._submit = () => {
+          if (inp.disabled) return;
+          if (inp.value.replace(/\s/g, "") === "") { fb.className = "pfb no"; fb.textContent = "Schreibe zuerst deine Antwort in das Feld."; try { inp.focus(); } catch (e) { /* ohne Fokus */ } return; }
+          chk();
+        };
         try { inp.focus(); } catch (e) { /* ohne Fokus */ }
       }
+      if (q.kind === "yn") box._submit = () => { if (box.querySelector(".popt:disabled")) return; fb.className = "pfb no"; fb.textContent = "Tippe zuerst auf Ja oder Nein."; };
     };
     show();
     try { box.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) { /* ohne Scroll */ }
@@ -3245,6 +3267,7 @@ renderStell();
   $("zNext").addEventListener("click", () => {
     const adv = () => { shown++; render(); };
     if (selfNow() && op !== "mul") {
+      if (SG && SG.parentNode && typeof SG._submit === "function") { SG._submit(); return; }
       const cur = steps[shown], nx = steps[shown + 1];
       if (cur && cur.kw && !kwDone(cur.kw)) { msg0("Zähle zuerst alle Würfel durch, dann geht es weiter."); return; }
       if (nx && nx.pre && nx.pre.length) { selfGate($("zSteps"), nx.pre, adv); return; }
@@ -4995,23 +5018,28 @@ renderStell();
       return out;
     }
 
-    /* ---- Dividieren (Stelle für Stelle) ---- */
+    /* ---- Dividieren (Stelle für Stelle, der Teiler wandert mit) ---- */
     function buildDiv() {
       const A = pint(V.a, 6), M = pint(V.b, 2);
       if (A === null || M === null) return "Bitte für den Dividenden höchstens 6 Stellen und für den Divisor höchstens 2 Stellen eingeben.";
       if (M === 0) return "Durch 0 kann man nicht teilen.";
+      if (!window.MWDiv) return "Die Erklärung wird noch geladen. Bitte noch einmal auf Neu starten tippen.";
+      const PNd = ["Einer", "Zehner", "Hunderter", "Tausender", "Zehntausender", "Hunderttausender"];
       const out = [], sf = T(gr(A), "zs") + " : " + T(gr(M), "zg"), Q = Math.floor(A / M), Rm = A % M;
-      const ld = ldiv(A, M, 0, 0);
-      let rows = ld.rows.slice();
-      while (rows.length > 1 && rows[0].q === 0 && rows[0].rin === 0) rows.shift();
-      const qd = rows.map(r => r.q).join("");
+      const s = String(A), hi = s.length - 1, st = []; let rst = 0;
+      for (let e = hi; e >= 0; e--) { const d = Number(s[hi - e]), part = rst + d * P10(e), qd = Math.floor(part / (M * P10(e))), nr = part - qd * M * P10(e); st.push({ e: e, d: d, prev: rst, part: part, qd: qd, piece: qd * P10(e), rest: nr }); rst = nr; }
+      const fi = Math.max(0, st.findIndex(x => x.qd > 0)), ez = st[fi].e;
       out.push(step("Aufgabe", "Die Aufgabe " + sf + " heißt: Wie oft passt " + T(gr(M), "zg") + " in " + T(gr(A), "zs") + "? Ich teile Stelle für Stelle, von links nach rechts. Ich beginne bei der größten Stelle."));
-      const skipped = ld.rows.length - rows.length, skd = String(A).slice(0, skipped);
-      out.push(step("Stelle für Stelle teilen", (skipped ? "Die erste Stelle " + (skipped > 1 ? "(" + skd + ") " : "(" + skd + ") ") + "ist kleiner als " + gr(M) + ". Dort kann ich noch nicht teilen. Ich nehme die nächste Stelle dazu. " : "") + "Ich teile jede Stelle durch " + gr(M) + ". Bleibt ein Rest, dann tausche ich ihn: Ich tausche den Rest in die nächstkleinere Einheit (1 Stück wird zu 10 kleineren Stücken) und lege die nächste Ziffer dazu.", ldTable({ rows: rows, rest: ld.rest, per: -1, terminating: ld.rest === 0 }, M).replace(/<th>Ziffer<\/th>/, "<th>Ziffer</th>")));
+      const lines = st.map(x => { const M10 = M * P10(x.e); return line(PNd[x.e] + ":", (x.prev ? T(gr(x.prev), "zr") + " Rest, dazu " + T(x.d * P10(x.e) ? gr(x.d * P10(x.e)) : "0", "zs") + " → " : "") + gr(x.part) + " : " + gr(M10) + " = " + T(x.qd, "zo") + (x.qd === 0 ? " (" + gr(M10) + " passt nicht in " + gr(x.part) + ")" : " (" + x.qd + " · " + gr(M10) + " = " + gr(x.qd * M10) + ")") + ", Rest " + T(gr(x.rest), "zr")); }).join("");
+      out.push(step("Stelle für Stelle teilen: der Teiler wandert mit", "Ich teile zuerst die " + PNd[hi] + ", darum teile ich auch durch " + PNd[hi] + ": " + gr(M) + " · " + gr(P10(hi)) + " = " + gr(M * P10(hi)) + (st[0].qd === 0 ? ". Das passt noch nicht, ich schreibe 0, und der Rest wandert zur nächsten Stelle" : "") + ". Bei jeder kleineren Stelle wird der Teiler 10-mal kleiner, bei den Einern teile ich durch " + gr(M) + ". Die Nullen (orange) halten den Platz frei.",
+        window.MWDiv.dgrid(st, hi, A, M, Q, Rm, "z") + '<div class="note">Farben: blau = Zahl aus der Aufgabe, rot = Rest, orange = Ergebnis und Nullen.</div>' + lines));
+      const s1 = st.find(x => x.e > 0 && x.qd > 0);
+      out.push(step("→ Das Normalverfahren", "Jetzt lasse ich die <b>Nullen</b> weg. Sie sind nur noch <b>grau hinterlegt</b> zu sehen. Die Nullen stehen links und rechts vom Geteilt-Zeichen immer an derselben Stelle, darum ändert sich beim Rechnen nichts" + (s1 ? ": " + gr(s1.part) + " : " + gr(M * P10(s1.e)) + " wird zu " + gr(s1.part / P10(s1.e)) + " : " + gr(M) : "") + ". So entsteht das schriftliche Dividieren: Bleibt ein Rest, tausche ich ihn in die nächstkleinere Einheit und lege die nächste Ziffer dazu.",
+        window.MWDiv.dgrid(st, hi, A, M, Q, Rm, "g") + st.map(x => line(PNd[x.e] + ":", (x.prev ? T(gr(x.prev / P10(x.e)), "zr") + " " + PNd[x.e] + " vom Rest, dazu " + T(x.d, "zs") + " → " : "") + T(gr(x.part / P10(x.e)), "zs") + " : " + gr(M) + " = " + T(x.qd, "zo") + " Rest " + T(gr(x.rest / P10(x.e)), "zr"))).join("")));
       let rr = '<div class="zbig">' + sf + " = " + T(gr(Q) + (Rm ? " Rest " + Rm : ""), "zo") + "</div>";
       rr += line("Überschlag:", "Ich runde: " + gr(rnd(A)) + " : " + gr(rnd(M)) + " ist ungefähr " + gr(Math.round(rnd(A) / rnd(M))) + ".");
       rr += line("Probe:", "Die Umkehraufgabe: " + gr(Q) + " · " + gr(M) + (Rm ? " + " + Rm : "") + " = " + gr(Q * M + Rm));
-      out.push(step("Ergebnis", gr(A) + " : " + gr(M) + " = " + T(gr(Q), "zo") + (Rm ? " Rest " + T(Rm, "zr") + ". Der Rest ist kleiner als " + gr(M) + "." : ". Es bleibt kein Rest.") + " Die Ziffern aus der letzten Spalte der Tabelle ergeben " + qd.replace(/^0+(?=\d)/, "") + ".", rr, "good", String(Q) + (Rm ? " R" + Rm : "")));
+      out.push(step("Ergebnis", gr(A) + " : " + gr(M) + " = " + T(gr(Q), "zo") + (Rm ? " Rest " + T(Rm, "zr") + ". Der Rest ist kleiner als " + gr(M) + "." : ". Es bleibt kein Rest.") + " Die Ergebnisziffern stehen in den Spalten ihrer Stellen. Führende Nullen lasse ich weg.", rr, "good", String(Q) + (Rm ? " R" + Rm : "")));
       return out;
     }
 
@@ -6456,9 +6484,9 @@ renderStell();
           return ln(gp(v) + " " + SY[i] + ":", "1 " + SY[t] + " = " + gp(f) + " " + SY[i] + ". Also " + v + " : " + gp(f) + " = " + T(r[2] + " " + SY[t], "zg") + (S.dec && Math.pow(10, k) === f ? " (Komma " + k + (k === 1 ? " Stelle" : " Stellen") + " nach links)" : ""));
         }).join("");
         const sumTx = rows.map(r => r[2]).join(" + ");
-        const wrongUp = dS(b * 10n, BigInt(w[t]), t === 0 ? S.minDec : 0), wrongDn = dS(b, BigInt(w[t]) * 10n, t === 0 ? S.minDec : 0);
+        const wrongUp = dS(b * 10n, BigInt(w[t]), t === 0 ? S.minDec : 0), dn0 = dS(b, BigInt(w[t]) * 10n, t === 0 ? S.minDec : 0), wrongDn = dn0 || dS(b * 100n, BigInt(w[t]), t === 0 ? S.minDec : 0); /* zu viele Nachkommastellen: dann zweite zu große Zahl */
         out.push(stp("Jeden Teil umwandeln", "Ich wandle jeden Teil von " + mix(A, "zo") + " in " + T(SY[t], "zg") + " um.", lines));
-        out.push(stp("Zusammenzählen", rows.length > 1 ? "Ich zähle die Teile zusammen: " + sumTx + " = " + T(res + " " + SY[t], "zg") + "." : "Es gibt nur einen Teil: " + T(res + " " + SY[t], "zg") + ".", ln("Rechnung:", sumTx + " = " + T(res, "zg") + " " + SY[t]), undefined, undefined, { head: "Wie viel " + SY[t] + " sind " + mixP(A) + "?", a: [res, wrongUp, wrongDn], why: ["", "Das ist zu groß. Prüfe die Umrechnung der Teile.", "Das ist zu klein. Prüfe die Umrechnung der Teile."] }));
+        out.push(stp("Zusammenzählen", rows.length > 1 ? "Ich zähle die Teile zusammen: " + sumTx + " = " + T(res + " " + SY[t], "zg") + "." : "Es gibt nur einen Teil: " + T(res + " " + SY[t], "zg") + ".", ln("Rechnung:", sumTx + " = " + T(res, "zg") + " " + SY[t]), undefined, undefined, { head: "Wie viel " + SY[t] + " sind " + mixP(A) + "?", a: [res, wrongUp, wrongDn], why: ["", "Das ist zu groß. Prüfe die Umrechnung der Teile.", dn0 ? "Das ist zu klein. Prüfe die Umrechnung der Teile." : "Das ist zu groß. Prüfe die Umrechnung der Teile."] }));
         out.push(stp("Ergebnis", mix(A, "zo") + " = " + T(res + " " + SY[t], "zg") + ".", '<div class="zbig">' + mix(A, "zo") + " = " + T(res + " " + SY[t], "zg") + "</div>", "g"));
         return out;
       }
@@ -7783,7 +7811,7 @@ renderStell();
       out.push(step("Brüche bilden", "Ich ordne jeden Faktor " + a + " oben einem Faktor " + b + " unten zu. Der Bruch aus " + a + " und " + b + " heißt " + T(a + " : " + b, "zg") + ". Er kommt " + T(n, "zg") + " mal als Faktor vor.",
         '<div class="pchs">' + Array.from({ length: n }, () => '<span class="pgrp">' + col() + "</span>").join('<span class="pdot">·</span>') + "</div>"));
       out.push(step("Als Potenz schreiben", "Der Faktor " + T("(" + a + " : " + b + ")", "zg") + " kommt " + n + " mal vor. Das ist eine Potenz mit der Basis " + T("(" + a + " : " + b + ")", "zg") + ".", '<div class="zbig">' + PW(a, n) + " : " + PW(b, n) + " = " + T(PW(a + " : " + b, n), "zg") + (isNum(a) ? " = " + T(PW(q, n), "zg") : "") + "</div>", undefined, undefined,
-        mcq("Wie lautet das Ergebnis?", PW(a + " : " + b, n), [[PW(a + " − " + b, n), "Es wird geteilt, nicht subtrahiert. Oben und unten stehen Faktoren, die zu Brüchen zusammengefasst werden."], [PW(a + " : " + b, n + 1) , "Die Hochzahl bleibt " + n + ": Es gibt " + n + " Brüche."]], [[PW(a + " : " + b, 2 * n), "Es gibt " + n + " Brüche."], [PW(a + " : " + b, n + 2), "Es gibt " + n + " Brüche."]])));
+        mcq("Wie lautet das Ergebnis?", PW(a + " : " + b, n), [isNum(a) && Number(a) - Number(b) === Number(a) / Number(b) ? [PW(a + " · " + b, n), "Es wird geteilt, nicht multipliziert. Oben und unten stehen Faktoren, die zu Brüchen zusammengefasst werden."] : [PW(a + " − " + b, n), "Es wird geteilt, nicht subtrahiert. Oben und unten stehen Faktoren, die zu Brüchen zusammengefasst werden."], [PW(a + " : " + b, n + 1) , "Die Hochzahl bleibt " + n + ": Es gibt " + n + " Brüche."]], [[PW(a + " : " + b, 2 * n), "Es gibt " + n + " Brüche."], [PW(a + " : " + b, n + 2), "Es gibt " + n + " Brüche."]])));
       const va = val(a, n), vb = val(b, n), vq = isNum(a) ? val(Number(a) / Number(b), n) : null;
       out.push(step("Ergebnis", "Gleiche Hochzahl: Die <b>Hochzahl bleibt</b>, die <b>Basen werden dividiert</b>.", '<div class="zbig">' + PW(a, n) + " : " + PW(b, n) + " = " + T(PW(a + " : " + b, n), "zg") + "</div>" +
         line("Regel:", pw("a", "n") + " : " + pw("b", "n") + " = (a : b)<sup>n</sup>") +
@@ -8050,7 +8078,7 @@ renderStell();
         const text = d === 0
           ? "Ich probiere die " + what + " der Reihe nach und quadriere" + (r === 3 ? " (hoch 3)" : "") + ". Ich suche zwei <b>benachbarte</b> ganze Zahlen: Die kleinere gibt etwas Kleineres als " + a + ", die größere etwas Größeres. Die Zahl liegt also im Intervall " + T("[" + lo + " ; " + hi + "]", "zg") + "."
           : "Ich zoome in das Intervall [" + dec(prevN, d - 1) + " ; " + dec(prevN + 1, d - 1) + "] hinein und teile es in zehn gleiche Stücke. Ich probiere die " + what + " der Reihe nach. Die Zahl liegt im Intervall " + T("[" + lo + " ; " + hi + "]", "zg") + ". Es ist jetzt zehnmal so kurz: Länge " + len + ".";
-        const q = { head: "In welchem Intervall liegt " + sym(r) + a + "?", a: ["[" + lo + " ; " + hi + "]", "[" + (d === 0 ? (N - 1 >= 1 ? N - 1 : N + 1) : dec(N - 1, d)) + " ; " + (d === 0 ? (N - 1 >= 1 ? N : N + 2) : dec(N, d)) + "]", "[" + (d === 0 ? N + 1 : dec(N + 1, d)) + " ; " + (d === 0 ? N + 2 : dec(N + 2, d)) + "]"], why: ["", "Die untere Grenze zum " + (r === 2 ? "Quadrat" : "Kubik") + " ist schon kleiner, aber die obere Grenze " + (d === 0 ? (N - 1 >= 1 ? N : N + 2) : dec(N, d)) + sq(r) + " ist nicht größer als " + a + ". Das Intervall ist zu weit links.", "Die untere Grenze " + (d === 0 ? N + 1 : dec(N + 1, d)) + sq(r) + " ist schon größer als " + a + ". Das Intervall ist zu weit rechts."] };
+        const q = { head: "In welchem Intervall liegt " + sym(r) + a + "?", a: ["[" + lo + " ; " + hi + "]", "[" + (d === 0 ? (N - 1 >= 1 ? N - 1 : N + 2) : dec(N - 1, d)) + " ; " + (d === 0 ? (N - 1 >= 1 ? N : N + 3) : dec(N, d)) + "]", "[" + (d === 0 ? N + 1 : dec(N + 1, d)) + " ; " + (d === 0 ? N + 2 : dec(N + 2, d)) + "]"], why: ["", d === 0 && N - 1 < 1 ? "Die untere Grenze " + (N + 2) + sq(r) + " ist schon größer als " + a + ". Das Intervall ist zu weit rechts." : "Die untere Grenze zum " + (r === 2 ? "Quadrat" : "Kubik") + " ist schon kleiner, aber die obere Grenze " + (d === 0 ? N : dec(N, d)) + sq(r) + " ist nicht größer als " + a + ". Das Intervall ist zu weit links.", "Die untere Grenze " + (d === 0 ? N + 1 : dec(N + 1, d)) + sq(r) + " ist schon größer als " + a + ". Das Intervall ist zu weit rechts."] };
         out.push(step(d === 0 ? "Ganze Zahlen" : d + ". Stelle: " + what, text, axis(d) + testLines(d) + line("Intervall:", T("[" + lo + " ; " + hi + "]", "zg") + " mit der Länge " + len), d === D ? undefined : undefined, undefined, q));
       }
       const x = Math.pow(a, 1 / r);
@@ -8208,18 +8236,24 @@ renderStell();
     }
 
     /* ---- Scheitelpunkt ablesen ---- */
+    /* Frage mit 3 Möglichkeiten: Die zwei falschen müssen sich von der richtigen und voneinander unterscheiden */
+    function q3(head, good, cands) {
+      const seen = {}, w = []; seen[good] = 1;
+      cands.forEach(c => { if (!seen[c[0]] && w.length < 2) { seen[c[0]] = 1; w.push(c); } });
+      return w.length < 2 ? undefined : { head: head, a: [good, w[0][0], w[1][0]], why: ["", w[0][1], w[1][1]] };
+    }
     function buildSp() {
       const o = { a: V.a, d: V.d, e: V.e }, out = [];
       out.push(step("Aufgabe", "Gegeben ist die Funktion " + T("f(x) = ", "zs") + colSv(o) + ". Ich lese daran den Scheitelpunkt und die Form der Parabel ab, ohne eine Wertetabelle zu machen. Die Form heißt <b>Scheitelpunktform</b>: f(x) = a · (x − d)² + e.", legend() + '<div class="zbig">f(x) = ' + colSv(o) + "</div>"));
       out.push(step("Die Zahl in der Klammer: d", "In der Klammer steht " + (o.d === 0 ? "nur x. Es ist also d = " + T(0, CD) + ", die Parabel ist nicht nach rechts oder links verschoben." : T("x " + (o.d > 0 ? "−" : "+") + " " + NA(o.d), CD) + ". Die Scheitelpunktform hat die Klammer (x − d). Darum <b>drehe ich das Vorzeichen um</b>: " + (o.d > 0 ? "x − " + NA(o.d) + " bedeutet d = " + T(N(o.d), CD) + "." : "x + " + NA(o.d) + " ist dasselbe wie x − (" + N(o.d) + "). Es ist d = " + T(N(o.d), CD) + ".")),
         '<div class="zbig">f(x) = ' + colSv(o) + "</div>" + line("d =", T(N(o.d), CD) + (o.d > 0 ? " (Parabel nach rechts verschoben)" : o.d < 0 ? " (Parabel nach links verschoben)" : "")), undefined, undefined,
-        { head: "Was ist d in " + FT(o) + "?", a: [N(o.d), N(-o.d === o.d ? o.d + 1 : -o.d), N(o.d + 1)], why: ["", "Das Vorzeichen in der Klammer wird umgedreht: x " + (o.d > 0 ? "−" : "+") + " " + NA(o.d) + " gehört zu d = " + N(o.d) + ".", "Die Zahl in der Klammer ist " + NA(o.d) + ", nicht " + NA(o.d + 1) + "."] }));
+        q3("Was ist d in " + FT(o) + "?", N(o.d), [[N(-o.d), "Das Vorzeichen in der Klammer wird umgedreht: x " + (o.d > 0 ? "−" : "+") + " " + NA(o.d) + " gehört zu d = " + N(o.d) + "."], [N(o.d + 1), "Die Zahl in der Klammer ist " + NA(o.d) + ", nicht " + NA(o.d + 1) + "."], [N(o.d - 1), "Die Zahl in der Klammer ist " + NA(o.d) + ", nicht " + NA(o.d - 1) + "."]])));
       out.push(step("Die Zahl hinten: e", "Hinten steht " + (o.e === 0 ? "keine Zahl. Es ist also e = " + T(0, CE) + "." : T(sg(o.e), CE) + ". Dieses Vorzeichen bleibt, wie es ist. Es ist e = " + T(N(o.e), CE) + ".") + " Die Zahl e verschiebt die Parabel nach " + (o.e > 0 ? "oben" : o.e < 0 ? "unten" : "weder oben noch unten") + ".",
         '<div class="zbig">f(x) = ' + colSv(o) + "</div>" + line("d =", T(N(o.d), CD)) + line("e =", T(N(o.e), CE)), undefined, undefined,
-        { head: "Was ist e in " + FT(o) + "?", a: [N(o.e), N(-o.e === o.e ? o.e + 1 : -o.e), N(o.d)], why: ["", "Bei e wird das Vorzeichen nicht umgedreht. Es steht so da, wie es ist.", "d steht in der Klammer, e steht hinten."] }));
+        q3("Was ist e in " + FT(o) + "?", N(o.e), [[N(-o.e), "Bei e wird das Vorzeichen nicht umgedreht. Es steht so da, wie es ist."], [N(o.d), "d steht in der Klammer, e steht hinten."], [N(o.e + 1), "Die Zahl hinten ist " + N(o.e) + ", nicht " + N(o.e + 1) + "."], [N(o.e - 1), "Die Zahl hinten ist " + N(o.e) + ", nicht " + N(o.e - 1) + "."]])));
       out.push(step("Der Scheitelpunkt", "Der Scheitelpunkt hat die Koordinaten S(d | e). Ich schreibe d vorn und e hinten: " + T("S(" + N(o.d) + " | " + N(o.e) + ")", "zg") + ". Im Bild ist er grün.",
         line("S(d | e) =", T("S(" + N(o.d) + " | " + N(o.e) + ")", "zg")) + graph({ a: o.a, d: o.d, e: o.e, curve: false, points: [{ x: o.d, y: o.e, c: "#5fd06f", l: "S(" + N(o.d) + " | " + N(o.e) + ")" }] }), undefined, undefined,
-        { head: "Wo liegt der Scheitelpunkt?", a: ["S(" + N(o.d) + " | " + N(o.e) + ")", "S(" + N(o.e) + " | " + N(o.d) + ")", "S(" + N(-o.d) + " | " + N(o.e) + ")"], why: ["", "Zuerst kommt d (die x-Koordinate), dann e (die y-Koordinate).", "Das Vorzeichen von d wird umgedreht, aber nicht verdoppelt: d steht schon fertig da, wenn man umgedreht hat."] }));
+        q3("Wo liegt der Scheitelpunkt?", "S(" + N(o.d) + " | " + N(o.e) + ")", [["S(" + N(o.e) + " | " + N(o.d) + ")", "Zuerst kommt d (die x-Koordinate), dann e (die y-Koordinate)."], ["S(" + N(-o.d) + " | " + N(o.e) + ")", "Das Vorzeichen von d wird umgedreht, aber nicht verdoppelt: d steht schon fertig da, wenn man umgedreht hat."], ["S(" + N(o.d) + " | " + N(-o.e) + ")", "Bei e wird das Vorzeichen nicht umgedreht. Es steht so da, wie es ist."], ["S(" + N(o.d + 1) + " | " + N(o.e) + ")", "Die x-Koordinate ist d = " + N(o.d) + "."], ["S(" + N(o.d) + " | " + N(o.e + 1) + ")", "Die y-Koordinate ist e = " + N(o.e) + "."]])));
       out.push(step("Die Öffnung: a", "Vor der Klammer steht " + T(N(o.a), CA) + ". Die Zahl a sagt: " + (o.a > 0 ? "a ist positiv, die Parabel ist nach <b>oben</b> geöffnet. Der Scheitelpunkt ist der tiefste Punkt (Minimum)." : "a ist negativ, die Parabel ist nach <b>unten</b> geöffnet. Der Scheitelpunkt ist der höchste Punkt (Maximum)."),
         '<div class="zbig">a = ' + T(N(o.a), CA) + "</div>" + graph({ a: o.a, d: o.d, e: o.e, vertex: true }), undefined, undefined,
         { head: "Wie ist die Parabel geöffnet?", a: [o.a > 0 ? "nach oben" : "nach unten", o.a > 0 ? "nach unten" : "nach oben", "nach rechts"], why: ["", "a ist " + (o.a > 0 ? "positiv, also nach oben." : "negativ, also nach unten."), "Eine Parabel mit x² ist nach oben oder nach unten geöffnet."] }));
@@ -9674,7 +9708,14 @@ renderStell();
       ".snv.an.go span.d.z{animation:snvzero 4.2s ease both}" +
       "@keyframes snvfall{0%,38%{transform:translate(calc(var(--c)*1.2em),calc(var(--r0)*1.5em))}72%,100%{transform:translate(calc(var(--c)*1.2em),calc(var(--r1)*1.5em))}}" +
       "@keyframes snvzero{0%,8%{opacity:1;transform:translate(calc(var(--c)*1.2em),calc(var(--r0)*1.5em))}30%,100%{opacity:0;transform:translate(calc(var(--c)*1.2em),calc(var(--r0)*1.5em))}}" +
-      "@media (prefers-reduced-motion:reduce){.snv.an.go span.d,.snv.an.go span.d.z{animation:none}}";
+      "@media (prefers-reduced-motion:reduce){.snv.an.go span.d,.snv.an.go span.d.z{animation:none}}" +
+      ".snz{color:#ffb347;font-weight:700}.snz.g{color:#d3d8e0;background:#566070;border-radius:.2em;padding:0 .1em;font-weight:600}" +
+      ".snvg{border-collapse:collapse;font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.3rem 0}" +
+      ".snvg td{padding:.08em .06em;text-align:center;min-width:1.25em}.snvg td.sg{color:#8a93a3;text-align:right;padding-right:.4em;min-width:1em}" +
+      ".snvg td.an{font-size:.95rem;font-weight:500;color:#aab2c0;text-align:left;padding-left:1em;white-space:normal;min-width:9em}" +
+      ".snvg tr.ln td.dd{border-top:3px solid #cfd6e0}" +
+      "html.phone table.snvg{font-size:1.2rem}html.phone .snvg td.an{font-size:.85rem;min-width:6em;padding-left:.6em}" +
+      "html.phone table.snvt{display:block;max-width:100%;overflow-x:auto}html.phone #panel-snv .controls .tab{max-width:100%;white-space:normal;text-align:left}";
       document.head.appendChild(s); })();
     const digs = n => String(n).split("").map(Number);
     const partsOf = n => { const s = String(n), out = []; for (let i = 0; i < s.length; i++) { const d = Number(s[i]), e = s.length - 1 - i; if (d) out.push({ d: d, e: e, v: d * P10(e) }); } return out; };
@@ -9693,7 +9734,7 @@ renderStell();
     /* Zerlegung notieren: Stellen stehen untereinander (Einer unter Einer) */
     const zal = rows => {
       const top = Math.max.apply(null, rows.map(r => r.p[0].e));
-      let h = '<table style="border-collapse:collapse;font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.3rem 0">';
+      let h = '<table class="snvt" style="border-collapse:collapse;font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.3rem 0">';
       rows.forEach(r => {
         h += '<tr><td style="text-align:right;padding-right:.35em">' + T(r.n, r.c) + '</td><td style="padding:0 .35em">=</td>';
         for (let e = top; e >= 0; e--) { const x = r.p.find(q => q.e === e); h += '<td style="text-align:right;padding-left:.35em;color:#8a93a3">' + (x && x.e !== r.p[0].e ? "+" : "") + '</td><td style="text-align:right">' + (x ? T(x.v, r.c) : "") + "</td>"; }
@@ -9702,7 +9743,7 @@ renderStell();
       return h + "</table>";
     };
     /* Gleichungen untereinander: Zahlen rechtsbuendig, Einer unter Einer */
-    const eqt = rows => '<table style="border-collapse:collapse;font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.3rem 0">' + rows.map(r => '<tr><td style="text-align:right;padding-right:.8em;font-size:.9rem;font-weight:500;color:#8a93a3;white-space:nowrap">' + r.l + '</td><td style="text-align:right">' + r.a + '</td><td style="text-align:center;padding:0 .35em;color:#8a93a3">' + r.o + '</td><td style="text-align:right">' + r.b + '</td><td style="text-align:center;padding:0 .35em;color:#8a93a3">=</td><td style="text-align:right">' + r.r + "</td></tr>").join("") + "</table>";
+    const eqt = rows => '<table class="snvt" style="border-collapse:collapse;font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.3rem 0">' + rows.map(r => '<tr><td style="text-align:right;padding-right:.8em;font-size:.9rem;font-weight:500;color:#8a93a3;white-space:nowrap">' + r.l + '</td><td style="text-align:right">' + r.a + '</td><td style="text-align:center;padding:0 .35em;color:#8a93a3">' + r.o + '</td><td style="text-align:right">' + r.b + '</td><td style="text-align:center;padding:0 .35em;color:#8a93a3">=</td><td style="text-align:right">' + r.r + "</td></tr>").join("") + "</table>";
     /* ---- Addieren ---- */
     function buildAd(V) {
       const A = V.a, B = V.b, S = A + B, out = [], pA = partsOf(A), pB = partsOf(B), hi = Math.max(String(A).length, String(B).length) - 1, hiS = String(S).length - 1;
@@ -9747,32 +9788,61 @@ renderStell();
       return out;
     }
     /* ---- Dividieren ---- */
+    /* Nullen: m = "z" orange (alle Nullen sichtbar) oder "g" grau hinterlegt (Normalverfahren) */
+    const nz = (k, m) => { let s = ""; for (let i = 0; i < k; i++) s += '<span class="snz' + (m === "g" ? " g" : "") + '">0</span>'; return s; };
+    const zn = (w, k, m, cls) => (cls ? T(w, cls) : String(w)) + nz(k, m);
+    /* Rechnung stellengerecht untereinander (Einer unter Einer). Spalten = Stellen des Dividenden. */
+    function dgrid(st, hi, A, M, Q, R, m) {
+      const n = hi + 1, fi = Math.max(0, st.findIndex(x => x.qd > 0)), e0 = st[fi].e;
+      const rows = []; let ln = false;
+      const cellsOf = (w, e, cf) => { const ds = String(w); let h = ""; for (let p = n - 1; p >= 0; p--) { if (p < e) { h += '<td class="dd">' + nz(1, m) + "</td>"; continue; } const i = ds.length - 1 - (p - e); h += '<td class="dd">' + (i >= 0 ? T(ds[i], cf(p)) : "") + "</td>"; } return h; };
+      const row = (sign, w, e, cf, an, line2) => '<tr' + (line2 ? ' class="ln"' : "") + '><td class="sg">' + sign + "</td>" + cellsOf(w, e, cf) + '<td class="an">' + (an || "") + "</td></tr>";
+      rows.push(row("", A, 0, () => "zs", "Aufgabe: " + T(A, "zs") + " : " + T(M, "zg")));
+      /* Ergebnis-Ziffern: fuehrende Nullen sind nur Platzhalter */
+      let q = '<tr><td class="sg">=</td>';
+      for (let p = n - 1; p >= 0; p--) { const x = st.find(y => y.e === p); q += '<td class="dd">' + (p > e0 ? nz(1, m) : T(x.qd, "zo")) + "</td>"; }
+      rows.push(q + '<td class="an">Ergebnis: ' + T(Q, "zo") + (R ? " Rest " + T(R, "zr") : "") + "</td></tr>");
+      st.forEach((x, b) => {
+        if (b < fi) return;
+        const e = x.e, w = x.part / P10(e);
+        rows.push(row("", w, e, p => (b === fi || p === e) ? "zs" : "zr", zn(w, e, m, "zs") + " : " + zn(M, e, m, "zg") + " = " + T(x.qd, "zo"), ln));
+        rows.push(row("−", x.qd * M, e, () => "", x.qd + " · " + zn(M, e, m, "zg") + " = " + zn(x.qd * M, e, m, "")));
+        ln = true;
+        if (b === st.length - 1) rows.push(row("", x.rest / P10(e), e, () => "zr", "Rest " + zn(x.rest / P10(e), e, m, "zr"), true));
+      });
+      return '<div class="dtw"><table class="snvg">' + rows.join("") + "</table></div>";
+    }
+    window.MWDiv = { dgrid: dgrid, nz: nz, zn: zn };
     function buildDi(V) {
       const A = V.a, M = V.b, s = String(A), out = [], hi = s.length - 1, sf = T(A, "zs") + " : " + T(M, "zg");
       const pA = partsOf(A); let rest = 0, qtot = 0; const st = [];
       for (let e = hi; e >= 0; e--) { const d = Number(s[hi - e]), part = rest + d * P10(e), qd = Math.floor(part / (M * P10(e))), piece = qd * P10(e), nr = part - qd * M * P10(e); st.push({ e: e, d: d, prev: rest, part: part, qd: qd, piece: piece, rest: nr }); rest = nr; qtot += piece; }
       const Q = qtot, R = rest;
-      out.push(step("Aufgabe: Zerlegen", "Ich rechne " + sf + ". Ich <b>zerlege</b> den Dividenden in Stellenwerte: " + T(A, "zs") + " = " + pA.map(x => T(x.v, "zs")).join(" + ") + ". Dann teile ich nacheinander: erst die größte Stelle, dann die nächste. Was beim Teilen <b>übrig bleibt</b> (der Rest), nehme ich zur nächsten Stelle mit.",
+      out.push(step("Aufgabe: Zerlegen", "Ich rechne " + sf + ". Ich <b>zerlege</b> den Dividenden in Stellenwerte: " + T(A, "zs") + " = " + pA.map(x => T(x.v, "zs")).join(" + ") + ". Dann teile ich nacheinander: erst die größte Stelle, dann die nächste. Was beim Teilen <b>übrig bleibt</b> (der Rest), nehme ich zur nächsten Stelle mit. Beim Teilen der Hunderter teile ich durch Hunderter, bei den Zehnern durch Zehner: Der Teiler " + T(M, "zg") + " <b>wandert mit</b>.",
         '<div class="zbig">' + A + " : " + M + "</div>" + zal([{ n: A, c: "zs", p: pA }]), undefined, undefined,
         wQ("Wie zerlege ich " + A + " in Stellenwerte?", pA.map(x => x.v).join(" + "), [[digs(A).join(" + "), "Die Ziffern haben einen Stellenwert, die Zahlen sind größer. Hier fehlen die Nullen."], [pA.map((x, i) => i === 0 ? x.v * 10 : x.v).join(" + "), "Die erste Ziffer ist zu groß gewählt. Sie steht in der " + PN[pA[0].e] + "-Stelle."]])));
       st.forEach((x, i) => {
-        const pt = x.prev ? "(" + x.prev + " + " + x.d * P10(x.e) + ")" : N(x.part), M10 = M * P10(x.e);
-        const head = x.prev ? pt + " : " + M + " = " + x.part + " : " + M : x.part + " : " + M;
-        const body = x.qd === 0 ? "Das größte Vielfache von " + M + " in " + PN[x.e] + "-Schritten, das in " + x.part + " passt, ist 0 (denn 1 mal " + M10 + " ist " + M10 + ", das ist mehr als " + x.part + "). Es kommt also 0 heraus, und " + T(x.part, "zr") + " bleibt als Rest." : "Ich suche das größte Vielfache von " + M + " in " + PN[x.e] + "-Schritten, das in " + x.part + " passt: " + x.qd + " mal " + M10 + " = " + x.qd * M10 + ". Das passt, denn " + x.qd * M10 + " ist nicht größer als " + x.part + ". Der Rest ist " + x.part + " − " + x.qd * M10 + " = " + T(x.rest, "zr") + ".";
-        const goodS = x.piece + " Rest " + x.rest, wr = [[(x.qd + 1) * P10(x.e) + " Rest 0", "Das ist zu groß: " + (x.qd + 1) + " mal " + M10 + " ist " + (x.qd + 1) * M10 + ", mehr als " + x.part + "."], [x.piece + " Rest " + (x.rest ? x.rest / 10 : M), x.rest ? "Der Rest muss als Stellenwert bleiben, hier " + x.rest + ", nicht " + x.rest / 10 + "." : "Hier geht es auf: Der Rest ist 0."], [x.piece / (x.piece ? 10 : 1) + " Rest " + x.rest, "Die Stufenzahl stimmt nicht. Hier wird in " + PN[x.e] + "-Schritten geteilt: " + x.piece + " passt zur " + PN[x.e] + "-Stelle."]];
-        out.push(step(PN[x.e] + ": " + head, (i > 0 ? "Zum Rest " + (x.prev) + " nehme ich die nächste Stelle " + T(x.d * P10(x.e), "zs") + " dazu. " : "") + body + " Also " + T(head + " = " + goodS, "zo") + ".",
-          '<div class="zbig">' + head + " = " + x.piece + " Rest " + x.rest + "</div>" + line("Bisher:", st.slice(0, i + 1).map(y => y.piece).filter(y => y).join(" + ") + (st.slice(0, i + 1).some(y => y.piece) ? " = " + st.slice(0, i + 1).reduce((a, y) => a + y.piece, 0) : "noch 0")), undefined, undefined,
-          wQ("Wie groß ist " + x.part + " : " + M + " (in " + PN[x.e] + "-Schritten)?", goodS, wr)));
+        const M10 = M * P10(x.e), head = x.part + " : " + M10;
+        const intro = i === 0 ? "Ich beginne bei der größten Stelle: " + T(x.part, "zs") + ". " : x.prev ? "Zum Rest " + T(x.prev, "zr") + " nehme ich die nächste Stelle " + T(x.d * P10(x.e), "zs") + " dazu: " + x.prev + " + " + x.d * P10(x.e) + " = " + T(x.part, "zs") + ". " : "Es ist kein Rest da. Die nächste Stelle ist " + T(x.part, "zs") + ". ";
+        const shift = x.e > 0 ? "Jetzt teile ich in " + PN[x.e] + "-Schritten. Darum wandert der Teiler mit: " + M + " · " + P10(x.e) + " = " + T(M10, "zg") + ". " : "Jetzt teile ich in Einer-Schritten. Der Teiler bleibt " + T(M, "zg") + ". ";
+        const fit = x.qd === 0 ? "Wie oft passt " + M10 + " in " + x.part + "? Schon 1 · " + M10 + " = " + M10 + " ist mehr als " + x.part + ". Es passt 0-mal. Ich schreibe 0, und " + T(x.part, "zr") + " bleibt als Rest." : "Wie oft passt " + M10 + " in " + x.part + "? " + x.qd + " · " + M10 + " = " + x.qd * M10 + " passt. " + (x.qd + 1) + " · " + M10 + " = " + (x.qd + 1) * M10 + " wäre schon zu viel. Der Rest ist " + x.part + " − " + x.qd * M10 + " = " + T(x.rest, "zr") + ".";
+        const res = " Also " + T(head + " = " + x.qd + " Rest " + x.rest, "zo") + ". Im Ergebnis stehen " + x.qd + " " + PN[x.e] + (x.piece ? " = " + x.piece : "") + ".";
+        const wrs = [[(x.qd + 1) + " mal", (x.qd + 1) + " mal " + M10 + " ist " + (x.qd + 1) * M10 + ". Das ist mehr als " + x.part + "."], x.qd >= 1 ? [(x.qd - 1) + " mal", "Es passt noch öfter: " + x.qd + " mal " + M10 + " ist " + x.qd * M10 + ", das ist nicht mehr als " + x.part + "."] : [(x.qd + 2) + " mal", (x.qd + 2) + " mal " + M10 + " ist " + (x.qd + 2) * M10 + ". Das ist viel zu viel."], [(x.qd + 2) + " mal", (x.qd + 2) + " mal " + M10 + " ist " + (x.qd + 2) * M10 + ". Das ist viel zu viel."], [(x.qd + 3) + " mal", (x.qd + 3) + " mal " + M10 + " ist " + (x.qd + 3) * M10 + ". Das ist viel zu viel."]];
+        out.push(step(PN[x.e] + ": " + head, intro + shift + fit + res,
+          '<div class="zbig">' + head + " = " + x.qd + " Rest " + x.rest + "</div>" + line("Bisher:", st.slice(0, i + 1).map(y => y.piece).filter(y => y).join(" + ") + (st.slice(0, i + 1).some(y => y.piece) ? " = " + st.slice(0, i + 1).reduce((a, y) => a + y.piece, 0) : "noch 0")), undefined, undefined,
+          wQ("Wie oft passt " + M10 + " in " + x.part + "?", x.qd + " mal", wrs)));
       });
       const sums = st.filter(x => x.piece).map(x => x.piece);
       out.push(step("Die Teilergebnisse addieren", "Jetzt addiere ich die Teilergebnisse: " + T(sums.length ? sums.join(" + ") : "0", "zo") + " = " + T(Q, "zo") + (R ? " Rest " + T(R, "zr") : ". Es bleibt kein Rest") + ". Also ist " + T(A + " : " + M + " = " + Q + (R ? " Rest " + R : ""), "zo") + ".",
         '<div class="zbig">' + A + " : " + M + " = " + Q + (R ? " Rest " + R : "") + "</div>", undefined, undefined,
-        wQ("Wie lautet das Ergebnis von " + A + " : " + M + "?", Q + (R ? " Rest " + R : ""), [[(Q + (R ? 1 : 10)) + (R ? " Rest " + R : ""), "Die Teilergebnisse " + (sums.join(" + ") || "0") + " ergeben zusammen " + Q + "."], [Q + " Rest " + (R || M), R ? "Der Rest ist " + R + "." : "Es geht auf, also bleibt kein Rest."]])));
-      const dl = st.map(x => PN[x.e] + ": " + (x.prev ? (x.prev / P10(x.e)) + " " + PN[x.e] + " Rest, dazu " + x.d + " = " : "") + (x.part / P10(x.e)) + " : " + M + " = " + x.qd + " Rest " + x.rest / P10(x.e));
-      const s1 = st.find((x, i) => i > 0 && x.prev);
-      out.push(step("→ Das Normalverfahren", "Ich schreibe nur noch die Ziffern und lasse die <b>Nullen weg</b>. " + "Der Rest wird dabei in die kleinere Einheit getauscht: 1 " + PN[Math.min((s1 ? s1.e : 0) + 1, 5)] + " Rest sind 10 " + PN[s1 ? s1.e : 0] + ", dazu kommt die nächste Ziffer. So rechnet man beim schriftlichen Dividieren Stelle für Stelle:",
-        st.map(x => line(PN[x.e] + ":", (x.prev ? T(x.prev / P10(x.e), "zr") + " " + PN[x.e] + " vom Rest, dazu " + T(x.d, "zs") + " → " : "") + T(x.part / P10(x.e), "zs") + " : " + M + " = " + T(x.qd, "zo") + " Rest " + T(x.rest / P10(x.e), "zr"))).join("") + '<div class="zbig">' + A + " : " + M + " = " + st.map(x => x.qd).join("").replace(/^0+(?=\d)/, "") + (R ? " Rest " + R : "") + "</div>", undefined, undefined,
-        s1 ? wQ("Wie sieht " + (s1.prev + " + " + s1.d * P10(s1.e)).replace(/^/, "(").replace(/$/, ")") + " : " + M + " ohne die Nullen aus?", (s1.part / P10(s1.e)) + " : " + M, [[s1.d + " : " + M, "Der Rest " + s1.prev / P10(s1.e) + " vom Schritt davor wurde vergessen. Er wird in die kleinere Einheit getauscht und mitgenommen."], [s1.prev / P10(s1.e) + " + " + s1.d + " : " + M, "Hier gilt Punkt vor Strich nicht. Die ganze Zahl " + s1.part / P10(s1.e) + " wird geteilt."]]) : undefined));
+        wQ("Wie lautet das Ergebnis von " + A + " : " + M + "?", Q + (R ? " Rest " + R : ""), [[(Q + (R ? 1 : 10)) + (R ? " Rest " + R : ""), "Die Teilergebnisse " + (sums.join(" + ") || "0") + " ergeben zusammen " + Q + "."], [R ? Q + " Rest " + (R + M) : Q + " Rest " + M, R ? "Ein Rest darf nicht so groß sein wie der Teiler. " + M + " passt noch einmal hinein. Der Rest ist " + R + "." : "Es geht auf, also bleibt kein Rest."]])));
+      const fe =Math.max(0, st.findIndex(x => x.qd > 0)), ez = st[fe].e;
+      out.push(step("Alle Rechnungen untereinander", "Ich schreibe alle Rechnungen <b>stellengerecht untereinander</b>: Einer unter Einer, Zehner unter Zehner. Die <b>Nullen</b> (orange) halten den Platz frei. Sie stehen immer ganz rechts, weil ich in " + (ez > 0 ? PN[ez] + "-Schritten teile (" + M + " · " + P10(ez) + " = " + M * P10(ez) + ")" : "Einer-Schritten teile") + (fe > 0 ? ". Vorne stehen keine Ziffern, weil " + st[0].part + " : " + M * P10(st[0].e) + " noch nicht passt" : "") + ".",
+        dgrid(st, hi, A, M, Q, R, "z") + '<div class="note">Farben: blau = Zahl aus der Aufgabe, rot = Rest, orange = Ergebnis und Nullen.</div>'));
+      const s1 = st.find(x => x.e > 0 && x.qd > 0);
+      out.push(step("→ Das Normalverfahren", "Jetzt lasse ich die <b>Nullen</b> weg. Sie sind nur noch <b>grau hinterlegt</b> zu sehen. Die Nullen stehen links und rechts vom Geteilt-Zeichen immer an derselben Stelle, darum ändert sich beim Rechnen nichts: " + (s1 ? s1.part + " : " + M * P10(s1.e) + " wird zu " + s1.part / P10(s1.e) + " : " + M + ". " : "") + "So entsteht das schriftliche Dividieren: Ich teile Stelle für Stelle, der Rest wird in die kleinere Einheit getauscht und die nächste Ziffer kommt dazu.",
+        dgrid(st, hi, A, M, Q, R, "g") + st.map(x => line(PN[x.e] + ":", (x.prev ? T(x.prev / P10(x.e), "zr") + " " + PN[x.e] + " vom Rest, dazu " + T(x.d, "zs") + " → " : "") + T(x.part / P10(x.e), "zs") + " : " + M + " = " + T(x.qd, "zo") + " Rest " + T(x.rest / P10(x.e), "zr"))).join("") + '<div class="zbig">' + A + " : " + M + " = " + st.map(x => x.qd).join("").replace(/^0+(?=\d)/, "") + (R ? " Rest " + R : "") + "</div>", undefined, undefined,
+        s1 ? wQ("Wie sieht " + s1.part + " : " + M * P10(s1.e) + " ohne die Nullen aus?", (s1.part / P10(s1.e)) + " : " + M, [[(s1.part / P10(s1.e)) + " : " + M * P10(s1.e), "Die Nullen fallen links und rechts weg. Dann wird auch aus " + M * P10(s1.e) + " wieder " + M + "."], [s1.part + " : " + M, "Die Nullen müssen auf beiden Seiten wegfallen. Aus " + s1.part + " wird " + s1.part / P10(s1.e) + "."]]) : undefined));
       const pr = sums.map(x => x * M);
       out.push(step("Probe", "<b>Probe:</b> Ich multipliziere die Teilergebnisse mit " + M + ": " + (sums.length ? sums.map(x => x + " · " + M + " = " + x * M).join("; ") : "0") + ". Zusammen: " + (pr.length ? pr.join(" + ") : "0") + (R ? " und dazu der Rest " + R : "") + " ergibt " + A + ". Das ist wieder der Dividend " + T(A, "zs") + ".",
         line("Zerlegt:", (pr.length ? pr.join(" + ") : "0") + (R ? " + " + R : "") + " = " + A) + line("Umkehraufgabe:", Q + " · " + M + (R ? " + " + R : "") + " = " + A), "good"));
@@ -11162,21 +11232,22 @@ document.querySelectorAll(".card").forEach(c => {
     const p = pick([2, 3]); let N;
     if (Math.random() < 0.4) N = ri(10, 99 * Math.pow(10, p - 1)) * 10 + 5; else N = ri(101, 9999);
     N = N % (Math.pow(10, p + 1)) + Math.pow(10, p) * ri(1, 8); if (N % 10 === 0) N += ri(1, 9);
+    const fx = (v, d) => { let t = String(v); while (t.length <= d) t = "0" + t; return d > 0 ? t.slice(0, t.length - d) + "," + t.slice(t.length - d) : t; }; /* gerundete Zahl mit allen Stellen bis zur Rundungsstelle, z. B. 7,0 */
     const xs = dec(N, p), NM = ["Ganze", "Zehntel", "Hundertstel"], corr = [], wrong = [];
     const rn = (pr, mode) => { const D = Math.pow(10, p - pr), L = Math.floor(N / D), rem = N % D; return mode === "down" ? L : mode === "up" ? L + 1 : (rem * 2 >= D ? L + 1 : L); };
     const tie = pr => { const D = Math.pow(10, p - pr); return (N % D) * 2 === D; };
     for (let pr = 0; pr < p; pr++) {
       const good = rn(pr, "r"), D = Math.pow(10, p - pr), Ln = Math.floor(N / D);
-      const line = v => xs + " ≈ " + dec(v, pr) + " (auf " + NM[pr] + " gerundet)";
+      const line = v => xs + " ≈ " + fx(v, pr) + " (auf " + NM[pr] + " gerundet)";
       corr.push(O(line(good), line(good)));
       const other = good === Ln ? Ln + 1 : Ln;
       if (tie(pr)) wrong.push(O(line(Ln), line(Ln), "Genau in der Mitte wird aufgerundet. Das ist die Konvention."));
-      else wrong.push(O(line(other), line(other), "Das ist der weiter entfernte Strich. Auf dem Zahlenstrahl liegt " + xs + " näher bei " + dec(good, pr) + "."));
+      else wrong.push(O(line(other), line(other), "Das ist der weiter entfernte Strich. Auf dem Zahlenstrahl liegt " + xs + " näher bei " + fx(good, pr) + "."));
       if (good !== Ln) wrong.push(O(line(Ln), line(Ln), "Hier wurde nur abgeschnitten. Die nächste Ziffer ist " + Math.floor((N % D) * 10 / D) + ", also wird aufgerundet."));
-      [good + 1, good - 1].forEach(v => { if (v >= 0 && v !== Ln && v !== Ln + 1) wrong.push(O(line(v), line(v), "Das ist weder " + dec(Ln, pr) + " noch " + dec(Ln + 1, pr) + ". Die Zahl liegt zwischen diesen beiden Strichen.")); });
+      [good + 1, good - 1].forEach(v => { if (v >= 0 && v !== Ln && v !== Ln + 1) wrong.push(O(line(v), line(v), "Das ist weder " + fx(Ln, pr) + " noch " + fx(Ln + 1, pr) + ". Die Zahl liegt zwischen diesen beiden Strichen.")); });
       for (let q = 0; q < p; q++) if (q !== pr) {
         const v = rn(q, "r"); if (dec(v, q) === dec(good, pr)) continue;
-        wrong.push(O(xs + " ≈ " + dec(v, q) + " (auf " + NM[pr] + " gerundet)", xs + " ≈ " + dec(v, q) + " (auf " + NM[pr] + " gerundet)", "Das ist auf " + NM[q] + " gerundet, nicht auf " + NM[pr] + "."));
+        wrong.push(O(xs + " ≈ " + fx(v, q) + " (auf " + NM[pr] + " gerundet)", xs + " ≈ " + fx(v, q) + " (auf " + NM[pr] + " gerundet)", "Das ist auf " + NM[q] + " gerundet, nicht auf " + NM[pr] + "."));
       }
     }
     const nl = window.__dz && window.__dz.nl, D1 = Math.pow(10, p - 1), L1 = Math.floor(N / D1), rem1 = N % D1;
@@ -11311,7 +11382,7 @@ document.querySelectorAll(".card").forEach(c => {
       else if (kind === "·") { const m = ri(2, 9); base = toB(A) * m; lhs = st(A) + " · " + m; }
       else if (kind === ":") { const m = ri(2, 9); base = toB(A); lhs = st(toP(base * m)) + " : " + m; }
       else { if (!S.dec) continue; const j = S.k === "geld" ? 0 : Math.max(0, ...A.map((v, i) => v ? i : -1)) === n - 1 ? n - 2 : 0; const jj = Math.max(0, A.findIndex(v => v > 0)); const d = dS(BigInt(toB(A)), BigInt(w[jj]), jj === 0 ? S.minDec : 0); if (!d) continue; const t1 = st(A) + " = " + d + " " + SY[jj]; add(corr, t1);
-        const up = dS(BigInt(toB(A)) * 10n, BigInt(w[jj]), jj === 0 ? S.minDec : 0), dn = dS(BigInt(toB(A)), BigInt(w[jj]) * 10n, jj === 0 ? S.minDec : 0); add(wrong, st(A) + " = " + up + " " + SY[jj], "Das ist zu groß. Richtig: " + st(A) + " = " + d + " " + SY[jj] + "."); add(wrong, st(A) + " = " + dn + " " + SY[jj], "Das ist zu klein. Richtig: " + st(A) + " = " + d + " " + SY[jj] + "."); continue; }
+        const up = dS(BigInt(toB(A)) * 10n, BigInt(w[jj]), jj === 0 ? S.minDec : 0), dn = dS(BigInt(toB(A)), BigInt(w[jj]) * 10n, jj === 0 ? S.minDec : 0); if (up) add(wrong, st(A) + " = " + up + " " + SY[jj], "Das ist zu groß. Richtig: " + st(A) + " = " + d + " " + SY[jj] + "."); if (dn) add(wrong, st(A) + " = " + dn + " " + SY[jj], "Das ist zu klein. Richtig: " + st(A) + " = " + d + " " + SY[jj] + "."); continue; }
       const res = kind === ":" ? toP(base) : toP(base), tx = lhs + " = " + st(res);
       add(corr, tx);
       [lowW(res) * 10, lowW(res), w[Math.max(0, res.findIndex(v => v > 0))]].forEach((dl, ix) => { const b2 = base + (ix % 2 ? -dl : dl); if (b2 > 0 && b2 !== base) add(wrong, lhs + " = " + st(toP(b2)), "Das stimmt nicht. Richtig ist " + st(res) + ". Rechne Einheit für Einheit und achte auf Übertrag und Entbündeln."); });
@@ -11480,6 +11551,7 @@ document.querySelectorAll(".card").forEach(c => {
     const grp = s => s.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     const eur = c => { const neg = c < 0; c = Math.abs(Math.round(c)); const e = Math.floor(c / 100), ct = c % 100; return (neg ? "−" : "") + grp(String(e)) + "," + String(ct).padStart(2, "0") + " €"; };
     const mt = m => String(m).replace(".", ",").replace("-", "−");
+    const kl = v => v < 0 ? "(" + sgn(v) + ")" : sgn(v); /* negative Zahl hinter einem Rechenzeichen in Klammern */
     const term = (m, n) => { let s = m === 1 ? "x" : m === -1 ? "−x" : mt(m) + "x"; if (n) s += (n < 0 ? " − " : " + ") + mt(Math.abs(n)); return s; };
     const nzi = (a, b) => { let n = 0; while (!n) n = ri(a, b); return n; };
     const gcdI = (a, b) => b ? gcdI(b, a % b) : Math.abs(a);
@@ -11496,11 +11568,11 @@ document.querySelectorAll(".card").forEach(c => {
         P("Der Startwert (y-Achsenabschnitt) ist n = " + sgn(m) + ".", "Der Startwert ist die Zahl ohne x, also n = " + sgn(n) + "."),
         P("Die Änderungsrate (Steigung) ist m = " + sgn(-m) + ".", "Das Vorzeichen ist falsch. Die Zahl vor dem x ist " + sgn(m) + "."),
         P("Der Startwert (y-Achsenabschnitt) ist n = " + sgn(-n) + ".", "Das Vorzeichen ist falsch. Die Zahl hinten ist " + sgn(n) + "."),
-        P("f(" + sgn(k) + ") = " + sgn(m * k), "Hier wurde das n vergessen. Richtig: " + sgn(m) + " · " + sgn(k) + " + " + sgn(n) + " = " + sgn(fk) + "."),
-        P("f(" + sgn(k) + ") = " + sgn(m + n + k), "Hier wurde falsch eingesetzt. Man rechnet m · x + n, also " + sgn(m) + " · " + sgn(k) + " + " + sgn(n) + " = " + sgn(fk) + "."),
+        P("f(" + sgn(k) + ") = " + sgn(m * k), "Hier wurde das n vergessen. Richtig: " + sgn(m) + " · " + kl(k) + " + " + kl(n) + " = " + sgn(fk) + "."),
+        P("f(" + sgn(k) + ") = " + sgn(m + n + k), "Hier wurde falsch eingesetzt. Man rechnet m · x + n, also " + sgn(m) + " · " + kl(k) + " + " + kl(n) + " = " + sgn(fk) + "."),
         P("f(" + sgn(k) + ") = " + sgn(m * k - n), "Das n wird addiert, nicht subtrahiert. Richtig ist f(" + sgn(k) + ") = " + sgn(fk) + "."),
         P("Der Punkt (" + sgn(k) + " | " + sgn(fk + 1) + ") liegt auf dem Graphen.", "Setze x = " + sgn(k) + " ein. Dann kommt " + sgn(fk) + " heraus, nicht " + sgn(fk + 1) + "."),
-        P("Der Punkt (" + sgn(fk) + " | " + sgn(k) + ") liegt auf dem Graphen.", "Die Koordinaten sind vertauscht. Zuerst kommt der x-Wert: (" + sgn(k) + " | " + sgn(fk) + ")."),
+        (f(fk) !== k ? P("Der Punkt (" + sgn(fk) + " | " + sgn(k) + ") liegt auf dem Graphen.", "Die Koordinaten sind vertauscht. Zuerst kommt der x-Wert: (" + sgn(k) + " | " + sgn(fk) + "). Kontrolle: f(" + sgn(fk) + ") = " + sgn(f(fk)) + ", nicht " + sgn(k) + ".") : null), /* bei m = −1 läge der vertauschte Punkt wirklich auf dem Graphen */
         P("Der Graph schneidet die y-Achse im Punkt (" + sgn(n) + " | 0).", "Auf der y-Achse ist x = 0. Der Schnittpunkt ist (0 | " + sgn(n) + ")."),
         P(m > 0 ? "Der Graph fällt." : "Der Graph steigt.", "Bei m " + (m > 0 ? "> 0" : "< 0") + " " + (m > 0 ? "steigt" : "fällt") + " der Graph."),
         P("Die Nullstelle ist x = " + sgn(n) + ".", "Bei der Nullstelle ist f(x) = 0. Man löst " + term(m, n) + " = 0."),
@@ -11510,7 +11582,7 @@ document.querySelectorAll(".card").forEach(c => {
       ];
       const r = mix(corr, wr);
       return { top: "lf", kind: "eqs", q: "Gegeben ist die lineare Funktion f(x) = " + term(m, n) + ". Welche Aussagen stimmen?" + lineSvg(m, n), corr: r.corr, wrong: r.wrong,
-        expl: () => "Bei f(x) = m · x + n ist n der Startwert (y-Achsenabschnitt): der Wert bei x = 0. m ist die Änderungsrate (Steigung): Wenn x um 1 größer wird, ändert sich f(x) um m. Einen Funktionswert findest du, indem du x einsetzt: f(" + sgn(k) + ") = " + sgn(m) + " · " + sgn(k) + " + " + sgn(n) + " = " + sgn(fk) + ". Ist m positiv, steigt der Graph, ist m negativ, fällt er." };
+        expl: () => "Bei f(x) = m · x + n ist n der Startwert (y-Achsenabschnitt): der Wert bei x = 0. m ist die Änderungsrate (Steigung): Wenn x um 1 größer wird, ändert sich f(x) um m. Einen Funktionswert findest du, indem du x einsetzt: f(" + sgn(k) + ") = " + sgn(m) + " · " + kl(k) + " + " + kl(n) + " = " + sgn(fk) + ". Ist m positiv, steigt der Graph, ist m negativ, fällt er." };
     }
 
     function lineSvg(m, n, pts, noLine) {
@@ -11534,7 +11606,7 @@ document.querySelectorAll(".card").forEach(c => {
         P("Der Startwert (y-Achsenabschnitt) ist n = " + sgn(-n) + ".", "Der Graph schneidet die y-Achse bei " + sgn(n) + "."),
         P("Die Funktionsgleichung ist f(x) = " + term(m, -n) + ".", "Das Vorzeichen von n ist falsch. Der Graph schneidet die y-Achse bei " + sgn(n) + "."),
         P("Die Funktionsgleichung ist f(x) = " + term(-m, n) + ".", "Das Vorzeichen von m ist falsch. Der Graph " + (m > 0 ? "steigt" : "fällt") + "."),
-        P("Die Funktionsgleichung ist f(x) = " + (Number.isInteger(n) ? term(n, m) : ""), "Änderungsrate und Startwert sind vertauscht. Die Zahl vor dem x ist die Änderungsrate m = " + mt(m) + "."),
+        P("Die Funktionsgleichung ist f(x) = " + term(n, m) + ".", "Änderungsrate und Startwert sind vertauscht. Die Zahl vor dem x ist die Änderungsrate m = " + mt(m) + "."),
         P(m > 0 ? "Der Graph fällt." : "Der Graph steigt.", "Die Gerade geht von links nach rechts " + (m > 0 ? "nach oben, also steigt sie" : "nach unten, also fällt sie") + "."),
         P("Wenn x um 1 größer wird, wird f(x) um " + mt(Math.abs(n)) + " " + (n > 0 ? "größer" : "kleiner") + ".", "Pro Schritt 1 nach rechts ändert sich f(x) um die Änderungsrate m = " + mt(m) + ", nicht um " + sgn(n) + ".")
       ];
@@ -11560,11 +11632,11 @@ document.querySelectorAll(".card").forEach(c => {
         P("f(x) = " + term(m, -n), "Das Vorzeichen von n ist falsch. Es ist n = " + sgn(n) + "."),
         P("f(x) = " + term(-m, n), "Das Vorzeichen von m ist falsch. Es ist m = " + sgn(m) + "."),
         P("Der Punkt (" + sgn(x3) + " | " + sgn(y3 + 1) + ") liegt auf der Geraden.", "Setze x = " + sgn(x3) + " in f(x) = " + term(m, n) + " ein. Du erhältst " + sgn(y3) + "."),
-        P("Der Punkt (" + sgn(y3) + " | " + sgn(x3) + ") liegt auf der Geraden.", "Die Koordinaten sind vertauscht. Zuerst steht der x-Wert: (" + sgn(x3) + " | " + sgn(y3) + ").")
+        (f(y3) !== x3 ? P("Der Punkt (" + sgn(y3) + " | " + sgn(x3) + ") liegt auf der Geraden.", "Die Koordinaten sind vertauscht. Zuerst steht der x-Wert: (" + sgn(x3) + " | " + sgn(y3) + "). Kontrolle: f(" + sgn(y3) + ") = " + sgn(f(y3)) + ", nicht " + sgn(x3) + ".") : null) /* bei m = −1 läge der vertauschte Punkt wirklich auf der Geraden */
       ];
       const r = mix(corr, wr);
       return { top: "lp", kind: "eqs", q: "Eine Gerade verläuft durch die Punkte " + P1 + " und " + Q1 + ". Welche Aussagen stimmen?" + ([x1, y1, x2, y2].every(v => Math.abs(v) <= 6) ? lineSvg(m, n, [{ x: x1, y: y1, l: "P" }, { x: x2, y: y2, l: "Q" }], true) : ""), corr: r.corr, wrong: r.wrong,
-        expl: () => "Die Änderungsrate (Steigung) ist Δy : Δx = (" + sgn(y2) + " − " + sgn(y1) + ") : (" + sgn(x2) + " − " + sgn(x1) + ") = " + sgn(dy) + " : " + sgn(dx) + " = " + sgn(m) + ". Dann setzt du einen Punkt in y = m · x + n ein und löst nach n auf. Das ist der Startwert: n = " + sgn(n) + ". Die Gleichung ist f(x) = " + term(m, n) + "." };
+        expl: () => "Die Änderungsrate (Steigung) ist Δy : Δx = (" + sgn(y2) + " − " + kl(y1) + ") : (" + sgn(x2) + " − " + kl(x1) + ") = " + sgn(dy) + " : " + sgn(dx) + " = " + sgn(m) + ". Dann setzt du einen Punkt in y = m · x + n ein und löst nach n auf. Das ist der Startwert: n = " + sgn(n) + ". Die Gleichung ist f(x) = " + term(m, n) + "." };
     }
 
     const tbl = (xs, ys) => '<table style="border-collapse:collapse;margin:.5rem auto;font-size:1.05em">' + '<tr><th style="border:1.5px solid var(--line,#34486a);padding:.25rem .7rem">x</th>' + xs.map(x => '<td style="border:1.5px solid var(--line,#34486a);padding:.25rem .7rem;text-align:center">' + dz(x) + "</td>").join("") + '</tr><tr><th style="border:1.5px solid var(--line,#34486a);padding:.25rem .7rem">y</th>' + ys.map(y => '<td style="border:1.5px solid var(--line,#34486a);padding:.25rem .7rem;text-align:center">' + dz(y) + "</td>").join("") + "</tr></table>";
@@ -11618,8 +11690,8 @@ document.querySelectorAll(".card").forEach(c => {
         whyType = "Je mehr Arbeiter, desto weniger Tage. Doppelt so viele Arbeiter brauchen nur halb so viele Tage. Das ist antiproportional.";
         how = "Erst auf 1 Arbeiter umrechnen (mal " + a + "), dann auf " + b + " Arbeiter (durch " + b + ").";
       }
-      const corr = [P(typeOk), P("Das Ergebnis ist " + dz(res) + U + "."), P(oneOk), P("Rechnung: " + ruleOk)];
-      const wr = [P(typeBad, whyType), P("Das Ergebnis ist " + dz(w1) + U + ".", "Hier wurde mit der falschen Zuordnung gerechnet. " + whyType + " Richtig ist " + dz(res) + U + "."), P("Das Ergebnis ist " + dz(w2) + U + ".", "Hier wurde addiert oder subtrahiert. Beim Hoch- und Runterrechnen rechnet man mit mal und geteilt. Richtig ist " + dz(res) + U + "."), P("Das Ergebnis ist " + dz(w3) + U + ".", "Das stimmt nicht. " + how + " Richtig ist " + dz(res) + U + "."), P("Rechnung: " + ruleBad, "Hier wurde mit der falschen Zuordnung gerechnet. " + whyType), P(oneBad, "Das passt nicht zur Aufgabe. Richtig: " + oneOk)];
+      const corr = [P(typeOk), P("Das Ergebnis ist " + dz(res) + U + "."), P(oneOk), P("Passende Rechnung zur Aufgabe: " + ruleOk)];
+      const wr = [P(typeBad, whyType), P("Das Ergebnis ist " + dz(w1) + U + ".", "Hier wurde mit der falschen Zuordnung gerechnet. " + whyType + " Richtig ist " + dz(res) + U + "."), P("Das Ergebnis ist " + dz(w2) + U + ".", "Hier wurde addiert oder subtrahiert. Beim Hoch- und Runterrechnen rechnet man mit mal und geteilt. Richtig ist " + dz(res) + U + "."), P("Das Ergebnis ist " + dz(w3) + U + ".", "Das stimmt nicht. " + how + " Richtig ist " + dz(res) + U + "."), P("Passende Rechnung zur Aufgabe: " + ruleBad, "Die Rechnung passt nicht zur Aufgabe: Hier wurde mit der falschen Zuordnung gerechnet. " + whyType), P(oneBad, "Das passt nicht zur Aufgabe. Richtig: " + oneOk)];
       const r = mix(corr, wr);
       return { top: "dreis", kind: "eqs", q: q + " Welche Aussagen stimmen?" + (anti ? qDrei("Arbeiter", "Tage", a, b, days, "", "") : qDrei("Hefte", "Preis in €", a, b, dz(paV), "", "")), corr: r.corr, wrong: r.wrong, expl: () => whyType + " " + how + " " + oneOk + " Ergebnis: " + dz(res) + U + "." };
     }
@@ -11649,13 +11721,13 @@ document.querySelectorAll(".card").forEach(c => {
         const N = G - W;
         q = "Eine Jacke kostet " + G + " €. Es gibt " + p + " % Rabatt. Welche Aussagen stimmen?";
         corr = [P("Der Rabatt beträgt " + W + " €."), P("Die Jacke kostet danach " + N + " €."), P("Der neue Preis entspricht " + (100 - p) + " % des alten Preises."), P("Man rechnet " + G + " · " + dz((100 - p) / 100) + " = " + N + ".")];
-        wr = [P("Die Jacke kostet danach " + W + " €.", W + " € ist der Rabatt. Der neue Preis ist " + G + " − " + W + " = " + N + " €."), P("Die Jacke kostet danach " + (G + W) + " €.", "Ein Rabatt macht billiger. Man zieht ab: " + G + " − " + W + " = " + N + " €."), P("Die Jacke kostet danach " + (G - p) + " €.", "Hier wurden " + p + " € statt " + p + " % abgezogen. " + p + " % von " + G + " € sind " + W + " €."), P("Der neue Preis entspricht " + p + " % des alten Preises.", "Es werden " + p + " % abgezogen. Der neue Preis entspricht " + (100 - p) + " %."), P("Der Rabatt beträgt " + N + " €.", "Der Rabatt ist der Prozentwert " + p + " % von " + G + " €, also " + W + " €."), P("Man rechnet " + G + " · " + dz(1 + p / 100) + " = " + dz(G * (1 + p / 100)) + ".", "Der Faktor " + dz(1 + p / 100) + " gehört zu einer Preiserhöhung. Bei Rabatt rechnet man mit " + dz((100 - p) / 100) + ".")];
+        wr = [P("Die Jacke kostet danach " + W + " €.", W + " € ist der Rabatt. Der neue Preis ist " + G + " − " + W + " = " + N + " €."), P("Die Jacke kostet danach " + (G + W) + " €.", "Ein Rabatt macht billiger. Man zieht ab: " + G + " − " + W + " = " + N + " €."), P("Die Jacke kostet danach " + (G - p) + " €.", "Hier wurden " + p + " € statt " + p + " % abgezogen. " + p + " % von " + G + " € sind " + W + " €."), P("Der neue Preis entspricht " + p + " % des alten Preises.", "Es werden " + p + " % abgezogen. Der neue Preis entspricht " + (100 - p) + " %."), P("Der Rabatt beträgt " + N + " €.", "Der Rabatt ist der Prozentwert " + p + " % von " + G + " €, also " + W + " €."), P("Den neuen Preis berechnet man so: " + G + " · " + dz(1 + p / 100) + " = " + dz(G * (1 + p / 100)) + ".", "Der Faktor " + dz(1 + p / 100) + " gehört zu einer Preiserhöhung. Bei Rabatt rechnet man mit " + dz((100 - p) / 100) + ".")];
         ex = p + " % von " + G + " € sind " + W + " €. Das ist der Rabatt. Der neue Preis ist " + G + " € − " + W + " € = " + N + " €. Mit einem Faktor: " + (100 - p) + " % = " + dz((100 - p) / 100) + ", also " + G + " · " + dz((100 - p) / 100) + " = " + N + ".";
       } else {
         const N = G + W;
         q = "Ein Fahrrad kostet " + G + " €. Der Preis wird um " + p + " % erhöht. Welche Aussagen stimmen?";
         corr = [P("Der Preis steigt um " + W + " €."), P("Das Fahrrad kostet danach " + N + " €."), P("Der neue Preis entspricht " + (100 + p) + " % des alten Preises."), P("Man rechnet " + G + " · " + dz((100 + p) / 100) + " = " + N + ".")];
-        wr = [P("Das Fahrrad kostet danach " + W + " €.", W + " € ist nur die Erhöhung. Der neue Preis ist " + G + " + " + W + " = " + N + " €."), P("Das Fahrrad kostet danach " + (G - W) + " €.", "Bei einer Erhöhung addiert man: " + G + " + " + W + " = " + N + " €."), P("Das Fahrrad kostet danach " + (G + p) + " €.", "Hier wurden " + p + " € statt " + p + " % addiert. " + p + " % von " + G + " € sind " + W + " €."), P("Der neue Preis entspricht " + p + " % des alten Preises.", "Der neue Preis entspricht " + (100 + p) + " % des alten Preises, denn zu den 100 % kommen " + p + " % dazu."), P("Der neue Preis entspricht " + (100 - p) + " % des alten Preises.", "Bei einer Erhöhung sind es mehr als 100 %, nämlich " + (100 + p) + " %."), P("Man rechnet " + G + " · " + dz(p / 100) + " = " + W + ".", "Das ist nur die Erhöhung. Der neue Preis ist " + G + " · " + dz((100 + p) / 100) + " = " + N + ".")];
+        wr = [P("Das Fahrrad kostet danach " + W + " €.", W + " € ist nur die Erhöhung. Der neue Preis ist " + G + " + " + W + " = " + N + " €."), P("Das Fahrrad kostet danach " + (G - W) + " €.", "Bei einer Erhöhung addiert man: " + G + " + " + W + " = " + N + " €."), P("Das Fahrrad kostet danach " + (G + p) + " €.", "Hier wurden " + p + " € statt " + p + " % addiert. " + p + " % von " + G + " € sind " + W + " €."), P("Der neue Preis entspricht " + p + " % des alten Preises.", "Der neue Preis entspricht " + (100 + p) + " % des alten Preises, denn zu den 100 % kommen " + p + " % dazu."), P("Der neue Preis entspricht " + (100 - p) + " % des alten Preises.", "Bei einer Erhöhung sind es mehr als 100 %, nämlich " + (100 + p) + " %."), P("Den neuen Preis berechnet man so: " + G + " · " + dz(p / 100) + " = " + W + ".", "Das ist nur die Erhöhung. Der neue Preis ist " + G + " · " + dz((100 + p) / 100) + " = " + N + ".")];
         ex = p + " % von " + G + " € sind " + W + " €. Der neue Preis ist " + G + " € + " + W + " € = " + N + " €. Mit einem Faktor: " + (100 + p) + " % = " + dz((100 + p) / 100) + ", also " + G + " · " + dz((100 + p) / 100) + " = " + N + ".";
       }
       const r = mix(corr, wr);
@@ -11758,16 +11830,16 @@ document.querySelectorAll(".card").forEach(c => {
     function mi() {
       const n = pick([2, 3, 4, 5, 6, 8]), z = 1, k = ri(2, 4), m = n - z, nk = Math.pow(n, k), mk = Math.pow(m, k);
       const ev = n === 6 ? "eine 6" : n === 2 ? "Kopf" : "einen Treffer";
-      const corr = [P("Die Wahrscheinlichkeit für kein Treffer in allen " + k + " Versuchen ist " + fz(mk, nk) + "."), P("Die Wahrscheinlichkeit für mindestens einen Treffer ist " + fz(nk - mk, nk) + "."), P("Das Gegenereignis von „mindestens ein Treffer“ ist „kein Treffer“."), P("Die Wahrscheinlichkeit für mindestens einen Treffer ist größer als die für einen Treffer bei einem einzigen Versuch.")];
+      const corr = [P("Die Wahrscheinlichkeit für keinen Treffer in allen " + k + " Versuchen ist " + fz(mk, nk) + "."), P("Die Wahrscheinlichkeit für mindestens einen Treffer ist " + fz(nk - mk, nk) + "."), P("Das Gegenereignis von „mindestens ein Treffer“ ist „kein Treffer“."), P("Die Wahrscheinlichkeit für mindestens einen Treffer ist größer als die für einen Treffer bei einem einzigen Versuch.")];
       const wrong = [];
       wrong.push(P("Die Wahrscheinlichkeit für mindestens einen Treffer ist " + fz(k * z, n) + ".", "Hier wurde addiert. Bei mehreren Versuchen würden Treffer doppelt gezählt. Man rechnet über das Gegenereignis."));
-      wrong.push(P("Die Wahrscheinlichkeit für mindestens einen Treffer ist " + fz(mk, nk) + ".", "Das ist die Wahrscheinlichkeit für kein Treffer. Man muss sie noch von 1 abziehen."));
-      wrong.push(P("Die Wahrscheinlichkeit für kein Treffer in allen " + k + " Versuchen ist " + fz(k * m, n) + ".", "Hier wurde addiert. Bei „und“ mit unabhängigen Versuchen multipliziert man: " + k + " mal " + fz(m, n) + "."));
+      wrong.push(P("Die Wahrscheinlichkeit für mindestens einen Treffer ist " + fz(mk, nk) + ".", "Das ist die Wahrscheinlichkeit für keinen Treffer. Man muss sie noch von 1 abziehen."));
+      wrong.push(P("Die Wahrscheinlichkeit für keinen Treffer in allen " + k + " Versuchen ist " + fz(k * m, n) + ".", "Hier wurde addiert. Bei „und“ mit unabhängigen Versuchen multipliziert man: " + k + " mal " + fz(m, n) + "."));
       wrong.push(P("Das Gegenereignis von „mindestens ein Treffer“ ist „genau ein Treffer“.", "Das Gegenteil von „mindestens einem“ ist „keiner“."));
       wrong.push(P("Mit " + k + " Versuchen ist ein Treffer sicher.", "Die Wahrscheinlichkeit ist " + pc(nk - mk, nk) + ", das ist kleiner als 100 %."));
       if (fz(nk - mk, k * n) !== fz(nk - mk, nk)) wrong.push(P("Die Wahrscheinlichkeit für mindestens einen Treffer ist " + fz(nk - mk, k * n) + ".", "Der Nenner ist " + n + "<sup>" + k + "</sup> = " + nk + ", nicht " + k + " · " + n + "."));
       wrong.push(P("Die Wahrscheinlichkeit für mindestens einen Treffer ist kleiner als die für einen Treffer bei einem einzigen Versuch.", "Mit mehr Versuchen wird die Chance größer, nicht kleiner."));
-      return { top: "wmi", kind: "eqs", q: "Bei einem Versuch ist die Wahrscheinlichkeit für " + ev + " gleich " + fz(z, n) + ". Es werden " + k + " Versuche unabhängig durchgeführt. Welche Aussagen stimmen?", corr: nrm(corr), wrong: nrm(wrong), expl: () => "Mindestens ein Treffer ist 1 minus kein Treffer. Kein Treffer in k Versuchen: Die Wahrscheinlichkeit für kein Treffer bei einem Versuch wird k-mal multipliziert (Produktregel)." };
+      return { top: "wmi", kind: "eqs", q: "Bei einem Versuch ist die Wahrscheinlichkeit für " + ev + " gleich " + fz(z, n) + ". Es werden " + k + " Versuche unabhängig durchgeführt. Welche Aussagen stimmen?", corr: nrm(corr), wrong: nrm(wrong), expl: () => "Mindestens ein Treffer ist 1 minus kein Treffer. Kein Treffer in k Versuchen: Die Wahrscheinlichkeit für keinen Treffer bei einem Versuch wird k-mal multipliziert (Produktregel)." };
     }
     /* Pfadregeln */
     function pf() {
@@ -11795,7 +11867,7 @@ document.querySelectorAll(".card").forEach(c => {
       const corr = [P("Es haben " + anb + " Personen A, aber nicht B."), P("Es haben " + nanb + " Personen weder A noch B."), P("P(A und B) = " + fz(ab, g) + "."), P("P(A oder B) = " + fz(u, g) + "."), P("Es haben " + (g - a) + " Personen nicht A."), P("Die Summe der vier inneren Felder ist " + g + ".")];
       const wrong = [];
       wrong.push(P("Es haben " + (a + ab) + " Personen A, aber nicht B.", "Man muss die Personen mit A und B von " + a + " abziehen, nicht addieren: " + a + " − " + ab + " = " + anb + "."));
-      wrong.push(P("Es haben " + (g - a - b) + " Personen weder A noch B.", "Die Personen mit beiden Eigenschaften wurden doppelt abgezogen. Richtig: " + (g - u) + "."));
+      if (g - a - b >= 0) wrong.push(P("Es haben " + (g - a - b) + " Personen weder A noch B.", "Die Personen mit beiden Eigenschaften wurden doppelt abgezogen. Richtig: " + (g - u) + "."));
       wrong.push(P("P(A und B) = " + fz(a, g) + ".", "Das ist P(A), die ganze Zeile. Für „und“ zählt nur das Feld in der Mitte: " + fz(ab, g) + "."));
       wrong.push(P("P(A oder B) = " + fz(a + b, g) + ".", "Die Personen mit beidem sind doppelt gezählt. Man zählt drei Felder: " + fz(u, g) + "."));
       if (b !== g - a) wrong.push(P("Es haben " + b + " Personen nicht A.", "Das sind die Personen mit B. Nicht A sind " + (g - a) + "."));
@@ -11834,17 +11906,17 @@ document.querySelectorAll(".card").forEach(c => {
     }
     /* Argumentieren: Fehlschluss, große Zahlen, Erwartungswert */
     function ar() {
-      const k = ri(3, 7), ein = ri(1, 4), n = pick([2, 3, 4, 5, 6]), z = 1, gew = Math.max(ein + 1, Math.round(ein * n * pick([0.6, 0.8, 1, 1.2, 1.5]))), num = gew * z - ein * n, E = num / n, Es = (Math.round(E * 100) / 100).toFixed(2).replace(".", ",").replace("-", "−");
-      const corr = [P("Die Münze hat kein Gedächtnis: Nach " + k + "-mal Kopf ist die Wahrscheinlichkeit für Kopf im nächsten Wurf wieder 1/2."), P("Bei sehr vielen Würfen liegt die relative Häufigkeit für Kopf nahe bei 1/2."), P("Eine bestimmte Folge aus " + k + " Würfen hat immer die Wahrscheinlichkeit 1 : " + Math.pow(2, k) + "."), P("Der Erwartungswert pro Spiel ist " + Es + " €."), P(num === 0 ? "Das Spiel ist fair." : num < 0 ? "Auf lange Sicht verliert der Spieler Geld." : "Auf lange Sicht gewinnt der Spieler Geld.")];
+      const k = ri(3, 7), ein = ri(1, 4), n = pick([2, 3, 4, 5, 6]), z = 1, gew = Math.max(ein + 1, Math.round(ein * n * pick([0.6, 0.8, 1, 1.2, 1.5]))), num = gew * z - ein * n, E = num / n, Es = ((num * 100) % n === 0 ? "" : "etwa ") + (Math.round(E * 100) / 100).toFixed(2).replace(".", ",").replace("-", "−");
+      const corr = [P("Die Münze hat kein Gedächtnis: Nach " + k + "-mal Kopf ist die Wahrscheinlichkeit für Kopf im nächsten Wurf wieder 1/2."), P("Bei sehr vielen Würfen liegt die relative Häufigkeit für Kopf nahe bei 1/2."), P("Eine bestimmte Folge aus " + k + " Würfen hat immer die Wahrscheinlichkeit 1/" + Math.pow(2, k) + "."), P("Der Erwartungswert pro Spiel ist " + Es + " €."), P(num === 0 ? "Das Spiel ist fair." : num < 0 ? "Auf lange Sicht verliert der Spieler Geld." : "Auf lange Sicht gewinnt der Spieler Geld.")];
       const wrong = [];
       wrong.push(P("Nach " + k + "-mal Kopf ist Zahl jetzt wahrscheinlicher, denn es muss sich ausgleichen.", "Die Würfe sind unabhängig. Es gibt keinen Ausgleich im nächsten Wurf."));
       wrong.push(P("Nach " + k + "-mal Kopf ist Kopf im nächsten Wurf wahrscheinlicher, denn die Münze ist „heiß“.", "Die Münze hat kein Gedächtnis. Die Wahrscheinlichkeit bleibt 1/2."));
       wrong.push(P("Nach 10 Würfen muss genau fünfmal Kopf gekommen sein.", "Das Gesetz der großen Zahlen gilt für viele Versuche und nur für die relative Häufigkeit. Bei 10 Würfen kann auch 7-mal Kopf kommen."));
-      wrong.push(P("Die Folge „" + new Array(k).fill("Kopf").join(" ") + "“ ist seltener als jede andere bestimmte Folge aus " + k + " Würfen.", "Jede bestimmte Folge hat dieselbe Wahrscheinlichkeit 1 : " + Math.pow(2, k) + "."));
+      wrong.push(P("Die Folge „" + new Array(k).fill("Kopf").join(" ") + "“ ist seltener als jede andere bestimmte Folge aus " + k + " Würfen.", "Jede bestimmte Folge hat dieselbe Wahrscheinlichkeit 1/" + Math.pow(2, k) + "."));
       wrong.push(P("Der Erwartungswert pro Spiel ist " + (gew - ein) + " €.", "Das ist der Gewinn bei einem Gewinnfeld. Man muss mit der Wahrscheinlichkeit gewichten und den Verlust im anderen Fall berücksichtigen."));
       wrong.push(P(num === 0 ? "Das Spiel ist unfair." : "Das Spiel ist fair.", num === 0 ? "Der Erwartungswert ist 0, also ist das Spiel fair." : "Der Erwartungswert ist " + Es + " €, nicht 0. Also ist es nicht fair."));
       wrong.push(P("Der Erwartungswert sagt genau, wie viel man bei einem einzelnen Spiel gewinnt.", "Bei einem einzelnen Spiel gewinnt oder verliert man einen bestimmten Betrag. Der Erwartungswert beschreibt den Durchschnitt auf lange Sicht."));
-      return { top: "war", kind: "eqs", q: "Eine Münze zeigt " + k + "-mal hintereinander Kopf. Außerdem gibt es ein Spiel: Einsatz " + ein + " €, ein Glücksrad hat " + n + " gleich große Felder, davon ist 1 Feld ein Gewinn. Bei einem Gewinn gibt es " + gew + " € Auszahlung. Welche Aussagen stimmen?", corr: nrm(corr), wrong: nrm(wrong), expl: () => "Der Zufall hat kein Gedächtnis: Versuche sind unabhängig. Nur die relative Häufigkeit nähert sich bei sehr vielen Versuchen der Wahrscheinlichkeit. Erwartungswert: " + (gew - ein) + " · 1/" + n + " + (−" + ein + ") · " + (n - 1) + "/" + n + " = " + Es + " €." };
+      return { top: "war", kind: "eqs", q: "Eine Münze zeigt " + k + "-mal hintereinander Kopf. Außerdem gibt es ein Spiel: Einsatz " + ein + " €, ein Glücksrad hat " + n + " gleich große Felder, davon ist 1 Feld ein Gewinn. Bei einem Gewinn gibt es " + gew + " € Auszahlung. Welche Aussagen stimmen?", corr: nrm(corr), wrong: nrm(wrong), expl: () => "Der Zufall hat kein Gedächtnis: Versuche sind unabhängig. Nur die relative Häufigkeit nähert sich bei sehr vielen Versuchen der Wahrscheinlichkeit. Erwartungswert: " + (gew - ein) + " · 1/" + n + " + (−" + ein + ") · " + (n - 1) + "/" + n + ((num * 100) % n === 0 ? " = " + Es : " ≈ " + Es.replace("etwa ", "")) + " €." };
     }
     return { la: la, mi: mi, pf: pf, vf: vf, bd: bd, te: te, ar: ar };
   })();
@@ -12130,7 +12202,7 @@ document.querySelectorAll(".card").forEach(c => {
         const last = st.team ? st.idx >= nQ() - 1 : (st.lives <= 0 || st.idx >= N - 1);
         $("Next").hidden = false; $("Next").textContent = last ? "Ergebnis ansehen" : "Weiter";
       }
-      if (why.length) fb += '<div class="note">' + why.map(o => "<div>" + o.h + ": " + o.why + "</div>").join("") + "</div>";
+      if (why.length) fb += '<div class="note">' + why.map(o => "<div>" + String(o.h).replace(/\.\s*$/, "") + ": " + o.why + "</div>").join("") + "</div>";
       fb += '<div class="zeq"><span class="usmall">Erklärung:</span>' + Q.expl + "</div>";
       $("Fb").innerHTML = fb; $("Check").hidden = true; if ($("Show")) $("Show").hidden = true; $("Next").focus({ preventScroll: true });
     }

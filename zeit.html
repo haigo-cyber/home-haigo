@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seifferts Zeit</title>
+<!--SZ-LINUX-->
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1f2328;--mut:#6b7280;--line:#d9d6cc;--acc:#2f6f9f;--acc-ink:#fff;--ok:#2e7d4f;--bad:#b3402f;--soll:#c0392b;
+--c0:#2f6f9f;--c1:#e08a1e;--c2:#4c9a5a;--c3:#8e5bb5;--c4:#c0504d;--c5:#3aa6a6;--c6:#a68a3a;--c7:#7a7a7a}
+@media(prefers-color-scheme:dark){:root{--bg:#1b1d20;--card:#25282c;--tx:#e6e6e6;--mut:#9aa1a9;--line:#3a3f45;--acc:#5aa3d6;--acc-ink:#101214;--ok:#5fc283;--bad:#ef7a68;--soll:#ef7a68}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0 8px 0 0}
+nav{display:flex;flex-wrap:wrap;gap:4px}
+nav button{border:1px solid transparent;background:none;color:var(--tx);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{background:var(--acc);color:var(--acc-ink)}
+main{max-width:1000px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card h2{font-size:16px;margin:0 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--bg);border-radius:8px;padding:10px 12px}
+.kpi b{display:block;font-size:22px}
+.kpi span{color:var(--mut);font-size:13px}
+label{display:block;font-size:13px;color:var(--mut);margin-bottom:2px}
+input,select,textarea{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--tx)}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:10px}
+button.b{background:var(--acc);color:var(--acc-ink);border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font:inherit}
+button.g{background:none;border:1px solid var(--line);color:var(--tx);border-radius:6px;padding:7px 12px;cursor:pointer;font:inherit}
+button.s{padding:2px 8px;font-size:13px}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--mut);font-weight:600}
+td.n,th.n{text-align:right;white-space:nowrap}
+.pos{color:var(--ok)}.neg{color:var(--bad)}
+.timer{font-size:28px;font-variant-numeric:tabular-nums}
+svg{width:100%;height:auto;display:block}
+svg text{fill:var(--tx);font-size:11px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.hide{display:none}
+.chip{margin-left:auto;font-size:13px;border:1px solid var(--line);border-radius:14px;padding:3px 10px;cursor:pointer;background:none;color:var(--tx)}
+.mut{color:var(--mut);font-size:13px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.bar select,.bar input{width:auto}
+@media print{header,.noprint{display:none!important}body{background:#fff;color:#000}.card{border:0;padding:0}main{max-width:none}svg text{fill:#000}}
+</style>
+</head>
+<body>
+<header>
+<h1>Seifferts Zeit</h1>
+<nav id="nav"></nav>
+</header>
+<main id="main"></main>
+<script>
+"use strict";
+const LX=window.SZ_LINUX||null;
+const KEY='seifferts_zeit_v1';
+const COLS=['--c0','--c1','--c2','--c3','--c4','--c5','--c6','--c7'];
+const MN=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
+let S=load();
+let ui={tab:'erfassen',edit:null,month:todayIso().slice(0,7),year:+todayIso().slice(0,4),fc:'',drive:null};
+
+function defaults(){return{entries:[],free:[],days:{},set:{wd:[5,5,5,5,5],unit:45,
+cats:['Unterricht','Vorbereitung','Korrektur','Konferenz und Gremien','Inklusion, NTA, AO-SF','Beratung und Elterngespräche','Aufsicht und Vertretung','Organisation','Fortbildung','Sonstiges'],
+schools:['EvT','Herder']}}}
+function norm(j){const d=defaults();const r={...d,...j,set:{...d.set,...(j.set||{})}};if(!r.days||typeof r.days!=='object')r.days={};
+ if(j.set&&j.set.soll!=null&&!j.set.wd)r.set.wd=Array(5).fill(j.set.soll/5);
+ if(!Array.isArray(r.set.wd)||r.set.wd.length!==5)r.set.wd=[5,5,5,5,5];delete r.set.soll;return r}
+function load(){
+ try{if(LX&&LX.init&&LX.init.entries)return norm(LX.init)}catch(e){}
+ if(LX)return defaults();
+ try{const j=JSON.parse(localStorage.getItem(KEY));if(j&&j.entries)return norm(j)}catch(e){}return defaults()}
+let saveT=null;
+function save(){
+ if(LX){clearTimeout(saveT);saveT=setTimeout(()=>{fetch(LX.base+'/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)}).catch(()=>{})},400);return}
+ try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+if(LX)addEventListener('pagehide',()=>{if(saveT){clearTimeout(saveT);saveT=null;fetch(LX.base+'/api/state',{method:'PUT',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(S)})}});
+function pad(n){return String(n).padStart(2,'0')}
+function isoOf(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function todayIso(){return isoOf(new Date())}
+function dOf(iso){const [y,m,d]=iso.split('-').map(Number);return new Date(y,m-1,d)}
+function addDays(iso,n){const d=dOf(iso);d.setDate(d.getDate()+n);return isoOf(d)}
+function fmtDate(iso){const d=dOf(iso);return WD[d.getDay()]+', '+pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()}
+function fu0(u){return String(Math.round(u*100)/100)}
+function fu(u){u=Math.round(u*10)/10;return Number.isInteger(u)?String(u):u.toFixed(1).replace('.',',')}
+function sg(u){return (u>0.04?'+':'')+fu(u)}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function mondayOf(iso){const d=dOf(iso);const w=(d.getDay()+6)%7;d.setDate(d.getDate()-w);return isoOf(d)}
+function kw(iso){const d=dOf(iso);d.setDate(d.getDate()+3-((d.getDay()+6)%7));const w1=new Date(d.getFullYear(),0,4);return 1+Math.round(((d-w1)/864e5-3+((w1.getDay()+6)%7))/7)}
+function zeitH(u){return fu(u*S.set.unit/60)}
+
+/* Soll und Ist, alles in Schulstunden */
+function isFree(iso){return S.free.some(f=>iso>=f.from&&iso<=f.to)}
+function sollWeek(){return S.set.wd.reduce((a,b)=>a+(+b||0),0)}
+function sollDefault(iso){const w=dOf(iso).getDay();if(w==0||w==6||isFree(iso))return 0;return +S.set.wd[w-1]||0}
+function sollDay(iso){const v=S.days[iso];return v!=null?v:sollDefault(iso)}
+function istDay(iso){let s=0;for(const e of S.entries)if(e.date===iso)s+=e.u;return s}
+function sumRange(a,b,fn){let s=0;for(let d=a;d<=b;d=addDays(d,1))s+=fn(d);return s}
+function monthRange(ym){const [y,m]=ym.split('-').map(Number);return[ym+'-01',ym+'-'+pad(new Date(y,m,0).getDate())]}
+function firstDate(){return S.entries.reduce((a,e)=>!a||e.date<a?e.date:a,'')}
+function entriesOf(ym){return S.entries.filter(e=>e.date.startsWith(ym)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0)}
+function byCat(list){const m={};list.forEach(e=>m[e.cat]=(m[e.cat]||0)+e.u);return Object.entries(m).sort((a,b)=>b[1]-a[1])}
+
+function $(s){return document.querySelector(s)}
+const TABS=[['erfassen','Erfassen'],['tage','Tage'],['liste','Liste'],['diagramme','Diagramme'],['bericht','Bericht'],['daten','Einstellungen und Daten']];
+function nav(){$('#nav').innerHTML=TABS.map(t=>`<button class="${ui.tab===t[0]?'on':''}" onclick="go('${t[0]}')">${t[1]}</button>`).join('')+(LX?`<button class="chip" id="chip" onclick="chipClick()">Drive: ...</button>`:'');chipShow()}
+function go(t){ui.tab=t;render()}
+function render(){nav();({erfassen:vErfassen,tage:vTage,liste:vListe,diagramme:vDiagramme,bericht:vBericht,daten:vDaten})[ui.tab]();}
+
+/* Erfassen */
+function opts(list,sel){return list.map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('')}
+function kpis(){
+ const t=todayIso(),mo=mondayOf(t),so=addDays(mo,6),[ma,mb]=monthRange(t.slice(0,7)),f=firstDate();
+ const saldo=f?sumRange(f,t,istDay)-sumRange(f,t,sollDay):0;
+ const wi=sumRange(mo,so,istDay),ws=sumRange(mo,so,sollDay),mi=sumRange(ma,mb,istDay),ms=sumRange(ma,mb,sollDay);
+ return `<div class="grid">
+ <div class="kpi"><b>${fu(istDay(t))}</b><span>heute (Soll ${fu(sollDay(t))})</span></div>
+ <div class="kpi"><b>${fu(wi)}</b><span>diese Woche (Soll ${fu(ws)})</span></div>
+ <div class="kpi"><b>${fu(mi)}</b><span>dieser Monat (Soll ${fu(ms)})</span></div>
+ <div class="kpi"><b class="${saldo>=-0.04?'pos':'neg'}">${sg(saldo)}</b><span>Saldo seit ${f?fmtDate(f):'Beginn'}</span></div></div>`}
+function vErfassen(){
+ const e=ui.edit?S.entries.find(x=>x.id===ui.edit):null;
+ $('#main').innerHTML=`
+ <div class="card"><h2>Übersicht (in Schulstunden)</h2>${kpis()}<p class="mut">Eine Schulstunde sind ${S.set.unit} Minuten, das Soll ${fu(sollWeek())} Schulstunden je Woche. Das Soll jedes einzelnen Tages können Sie im Reiter Tage oder beim Erfassen ändern; Standardwerte je Wochentag, Ferien und freie Tage stehen unter Einstellungen.</p></div>
+ <div class="card"><h2>${e?'Eintrag ändern':'Schulstunden erfassen'}</h2>
+ <div class="row">
+ <div><label>Datum</label><input type="date" id="fd" value="${e?e.date:todayIso()}" onchange="$('#fsoll').value=fu0(sollDay(this.value))"></div>
+ <div><label>Soll dieses Tages (Schulstunden)</label><input type="number" min="0" step="0.5" id="fsoll" value="${fu0(sollDay(e?e.date:todayIso()))}"></div>
+ <div><label>Schulstunden (ganze Zahl)</label><input type="number" min="1" step="1" id="fu" value="${e?e.u:''}" onkeydown="if(event.key==='Enter')saveEntry()"></div>
+ <div><label>Tätigkeit</label><select id="fc">${opts(S.set.cats,e?.cat)}</select></div>
+ <div><label>Schule</label><select id="fsch">${opts(S.set.schools,e?.school)}</select></div></div>
+ <div class="row"><div style="grid-column:1/-1"><label>Notiz</label><input id="fn" value="${esc(e?.note||'')}" placeholder="z. B. AO-SF Gutachten Klasse 5" onkeydown="if(event.key==='Enter')saveEntry()"></div></div>
+ <button class="b" onclick="saveEntry()">${e?'Änderung speichern':'Speichern'}</button> ${e?'<button class="g" onclick="ui.edit=null;render()">Abbrechen</button>':''}</div>
+ ${recent()}`;
+ if(!e)$('#fu').focus();
+}
+function recent(){const l=[...S.entries].reverse().sort((a,b)=>b.date<a.date?-1:b.date>a.date?1:0).slice(0,8);if(!l.length)return'';
+ return`<div class="card"><h2>Zuletzt erfasst</h2><table>${l.map(rowHtml).join('')}</table></div>`}
+function rowHtml(e){return`<tr><td>${fmtDate(e.date)}</td><td>${esc(e.cat)}<div class="mut">${esc(e.school)}${e.note?', '+esc(e.note):''}</div></td><td class="n">${fu(e.u)} Std.</td><td class="n noprint"><button class="g s" onclick="editE('${e.id}')">Ändern</button> <button class="g s" onclick="delE('${e.id}')">Löschen</button></td></tr>`}
+function saveEntry(){
+ const u=Number($('#fu').value),date=$('#fd').value;
+ if(!date||!Number.isInteger(u)||u<1){alert('Bitte ein Datum und eine ganze Zahl an Schulstunden (mindestens 1) angeben.');return}
+ const rec={id:ui.edit||uid(),date,u,cat:$('#fc').value,school:$('#fsch').value,note:$('#fn').value.trim()};
+ const sv=$('#fsoll').value;if(sv!==''&&Number(sv)>=0)setSoll(date,sv,true);
+ const i=S.entries.findIndex(x=>x.id===rec.id);if(i>=0)S.entries[i]=rec;else S.entries.push(rec);
+ ui.edit=null;save();render();
+}
+function editE(id){ui.edit=id;ui.tab='erfassen';render();scrollTo(0,0)}
+function delE(id){if(confirm('Eintrag löschen?')){S.entries=S.entries.filter(e=>e.id!==id);save();render()}}
+
+/* Tage: Soll und Ist je Tag, Soll frei änderbar */
+function setSoll(iso,val,quiet){
+ if(val===''||val==null||Number(val)===sollDefault(iso)){delete S.days[iso]}
+ else{const v=Number(val);if(!(v>=0)){if(!quiet)alert('Bitte eine Zahl ab 0 eingeben.');return}S.days[iso]=v}
+ save();if(!quiet)vTage()}
+function resetSoll(iso){delete S.days[iso];save();vTage()}
+function vTage(){
+ const [a,b]=monthRange(ui.month);let rows='',ti=0,ts=0;
+ for(let d=a;d<=b;d=addDays(d,1)){const w=dOf(d).getDay(),we=w==0||w==6,i=istDay(d),s=sollDay(d),ov=S.days[d]!=null;ti+=i;ts+=s;
+  rows+=`<tr ${we?'style="opacity:.6"':''}><td>${fmtDate(d)}${isFree(d)?' <span class="mut">frei</span>':''}</td>
+  <td class="n"><input type="number" min="0" step="0.5" style="width:90px;text-align:right" value="${fu0(s)}" onchange="setSoll('${d}',this.value)" title="Standard: ${fu(sollDefault(d))}"></td>
+  <td class="n">${fu(i)}</td><td class="n ${i-s>=-0.04?'pos':'neg'}">${i||s?sg(i-s):''}</td>
+  <td class="n">${ov?`<button class="g s" onclick="resetSoll('${d}')">Standard (${fu(sollDefault(d))})</button>`:''}</td></tr>`}
+ $('#main').innerHTML=`<div class="card"><h2>Tage: Soll und Ist</h2>
+ <div class="bar">${monthSel(ui.month,'setMonth')}<b>Ist ${fu(ti)}, Soll ${fu(ts)}, Differenz ${sg(ti-ts)}</b></div>
+ <p class="mut">Das Soll jedes Tages ist frei änderbar, auch nachträglich (Halbe Schulstunden sind möglich). Geänderte Tage haben den Knopf Standard, der den Standardwert des Wochentags wiederherstellt.</p>
+ <table><tr><th>Tag</th><th class="n">Soll</th><th class="n">Ist</th><th class="n">Differenz</th><th></th></tr>${rows}</table></div>`}
+
+/* Liste */
+function monthSel(v,fn){const ym=[...new Set(S.entries.map(e=>e.date.slice(0,7)).concat([todayIso().slice(0,7)]))].sort().reverse();
+ return`<select onchange="${fn}(this.value)">${ym.map(x=>`<option value="${x}" ${x===v?'selected':''}>${MN[+x.slice(5)-1]} ${x.slice(0,4)}</option>`).join('')}</select>`}
+function setMonth(v){ui.month=v;render()}
+function vListe(){
+ const l=entriesOf(ui.month).filter(e=>!ui.fc||e.cat===ui.fc);
+ const sum=l.reduce((a,e)=>a+e.u,0);
+ $('#main').innerHTML=`<div class="card"><h2>Alle Einträge</h2>
+ <div class="bar">${monthSel(ui.month,'setMonth')}<select id="fcsel" onchange="ui.fc=this.value;render()"><option value="">alle Tätigkeiten</option>${opts(S.set.cats,ui.fc)}</select><b>Summe: ${fu(sum)} Schulstunden</b></div>
+ ${l.length?`<table>${l.map(rowHtml).join('')}</table>`:'<p class="mut">Keine Einträge.</p>'}</div>`;
+}
+
+/* Diagramme */
+function stepOf(h){const raw=h/6;for(const n of [1,2,5,10,20,50,100,200,500])if(n>=raw)return n;return 1000}
+function niceMax(v){const st=stepOf(v);return Math.max(st,Math.ceil(v/st)*st)}
+function barSvg(items,o={}){
+ const W=720,H=260,L=40,R=10,T=14,B=o.rot?52:30;
+ const mx=niceMax(Math.max(1,...items.map(i=>Math.max(i.v,i.s||0)))),st=stepOf(mx);
+ const iw=(W-L-R)/items.length,bw=Math.min(36,iw*0.7);
+ const y=v=>T+(H-T-B)*(1-v/mx);
+ let g='';
+ for(let h=0;h<=mx;h+=st){g+=`<line x1="${L}" x2="${W-R}" y1="${y(h)}" y2="${y(h)}" stroke="var(--line)"/><text x="${L-5}" y="${y(h)+4}" text-anchor="end">${h}</text>`}
+ items.forEach((it,i)=>{const x=L+iw*i+iw/2;
+  g+=`<rect x="${x-bw/2}" y="${y(it.v)}" width="${bw}" height="${Math.max(0,y(0)-y(it.v))}" fill="var(--c0)" rx="2"><title>${esc(it.t||it.label)}: ${fu(it.v)} Schulstunden${it.s!=null?' (Soll '+fu(it.s)+')':''}</title></rect>`;
+  if(it.s)g+=`<line x1="${x-bw/2-3}" x2="${x+bw/2+3}" y1="${y(it.s)}" y2="${y(it.s)}" stroke="var(--soll)" stroke-width="2.5"/>`;
+  const ly=H-B+14;
+  g+=o.rot?`<text transform="translate(${x},${ly}) rotate(40)">${esc(it.label)}</text>`:`<text x="${x}" y="${ly}" text-anchor="middle" ${it.we?'opacity=".5"':''}>${esc(it.label)}</text>`;
+ });
+ return`<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg><div class="legend"><span><i style="background:var(--c0)"></i>Ist (Schulstunden)</span><span><i style="background:var(--soll)"></i>Soll</span></div>`}
+function donutSvg(data){
+ const tot=data.reduce((a,d)=>a+d[1],0);if(!tot)return'<p class="mut">Keine Daten.</p>';
+ const cx=110,cy=110,R=100,r=60;let a0=-Math.PI/2,p='';
+ const top=data.slice(0,7),rest=data.slice(7).reduce((a,d)=>a+d[1],0);if(rest)top.push(['Weitere',rest]);
+ top.forEach((d,i)=>{const a1=a0+d[1]/tot*2*Math.PI,large=a1-a0>Math.PI?1:0;
+  const pt=(a,rr)=>[cx+rr*Math.cos(a),cy+rr*Math.sin(a)];
+  if(top.length===1){p+=`<circle cx="${cx}" cy="${cy}" r="${(R+r)/2}" fill="none" stroke="var(--c0)" stroke-width="${R-r}"/>`}
+  else{const [x0,y0]=pt(a0,R),[x1,y1]=pt(a1,R),[x2,y2]=pt(a1,r),[x3,y3]=pt(a0,r);
+  p+=`<path d="M${x0},${y0} A${R},${R} 0 ${large} 1 ${x1},${y1} L${x2},${y2} A${r},${r} 0 ${large} 0 ${x3},${y3} Z" fill="var(${COLS[i]})"><title>${esc(d[0])}: ${fu(d[1])}</title></path>`}
+  a0=a1});
+ p+=`<text x="${cx}" y="${cy-2}" text-anchor="middle" style="font-size:18px;font-weight:600">${fu(tot)}</text><text x="${cx}" y="${cy+16}" text-anchor="middle">Schulstunden</text>`;
+ const leg=top.map((d,i)=>`<span><i style="background:var(${COLS[i]})"></i>${esc(d[0])}: ${fu(d[1])} (${Math.round(d[1]/tot*100)} %)</span>`).join('');
+ return`<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center"><svg viewBox="0 0 220 220" style="width:220px">${p}</svg><div class="legend" style="flex-direction:column;flex:1;min-width:200px">${leg}</div></div>`}
+function setYear(v){ui.year=+v;render()}
+function vDiagramme(){
+ const [a,b]=monthRange(ui.month);const days=[];
+ for(let d=a;d<=b;d=addDays(d,1)){const w=dOf(d).getDay();days.push({label:String(+d.slice(8)),t:fmtDate(d),v:istDay(d),s:sollDay(d),we:w==0||w==6})}
+ const weeks=[];const t=todayIso();let mo=mondayOf(addDays(t,-77));
+ for(let i=0;i<12;i++){const e=addDays(mo,6);weeks.push({label:'KW '+kw(mo),t:'KW '+kw(mo)+' ('+fmtDate(mo)+')',v:sumRange(mo,e,istDay),s:sumRange(mo,e,sollDay)});mo=addDays(mo,7)}
+ const months=[];for(let m=1;m<=12;m++){const ym=ui.year+'-'+pad(m),[x,y]=monthRange(ym);months.push({label:MN[m-1].slice(0,3),t:MN[m-1]+' '+ui.year,v:sumRange(x,y,istDay),s:sumRange(x,y,sollDay)})}
+ const yrs=[...new Set(S.entries.map(e=>+e.date.slice(0,4)).concat([+t.slice(0,4)]))].sort();
+ $('#main').innerHTML=`
+ <div class="card"><h2>Tage im Monat</h2><div class="bar">${monthSel(ui.month,'setMonth')}</div>${barSvg(days)}</div>
+ <div class="card"><h2>Verteilung nach Tätigkeit, ${MN[+ui.month.slice(5)-1]} ${ui.month.slice(0,4)}</h2>${donutSvg(byCat(entriesOf(ui.month)))}</div>
+ <div class="card"><h2>Die letzten 12 Wochen</h2>${barSvg(weeks,{rot:1})}</div>
+ <div class="card"><h2>Monate im Jahr</h2><div class="bar"><select onchange="setYear(this.value)">${yrs.map(y=>`<option ${y===ui.year?'selected':''}>${y}</option>`).join('')}</select></div>${barSvg(months)}</div>`;
+}
+
+/* Bericht */
+function reportData(ym){
+ const [a,b]=monthRange(ym),l=entriesOf(ym),ist=l.reduce((x,e)=>x+e.u,0),soll=sumRange(a,b,sollDay);
+ const days={};l.forEach(e=>days[e.date]=1);
+ const wk={};for(let d=a;d<=b;d=addDays(d,1)){const m=mondayOf(d);wk[m]=wk[m]||{i:0,s:0};wk[m].i+=istDay(d);wk[m].s+=sollDay(d)}
+ const sch={};l.forEach(e=>sch[e.school]=(sch[e.school]||0)+e.u);
+ return{a,b,l,ist,soll,ndays:Object.keys(days).length,cats:byCat(l),wk,sch}}
+function vBericht(){
+ const r=reportData(ui.month);
+ $('#main').innerHTML=`<div class="card noprint"><div class="bar">${monthSel(ui.month,'setMonth')}
+ <button class="b" onclick="print()">Drucken oder als PDF speichern</button><button class="g" onclick="dl('tex')">Als LaTeX</button><button class="g" onclick="dl('csv')">Als CSV</button></div></div>
+ <div class="card"><h2>Arbeitszeitbericht ${MN[+ui.month.slice(5)-1]} ${ui.month.slice(0,4)}</h2>
+ <p class="mut">Heiko Seiffert, Sonderpädagoge. Angaben in ganzen Schulstunden (eine Schulstunde = ${S.set.unit} Minuten). Soll: ${fu(sollWeek())} Schulstunden je Woche.</p>
+ <div class="grid"><div class="kpi"><b>${fu(r.ist)}</b><span>Ist (entspricht ${zeitH(r.ist)} Zeitstunden)</span></div><div class="kpi"><b>${fu(r.soll)}</b><span>Soll</span></div>
+ <div class="kpi"><b class="${r.ist-r.soll>=-0.04?'pos':'neg'}">${sg(r.ist-r.soll)}</b><span>Differenz</span></div><div class="kpi"><b>${r.ndays}</b><span>Tage mit Einträgen</span></div></div>
+ <h3>Verteilung</h3>${donutSvg(r.cats)}
+ <h3>Je Woche</h3><table><tr><th>Woche</th><th class="n">Ist</th><th class="n">Soll</th><th class="n">Differenz</th></tr>
+ ${Object.entries(r.wk).map(([m,w])=>`<tr><td>KW ${kw(m)} (ab ${fmtDate(m)})</td><td class="n">${fu(w.i)}</td><td class="n">${fu(w.s)}</td><td class="n ${w.i-w.s>=-0.04?'pos':'neg'}">${sg(w.i-w.s)}</td></tr>`).join('')}</table>
+ <h3>Je Tätigkeit</h3><table><tr><th>Tätigkeit</th><th class="n">Schulstunden</th><th class="n">Anteil</th></tr>${r.cats.map(c=>`<tr><td>${esc(c[0])}</td><td class="n">${fu(c[1])}</td><td class="n">${r.ist?Math.round(c[1]/r.ist*100):0} %</td></tr>`).join('')}</table>
+ ${Object.keys(r.sch).length>1?`<h3>Je Schule</h3><table>${Object.entries(r.sch).map(c=>`<tr><td>${esc(c[0])}</td><td class="n">${fu(c[1])}</td></tr>`).join('')}</table>`:''}
+ <h3>Einzelnachweis</h3>${r.l.length?`<table>${r.l.map(e=>rowHtml(e)).join('')}</table>`:'<p class="mut">Keine Einträge.</p>'}</div>`;
+}
+function dl(kind){
+ const r=reportData(ui.month);let txt,name='arbeitszeit-'+ui.month;
+ if(kind==='csv'){
+  txt='\ufeffDatum;Schulstunden;Tätigkeit;Schule;Notiz\n'+entriesOf(ui.month).map(e=>[e.date,e.u,e.cat,e.school,e.note].map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\n');name+='.csv'}
+ else{
+  const T=s=>String(s).replace(/\\/g,'\\textbackslash{}').replace(/([&%$#_{}])/g,'\\$1').replace(/~/g,'\\textasciitilde{}').replace(/\^/g,'\\textasciicircum{}');
+  txt=`\\documentclass[11pt,a4paper]{article}
+\\usepackage[utf8]{inputenc}\\usepackage[T1]{fontenc}\\usepackage{lmodern}\\usepackage{booktabs}\\usepackage[a4paper,margin=2.2cm]{geometry}
+\\IfFileExists{ngerman.ldf}{\\usepackage[ngerman]{babel}}{}
+\\begin{document}
+\\section*{Arbeitszeitbericht ${MN[+ui.month.slice(5)-1]} ${ui.month.slice(0,4)}}
+Angaben in ganzen Schulstunden (eine Schulstunde = ${S.set.unit} Minuten). Soll: ${fu(sollWeek())} Schulstunden je Woche.\\par\\medskip
+\\begin{tabular}{lr}\\toprule Ist & ${fu(r.ist)}\\\\ Soll & ${fu(r.soll)}\\\\ Differenz & ${sg(r.ist-r.soll)}\\\\ Tage mit Einträgen & ${r.ndays}\\\\\\bottomrule\\end{tabular}
+\\subsection*{Je Woche}
+\\begin{tabular}{lrrr}\\toprule Woche & Ist & Soll & Differenz\\\\\\midrule
+${Object.entries(r.wk).map(([m,w])=>`KW ${kw(m)} & ${fu(w.i)} & ${fu(w.s)} & ${sg(w.i-w.s)}\\\\`).join('\n')}
+\\bottomrule\\end{tabular}
+\\subsection*{Je Tätigkeit}
+\\begin{tabular}{lrr}\\toprule Tätigkeit & Schulstunden & Anteil\\\\\\midrule
+${r.cats.map(c=>`${T(c[0])} & ${fu(c[1])} & ${r.ist?Math.round(c[1]/r.ist*100):0}\\,\\%\\\\`).join('\n')}
+\\bottomrule\\end{tabular}
+\\subsection*{Einzelnachweis}
+\\begin{tabular}{lllp{6cm}r}\\toprule Datum & Schule & Tätigkeit & Notiz & Std.\\\\\\midrule
+${r.l.map(e=>`${e.date.slice(8)}.${e.date.slice(5,7)}. & ${T(e.school)} & ${T(e.cat)} & ${T(e.note)} & ${fu(e.u)}\\\\`).join('\n')}
+\\bottomrule\\end{tabular}
+\\end{document}
+`;name+='.tex'}
+ down(txt,name,'text/plain');
+}
+function down(txt,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:type+';charset=utf-8'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+
+/* Einstellungen und Daten */
+function vDaten(){
+ $('#main').innerHTML=`
+ <div class="card"><h2>Einstellungen</h2><div class="row">
+ <div><label>Standard-Soll je Wochentag (Schulstunden), Woche: ${fu(sollWeek())}</label><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">${['Mo','Di','Mi','Do','Fr'].map((n,i)=>`<div><label>${n}</label><input type="number" step="0.5" min="0" id="wd${i}" value="${fu0(S.set.wd[i])}"></div>`).join('')}</div></div>
+ <div><label>Länge einer Schulstunde (Minuten)</label><input type="number" min="1" id="su" value="${S.set.unit}"></div></div>
+ <div class="row"><div><label>Tätigkeiten (eine pro Zeile)</label><textarea id="sc" rows="8">${esc(S.set.cats.join('\n'))}</textarea></div>
+ <div><label>Schulen (eine pro Zeile)</label><textarea id="sh" rows="8">${esc(S.set.schools.join('\n'))}</textarea></div></div>
+ <button class="b" onclick="saveSet()">Einstellungen speichern</button></div>
+ <div class="card"><h2>Freie Tage (kein Soll)</h2><p class="mut">Ferien, Feiertage, Krankheit, Fortbildung außer Haus. An diesen Tagen ist das Standard-Soll null (einzelne Tage lassen sich im Reiter Tage trotzdem anders setzen); erfasste Zeit zählt trotzdem.</p>
+ <div class="row"><div><label>Von</label><input type="date" id="ff"></div><div><label>Bis</label><input type="date" id="ft"></div><div><label>Grund</label><input id="fg" placeholder="z. B. Herbstferien"></div></div>
+ <button class="b" onclick="addFree()">Hinzufügen</button>
+ ${S.free.length?`<table style="margin-top:10px">${[...S.free].sort((a,b)=>a.from<b.from?-1:1).map(f=>`<tr><td>${fmtDate(f.from)}${f.to!==f.from?' bis '+fmtDate(f.to):''}</td><td>${esc(f.note)}</td><td class="n"><button class="g s" onclick="delFree('${f.id}')">Löschen</button></td></tr>`).join('')}</table>`:''}</div>
+ ${LX?'<div class="card" id="drivecard"></div>':''}
+ <div class="card"><h2>Datensicherung</h2><p class="mut">${LX?'Die Linux-App speichert in Dokumente/Seifferts Zeit. Hier zusätzlich eine Datei oder CSV:':'Die Daten liegen im Speicher dieses Browsers. Bitte regelmäßig eine Sicherungsdatei speichern.'}</p>
+ <button class="b" onclick="down(JSON.stringify({app:'seifferts-zeit',version:2,data:S},null,1),'zeit-sicherung-'+todayIso()+'.json','application/json')">Sicherung speichern</button>
+ <label class="g" style="display:inline-block;padding:7px 12px;border:1px solid var(--line);border-radius:6px;cursor:pointer;color:var(--tx);font:inherit">Sicherung laden<input type="file" accept=".json" class="hide" onchange="imp(this.files[0])"></label>
+ <button class="g" onclick="dl2()">Alle Daten als CSV</button></div>`;
+ if(LX)driveCard();
+}
+function saveSet(){
+ const L=id=>$(id).value.split('\n').map(s=>s.trim()).filter(Boolean);
+ const c=L('#sc'),s=L('#sh');if(!c.length||!s.length){alert('Mindestens eine Tätigkeit und eine Schule nötig.');return}
+ S.set={wd:[0,1,2,3,4].map(i=>Math.max(0,+$('#wd'+i).value||0)),unit:+$('#su').value||45,cats:c,schools:s};save();render()}
+function addFree(){const f=$('#ff').value,t=$('#ft').value||f;if(!f||t<f){alert('Bitte gültige Daten angeben.');return}
+ S.free.push({id:uid(),from:f,to:t,note:$('#fg').value.trim()});save();render()}
+function delFree(id){S.free=S.free.filter(f=>f.id!==id);save();render()}
+function imp(file){if(!file)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);const d=j.data||j;if(!d.entries)throw 0;
+ if(!confirm('Aktuelle Daten durch die Sicherung ersetzen? ('+d.entries.length+' Einträge)'))return;S=norm(d);save();render()}catch(e){alert('Die Datei ist keine gültige Sicherung.')}};r.readAsText(file)}
+function dl2(){const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+ down('\ufeffDatum;Schulstunden;Tätigkeit;Schule;Notiz\n'+[...S.entries].sort((a,b)=>a.date<b.date?-1:1).map(e=>[e.date,e.u,e.cat,e.school,e.note].map(q).join(';')).join('\n'),'zeit-alle-daten.csv','text/csv')}
+
+/* Linux-App: Drive, Sicherung, Statusanzeige */
+function api(path,method,body){return fetch(LX.base+'/api/'+path,{method:method||'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(r=>r.json())}
+function chipShow(){const c=$('#chip');if(c&&ui.drive)c.textContent='Drive: '+ui.drive.label}
+function chipClick(){if(!ui.drive||ui.drive.state!=='ok'){driveLogin()}else{driveSync()}}
+async function pollStatus(){
+ try{const st=await api('status');
+  if(st.seq!==LX.seq){location.reload();return}
+  ui.drive=st.drive;ui.backup=st.backup;chipShow();if(ui.tab==='daten')driveCard()}catch(e){}}
+function driveCard(){const el=$('#drivecard');if(!el||!ui.drive)return;const d=ui.drive,b=ui.backup||{};
+ el.innerHTML=`<h2>Google Drive und Laptop-Sicherung</h2>
+ <p>Drive: <b>${esc(d.label)}</b>${d.last?', letzter Abgleich '+esc(d.last):''}${d.msg?'<br><span class="mut">'+esc(d.msg)+'</span>':''}</p>
+ <p class="mut">Konflikte: Die Linux-App ist führend. Vor dem Überschreiben wird der alte Drive-Stand als Kopie in Drive gesichert. Die Anmeldung gilt etwa eine Stunde und wird nicht gespeichert.</p>
+ <p class="mut">Anmelde-Adresse: ${esc(d.handoff_url||'noch nicht eingetragen')}<br>Client-ID: ${d.client_set?'eingetragen':'noch nicht eingetragen'}</p>
+ <button class="b" onclick="driveLogin()">Mit Google Drive verbinden</button>
+ <button class="g" onclick="driveSync()">Jetzt abgleichen</button>
+ <button class="g" onclick="setHandoff()">Anmelde-Adresse ändern</button>
+ <button class="g" onclick="setClient()">Client-ID ändern</button>
+ <h3>Laptop</h3><p class="mut">Hauptdatei und Sicherungen: ${esc(b.dir||'')}<br>Letzte Sicherung: ${esc(b.last||'noch keine')}</p>
+ <button class="g" onclick="api('backup','POST').then(pollStatus)">Sicherung jetzt anlegen</button>
+ <button class="g" onclick="api('open_data','POST')">Datenordner öffnen</button>`}
+async function ensureSettings(){const st=await api('status');
+ if(!st.drive.handoff_url){const u=prompt('Internetadresse der veröffentlichten Seifferts Zeit (GitHub Pages, ohne Anhang), z. B. https://haigo-cyber.github.io/home-haigo/zeit.html');if(!u)return false;await api('settings','POST',{handoff_url:u.trim()})}
+ if(!st.drive.client_set){const c=prompt('Google Client-ID (dieselbe wie beim Depot, endet auf apps.googleusercontent.com)');if(!c)return false;await api('settings','POST',{client_id:c.trim()})}
+ return true}
+async function driveLogin(){if(!await ensureSettings())return;await api('drive/login','POST');pollStatus()}
+async function driveSync(){const r=await api('drive/sync','POST');if(r.need_login){driveLogin();return}pollStatus()}
+async function setHandoff(){const u=prompt('Internetadresse der veröffentlichten Seite:',(ui.drive&&ui.drive.handoff_url)||'');if(u!==null){await api('settings','POST',{handoff_url:u.trim()});pollStatus()}}
+async function setClient(){const c=prompt('Google Client-ID:');if(c){await api('settings','POST',{client_id:c.trim()});pollStatus()}}
+if(LX){window.print=()=>{api('pdf','POST')};pollStatus();setInterval(pollStatus,3000)}
+
+render();
+
+/* linuxHandOff: Anmeldung für die Linux-App (nur aktiv mit Parametern in der Adresse) */
+(function linuxHandOff(){
+ const p=new URLSearchParams(location.search),port=p.get('linuxport'),st=p.get('linuxstate'),cid=p.get('linuxcid');
+ if(!port||!st||!cid||LX)return;
+ const ov=document.createElement('div');
+ ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#f6f5f1;color:#1f2328;display:flex;align-items:center;justify-content:center;font:16px system-ui,sans-serif;text-align:center;padding:20px';
+ ov.innerHTML='<div><h2>Seifferts Zeit: Anmeldung bei Google Drive</h2><p id="hom">Google-Bibliothek wird geladen ...</p><button id="hob" disabled style="font:inherit;padding:10px 18px;border-radius:6px;border:0;background:#2f6f9f;color:#fff;cursor:pointer">Bei Google anmelden</button></div>';
+ document.body.appendChild(ov);
+ const msg=t=>{document.getElementById('hom').textContent=t};
+ const sc=document.createElement('script');sc.src='https://accounts.google.com/gsi/client';
+ sc.onload=()=>{msg('Bitte auf die Schaltfläche klicken. Danach können Sie dieses Fenster schließen.');document.getElementById('hob').disabled=false};
+ sc.onerror=()=>msg('Die Google-Bibliothek konnte nicht geladen werden.');
+ document.head.appendChild(sc);
+ document.getElementById('hob').onclick=()=>{
+  try{google.accounts.oauth2.initTokenClient({client_id:cid,scope:'https://www.googleapis.com/auth/drive.file',
+   callback:r=>{if(r.error||!r.access_token){msg('Anmeldung fehlgeschlagen: '+(r.error||'kein Token'));return}
+    msg('Übergabe an die App ...');
+    location.href='http://127.0.0.1:'+port+'/auth/token?state='+encodeURIComponent(st)+'&token='+encodeURIComponent(r.access_token)+'&expires='+encodeURIComponent(r.expires_in||3300)},
+   error_callback:e=>msg('Anmeldung abgebrochen oder blockiert: '+(e&&e.type||''))}).requestAccessToken()}catch(e){msg('Fehler: '+e)}}
+})();
+</script>
+</body>
+</html>

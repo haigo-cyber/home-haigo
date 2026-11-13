@@ -171,7 +171,7 @@
   .cellw { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
   .cellw.sent { display:block; line-height:2.4; }
   .cellw.sent .sin, .cellw.sent .slot { line-height:1.2; }
-  .sin.art { width:4.8rem; }
+  .sin.art { width:4.8rem; } .sw.wide { display:flex; width:100%; } .sw.wide .sin { width:100%; max-width:30rem; min-width:0; box-sizing:border-box; } table.tk td.vb.wd { overflow-wrap:normal; white-space:nowrap; } .slot.long { white-space:normal; text-align:left; max-width:100%; }
   .pro { color:var(--muted); }
   .sw { display:inline-flex; flex-direction:column; align-items:flex-start; vertical-align:middle; }
   .sw .solw .sol { display:block; margin-top:.15rem; }
@@ -183,7 +183,7 @@
   .sw.no .sin, .sw.no .slot { border-color:var(--bad); background:rgba(255,107,94,.12); }
   .sol { color:var(--ok); font-size:.9rem; margin-top:.25rem; font-weight:700; }
   .noun { color:var(--muted); font-size:.9rem; margin-left:.3rem; white-space:nowrap; }
-  .hint { color:var(--gold); font-size:.9rem; white-space:nowrap; }
+  .hint { color:var(--gold); font-size:.9rem; }
   .chips { display:flex; flex-wrap:wrap; gap:.55rem; margin:.9rem 0 .2rem; }
   .chip { font-size:1.2rem; font-weight:700; padding:.5rem 1rem; border-radius:.8rem; background:rgba(255,255,255,.1); }
   .tk-act { display:flex; flex-wrap:wrap; gap:.6rem; margin-top:.9rem; }
@@ -871,6 +871,9 @@
               <option value="wp">Kasus: Wechselpräpositionen (wo? wohin?)</option>
               <option value="fp">Kasus: Präpositionen mit festem Kasus</option>
               <option value="ns">Nebensatz: Verb am Ende (dass, weil, obwohl ...)</option>
+              <option value="mo">Morpheme: Wörter in Bausteine zerlegen und bestimmen</option>
+              <option value="sy">Silbentrennung: Silben schreiben und zählen</option>
+              <option value="zs">Zeichensetzung: Satzzeichen und Kommas</option>
               <option value="mix">Alles gemischt</option>
             </select></label>
           <label>Antworten
@@ -895,11 +898,18 @@
               <option value="5">Stufe 5: alle Einleiter, längere Sätze</option>
               <option value="all">Alle Stufen gemischt</option>
             </select></label>
+          <label>Morpheme, Silben, Zeichen: Schwierigkeit
+            <select id="sTLv">
+              <option value="all">Alle Stufen gemischt</option>
+              <option value="1">Leicht: Anfang der Stufen</option>
+              <option value="2">Mittel: mittlere Stufen</option>
+              <option value="3">Schwer: längere Wörter und Sätze</option>
+            </select></label>
           <label>Nebensatz: Sätze aus
             <select id="sNsTopic"><option value="">Eingebaute Sätze (mit Stufen)</option></select></label>
         </div>
         <div class="set-row">
-          <label class="ck"><input type="checkbox" id="sHelp"> Beim Kasus als Hilfe zeigen, ob Akkusativ oder Dativ gefragt ist</label>
+          <label class="ck"><input type="checkbox" id="sHelp"> Als Hilfe zeigen (Kasus, Bausteinarten, Regel zur Zeichensetzung)</label>
           <label class="ck"><input type="checkbox" id="sNsAuto"> Nebensatz-Stufe automatisch erhöhen (nach 4 richtigen Aufgaben)</label>
           <label class="ck"><input type="checkbox" id="sSnd" checked=""> Ton</label>
         </div>
@@ -1189,20 +1199,21 @@
   ].map(r => ({ p: r[0], c: r[1], s: r[2], n: r[3] }));
 
   /* ---------- Einstellungen ---------- */
-  const DEFS = { mode: "pre", ans: "click", lim: "0", vb: "reg", help: false, snd: true, n1: "Spieler 1", n2: "Spieler 2", nsStage: "1", nsAuto: true, nsOk: 0, nsTopic: "" };
+  const DEFS = { mode: "pre", ans: "click", lim: "0", vb: "reg", help: false, snd: true, n1: "Spieler 1", n2: "Spieler 2", nsStage: "1", nsAuto: true, nsOk: 0, nsTopic: "", tLv: "all" };
   const NS_STAGES = 5, NS_NEED = 4;
-  const MODES = ["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp", "ns", "mix"];
+  const MODES = ["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp", "ns", "mo", "sy", "zs", "mix"];
   let S = Object.assign({}, DEFS);
   try { Object.assign(S, JSON.parse(LS.get("msd_ttt_v2") || "{}")); } catch (e) { /* Standardwerte */ }
   if (MODES.indexOf(S.mode) < 0) S.mode = "pre";
   S.nsStage = String(S.nsStage);
   if (S.nsStage !== "all" && !(+S.nsStage >= 1 && +S.nsStage <= NS_STAGES)) S.nsStage = "1";
   S.nsOk = +S.nsOk || 0;
+  S.tLv = String(S.tLv); if (["all", "1", "2", "3"].indexOf(S.tLv) < 0) S.tLv = "all";
   const saveS = () => LS.set("msd_ttt_v2", JSON.stringify(S));
   function applyS() {
     fillTopics();
     $("sMode").value = S.mode; $("sAns").value = S.ans; $("sLim").value = S.lim; $("sVb").value = S.vb; $("sHelp").checked = !!S.help; $("sSnd").checked = !!S.snd;
-    $("sNsStage").value = S.nsStage; $("sNsAuto").checked = !!S.nsAuto; $("sNsTopic").value = S.nsTopic;
+    $("sNsStage").value = S.nsStage; $("sNsAuto").checked = !!S.nsAuto; $("sNsTopic").value = S.nsTopic; $("sTLv").value = S.tLv;
     if ($("pAns")) $("pAns").value = S.ans;
     $("n1").value = S.n1; $("n2").value = S.n2; renderSetSum();
   }
@@ -1244,7 +1255,7 @@
     ["blitz", "Blitzmerker", "Richtig mit über 70 Prozent der Zeit übrig", P => P.stat.blitz >= 1],
     ["win", "Rundensieger", "Eine Runde gewonnen", P => P.stat.wins >= 1], ["win5", "Fünf Siege", "5 Runden gewonnen", P => P.stat.wins >= 5],
     ["clean", "Saubere Runde", "Eine Runde ohne Fehler gewonnen", P => P.stat.clean >= 1], ["come", "Comeback", "Eine Runde nach mindestens 2 Fehlern gewonnen", P => P.stat.come >= 1],
-    ["diag", "Diagonalkönig", "Mit einer Diagonale gewonnen", P => P.stat.diag >= 1], ["all", "Alleskönner", "In allen 9 Aufgabenarten richtig gelöst", P => Object.keys(P.stat.types).length >= 9],
+    ["diag", "Diagonalkönig", "Mit einer Diagonale gewonnen", P => P.stat.diag >= 1], ["all", "Alleskönner", "In allen 12 Aufgabenarten richtig gelöst", P => Object.keys(P.stat.types).length >= 12], ["spr", "Wortwerkstatt", "10 Aufgaben zu Morphemen, Silben oder Zeichensetzung richtig", P => (P.stat.spr || 0) >= 10],
     ["konj", "Konjugations-Profi", "10 Konjugations-Aufgaben richtig", P => P.stat.konj >= 10], ["klam", "Klammer-Profi", "10 Verbklammer-Aufgaben richtig", P => P.stat.vk >= 10], ["kasus", "Kasus-Knacker", "10 Kasus-Aufgaben richtig", P => P.stat.kasus >= 10],
     ["mis", "Missionar", "3 Missionen erfüllt", P => P.stat.missions >= 3],
     ["l3", "Level 3", "Level 3 erreicht", P => lvlOf(P.xp) >= 3], ["l5", "Level 5", "Level 5 erreicht", P => lvlOf(P.xp) >= 5], ["l8", "Level 8", "Level 8 erreicht", P => lvlOf(P.xp) >= 8]
@@ -1291,7 +1302,7 @@
     if (R.mDone || (m.win && !w) || !m.ok(i, R)) return;
     R.mDone = true; PR[i].stat.missions++; grant(i, m.xp); toast("mis", "Mission erfüllt", nameOf(i) + ": " + m.t + " (+" + m.xp + " XP)");
   }
-  const TCATS = [["Einstieg und Level", ["first", "ten", "fifty", "l3", "l5", "l8"]], ["Serien und Tempo", ["s3", "s5", "s10", "blitz"]], ["Runden und Missionen", ["win", "win5", "clean", "come", "diag", "mis"]], ["Fachkönnen", ["all", "konj", "klam", "kasus"]]];
+  const TCATS = [["Einstieg und Level", ["first", "ten", "fifty", "l3", "l5", "l8"]], ["Serien und Tempo", ["s3", "s5", "s10", "blitz"]], ["Runden und Missionen", ["win", "win5", "clean", "come", "diag", "mis"]], ["Fachkönnen", ["all", "konj", "klam", "kasus", "spr"]]];
   function renderTrophy() {
     $("trophyBody").innerHTML = [0, 1].map(i => { const P = PR[i], l = lvlOf(P.xp);
       return '<div class="tp" style="--c:' + PCOL[i] + '"><h3>' + esc(nameOf(i)) + " <small>Level " + l + ", " + titleOf(l) + ", " + P.xp + " XP, " + Object.keys(P.badges).length + " von " + BADGES.length + " Trophäen</small></h3>" +
@@ -1388,6 +1399,88 @@
       return { left: w.p, pieces: [{ t: parts[0].trim() }, { s: idx }, { t: parts[1].replace("{N}", nn.n).trim() }], note: "(" + NOM[nn.g] + " " + nn.n + ")", hint: CASEN[w.c] };
     });
     return { type: "fp", layout: "rows", leftHead: "Präposition", slots: slots, rows: rows, chips: chipsOf(slots, shuf(ARTS).slice(0, 3)), title: "Setze den richtigen Artikel ein. Die Präposition bestimmt den Kasus." };
+  }
+
+  /* ---------- Morpheme, Silbentrennung und Zeichensetzung im Spiel ----------
+     Alle drei nutzen die Daten der Trainer (MWORDS, SYI, ZI). Jede Zeile hat eine Farbe, die Auswahl für die Zeile liegt in derselben Farbe bereit. */
+  const TLV = { mo: { 1: [1, 2], 2: [3, 3], 3: [4, 4] }, sy: { 1: [1, 2], 2: [3, 4], 3: [5, 5] }, zs: { 1: [1, 2], 2: [3, 4], 3: [5, 6] } };
+  const tPool = (k, list) => {
+    const r = TLV[k][S.tLv] || [1, 99], base = list.filter(x => !x.own), p = base.filter(x => x.stage >= r[0] && x.stage <= r[1]);
+    return p.length >= 3 ? p : base;
+  };
+  const tWords = (key, pool, id, n, ok) => {
+    const out = [];
+    for (let t = 0; t < 60 && out.length < n; t++) { const w = fresh(key, pool, id); if (!out.some(x => id(x) === id(w)) && (!ok || ok(w))) out.push(w); }
+    for (let t = 0; out.length < n && t < 60; t++) { const w = pick(pool); if (!out.some(x => id(x) === id(w))) out.push(w); }
+    return out;
+  };
+  const MNAMES = { P: ["Vorsilbe", "Präfix"], S: ["Stamm", "Wortstamm"], X: ["Nachsilbe", "Suffix"], F: ["Fuge", "Fugenelement"], E: ["Endung"] };
+  function partRows(words, pool, kind) {
+    const slots = [], chips = [];
+    const rows = words.map((w, ri) => {
+      const pieces = [], group = [];
+      w.parts.forEach((q, k) => {
+        if (kind === "label") { pieces.push({ t: q + " =" }); const nm = MNAMES[w.types.charAt(k)]; pieces.push({ s: slots.length }); slots.push(slotOf(nm, "t", { row: ri, ph: "Art" })); group.push(nm[0]); }
+        else { if (k) pieces.push({ t: "+" }); pieces.push({ s: slots.length }); slots.push(slotOf([q], "t", { row: ri, ph: kind === "cut" ? "Baustein" : "Silbe" })); group.push(q); }
+      });
+      let dist = [];
+      if (kind === "label") { const others = Object.keys(MNAMES).map(c => MNAMES[c][0]).filter(n => group.indexOf(n) < 0); dist = [pick(others)]; }
+      else { const o = shuf(pool.filter(x => x.word !== w.word)); for (let k = 0; k < o.length && !dist.length; k++) { const c = o[k].parts.filter(q => group.map(g => g.toLowerCase()).indexOf(q.toLowerCase()) < 0); if (c.length) dist = [pick(c)]; } }
+      let ws = group.concat(dist); for (let t = 0; t < 30; t++) { ws = shuf(group.concat(dist)); if (ws.join("|") !== group.join("|")) break; }
+      ws.forEach(x => chips.push({ id: chips.length, t: x, row: ri }));
+      return { left: w.word, rc: ri, pieces: pieces, note: "", hint: kind === "label" ? "Die Vorsilbe steht vorn, die Nachsilbe hinten, die Fuge zwischen zwei Wörtern, die Endung zeigt die Form." : w.types ? "Die Bausteine: " + w.types.split("").map(c => MNAMES[c][0]).join(" + ") : "" };
+    });
+    return { slots: slots, chips: chips, rows: rows };
+  }
+  function buildMo() {
+    const kind = Math.random() < .5 ? "cut" : "label", pool = tPool("mo", MWORDS);
+    const words = tWords("mo|" + S.tLv, pool, w => w.word, 3);
+    const r = partRows(words, pool, kind);
+    return { type: "mo", rc: true, layout: "rows", leftHead: "Wort", slots: r.slots, rows: r.rows, chips: r.chips,
+      title: kind === "cut" ? "Zerlege die Wörter in ihre Bausteine (Morpheme). Die Bausteine ergeben von links nach rechts wieder das Wort." : "Bestimme die Bausteine: Vorsilbe, Stamm, Nachsilbe, Fuge oder Endung?",
+      how: kind === "cut" ? ["Schreibe jeden Baustein in ein Feld, von links nach rechts. Mit der Eingabetaste springst du zum nächsten Feld.", "Klicke die Bausteine in der Farbe des Wortes der Reihe nach an. Ein Baustein bleibt übrig."]
+        : ["Schreibe die Art des Bausteins in das Feld: Vorsilbe, Stamm, Nachsilbe, Fuge oder Endung.", "Klicke für jeden Baustein die passende Art in der Farbe des Wortes an. Eine Art bleibt übrig."] };
+  }
+  const SYN = ["", "eins", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht"];
+  function buildSy() {
+    const kind = Math.random() < .65 ? "cut" : "count", pool = tPool("sy", SYI);
+    const words = tWords("sy|" + S.tLv + "|" + kind, pool, w => w.word, 3, w => kind === "count" || w.parts.length <= 4);
+    if (kind === "cut") {
+      const r = partRows(words, pool, "syl");
+      return { type: "sy", rc: true, layout: "rows", leftHead: "Wort", slots: r.slots, rows: r.rows, chips: r.chips,
+        title: "Trenne die Wörter in Silben. Schreibe jede Silbe in ein Feld.",
+        how: ["Schreibe jede Silbe in ein Feld, von links nach rechts. Mit der Eingabetaste springst du zum nächsten Feld.", "Klicke die Silben in der Farbe des Wortes der Reihe nach an. Eine Silbe bleibt übrig."] };
+    }
+    const slots = [], chips = [], rows = words.map((w, ri) => {
+      const n = w.parts.length; slots.push(slotOf([String(n), SYN[n] || String(n)], "t", { row: ri, ph: "Anzahl" }));
+      [n - 1, n, n + 1].filter(x => x >= 1 && x <= 8).forEach(x => chips.push({ id: chips.length, t: String(x), row: ri }));
+      return { left: w.word, rc: ri, pieces: [{ t: "hat" }, { s: ri }, { t: "Silben." }], note: "", hint: "Klatsche das Wort: Jeder Klatscher ist eine Silbe." };
+    });
+    return { type: "sy", rc: true, layout: "rows", leftHead: "Wort", slots: slots, rows: rows, chips: chips, title: "Wie viele Silben hat jedes Wort?",
+      how: ["Schreibe die Anzahl der Silben als Zahl in das Feld.", "Klicke für jedes Wort die richtige Zahl in der Farbe des Wortes an."] };
+  }
+  function buildZs() {
+    const hasEnd = (TLV.zs[S.tLv] || [1])[0] <= 1, hasPick = (TLV.zs[S.tLv] || [1, 9])[1] >= 2;
+    const kind = hasEnd && (!hasPick || Math.random() < .4) ? "end" : "pick";
+    if (kind === "end") {
+      const ends = ZI.filter(x => x.rule === "end" && !x.own), words = tWords("zs|end", ends, w => w.text, 3);
+      const slots = [], chips = [], rows = words.map((w, ri) => {
+        slots.push(slotOf([w.endc], "t", { row: ri, ph: "Zeichen" }));
+        shuf([".", "?", "!"]).forEach(x => chips.push({ id: chips.length, t: x, row: ri }));
+        return { left: "Satz " + (ri + 1), rc: ri, pieces: [{ t: w.text }, { s: ri }], note: "", hint: ZR.end };
+      });
+      return { type: "zs", rc: true, layout: "rows", leftHead: "Satz", slots: slots, rows: rows, chips: chips, title: "Welches Satzzeichen steht am Ende? Punkt, Fragezeichen oder Ausrufezeichen.",
+        how: ["Schreibe das Satzzeichen in das Feld: . oder ? oder !", "Klicke für jeden Satz das passende Satzzeichen in der Farbe des Satzes an."] };
+    }
+    const pool = tPool("zs", ZI.filter(x => x.rule !== "end")), words = tWords("zs|pick|" + S.tLv, pool, w => w.text, 2);
+    const slots = [], chips = [], rows = words.map((w, ri) => {
+      const good = zGood(w), plain = good.replace(/[„“,:]/g, "").replace(/\s+/g, " ").trim();
+      slots.push(slotOf([good], "t", { row: ri, ph: "Satz", wide: true, loose: true }));
+      zOpts(w).forEach(o => chips.push({ id: chips.length, t: o.t, row: ri }));
+      return { left: "Satz " + (ri + 1), rc: ri, pieces: [{ t: plain }, { s: ri }], note: "", hint: ZR[w.rule] || ZR.own };
+    });
+    return { type: "zs", rc: true, layout: "rows", leftHead: "Satz", slots: slots, rows: rows, chips: chips, title: "Schreibe die Sätze richtig auf: mit allen Kommas und Satzzeichen.",
+      how: ["Schreibe jeden Satz noch einmal ab und setze alle Satzzeichen. Anführungszeichen darfst du mit dem Zeichen \" schreiben.", "Wähle für jeden Satz die richtige Schreibweise in der Farbe des Satzes."] };
   }
 
   /* Nebensätze: Einleiter, Satzanfang bis zum Einleiter, Wörter des Nebensatzes (Verb zuletzt), falsche Verbform, eindeutig ordenbar, Stufe
@@ -1580,17 +1673,18 @@
       title: einl.length === 1 ? "Baue die drei Sätze mit " + einl[0] + " zusammen: erst der Einleiter, am Ende das konjugierte Verb." : "Baue die drei Nebensätze zusammen: erst der Einleiter, am Ende das konjugierte Verb." };
   }
   function nsChipsHtml(T, used, stat) {
-    return [0, 1, 2].map(ri => '<div class="cgrp rc' + ri + '"><span class="gtag">' + esc(T.rows[ri].left) + "</span>" + T.chips.filter(c => c.row === ri).map(c => stat ? '<span class="chip st">' + esc(c.t) + "</span>" : '<button class="chip" data-c="' + c.id + '"' + (used.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("") + "</div>").join("");
+    return T.rows.map((_, ri) => '<div class="cgrp rc' + ri + '"><span class="gtag">' + esc(T.rows[ri].left) + "</span>" + T.chips.filter(c => c.row === ri).map(c => stat ? '<span class="chip st">' + esc(c.t) + "</span>" : '<button class="chip" data-c="' + c.id + '"' + (used.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("") + "</div>").join("");
   }
-  const nsRow = (T, i) => T.type === "ns" ? T.slots.findIndex((s, k) => T.fill[k] === null && s.row === T.slots[i].row) : T.fill.indexOf(null);
+  const rcT = T => T.type === "ns" || !!T.rc;
+  const nsRow = (T, i) => rcT(T) ? T.slots.findIndex((s, k) => T.fill[k] === null && s.row === T.slots[i].row) : T.fill.indexOf(null);
   function pickSlot(T, id) {
-    if (T.type !== "ns") return T.fill.indexOf(null);
+    if (!rcT(T)) return T.fill.indexOf(null);
     const row = T.chips.find(c => c.id === id).row;
     return T.slots.findIndex((s, k) => T.fill[k] === null && s.row === row);
   }
   function buildTask() {
-    const t = S.mode === "mix" ? pick(["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp", "ns"]) : S.mode;
-    return t === "ns" ? buildNs() : t === "kas" ? buildKas() : t === "kd" ? buildKd() : t === "wp" ? buildWp() : t === "fp" ? buildFp() : (t === "vk1" || t === "vk2") ? buildVk(t) : buildConj(t);
+    const t = S.mode === "mix" ? pick(["pre", "prt", "vk1", "vk2", "kas", "kd", "wp", "fp", "ns", "mo", "sy", "zs"]) : S.mode;
+    return t === "mo" ? buildMo() : t === "sy" ? buildSy() : t === "zs" ? buildZs() : t === "ns" ? buildNs() : t === "kas" ? buildKas() : t === "kd" ? buildKd() : t === "wp" ? buildWp() : t === "fp" ? buildFp() : (t === "vk1" || t === "vk2") ? buildVk(t) : buildConj(t);
   }
 
   /* ---------- Zeichnen ---------- */
@@ -1619,8 +1713,8 @@
   function renderSetSum() {
     const g = id => { const e = $(id); return e.options[e.selectedIndex] ? e.options[e.selectedIndex].textContent : ""; };
     const el = $("sumChips"); if (!el) return;
-    const nsChip = S.mode === "ns" || S.mode === "mix" ? [S.nsTopic ? g("sNsTopic") : g("sNsStage")] : [];
-    el.innerHTML = [g("sMode"), g("sAns"), g("sLim")].concat(S.mode === "kas" || S.mode === "kd" || S.mode === "wp" || S.mode === "fp" || S.mode === "ns" ? [] : [g("sVb")], nsChip).map(t => "<span>" + esc(t) + "</span>").join("");
+    const nsChip = (S.mode === "ns" || S.mode === "mix" ? [S.nsTopic ? g("sNsTopic") : g("sNsStage")] : []).concat(S.mode === "mo" || S.mode === "sy" || S.mode === "zs" || S.mode === "mix" ? [g("sTLv")] : []);
+    el.innerHTML = [g("sMode"), g("sAns"), g("sLim")].concat(S.mode === "kas" || S.mode === "kd" || S.mode === "wp" || S.mode === "fp" || S.mode === "ns" || S.mode === "mo" || S.mode === "sy" || S.mode === "zs" ? [] : [g("sVb")], nsChip).map(t => "<span>" + esc(t) + "</span>").join("");
   }
   function renderBoard() {
     const idle = !G.over && !G.task;
@@ -1649,8 +1743,8 @@
   const PH = { a: "Artikel", w: "Verbform", t: "Wort" };
   const slotHtml = (s, i) => {
     const wr = S.ans === "type";
-    return '<span class="sw" data-i="' + i + '">' + (wr ? '<input class="sin' + (s.kind === "a" ? " art" : "") + '" data-i="' + i + '" placeholder="' + PH[s.kind] + '" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Antwort ' + (i + 1) + '">'
-      : '<span class="slot" data-s="' + i + '" data-ph="' + PH[s.kind] + '" tabindex="0" role="button" aria-label="Lücke ' + (i + 1) + '"></span>') + '<span class="solw"></span></span>';
+    return '<span class="sw' + (s.wide ? " wide" : "") + '" data-i="' + i + '">' + (wr ? '<input class="sin' + (s.kind === "a" ? " art" : "") + (s.wide ? " wide" : "") + '" data-i="' + i + '" placeholder="' + (s.ph || PH[s.kind]) + '" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Antwort ' + (i + 1) + '">'
+      : '<span class="slot" data-s="' + i + '" data-ph="' + (s.ph || PH[s.kind]) + '" tabindex="0" role="button" aria-label="Lücke ' + (i + 1) + '"></span>') + '<span class="solw"></span></span>';
   };
   function stakeHtml(T) {
     const lim = +S.lim, base = 10 + 5 * T.slots.length, mult = Math.min(3, 1 + 0.5 * SK[G.cur]), mx = Math.round((base + (lim ? 10 : 0)) * mult);
@@ -1664,7 +1758,7 @@
     } else {
       tab = '<table class="tk rw"><thead><tr><th>' + T.leftHead + "</th><th>Satz</th></tr></thead><tbody>" + T.rows.map((r, ri_) => {
         const body = r.pieces.map(p => p.s !== undefined ? slotHtml(T.slots[p.s], p.s) : "<span>" + esc(p.t) + "</span>").join(" ");
-        const left = T.leftOnce ? (ri_ === 0 ? '<td class="vb" rowspan="' + T.rows.length + '">' + esc(T.leftOnce) + "</td>" : "") : '<td class="vb">' + esc(r.left) + "</td>";
+        const left = T.leftOnce ? (ri_ === 0 ? '<td class="vb" rowspan="' + T.rows.length + '">' + esc(T.leftOnce) + "</td>" : "") : '<td class="vb' + (T.rc ? " wd" : "") + '">' + esc(r.left) + "</td>";
         return "<tr" + (r.rc !== undefined ? ' class="rc rc' + r.rc + '"' : "") + ">" + left + '<td><div class="cellw sent">' + body + (r.note ? ' <span class="noun">' + esc(r.note) + "</span>" : "") + "</div>" + (S.help && r.hint ? '<div class="hint">' + esc(r.hint) + "</div>" : "") + "</td></tr>";
       }).join("") + "</tbody></table>";
     }
@@ -1676,7 +1770,7 @@
     const lim = +S.lim;
     t.className = "task active"; t.style.setProperty("--c", PCOL[G.cur]);
     t.innerHTML = '<div class="tk-bar"><span class="sym">' + SYM[G.cur] + '</span><span class="who">' + esc(nameOf(G.cur)) + " ist dran</span>" + STEPS + '</div><div class="tk-body"><div class="tk-titlerow"><div class="tk-title">' + esc(T.title) + "</div>" + stakeHtml(T) + '</div><div class="how">' +
-      (T.type === "ns" ? (wr ? "Schreibe den Nebensatz in der richtigen Reihenfolge in die Felder, mit dem Einleiter am Anfang. Die Wörter in der Farbe des Satzes gehören zu diesem Satz." : "Klicke die Wörter in der Farbe des Satzes an, beginne mit dem Einleiter. Sie füllen die Lücken von links nach rechts.") : wr ? "Schreibe in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.") + "</div>" +
+      (T.how ? (wr ? T.how[0] : T.how[1]) : T.type === "ns" ? (wr ? "Schreibe den Nebensatz in der richtigen Reihenfolge in die Felder, mit dem Einleiter am Anfang. Die Wörter in der Farbe des Satzes gehören zu diesem Satz." : "Klicke die Wörter in der Farbe des Satzes an, beginne mit dem Einleiter. Sie füllen die Lücken von links nach rechts.") : wr ? "Schreibe in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.") + "</div>" +
       (lim ? '<div class="tk-timer"><div class="bar"><i id="tkBar"></i></div><span class="sec" id="tkSec">' + lim + " s</span></div>" : "") +
       '<div class="tw">' + tab + "</div>" +
       '<div class="tk-feed" id="tkFeed"></div></div>' +
@@ -1692,14 +1786,14 @@
       ins.forEach((el, i) => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (i < ins.length - 1) ins[i + 1].focus(); else check(); } }));
       if (ins[0]) ins[0].focus({ preventScroll: true });
     } else {
-      $("tkClear").onclick = () => { if (T.type === "ns") { while (T.hist && T.hist.length) { const li = T.hist.pop(); if (T.fill[li] !== null) { T.fill[li] = null; renderChips(); return; } } return; } const k = T.fill.map((x, i) => x !== null ? i : -1).filter(i => i >= 0); if (k.length) { T.fill[k[k.length - 1]] = null; renderChips(); } };
+      $("tkClear").onclick = () => { if (rcT(T)) { while (T.hist && T.hist.length) { const li = T.hist.pop(); if (T.fill[li] !== null) { T.fill[li] = null; renderChips(); return; } } return; } const k = T.fill.map((x, i) => x !== null ? i : -1).filter(i => i >= 0); if (k.length) { T.fill[k[k.length - 1]] = null; renderChips(); } };
       t.querySelectorAll(".slot").forEach(el => { const f = () => { const i = +el.dataset.s; if (!T.done && T.fill[i] !== null) { T.fill[i] = null; renderChips(); } }; el.onclick = f; el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); f(); } }; });
       renderChips();
     }
   }
   function renderChips() {
     const T = G.task, usedIds = T.fill.filter(x => x !== null);
-    $("chips").innerHTML = T.type === "ns" ? nsChipsHtml(T, usedIds) : T.chips.map(c => '<button class="chip" data-c="' + c.id + '"' + (usedIds.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("");
+    $("chips").innerHTML = rcT(T) ? nsChipsHtml(T, usedIds) : T.chips.map(c => '<button class="chip" data-c="' + c.id + '"' + (usedIds.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("");
     $("chips").querySelectorAll(".chip").forEach(b => b.onclick = () => { const i = pickSlot(T, +b.dataset.c); if (i >= 0 && !T.done) { T.fill[i] = +b.dataset.c; (T.hist = T.hist || []).push(i); renderChips(); } });
     $("task").querySelectorAll(".slot").forEach((el, i) => { const id = T.fill[i]; el.textContent = id === null ? "" : T.chips.find(c => c.id === id).t; el.className = "slot" + (id !== null ? " fill" : (i === nsRow(T, i) && !T.done ? " next" : "")); });
     $("tkCheck").disabled = T.done || T.fill.indexOf(null) >= 0;
@@ -1745,10 +1839,11 @@
     }, 200);
   }
   const normA = v => String(v).toLowerCase().replace(/\s+/g, " ").trim();
+  const looseA = x => normA(x).replace(/[„“”»«]/g, '"').replace(/\s+([,.!?:;])/g, "$1");
   function slotOk(s, val) {
     let v = normA(val);
     if (s.kind === "w") { if (v.indexOf(s.pron + " ") === 0) v = v.slice(s.pron.length + 1).trim(); return s.acc.some(a => normA(a) === v); }
-    if (s.kind === "t") return s.acc.some(a => normA(a) === v);
+    if (s.kind === "t") return s.loose ? s.acc.some(a => looseA(a) === looseA(val)) : s.acc.some(a => normA(a) === v);
     const tk = v.split(" ");
     if (tk[0] !== normA(s.show)) return false;
     return tk.length === 1 || (tk.length === 2 && tk[1] === normA(s.noun));
@@ -1781,7 +1876,7 @@
       const w = winnerOf(G.board);
       SFX.good();
       SK[me]++; R.rs++; R.ok++; P.stat.correct++; P.stat.maxS = Math.max(P.stat.maxS, SK[me]); P.stat.types[T.type] = 1;
-      if (T.type === "pre" || T.type === "prt") P.stat.konj++; else if (T.type === "vk1" || T.type === "vk2") P.stat.vk++; else if (T.type === "ns") P.stat.ns = (P.stat.ns || 0) + 1; else P.stat.kasus++;
+      if (T.type === "pre" || T.type === "prt") P.stat.konj++; else if (T.type === "vk1" || T.type === "vk2") P.stat.vk++; else if (T.type === "ns") P.stat.ns = (P.stat.ns || 0) + 1; else if (T.type === "mo" || T.type === "sy" || T.type === "zs") P.stat.spr = (P.stat.spr || 0) + 1; else P.stat.kasus++;
       const mult = Math.min(3, 1 + 0.5 * (SK[me] - 1)), base = 10 + 5 * T.slots.length, tb = lim ? Math.round(10 * T.frac) : 0;
       let gain = Math.round((base + tb) * mult); if (T.jok) gain = Math.round(gain / 2);
       if (lim && T.frac > 0.7) P.stat.blitz++;
@@ -1838,7 +1933,7 @@
   const bind = (id, key) => $(id).addEventListener("change", () => { S[key] = $(id).type === "checkbox" ? $(id).checked : $(id).value; saveS(); renderSetSum(); });
   $("sNsStage").addEventListener("change", () => { S.nsOk = 0; });
   bind("sMode", "mode"); bind("sAns", "ans"); bind("sLim", "lim"); bind("sVb", "vb"); bind("sHelp", "help"); bind("sSnd", "snd");
-  bind("sNsStage", "nsStage"); bind("sNsTopic", "nsTopic"); bind("sNsAuto", "nsAuto");
+  bind("sNsStage", "nsStage"); bind("sTLv", "tLv"); bind("sNsTopic", "nsTopic"); bind("sNsAuto", "nsAuto");
   /* Eigene Sätze (Markdown): Datei laden, einfügen, übernehmen, entfernen */
   { const saved = LS.get(MD_KEY) || ""; $("mdText").value = saved; if (saved.trim()) applyMd(saved, true); }
   $("mdApply").onclick = () => { const t = $("mdText").value; if (!t.trim()) { mdStatus("err", ["Das Textfeld ist leer. Füge Text ein oder lade eine Markdown-Datei."]); return; } applyMd(t, false); $("sNsTopic").value = S.nsTopic; renderSetSum(); };
@@ -1866,7 +1961,7 @@
   const QMK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2V5z"/><path d="M8 7h7M8 11h7"/></svg>';
   const TOOLS = '<span class="tk-tools"><button class="speakb" data-speak="1" title="Aufgabe vorlesen" aria-label="Aufgabe vorlesen">' + SPK + '<span class="lbl">Vorlesen</span></button><button class="speakb" data-explain="1" title="Grammatik erklären" aria-label="Grammatik erklären">' + QMK + '<span class="lbl">Erklärung</span></button></span>';
   const TOPICS = [
-    { k: "ttt", g: "Spiele", n: "Tic-Tac-Toe", t: "Tic-Tac-Toe: Verben und Kasus", s: "Zwei Spieler: Ein Feld bekommst du nur, wenn du die Aufgabe richtig löst.", gc: "#7cc4f7",
+    { k: "ttt", g: "Spiele", n: "Tic-Tac-Toe", t: "Tic-Tac-Toe: alle Themen", s: "Zwei Spieler: Ein Feld bekommst du nur, wenn du die Aufgabe richtig löst.", gc: "#7cc4f7",
       i: '<path d="M9 3v18M15 3v18M3 9h18M3 15h18"/>' },
     { k: "ueben", g: "Spiele", n: "Übungsmodus", t: "Übungsmodus: Grammatik-Rallye", s: "Allein fahren, Level für Level. Mit Tacho, Sternen und deinem besten Rennen als Geisterauto.", gc: "#f2a900",
       i: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="13" r="1.1"/><path d="M12.8 12.2l3.2-3.6"/><path d="M12 5.6v1.4M6.3 9.3l1.2.8M17.7 9.3l-1.2.8M7.5 17.2h9"/>' },
@@ -2235,7 +2330,16 @@
     { id: "n3", g: "Nebensätze", n: "Stufe 3: dass und weil", t: "ns", o: { nsStage: "3", nsTopic: "" } },
     { id: "n4", g: "Nebensätze", n: "Stufe 4: dazu obwohl, wenn, ob", t: "ns", o: { nsStage: "4", nsTopic: "" } },
     { id: "n5", g: "Nebensätze", n: "Stufe 5: alle Einleiter, längere Sätze", t: "ns", o: { nsStage: "5", nsTopic: "" } },
-    { id: "m1", g: "Zielgerade", n: "Alles gemischt", t: "mix", o: { vb: "mix", nsStage: "all", nsTopic: "" } }
+    { id: "m1", g: "Zielgerade", n: "Alles gemischt", t: "mix", o: { vb: "mix", nsStage: "all", nsTopic: "", tLv: "all" } },
+    { id: "w1", g: "Morpheme", n: "Leicht: Stamm, Vor- und Nachsilben", t: "mo", o: { tLv: "1" } },
+    { id: "w2", g: "Morpheme", n: "Mittel: zusammengesetzte Wörter", t: "mo", o: { tLv: "2" } },
+    { id: "w3", g: "Morpheme", n: "Schwer: lange Wörter", t: "mo", o: { tLv: "3" } },
+    { id: "s1", g: "Silbentrennung", n: "Leicht: einfache Wörter", t: "sy", o: { tLv: "1" } },
+    { id: "s2", g: "Silbentrennung", n: "Mittel: ch, sch, ck und lange Wörter", t: "sy", o: { tLv: "2" } },
+    { id: "s3", g: "Silbentrennung", n: "Schwer: zusammengesetzte Wörter", t: "sy", o: { tLv: "3" } },
+    { id: "z1", g: "Zeichensetzung", n: "Leicht: Satzende und Aufzählung", t: "zs", o: { tLv: "1" } },
+    { id: "z2", g: "Zeichensetzung", n: "Mittel: Nebensatz, aber, denn", t: "zs", o: { tLv: "2" } },
+    { id: "z3", g: "Zeichensetzung", n: "Schwer: wörtliche Rede und Einschub", t: "zs", o: { tLv: "3" } }
   ];
   let PS = { xp: 0, best: {}, ghost: true, unl: false, plays: 0 };
   try { const x = JSON.parse(LS.get(PKEY) || "null"); if (x && typeof x === "object") { PS.xp = +x.xp || 0; PS.best = x.best && typeof x.best === "object" ? x.best : {}; PS.ghost = x.ghost !== false; PS.unl = !!x.unl; PS.plays = +x.plays || 0; } } catch (e) { /* neu beginnen */ }
@@ -2251,7 +2355,7 @@
 
   /* Aufgabe für ein Level bauen: Einstellungen nur für diesen Aufruf überschreiben */
   function pracBuild(lv) {
-    const keep = { mode: S.mode, vb: S.vb, nsStage: S.nsStage, nsTopic: S.nsTopic };
+    const keep = { mode: S.mode, vb: S.vb, nsStage: S.nsStage, nsTopic: S.nsTopic, tLv: S.tLv };
     Object.assign(S, { mode: lv.t }, lv.o);
     try { return buildTask(); } finally { Object.assign(S, keep); }
   }
@@ -2337,7 +2441,7 @@
   }
   function pracRenderTask() {
     const T = PT.task, t = $("pTask"), wr = S.ans === "type";
-    const how = T.type === "ns" ? (wr ? "Schreibe den Nebensatz in der richtigen Reihenfolge in die Felder, mit dem Einleiter am Anfang. Die Wörter in der Farbe des Satzes gehören zu diesem Satz." : "Klicke die Wörter in der Farbe des Satzes an, beginne mit dem Einleiter. Sie füllen die Lücken von links nach rechts.") : wr ? "Schreibe in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.";
+    const how = T.how ? (wr ? T.how[0] : T.how[1]) : T.type === "ns" ? (wr ? "Schreibe den Nebensatz in der richtigen Reihenfolge in die Felder, mit dem Einleiter am Anfang. Die Wörter in der Farbe des Satzes gehören zu diesem Satz." : "Klicke die Wörter in der Farbe des Satzes an, beginne mit dem Einleiter. Sie füllen die Lücken von links nach rechts.") : wr ? "Schreibe in die umrandeten Felder. Mit der Eingabetaste springst du zum nächsten Feld." : "Klicke die Wörter der Reihe nach an. Sie füllen die umrandeten Lücken von links nach rechts.";
     t.className = "task active ptk";
     t.innerHTML = '<div class="tk-bar"><span class="sym">' + (PT.n + 1) + '</span><span class="who">Etappe ' + (PT.n + 1) + " von " + PN + '</span></div><div class="tk-body"><div class="tk-title">' + esc(T.title) + '</div><div class="how">' + how + '</div><div class="tw">' + taskTabHtml(T) + '</div><div class="tk-feed" id="pFeed"></div></div>' +
       '<div class="tk-dock">' + (wr && T.type !== "ns" ? "" : '<div class="chips" id="pChips"></div>') + '<div class="tk-act">' + TOOLS + (wr ? "" : '<button id="pClear">Letzte Eingabe löschen</button>') + '<button class="primary" id="pCheck">Prüfen</button><button class="primary" id="pNext" hidden>Weiter</button></div></div>';
@@ -2349,14 +2453,14 @@
       ins.forEach((el, i) => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (i < ins.length - 1) ins[i + 1].focus(); else pracCheck(); } }));
       if (ins[0]) ins[0].focus({ preventScroll: true });
     } else {
-      $("pClear").onclick = () => { if (T.type === "ns") { while (T.hist && T.hist.length) { const li = T.hist.pop(); if (T.fill[li] !== null) { T.fill[li] = null; pracChips(); return; } } return; } const k = T.fill.map((x, i) => x !== null ? i : -1).filter(i => i >= 0); if (k.length) { T.fill[k[k.length - 1]] = null; pracChips(); } };
+      $("pClear").onclick = () => { if (rcT(T)) { while (T.hist && T.hist.length) { const li = T.hist.pop(); if (T.fill[li] !== null) { T.fill[li] = null; pracChips(); return; } } return; } const k = T.fill.map((x, i) => x !== null ? i : -1).filter(i => i >= 0); if (k.length) { T.fill[k[k.length - 1]] = null; pracChips(); } };
       t.querySelectorAll(".slot").forEach(el => { const f = () => { const i = +el.dataset.s; if (!T.done && T.fill[i] !== null) { T.fill[i] = null; pracChips(); } }; el.onclick = f; el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); f(); } }; });
       pracChips();
     }
   }
   function pracChips() {
     const T = PT.task, usedIds = T.fill.filter(x => x !== null);
-    $("pChips").innerHTML = T.type === "ns" ? nsChipsHtml(T, usedIds) : T.chips.map(c => '<button class="chip" data-c="' + c.id + '"' + (usedIds.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("");
+    $("pChips").innerHTML = rcT(T) ? nsChipsHtml(T, usedIds) : T.chips.map(c => '<button class="chip" data-c="' + c.id + '"' + (usedIds.indexOf(c.id) >= 0 || T.done ? " disabled" : "") + ">" + esc(c.t) + "</button>").join("");
     $("pChips").querySelectorAll(".chip").forEach(b => b.onclick = () => { const i = pickSlot(T, +b.dataset.c); if (i >= 0 && !T.done) { T.fill[i] = +b.dataset.c; (T.hist = T.hist || []).push(i); pracChips(); } });
     $("pTask").querySelectorAll(".slot").forEach((el, i) => { const id = T.fill[i]; el.textContent = id === null ? "" : T.chips.find(c => c.id === id).t; el.className = "slot" + (id !== null ? " fill" : (i === nsRow(T, i) && !T.done ? " next" : "")); });
     $("pCheck").disabled = T.done || T.fill.indexOf(null) >= 0;

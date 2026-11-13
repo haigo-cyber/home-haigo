@@ -71,7 +71,13 @@
   .fsz { padding:0.353rem 0.588rem 0.118rem; color:#b9bfc6; font-size:0.82rem; }
   .fsz label { display:flex; flex-direction:column; gap:0.35rem; color:inherit; font-size:inherit; }
   .fsz input { width:100%; }
-  .app.collapsed .brand-text, .app.collapsed .ni-text, .app.collapsed .ni-num, .app.collapsed .foot-text, .app.collapsed .fsz { display:none; }
+  .app.collapsed .brand-text, .app.collapsed .ni-text, .app.collapsed .ni-num, .app.collapsed .foot-text, .app.collapsed .fsz, .app.collapsed .dfs { display:none; }
+  .dfs { padding:0.353rem 0.588rem 0.118rem; color:#b9bfc6; font-size:0.82rem; }
+  .dfb { display:flex; gap:0.25rem; margin-top:0.35rem; }
+  .side-foot .dfb button { flex:1; width:auto; min-height:2rem; justify-content:center; padding:0 0.2rem; font-size:0.82rem; border:1px solid rgba(255,255,255,.16); text-align:center; }
+  .side-foot .dfb button[aria-pressed="true"] { background:var(--qa); border-color:var(--qa); color:#04121f; font-weight:700; }
+  .dfc { display:none !important; }
+  .app.collapsed .side-foot .dfc { display:flex !important; justify-content:center; min-height:2rem; padding:0; font-weight:800; font-size:.95rem; border:1px solid rgba(255,255,255,.16); }
   .app.collapsed .grp-label { height:1px; padding:0; margin:0.588rem 0.941rem; background:rgba(255,255,255,.07); font-size:0; }
   .app.collapsed .grp-label::before, .app.collapsed .grp-label .gn { display:none; }
   .app.collapsed .nav-item, .app.collapsed .side-foot button { justify-content:center; padding-left:0; padding-right:0; }
@@ -804,6 +810,8 @@
       <div class="fsz"><label>Schriftgröße <span id="fszVal">100 %</span><input type="range" id="fszR" min="70" max="180" step="5" value="100" aria-label="Schriftgröße"></label></div>
       <div class="fszb" id="fszBtns"><button type="button" id="fszUp" aria-label="Schrift größer" title="Schrift größer">A+</button><button type="button" id="fszDown" aria-label="Schrift kleiner" title="Schrift kleiner">A−</button></div>
       <div class="fsz"><label>Sprechtempo <span id="spdVal">90 %</span><input type="range" id="spdR" min="60" max="130" step="5" value="90" aria-label="Sprechtempo"></label></div>
+      <div class="dfs" id="dfs"><span id="dfLbl">Schwierigkeit</span><div class="dfb" role="group" aria-labelledby="dfLbl" title="Gilt für alle Spiele, ab der nächsten Aufgabe"><button type="button" data-df="1" aria-pressed="true">Leicht</button><button type="button" data-df="2" aria-pressed="false">Mittel</button><button type="button" data-df="3" aria-pressed="false">Schwer</button></div></div>
+      <button id="dfCycle" class="dfc" type="button" title="Schwierigkeit wechseln: Leicht" aria-label="Schwierigkeit wechseln, jetzt Leicht">L</button>
       <button id="phoneBtn" aria-pressed="false" title="Layout für das Handy: kompakte Kopfleiste, große Schaltflächen, Bilder passen in die Breite"><svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><span class="foot-text">Handyansicht: aus</span></button>
       <button id="fsBtn" title="Vollbild ein/aus" aria-label="Vollbild ein oder aus"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="foot-text">Vollbild</span></button>
     </div>
@@ -850,7 +858,8 @@
               <li>Jede richtige Aufgabe bringt XP und Level.</li>
               <li>Eine Serie richtiger Aufgaben gibt mehr XP.</li>
               <li>Mit Zeitlimit gibt es einen Zeitbonus.</li>
-              <li>Der Tipp-Joker füllt eine Lücke aus, zählt aber nur halb.</li>
+              <li>Der Tipp-Joker füllt eine Lücke aus, zählt aber nur halb. Auf der Stufe Schwer gibt es keinen Joker.</li>
+              <li>Der Schalter Schwierigkeit in der Seitenleiste gilt für alle Spiele. Leicht: mit allen Hilfen. Mittel: ohne das ganze Wort daneben. Schwer: ohne Hilfen und mit mehr falschen Bausteinen.</li>
               <li>Mission und Trophäen warten auf dich.</li>
             </ul></details>
           <div class="ih-foot"><button data-gotopic="gram">Grammatik erklärt ansehen</button></div>
@@ -982,7 +991,7 @@
           <label class="psel">Stufe <select id="mStage"></select></label>
           <label class="psel">Aufgabenart <select id="mKind"><option value="mix">Gemischt</option><option value="cut">Nur Zerlegen</option><option value="build">Nur Bauen</option><option value="label">Nur Bestimmen</option></select></label>
           <label class="ck"><input type="checkbox" id="mAuto" checked> Automatisch in die nächste Stufe</label>
-          <label class="ck"><input type="checkbox" id="mCount" checked> Anzahl der Bausteine verraten</label>
+          <label class="ck"><input type="checkbox" id="mCount" checked> Anzahl der Bausteine verraten (nur auf Stufe Leicht)</label>
         </div>
       </div>
       <details class="card" id="mOwn">
@@ -1032,6 +1041,10 @@
   "use strict";
   const $ = id => document.getElementById(id);
   const LS = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* egal */ } } };
+  /* Globaler Schwierigkeitsgrad für alle Spiele: 1 Leicht (mit Hilfen), 2 Mittel (ohne das ganze Wort daneben), 3 Schwer (ohne Hilfen, mehr falsche Bausteine, kein Joker) */
+  const DKEY = "de_diff_v1", DNAME = { 1: "Leicht", 2: "Mittel", 3: "Schwer" };
+  let DIFF = +LS.get(DKEY) || 1; if (DIFF !== 2 && DIFF !== 3) DIFF = 1;
+  const helpOn = () => !!S.help && DIFF === 1;
   const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
   const shuf = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i), t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
   const pick = a => a[ri(0, a.length - 1)];
@@ -1266,7 +1279,7 @@
     { t: "Zwei Eckfelder erobern", xp: 20, ok: me => [0, 2, 6, 8].filter(i => G.board[i] === SYM[me]).length >= 2 },
     { t: "Die Runde ohne Joker gewinnen", xp: 25, win: true, ok: (me, R) => R.jused === 0 }
   ];
-  const mkR = () => ({ rs: 0, ok: 0, bad: 0, joker: 1, jused: 0, xp: 0, mission: pick(MIS), mDone: false, newB: [] });
+  const mkR = () => ({ rs: 0, ok: 0, bad: 0, joker: DIFF === 3 ? 0 : 1, jused: 0, xp: 0, mission: pick(MIS), mDone: false, newB: [] });
   let RS = [mkR(), mkR()];
   const SK = [0, 0];
   const KICK = { lvl: "Level", tro: "Trophäe", mis: "Mission", jok: "Joker", bau: "Baustein" };
@@ -1402,7 +1415,8 @@
   }
 
   /* ---------- Morpheme, Silbentrennung und Zeichensetzung im Spiel ----------
-     Alle drei nutzen die Daten der Trainer (MWORDS, SYI, ZI). Jede Zeile hat eine Farbe, die Auswahl für die Zeile liegt in derselben Farbe bereit. */
+     Alle drei nutzen die Daten der Trainer (MWORDS, SYI, ZI). Jede Zeile hat eine Farbe, die Auswahl für die Zeile liegt in derselben Farbe bereit.
+     Der globale Schwierigkeitsgrad (DIFF) bestimmt, wie viel Hilfe es gibt: das ganze Wort daneben, falsche Bausteine, Hinweise. */
   const TLV = { mo: { 1: [1, 2], 2: [3, 3], 3: [4, 4] }, sy: { 1: [1, 2], 2: [3, 4], 3: [5, 5] }, zs: { 1: [1, 2], 2: [3, 4], 3: [5, 6] } };
   const tPool = (k, list) => {
     const r = TLV[k][S.tLv] || [1, 99], base = list.filter(x => !x.own), p = base.filter(x => x.stage >= r[0] && x.stage <= r[1]);
@@ -1415,31 +1429,36 @@
     return out;
   };
   const MNAMES = { P: ["Vorsilbe", "Präfix"], S: ["Stamm", "Wortstamm"], X: ["Nachsilbe", "Suffix"], F: ["Fuge", "Fugenelement"], E: ["Endung"] };
+  /* kind: cut (Baustein), syl (Silbe), label (Art bestimmen), build (Wort aus Bausteinen bauen, ohne das Wort zu zeigen) */
   function partRows(words, pool, kind) {
-    const slots = [], chips = [];
+    const slots = [], chips = [], typed = S.ans === "type", hide = DIFF >= 2 && (kind === "build" || kind === "label");
     const rows = words.map((w, ri) => {
-      const pieces = [], group = [];
-      w.parts.forEach((q, k) => {
-        if (kind === "label") { pieces.push({ t: q + " =" }); const nm = MNAMES[w.types.charAt(k)]; pieces.push({ s: slots.length }); slots.push(slotOf(nm, "t", { row: ri, ph: "Art" })); group.push(nm[0]); }
-        else { if (k) pieces.push({ t: "+" }); pieces.push({ s: slots.length }); slots.push(slotOf([q], "t", { row: ri, ph: kind === "cut" ? "Baustein" : "Silbe" })); group.push(q); }
-      });
+      const pieces = [], group = w.parts.slice();
       let dist = [];
-      if (kind === "label") { const others = Object.keys(MNAMES).map(c => MNAMES[c][0]).filter(n => group.indexOf(n) < 0); dist = [pick(others)]; }
-      else { const o = shuf(pool.filter(x => x.word !== w.word)); for (let k = 0; k < o.length && !dist.length; k++) { const c = o[k].parts.filter(q => group.map(g => g.toLowerCase()).indexOf(q.toLowerCase()) < 0); if (c.length) dist = [pick(c)]; } }
+      if (kind === "label") { const nm = w.types.split("").map(c => MNAMES[c][0]); group.length = 0; nm.forEach(x => group.push(x)); const others = shuf(Object.keys(MNAMES).map(c => MNAMES[c][0]).filter(n => group.indexOf(n) < 0)); dist = others.slice(0, Math.min(others.length, DIFF >= 3 ? 2 : 1)); }
+      else { const o = shuf(pool.filter(x => x.word !== w.word)), have = group.map(g => g.toLowerCase()); for (let k = 0; k < o.length && dist.length < DIFF; k++) { const c = shuf(o[k].parts).find(q => have.indexOf(q.toLowerCase()) < 0); if (c) { have.push(c.toLowerCase()); dist.push(c); } } }
       let ws = group.concat(dist); for (let t = 0; t < 30; t++) { ws = shuf(group.concat(dist)); if (ws.join("|") !== group.join("|")) break; }
       ws.forEach(x => chips.push({ id: chips.length, t: x, row: ri }));
-      return { left: w.word, rc: ri, pieces: pieces, note: "", hint: kind === "label" ? "Die Vorsilbe steht vorn, die Nachsilbe hinten, die Fuge zwischen zwei Wörtern, die Endung zeigt die Form." : w.types ? "Die Bausteine: " + w.types.split("").map(c => MNAMES[c][0]).join(" + ") : "" };
+      if (kind === "build" && typed) { pieces.push({ t: "Bausteine: " + ws.join(" · ") }); pieces.push({ s: slots.length }); slots.push(slotOf([w.word], "t", { row: ri, ph: "Wort" })); }
+      else w.parts.forEach((q, k) => {
+        if (kind === "label") { pieces.push({ t: q + " =" }); pieces.push({ s: slots.length }); slots.push(slotOf(MNAMES[w.types.charAt(k)], "t", { row: ri, ph: "Art" })); }
+        else { if (k) pieces.push({ t: "+" }); pieces.push({ s: slots.length }); slots.push(slotOf([q], "t", { row: ri, ph: kind === "syl" ? "Silbe" : "Baustein" })); }
+      });
+      const hint = kind === "label" ? "Die Vorsilbe steht vorn, die Nachsilbe hinten, die Fuge zwischen zwei Wörtern, die Endung zeigt die Form."
+        : kind === "build" ? "Das Wort hat " + w.parts.length + " Bausteine." : w.types ? "Die Bausteine: " + w.types.split("").map(c => MNAMES[c][0]).join(" + ") : "";
+      return { left: hide ? "Wort " + (ri + 1) : w.word, rc: ri, pieces: pieces, note: "", hint: hint };
     });
     return { slots: slots, chips: chips, rows: rows };
   }
   function buildMo() {
-    const kind = Math.random() < .5 ? "cut" : "label", pool = tPool("mo", MWORDS);
+    const kind = DIFF === 1 ? (Math.random() < .5 ? "cut" : "label") : (Math.random() < .55 ? "build" : "label"), pool = tPool("mo", MWORDS);
     const words = tWords("mo|" + S.tLv, pool, w => w.word, 3);
-    const r = partRows(words, pool, kind);
-    return { type: "mo", rc: true, layout: "rows", leftHead: "Wort", slots: r.slots, rows: r.rows, chips: r.chips,
-      title: kind === "cut" ? "Zerlege die Wörter in ihre Bausteine (Morpheme). Die Bausteine ergeben von links nach rechts wieder das Wort." : "Bestimme die Bausteine: Vorsilbe, Stamm, Nachsilbe, Fuge oder Endung?",
-      how: kind === "cut" ? ["Schreibe jeden Baustein in ein Feld, von links nach rechts. Mit der Eingabetaste springst du zum nächsten Feld.", "Klicke die Bausteine in der Farbe des Wortes der Reihe nach an. Ein Baustein bleibt übrig."]
-        : ["Schreibe die Art des Bausteins in das Feld: Vorsilbe, Stamm, Nachsilbe, Fuge oder Endung.", "Klicke für jeden Baustein die passende Art in der Farbe des Wortes an. Eine Art bleibt übrig."] };
+    const r = partRows(words, pool, kind), typed = S.ans === "type";
+    const T = { type: "mo", rc: true, layout: "rows", leftHead: "Wort", slots: r.slots, rows: r.rows, chips: r.chips };
+    if (kind === "cut") { T.title = "Zerlege die Wörter in ihre Bausteine (Morpheme). Die Bausteine ergeben von links nach rechts wieder das Wort."; T.how = ["Schreibe jeden Baustein in ein Feld, von links nach rechts. Mit der Eingabetaste springst du zum nächsten Feld.", "Klicke die Bausteine in der Farbe des Wortes der Reihe nach an. Ein Baustein bleibt übrig."]; }
+    else if (kind === "build") { T.title = "Baue aus den Bausteinen die Wörter."; T.how = ["Schreibe aus den Bausteinen das ganze Wort. Nicht alle Bausteine werden gebraucht.", "Klicke die Bausteine in der Farbe der Zeile in der richtigen Reihenfolge an. Nicht alle Bausteine werden gebraucht."]; }
+    else { T.title = DIFF === 1 ? "Bestimme die Bausteine: Vorsilbe, Stamm, Nachsilbe, Fuge oder Endung?" : "Bestimme die Bausteine. Das Wort entsteht aus den Bausteinen der Zeile."; T.how = ["Schreibe die Art des Bausteins in das Feld: Vorsilbe, Stamm, Nachsilbe, Fuge oder Endung.", "Klicke für jeden Baustein die passende Art in der Farbe des Wortes an. " + (DIFF >= 3 ? "Zwei Arten bleiben übrig." : "Eine Art bleibt übrig.")]; }
+    return T;
   }
   const SYN = ["", "eins", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht"];
   function buildSy() {
@@ -1449,11 +1468,11 @@
       const r = partRows(words, pool, "syl");
       return { type: "sy", rc: true, layout: "rows", leftHead: "Wort", slots: r.slots, rows: r.rows, chips: r.chips,
         title: "Trenne die Wörter in Silben. Schreibe jede Silbe in ein Feld.",
-        how: ["Schreibe jede Silbe in ein Feld, von links nach rechts. Mit der Eingabetaste springst du zum nächsten Feld.", "Klicke die Silben in der Farbe des Wortes der Reihe nach an. Eine Silbe bleibt übrig."] };
+        how: ["Schreibe jede Silbe in ein Feld, von links nach rechts. Mit der Eingabetaste springst du zum nächsten Feld.", "Klicke die Silben in der Farbe des Wortes der Reihe nach an. " + (DIFF > 1 ? "Nicht alle Silben werden gebraucht." : "Eine Silbe bleibt übrig.")] };
     }
     const slots = [], chips = [], rows = words.map((w, ri) => {
       const n = w.parts.length; slots.push(slotOf([String(n), SYN[n] || String(n)], "t", { row: ri, ph: "Anzahl" }));
-      [n - 1, n, n + 1].filter(x => x >= 1 && x <= 8).forEach(x => chips.push({ id: chips.length, t: String(x), row: ri }));
+      for (let x = n - (DIFF >= 3 ? 2 : 1); x <= n + (DIFF >= 2 ? 2 : 1); x++) if (x >= 1 && x <= 8) chips.push({ id: chips.length, t: String(x), row: ri });
       return { left: w.word, rc: ri, pieces: [{ t: "hat" }, { s: ri }, { t: "Silben." }], note: "", hint: "Klatsche das Wort: Jeder Klatscher ist eine Silbe." };
     });
     return { type: "sy", rc: true, layout: "rows", leftHead: "Wort", slots: slots, rows: rows, chips: chips, title: "Wie viele Silben hat jedes Wort?",
@@ -1461,7 +1480,7 @@
   }
   function buildZs() {
     const hasEnd = (TLV.zs[S.tLv] || [1])[0] <= 1, hasPick = (TLV.zs[S.tLv] || [1, 9])[1] >= 2;
-    const kind = hasEnd && (!hasPick || Math.random() < .4) ? "end" : "pick";
+    const kind = hasEnd && (!hasPick || Math.random() < [0, .4, .2, 0][DIFF]) ? "end" : "pick";
     if (kind === "end") {
       const ends = ZI.filter(x => x.rule === "end" && !x.own), words = tWords("zs|end", ends, w => w.text, 3);
       const slots = [], chips = [], rows = words.map((w, ri) => {
@@ -1472,12 +1491,12 @@
       return { type: "zs", rc: true, layout: "rows", leftHead: "Satz", slots: slots, rows: rows, chips: chips, title: "Welches Satzzeichen steht am Ende? Punkt, Fragezeichen oder Ausrufezeichen.",
         how: ["Schreibe das Satzzeichen in das Feld: . oder ? oder !", "Klicke für jeden Satz das passende Satzzeichen in der Farbe des Satzes an."] };
     }
-    const pool = tPool("zs", ZI.filter(x => x.rule !== "end")), words = tWords("zs|pick|" + S.tLv, pool, w => w.text, 2);
+    const pool = tPool("zs", ZI.filter(x => x.rule !== "end")), words = tWords("zs|pick|" + S.tLv, pool, w => w.text, 2), typed = S.ans === "type";
     const slots = [], chips = [], rows = words.map((w, ri) => {
       const good = zGood(w), plain = good.replace(/[„“,:]/g, "").replace(/\s+/g, " ").trim();
       slots.push(slotOf([good], "t", { row: ri, ph: "Satz", wide: true, loose: true }));
       zOpts(w).forEach(o => chips.push({ id: chips.length, t: o.t, row: ri }));
-      return { left: "Satz " + (ri + 1), rc: ri, pieces: [{ t: plain }, { s: ri }], note: "", hint: ZR[w.rule] || ZR.own };
+      return { left: "Satz " + (ri + 1), rc: ri, pieces: (DIFF >= 2 && !typed ? [] : [{ t: plain }]).concat([{ s: ri }]), note: "", hint: ZR[w.rule] || ZR.own };
     });
     return { type: "zs", rc: true, layout: "rows", leftHead: "Satz", slots: slots, rows: rows, chips: chips, title: "Schreibe die Sätze richtig auf: mit allen Kommas und Satzzeichen.",
       how: ["Schreibe jeden Satz noch einmal ab und setze alle Satzzeichen. Anführungszeichen darfst du mit dem Zeichen \" schreiben.", "Wähle für jeden Satz die richtige Schreibweise in der Farbe des Satzes."] };
@@ -1714,7 +1733,7 @@
     const g = id => { const e = $(id); return e.options[e.selectedIndex] ? e.options[e.selectedIndex].textContent : ""; };
     const el = $("sumChips"); if (!el) return;
     const nsChip = (S.mode === "ns" || S.mode === "mix" ? [S.nsTopic ? g("sNsTopic") : g("sNsStage")] : []).concat(S.mode === "mo" || S.mode === "sy" || S.mode === "zs" || S.mode === "mix" ? [g("sTLv")] : []);
-    el.innerHTML = [g("sMode"), g("sAns"), g("sLim")].concat(S.mode === "kas" || S.mode === "kd" || S.mode === "wp" || S.mode === "fp" || S.mode === "ns" || S.mode === "mo" || S.mode === "sy" || S.mode === "zs" ? [] : [g("sVb")], nsChip).map(t => "<span>" + esc(t) + "</span>").join("");
+    el.innerHTML = [g("sMode"), g("sAns"), g("sLim")].concat(S.mode === "kas" || S.mode === "kd" || S.mode === "wp" || S.mode === "fp" || S.mode === "ns" || S.mode === "mo" || S.mode === "sy" || S.mode === "zs" ? [] : [g("sVb")], nsChip).concat(["Schwierigkeit: " + DNAME[DIFF]]).map(t => "<span>" + esc(t) + "</span>").join("");
   }
   function renderBoard() {
     const idle = !G.over && !G.task;
@@ -1759,7 +1778,7 @@
       tab = '<table class="tk rw"><thead><tr><th>' + T.leftHead + "</th><th>Satz</th></tr></thead><tbody>" + T.rows.map((r, ri_) => {
         const body = r.pieces.map(p => p.s !== undefined ? slotHtml(T.slots[p.s], p.s) : "<span>" + esc(p.t) + "</span>").join(" ");
         const left = T.leftOnce ? (ri_ === 0 ? '<td class="vb" rowspan="' + T.rows.length + '">' + esc(T.leftOnce) + "</td>" : "") : '<td class="vb' + (T.rc ? " wd" : "") + '">' + esc(r.left) + "</td>";
-        return "<tr" + (r.rc !== undefined ? ' class="rc rc' + r.rc + '"' : "") + ">" + left + '<td><div class="cellw sent">' + body + (r.note ? ' <span class="noun">' + esc(r.note) + "</span>" : "") + "</div>" + (S.help && r.hint ? '<div class="hint">' + esc(r.hint) + "</div>" : "") + "</td></tr>";
+        return "<tr" + (r.rc !== undefined ? ' class="rc rc' + r.rc + '"' : "") + ">" + left + '<td><div class="cellw sent">' + body + (r.note ? ' <span class="noun">' + esc(r.note) + "</span>" : "") + "</div>" + (helpOn() && r.hint ? '<div class="hint">' + esc(r.hint) + "</div>" : "") + "</td></tr>";
       }).join("") + "</tbody></table>";
     }
     return tab;
@@ -1887,7 +1906,7 @@
         if (S.nsOk >= NS_NEED) { S.nsStage = String(T.nsStage + 1); S.nsOk = 0; applyS(); parts.push("Nebensätze: Stufe " + S.nsStage + " erreicht"); }
         saveS();
       } if (SK[me] >= 2) parts.push("Serie " + SK[me] + ", Faktor " + String(mult).replace(".", ",")); if (tb) parts.push("Zeitbonus " + tb); if (T.jok) parts.push("Joker: halbe Punkte");
-      if (SK[me] % 3 === 0 && R.joker < 3) { R.joker++; toast("jok", "Extra-Joker", nm + " bekommt einen zusätzlichen Tipp-Joker."); }
+      if (SK[me] % 3 === 0 && R.joker < 3 && DIFF < 3) { R.joker++; toast("jok", "Extra-Joker", nm + " bekommt einen zusätzlichen Tipp-Joker."); }
       if (w) {
         G.over = true; G.win = w; G.score[me]++; G.msg = nm + " gewinnt die Runde!"; setTimeout(SFX.win, 350);
         P.stat.wins++; if (R.bad === 0) P.stat.clean++; if (R.bad >= 2) P.stat.come++; if (w.join() === "0,4,8" || w.join() === "2,4,6") P.stat.diag++;
@@ -2224,7 +2243,7 @@
         T.slots.forEach(s => parts.push((s.given ? "Gegenwart: " + s.given + ". " : "") + s.pron + ", Lücke."));
       } else {
         if (T.leftOnce) parts.push("Verb: " + T.leftOnce + ".");
-        T.rows.forEach((r, ri) => parts.push(((T.type === "ns" ? "Satz " + (ri + 1) + ": " : T.leftOnce ? "" : r.left + ": ") + r.pieces.map(p => p.s !== undefined ? "Lücke" : p.t).join(", ") + (S.help && r.hint ? " " + r.hint : "")).replace(/[.?!]?$/, ".")));
+        T.rows.forEach((r, ri) => parts.push(((T.type === "ns" ? "Satz " + (ri + 1) + ": " : T.leftOnce ? "" : r.left + ": ") + r.pieces.map(p => p.s !== undefined ? "Lücke" : p.t).join(", ") + (helpOn() && r.hint ? " " + r.hint : "")).replace(/[.?!]?$/, ".")));
       }
       if (T.type === "ns") [0, 1, 2].forEach(ri => parts.push("Wörter für Satz " + (ri + 1) + ": " + T.chips.filter(c => c.row === ri).map(c => c.t).join(", ") + ".")); else if (S.ans === "click") parts.push("Zur Auswahl: " + T.chips.map(c => c.t).join(", ") + ".");
       return spoken(parts.join(" "));
@@ -2517,7 +2536,7 @@
     if (T.done) { const f = $("pFeed"); return f ? f.textContent : ""; }
     const parts = ["Etappe " + (PT.n + 1) + " von " + PN + ".", T.title];
     if (T.layout === "conj") { parts.push("Verb: " + T.verb + "."); T.slots.forEach(s => parts.push((s.given ? "Gegenwart: " + s.given + ". " : "") + s.pron + ", Lücke.")); }
-    else { if (T.leftOnce) parts.push("Verb: " + T.leftOnce + "."); T.rows.forEach((r, ri) => parts.push(((T.type === "ns" ? "Satz " + (ri + 1) + ": " : T.leftOnce ? "" : r.left + ": ") + r.pieces.map(p => p.s !== undefined ? "Lücke" : p.t).join(", ") + (S.help && r.hint ? " " + r.hint : "")).replace(/[.?!]?$/, "."))); }
+    else { if (T.leftOnce) parts.push("Verb: " + T.leftOnce + "."); T.rows.forEach((r, ri) => parts.push(((T.type === "ns" ? "Satz " + (ri + 1) + ": " : T.leftOnce ? "" : r.left + ": ") + r.pieces.map(p => p.s !== undefined ? "Lücke" : p.t).join(", ") + (helpOn() && r.hint ? " " + r.hint : "")).replace(/[.?!]?$/, "."))); }
     if (T.type === "ns") [0, 1, 2].forEach(ri => parts.push("Wörter für Satz " + (ri + 1) + ": " + T.chips.filter(c => c.row === ri).map(c => c.t).join(", ") + ".")); else if (S.ans === "click") parts.push("Zur Auswahl: " + T.chips.map(c => c.t).join(", ") + ".");
     return parts.join(" ");
   }
@@ -2610,9 +2629,11 @@
     if (MS.kind === "mix" && kind === MT.lastKind && kinds.length > 1) kind = pick(kinds.filter(k => k !== MT.lastKind));
     MT.lastKind = kind;
     let chips = w.parts.map((t, i) => ({ t: t, i: i })), tries = 0;
+    if (DIFF > 1) { const have = w.parts.map(q => q.toLowerCase()), src = shuf(MWORDS.filter(x => x.word !== w.word && x.stage <= Math.max(2, w.stage)).reduce((a, x) => a.concat(x.parts), [])); for (let k = 0; k < src.length && chips.length < w.parts.length + DIFF - 1; k++) { const lo = src[k].toLowerCase(); if (have.indexOf(lo) < 0) { have.push(lo); chips.push({ t: src[k], i: chips.length }); } } }
     do { chips = shuf(chips); tries++; } while (tries < 12 && chips.length > 1 && chips.every((c, i) => c.i === i));
     let cats = (MCATS_BY_STAGE[w.stage] || "PSXFE").split("");
     if (w.typed) w.types.split("").forEach(c => { if (cats.indexOf(c) < 0) cats.push(c); });
+    if (DIFF === 3) cats = "PSXFE".split("");
     cats = "PSXFE".split("").filter(c => cats.indexOf(c) >= 0);
     MT.n++;
     MT.task = { kind: kind, w: w, done: false, ok: false, cuts: new Set(), ans: [], assign: w.parts.map(() => ""), chips: chips, cats: cats };
@@ -2679,10 +2700,10 @@
   }
   function mRender(focusSel) {
     const T = MT.task; if (!T) return; mHud();
-    const TT = { cut: ["Zerlege das Wort in Bausteine", "Tippe zwischen zwei Buchstaben, um einen Schnitt zu setzen. Tippe noch einmal darauf, um ihn zu entfernen." + (MS.count ? " Das Wort hat " + T.w.parts.length + " Bausteine, also " + (T.w.parts.length - 1) + (T.w.parts.length === 2 ? " Schnitt." : " Schnitte.") : "")],
-      build: ["Baue ein Wort aus diesen Bausteinen", "Tippe die Bausteine in der richtigen Reihenfolge an. Tippe auf einen Platz, um den Baustein zurückzulegen."],
+    const TT = { cut: ["Zerlege das Wort in Bausteine", "Tippe zwischen zwei Buchstaben, um einen Schnitt zu setzen. Tippe noch einmal darauf, um ihn zu entfernen." + (MS.count && DIFF === 1 ? " Das Wort hat " + T.w.parts.length + " Bausteine, also " + (T.w.parts.length - 1) + (T.w.parts.length === 2 ? " Schnitt." : " Schnitte.") : "")],
+      build: ["Baue ein Wort aus diesen Bausteinen", "Tippe die Bausteine in der richtigen Reihenfolge an. Tippe auf einen Platz, um den Baustein zurückzulegen." + (T.chips.length > T.w.parts.length ? " Nicht alle Bausteine werden gebraucht." : "")],
       label: ["Bestimme die Bausteine", "Wähle für jeden Baustein, was er ist."] }[T.kind];
-    let h = '<h2 class="m-title">' + TT[0] + (T.kind === "label" ? ": " + esc(T.w.word) : "") + '</h2><p class="m-how">' + TT[1] + "</p>";
+    let h = '<h2 class="m-title">' + TT[0] + (T.kind === "label" && DIFF === 1 ? ": " + esc(T.w.word) : "") + '</h2><p class="m-how">' + TT[1] + "</p>";
     h += T.kind === "cut" ? mCutHtml(T) : T.kind === "build" ? mBuildHtml(T) : mLabelHtml(T);
     if (T.done) h += mFeedHtml(T);
     h += '<div class="m-act">';
@@ -2704,7 +2725,7 @@
   function mCheck() {
     const T = MT.task; if (!T || T.done) return; let ok = false;
     if (T.kind === "cut") { const s = cutsOf(T.w); ok = s.length === T.cuts.size && s.every(n => T.cuts.has(n)); }
-    else if (T.kind === "build") ok = T.ans.length === T.w.parts.length && T.ans.map(i => T.w.parts[i]).join("") === T.w.word;
+    else if (T.kind === "build") ok = T.ans.length === T.w.parts.length && T.ans.map(i => T.chips.find(c => c.i === i).t).join("") === T.w.word;
     else ok = T.w.types.split("").every((c, i) => T.assign[i] === c);
     T.done = true; T.ok = ok; T.newB = []; MS.total++;
     if (ok) {
@@ -2726,7 +2747,7 @@
     const T = MT.task, t = e.target; if (!T) return;
     const cut = t.closest("[data-cut]"), chip = t.closest("[data-chip]"), slot = t.closest("[data-slot]"), opt = t.closest("[data-opt]");
     if (cut && !T.done) { const n = +cut.dataset.cut; if (T.cuts.has(n)) T.cuts.delete(n); else T.cuts.add(n); cut.setAttribute("aria-pressed", T.cuts.has(n) ? "true" : "false"); return; }
-    if (chip && !T.done) { const i = +chip.dataset.chip; if (T.ans.indexOf(i) < 0) T.ans.push(i); mRender(T.ans.length === T.w.parts.length ? "#mCheck" : ".chip:not(:disabled)"); return; }
+    if (chip && !T.done) { const i = +chip.dataset.chip; if (T.ans.indexOf(i) < 0 && T.ans.length < T.w.parts.length) T.ans.push(i); mRender(T.ans.length === T.w.parts.length ? "#mCheck" : ".chip:not(:disabled)"); return; }
     if (slot && !T.done) { const k = +slot.dataset.slot, i = T.ans[k]; T.ans.splice(k, 1); mRender('[data-chip="' + i + '"]'); return; }
     if (opt && !T.done) { const a = opt.dataset.opt.split(":"), i = +a[0]; T.assign[i] = T.assign[i] === a[1] ? "" : a[1]; mRender('[data-opt="' + opt.dataset.opt + '"]'); return; }
     if (t.closest("#mCheck")) mCheck(); else if (t.closest("#mNext")) mNextTask();
@@ -2734,9 +2755,9 @@
   function mSay() {
     const T = MT.task; if (!T) return "Starte eine Aufgabe.";
     if (T.done) { const f = $("mFeed"); return f ? f.textContent : ""; }
-    if (T.kind === "cut") return "Zerlege das Wort " + T.w.word + " in seine Bausteine." + (MS.count ? " Das Wort hat " + T.w.parts.length + " Bausteine." : "");
+    if (T.kind === "cut") return "Zerlege das Wort " + T.w.word + " in seine Bausteine." + (MS.count && DIFF === 1 ? " Das Wort hat " + T.w.parts.length + " Bausteine." : "");
     if (T.kind === "build") return "Baue ein Wort aus diesen Bausteinen: " + T.chips.map(c => c.t).join(", ") + ".";
-    return "Bestimme die Bausteine des Wortes " + T.w.word + ": " + T.w.parts.join(", ") + ".";
+    return DIFF === 1 ? "Bestimme die Bausteine des Wortes " + T.w.word + ": " + T.w.parts.join(", ") + "." : "Bestimme die Bausteine: " + T.w.parts.join(", ") + ".";
   }
   function mFillStage() {
     const keep = MS.stage, o = ["1", "2", "3", "4"].map(s => '<option value="' + s + '">Stufe ' + s + ": " + MSTG[+s] + "</option>").join("") + '<option value="all">Alle Stufen gemischt</option><option value="own"' + (MOWNW.length ? "" : " disabled") + ">Eigene Wörter (" + MOWNW.length + ")</option>";
@@ -2911,7 +2932,7 @@
   }
   function trBuildHtml(T) {
     let h = '<div class="m-slots" role="group" aria-label="Dein Wort">';
-    for (let k = 0; k < T.chips.length; k++) {
+    for (let k = 0; k < (T.n || T.chips.length); k++) {
       const ci = T.ans[k], t = ci === undefined ? "" : T.chips.find(c => c.i === ci).t;
       h += ci === undefined ? '<span class="m-slot" aria-hidden="true">?</span>' : '<button type="button" class="m-slot f' + (T.done ? (T.ok ? " ok" : " bad") : "") + '" data-slot="' + k + '" title="Zurücklegen" aria-label="' + esc(t) + ', zurücklegen"' + (T.done ? " disabled" : "") + ">" + esc(t) + "</button>";
     }
@@ -2922,6 +2943,12 @@
   function trOptsHtml(T, label) {
     return '<div class="z-opts" role="group" aria-label="' + label + '">' + T.opts.map((o, i) => '<button type="button" class="z-opt' + (T.done ? (o.ok ? " ok" : (T.sel === i ? " bad" : "")) : "") + '" data-o="' + i + '" aria-pressed="' + (T.sel === i) + '"' + (T.done ? " disabled" : "") + '><span class="z-let">' + "ABC".charAt(i) + "</span> " + esc(o.t) + "</button>").join("") + "</div>";
   }
+  /* falsche Bausteine für das Bauen: andere Silben oder Bausteine, die im Wort nicht vorkommen */
+  function trDist(it, list, n) {
+    const have = it.parts.map(q => q.toLowerCase()), src = shuf(list.filter(x => x.word !== it.word).reduce((a, x) => a.concat(x.parts), [])), out = [];
+    for (let k = 0; k < src.length && out.length < n; k++) { const lo = src[k].toLowerCase(); if (have.indexOf(lo) < 0) { have.push(lo); out.push(src[k]); } }
+    return out;
+  }
   function trShuffleChips(parts) {
     let chips = parts.map((t, i) => ({ t: t, i: i })), tries = 0;
     do { chips = shuf(chips); tries++; } while (tries < 12 && chips.length > 1 && chips.every((c, i) => c.i === i));
@@ -2931,7 +2958,7 @@
   function trCommonClick(e, T, render) {
     const t = e.target, cut = t.closest("[data-cut]"), chip = t.closest("[data-chip]"), slot = t.closest("[data-slot]"), o = t.closest("[data-o]"), n = t.closest("[data-n]");
     if (cut) { const k = +cut.dataset.cut; if (T.cuts.has(k)) T.cuts.delete(k); else T.cuts.add(k); cut.setAttribute("aria-pressed", T.cuts.has(k) ? "true" : "false"); return true; }
-    if (chip) { const i = +chip.dataset.chip; if (T.ans.indexOf(i) < 0) T.ans.push(i); render(T.ans.length === T.chips.length ? "[id$=Check]" : ".chip:not(:disabled)"); return true; }
+    if (chip) { const i = +chip.dataset.chip, nn = T.n || T.chips.length; if (T.ans.indexOf(i) < 0 && T.ans.length < nn) T.ans.push(i); render(T.ans.length === nn ? "[id$=Check]" : ".chip:not(:disabled)"); return true; }
     if (slot) { const k = +slot.dataset.slot, i = T.ans[k]; T.ans.splice(k, 1); render('[data-chip="' + i + '"]'); return true; }
     if (o) { T.sel = +o.dataset.o; render('[data-o="' + T.sel + '"]'); return true; }
     if (n) { T.sel = n.dataset.n; render('[data-n="' + T.sel + '"]'); return true; }
@@ -2987,23 +3014,23 @@
     k: "silben", pre: "sy", key: "msd_sy_v1", ownKey: "msd_sy_own_v1", ownName: "Wörter", need: 6, masterText: "Du bist ein Silben-Profi", items: SYI,
     stages: ["Einzelner Konsonant", "Mehrere Konsonanten", "ch, sch, ck, ß, pf", "Lange Wörter", "Zusammengesetzte Wörter"],
     kinds: [["mix", "Gemischt"], ["cut", "Nur Trennen"], ["count", "Nur Silben zählen"], ["build", "Nur Bauen"], ["choose", "Nur Auswählen"]],
-    extra: { label: "Anzahl der Trennstriche verraten", def: true },
+    extra: { label: "Anzahl der Trennstriche verraten (nur auf Stufe Leicht)", def: true },
     intro: { summary: "So geht es: Wörter in Silben trennen", html: '<p class="note" style="margin:.5rem 0 .7rem">Silben sind die Sprechstücke eines Wortes. Du erkennst sie am Klatschen: Ro-se hat zwei Klatscher. Du übst allein, Stufe für Stufe: Trennstriche setzen, Silben zählen, ein Wort aus Silben bauen und die richtige Trennung auswählen. Wer sechs Aufgaben einer Stufe richtig löst, kommt in die nächste Stufe.</p><ul class="m-info" style="margin:0"><li>Ein einzelner Konsonant kommt in die nächste Silbe: Ro-se.</li><li>Bei mehreren Konsonanten kommt nur der letzte in die nächste Silbe: Win-ter.</li><li>ch, sch und ck bleiben zusammen: Ta-sche, Zu-cker.</li><li>Zusammengesetzte Wörter trennst du zuerst zwischen den Wörtern: Haus-tür.</li></ul>' },
     own: { summary: "Eigene Wörter eingeben (Markdown oder Text)", aria: "Eigene Wörter mit Trennstrichen", pre: "# Mein Thema\n- Kat-ze\n- Haus-tür\n- Schul-ta-sche",
       note: "Lade eine Markdown- oder Textdatei oder füge den Text unten ein. Pro Zeile ein Wort, die Silben trennst du mit einem Bindestrich. Aufzählungszeichen und Überschriften sind erlaubt. Gespeichert wird nur in diesem Browser.", example: "# Mein Thema\n- Kat-ze\n- Haus-tür\n- Schul-ta-sche\n- Fens-ter\n- Ge-burts-tag" },
     idOf: it => it.word.toLowerCase(), kindsFor: it => ["cut", "count", "build", "choose"], parseOwn: syParseOwn,
-    mk: (it, kind) => kind === "cut" ? { cuts: new Set(), sol: syCuts(it) } : kind === "count" ? { sel: "" } : kind === "build" ? { chips: trShuffleChips(it.parts), ans: [] } : { opts: syOpts(it), sel: -1 },
-    ready: T => T.kind === "cut" ? true : T.kind === "count" ? !!T.sel : T.kind === "build" ? T.ans.length === T.chips.length : T.sel >= 0,
-    check: T => T.kind === "cut" ? T.sol.length === T.cuts.size && T.sol.every(n => T.cuts.has(n)) : T.kind === "count" ? +T.sel === T.item.parts.length : T.kind === "build" ? T.ans.length === T.chips.length && T.ans.map(i => T.item.parts[i]).join("") === T.item.word : T.opts[T.sel].ok,
+    mk: (it, kind) => kind === "cut" ? { cuts: new Set(), sol: syCuts(it) } : kind === "count" ? { sel: "" } : kind === "build" ? { chips: trShuffleChips(it.parts.concat(trDist(it, SYI, DIFF - 1))), ans: [], n: it.parts.length } : { opts: syOpts(it), sel: -1 },
+    ready: T => T.kind === "cut" ? true : T.kind === "count" ? !!T.sel : T.kind === "build" ? T.ans.length === T.n : T.sel >= 0,
+    check: T => T.kind === "cut" ? T.sol.length === T.cuts.size && T.sol.every(n => T.cuts.has(n)) : T.kind === "count" ? +T.sel === T.item.parts.length : T.kind === "build" ? T.ans.length === T.n && T.ans.map(i => T.chips.find(c => c.i === i).t).join("") === T.item.word : T.opts[T.sel].ok,
     view: (T, MS) => {
       const it = T.item, n = it.parts.length;
-      if (T.kind === "cut") return { title: "Trenne das Wort in Silben", how: "Tippe zwischen zwei Buchstaben, um dort einen Trennstrich zu setzen. Tippe noch einmal darauf, um ihn zu entfernen." + (MS.extra ? " Das Wort hat " + n + " Silben, also " + (n - 1) + (n === 2 ? " Trennstrich." : " Trennstriche.") : ""), body: trCutHtml(it.word, T.cuts, T.sol, T.done, "Trennstrich") };
+      if (T.kind === "cut") return { title: "Trenne das Wort in Silben", how: "Tippe zwischen zwei Buchstaben, um dort einen Trennstrich zu setzen. Tippe noch einmal darauf, um ihn zu entfernen." + (MS.extra && DIFF === 1 ? " Das Wort hat " + n + " Silben, also " + (n - 1) + (n === 2 ? " Trennstrich." : " Trennstriche.") : ""), body: trCutHtml(it.word, T.cuts, T.sol, T.done, "Trennstrich") };
       if (T.kind === "count") { const mx = Math.min(7, Math.max(4, n + 1)); let b = '<div class="m-word" style="font-size:2.4rem">' + esc(it.word) + '</div><div class="z-end" role="group" aria-label="Anzahl der Silben">'; for (let k = 1; k <= mx; k++) b += '<button type="button" class="z-endb' + (T.done ? (k === n ? " ok" : (+T.sel === k ? " bad" : "")) : "") + '" data-n="' + k + '" aria-pressed="' + (+T.sel === k) + '"' + (T.done ? " disabled" : "") + ">" + k + "</button>"; return { title: "Wie viele Silben hat das Wort?", how: "Sprich das Wort langsam und klatsche mit. Wähle die Anzahl der Silben.", body: b + "</div>" }; }
-      if (T.kind === "build") return { title: "Baue ein Wort aus diesen Silben", how: "Tippe die Silben in der richtigen Reihenfolge an. Tippe auf einen Platz, um die Silbe zurückzulegen.", body: trBuildHtml(T) };
+      if (T.kind === "build") return { title: "Baue ein Wort aus diesen Silben", how: "Tippe die Silben in der richtigen Reihenfolge an. Tippe auf einen Platz, um die Silbe zurückzulegen." + (T.chips.length > T.n ? " Nicht alle Silben werden gebraucht." : ""), body: trBuildHtml(T) };
       return { title: "Welche Trennung ist richtig?", how: "Wähle die Schreibweise, bei der das Wort richtig getrennt ist.", body: trOptsHtml(T, "Trennungen") };
     },
     feed: T => "<span>Richtig ist: <b>" + esc(T.item.parts.join("-")) + "</b> (" + T.item.parts.length + " Silben).</span><span class=\"m-rule\">" + esc(SYR[T.item.stage] || SYR[0]) + "</span>",
-    say: (T, MS) => T.kind === "cut" ? "Trenne das Wort " + T.item.word + " in Silben." + (MS.extra ? " Das Wort hat " + T.item.parts.length + " Silben." : "") : T.kind === "count" ? "Wie viele Silben hat das Wort " + T.item.word + "?" : T.kind === "build" ? "Baue ein Wort aus diesen Silben: " + T.chips.map(c => c.t).join(", ") + "." : "Welche Trennung ist richtig? " + T.opts.map((o, i) => "ABC".charAt(i) + ": " + o.t.replace(/-/g, ", ")).join(". ") + ".",
+    say: (T, MS) => T.kind === "cut" ? "Trenne das Wort " + T.item.word + " in Silben." + (MS.extra && DIFF === 1 ? " Das Wort hat " + T.item.parts.length + " Silben." : "") : T.kind === "count" ? "Wie viele Silben hat das Wort " + T.item.word + "?" : T.kind === "build" ? "Baue ein Wort aus diesen Silben: " + T.chips.map(c => c.t).join(", ") + "." : "Welche Trennung ist richtig? " + T.opts.map((o, i) => "ABC".charAt(i) + ": " + o.t.replace(/-/g, ", ")).join(". ") + ".",
     click: (e, T, render) => { trCommonClick(e, T, render); }
   });
 
@@ -3077,7 +3104,7 @@
   const zT = trainer({
     k: "zeichen", pre: "zs", key: "msd_zs_v1", ownKey: "msd_zs_own_v1", ownName: "Sätze", need: 6, masterText: "Du bist ein Zeichensetzungs-Profi", items: ZI, stages: ZST,
     kinds: [["mix", "Gemischt"], ["set", "Nur Kommas setzen"], ["pick", "Nur Auswählen"], ["end", "Nur Satzzeichen am Ende"]],
-    extra: { label: "Anzahl der Kommas verraten", def: true },
+    extra: { label: "Anzahl der Kommas verraten (nur auf Stufe Leicht)", def: true },
     intro: { summary: "So geht es: Zeichen richtig setzen", html: '<p class="note" style="margin:.5rem 0 .7rem">Du übst allein, Stufe für Stufe: das Satzzeichen am Ende wählen, Kommas setzen, den richtigen Satz auswählen und wörtliche Rede schreiben. Wer sechs Aufgaben einer Stufe richtig löst, kommt in die nächste Stufe.</p><ul class="m-info" style="margin:0"><li>Aufzählung: Komma zwischen den Teilen, vor und und oder keins.</li><li>Nebensatz: Komma zwischen Hauptsatz und Nebensatz.</li><li>aber, sondern, denn, doch: davor steht ein Komma.</li><li>Wörtliche Rede: Doppelpunkt, Anführungszeichen, Komma nach der Rede.</li><li>Einschub und Anrede: Kommas rahmen sie ein.</li></ul>' },
     own: { summary: "Eigene Sätze eingeben (Markdown oder Text)", aria: "Eigene Sätze mit richtig gesetzten Kommas", pre: "# Mein Thema\n- Ich bleibe zu Hause, weil ich krank bin.\n- Wir kaufen Brot, Milch und Käse.",
       note: "Lade eine Markdown- oder Textdatei oder füge den Text unten ein. Pro Zeile ein Satz, so geschrieben, wie er richtig ist, mit allen Kommas und dem Satzzeichen am Ende. Daraus macht der Trainer die Aufgaben. Wörtliche Rede mit Anführungszeichen wird hier nicht unterstützt. Gespeichert wird nur in diesem Browser.", example: "# Mein Thema\n- Ich bleibe zu Hause, weil ich krank bin.\n- Wir kaufen Brot, Milch und Käse.\n- Peter, komm bitte her.\n- Das ist kein Hund, sondern ein Wolf." },
@@ -3092,12 +3119,12 @@
         let b = '<div class="z-sent" role="group" aria-label="Satz">';
         it.words.forEach((w, i) => { b += '<span class="z-w">' + esc(w) + "</span>"; if (i < it.words.length - 1) { const on = T.cuts.has(i); let cl = "z-cm"; if (T.done) { if (on && it.commas.has(i)) cl += " ok"; else if (on) cl += " bad"; else if (it.commas.has(i)) cl += " miss"; } b += '<button type="button" class="' + cl + '" data-cut="' + (i + 1) + '" data-ci="' + i + '" aria-pressed="' + on + '" aria-label="Komma nach ' + esc(w) + '"' + (T.done ? " disabled" : "") + "></button>"; } });
         const nk = it.commas.size;
-        return { title: "Setze die Kommas", how: "Tippe hinter ein Wort, um dort ein Komma zu setzen. Tippe noch einmal darauf, um es zu entfernen." + (MS.extra ? (nk ? " Im Satz " + (nk === 1 ? "fehlt 1 Komma." : "fehlen " + nk + " Kommas.") : " In diesem Satz fehlt kein Komma.") : ""), body: b + "</div>" };
+        return { title: "Setze die Kommas", how: "Tippe hinter ein Wort, um dort ein Komma zu setzen. Tippe noch einmal darauf, um es zu entfernen." + (MS.extra && DIFF === 1 ? (nk ? " Im Satz " + (nk === 1 ? "fehlt 1 Komma." : "fehlen " + nk + " Kommas.") : " In diesem Satz fehlt kein Komma.") : ""), body: b + "</div>" };
       }
       return { title: "Welcher Satz ist richtig geschrieben?", how: "Wähle die Schreibweise, bei der alle Zeichen stimmen.", body: trOptsHtml(T, "Sätze") };
     },
     feed: T => "<span>Richtig ist:</span><span class=\"z-good\">" + esc(zGood(T.item)) + "</span><span class=\"m-rule\">" + esc(ZR[T.item.rule] || ZR.own) + "</span>",
-    say: (T, MS) => T.kind === "end" ? "Welches Satzzeichen fehlt am Ende? " + T.item.text : T.kind === "set" ? "Setze die Kommas in diesem Satz: " + T.item.words.join(" ") + (MS.extra ? ". Es fehlen " + T.item.commas.size + " Kommas." : "") : "Welcher Satz ist richtig geschrieben? " + T.opts.map((o, i) => "ABC".charAt(i) + ": " + o.t).join(" ") ,
+    say: (T, MS) => T.kind === "end" ? "Welches Satzzeichen fehlt am Ende? " + T.item.text : T.kind === "set" ? "Setze die Kommas in diesem Satz: " + T.item.words.join(" ") + (MS.extra && DIFF === 1 ? ". Es fehlen " + T.item.commas.size + " Kommas." : "") : "Welcher Satz ist richtig geschrieben? " + T.opts.map((o, i) => "ABC".charAt(i) + ": " + o.t).join(" ") ,
     click: (e, T, render) => {
       const cut = e.target.closest("[data-ci]");
       if (cut) { const i = +cut.dataset.ci; if (T.cuts.has(i)) T.cuts.delete(i); else T.cuts.add(i); cut.setAttribute("aria-pressed", T.cuts.has(i) ? "true" : "false"); return; }
@@ -3118,11 +3145,20 @@
     if (G.task && !G.task.done) { if (!confirm("Die laufende Aufgabe wird abgebrochen. Zurück zur Erklärung?")) return; clearInterval(timer); G.task = null; G.last = -1; G.msg = ""; renderBoard(); renderIdle(); }
     showView("intro");
   };
-  pracInit(); mInit(); syT.init(); zT.init(); applyS(); renderScore(); renderBoard(); renderIdle(); showView("intro");
+  /* globaler Schalter für die Schwierigkeit */
+  function setDiff(d) {
+    DIFF = +d === 2 || +d === 3 ? +d : 1; LS.set(DKEY, String(DIFF));
+    document.querySelectorAll("[data-df]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.df === DIFF)));
+    const c = $("dfCycle"); if (c) { c.textContent = DNAME[DIFF].charAt(0); c.title = "Schwierigkeit wechseln: " + DNAME[DIFF]; c.setAttribute("aria-label", "Schwierigkeit wechseln, jetzt " + DNAME[DIFF]); }
+    renderSetSum(); mRender(); Object.keys(TRN).forEach(k => TRN[k].render && TRN[k].render());
+  }
+  document.querySelectorAll("[data-df]").forEach(b => b.addEventListener("click", () => setDiff(b.dataset.df)));
+  $("dfCycle").addEventListener("click", () => setDiff(DIFF % 3 + 1));
+  pracInit(); mInit(); syT.init(); zT.init(); applyS(); setDiff(DIFF); renderScore(); renderBoard(); renderIdle(); showView("intro");
 
   /* Prüfzugriff für Tests */
   window.__de = { showView: showView, PR: () => PR, RS: () => RS, SK: SK, BADGES: BADGES, useJoker: useJoker, lvlOf: lvlOf, G: G, S: S, VERBS: VERBS, VKR: VKR, KVR: KVR, KDR: KDR, WPR: WPR, FPR: FPR, NG: NG, ART: ART, open: openTask, check: check, next: afterTask, newRound: newRound, buildTask: buildTask, slotOk: slotOk,
-    setS: o => { Object.assign(S, o); applyS(); }, sol: () => G.task ? G.task.slots.map(s => s.show) : [], NSR: NSR, parseMd: parseMd, applyMd: applyMd, MDT: () => MDT,
+    setS: o => { Object.assign(S, o); applyS(); }, setDiff: setDiff, DIFF: () => DIFF, sol: () => G.task ? G.task.slots.map(s => s.show) : [], NSR: NSR, parseMd: parseMd, applyMd: applyMd, MDT: () => MDT,
     trn: TRN,
     morph: { MS: () => MS, MT: MT, WORDS: MWORDS, ALLB: ALLB, next: mNextTask, check: mCheck, parseOwn: mParseOwn, own: () => MOWNW, cutsOf: cutsOf, pool: mPool },
     prac: { start: pracStart, check: pracCheck, next: pracNext, back: pracBack, map: pracMap, PT: PT, PS: () => PS, list: pracList, setPS: o => { Object.assign(PS, o); savePS(); pracMap(); }, PN: PN, sol: () => PT.task ? PT.task.slots.map(x => x.show) : [] } };

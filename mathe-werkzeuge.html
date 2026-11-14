@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
-<title>Seifferts Mathe-Werkzeuge (Nr. 7)</title>
+<title>Seifferts Mathe-Werkzeuge (Nr. 8)</title>
 <style>
   :root { --text:#e6e8eb; --muted:#9aa1a9; --line:#4a4f55; --dark:#121315; }
   * { box-sizing: border-box; }
@@ -740,6 +740,9 @@
   html.phone .pgate .unav { flex-direction:row; gap:0.4rem; width:100%; }
   html.phone .pgate .unav button { flex:1; min-height:2.4rem; padding:0.25rem 0.5rem; font-size:0.85rem; }
   .qmini { display:block; margin:0 auto 0.35rem !important; width:150px; height:auto; max-width:100%; }
+  .qzlink { border-color:#ffb347 !important; color:#ffd8a0; font-weight:800; }
+  .qzlink:hover { background:rgba(255,179,71,.16); }
+  .qzbackbar { margin:0 0 0.6rem; }
 </style>
 </head>
 <body>
@@ -764,7 +767,7 @@
       <button class="icon-btn" id="sideToggle" aria-label="Themenleiste ein- oder ausklappen" aria-expanded="true" aria-controls="side" title="Themenleiste ein- oder ausklappen"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <div class="tb-title">
         <h1 id="pageTitle"></h1>
-        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 13.11.2026 · Nr. 7</span>
+        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 14.11.2026 · Nr. 8</span>
       </div>
       <div class="tb-speak">
         <button class="icon-btn" id="speakBtn" aria-label="Vorlesen" title="Vorlesen"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4 4 0 010 6M19 6.5a8 8 0 010 11"/></svg></button>
@@ -787,6 +790,7 @@
       </div>
     </header>
 <main>
+  <div id="qzBackBar" class="qzbackbar" hidden><button type="button" class="tab" id="qzBack">Zurück zum Thema</button></div>
 
   <section id="panel-bruch">
 
@@ -1691,6 +1695,56 @@ const MWAlign = (function () {
   new MutationObserver(soon).observe(document.documentElement, { childList: true, subtree: true });
   return { go: go };
 })();
+
+/* ===== Quiz-Knopf in jedem Thema: führt zum passenden Quiz (Einzelspiel oder Mannschaft) und wieder zurück ===== */
+const MWQuiz = (function () {
+  const QM = {
+    stell: ["qz1", "stell"], rgz: ["qz1", "rgz"], uez: ["qz1", "uez"], emr: ["qz1", "ein"], gdr: ["qz1", "ein"], mul: ["qz1", "fl"], dzs: ["qz1", "geteilt"], swr: ["qz1", "swr"], snv: ["qz1", "swr"],
+    tbr: ["qz1", "tbr"], pfz: ["qz1", "pfz"], ggt: ["qz1", "ggtk"], neg: ["qz1", "neg"],
+    anv: ["qz2", "anteil"], bruch: ["qz2", "gl"], kue: ["qz2", "kue"], stuf: ["qz2", "stufe"], umg: ["qz2", "gem"], bad: ["qz2", "addsub"], brr: ["qz2", "muldiv"], bkr: ["qz2", "muldiv"], bdv: ["qz2", "muldiv"],
+    zst: ["qz3", "alle"], dbr: ["qz3", "bd"], dko: ["qz3", "komma"], rnd: ["qz3", "rund"], das: ["qz3", "dadd"], dmd: ["qz3", "dmul"], gro: ["qz3", "gro"], lae: ["qz3", "lae"], geld: ["qz3", "geld"], gew: ["qz3", "gew"], zeit: ["qz3", "zeit"], dueb: ["qz3", "alle"],
+    ter: ["qz4", "ter"], aeq: ["qz4", "aeq"], lgs: ["qz4", "lgs"], bin: ["qz4", "bin"], pot: ["qz4", "pot"], wur: ["qz4", "wur"], ivs: ["qz4", "ivs"], qer: ["qz4", "qe"], qgl: ["qz4", "qgl"], qfu: ["qz4", "qfu"],
+    pdr: ["qz5", "proz"], exw: ["qz5", "exw"],
+    fla: ["qz7", "fla"], pyt: ["qz7", "pyt"], tri: ["qz8", "tri"], tfu: ["qz8", "tfu"],
+    wgr: ["qz6", "wla"], wpf: ["qz6", "wpf"], vft: ["qz6", "wvf"], wbw: ["qz6", "wbd"], war: ["qz6", "war"]
+  };
+  let from = null;
+  const title = k => { const t = TOPICS.find(x => x.k === k); return t ? t.t : k; };
+  function addBtn(k) {
+    const pn = document.getElementById("panel-" + k), m = QM[k];
+    if (!pn || !m || pn.querySelector("[data-quiz]")) return;
+    const b = document.createElement("button"); b.type = "button"; b.className = "tab qzlink"; b.dataset.quiz = k; b.textContent = "Quiz";
+    b.title = "Quiz zu diesem Thema: allein oder als Mannschaftsspiel";
+    const sh = pn.querySelector('button[id$="Short"]');
+    if (sh) sh.insertAdjacentElement("afterend", b);
+    else {
+      const c = pn.querySelector(".controls");
+      if (c) c.appendChild(b); else { const d = document.createElement("div"); d.className = "controls"; d.style.margin = "0 0 12px"; d.appendChild(b); pn.insertBefore(d, pn.firstChild); }
+    }
+  }
+  function bar(which) {
+    const el = document.getElementById("qzBackBar"); if (!el) return;
+    const isQ = /^qz/.test(which);
+    if (!isQ) from = null;
+    el.hidden = !(isQ && from);
+    if (from) { const bt = document.getElementById("qzBack"); bt.textContent = "Zurück zu: " + title(from); }
+  }
+  function sync(which) { addBtn(which); bar(which); }
+  function open(k) {
+    const m = QM[k]; if (!m) return;
+    from = k; window.showTab(m[0]);
+    const inst = window.__qz && window.__qz.inst && window.__qz.inst[m[0]];
+    if (inst && inst.setTop) inst.setTop(m[1]);
+    bar(m[0]);
+    const c = document.querySelector("#panel-" + m[0] + ' [data-top][aria-selected="true"]');
+    if (c) { try { c.scrollIntoView({ inline: "center", block: "nearest" }); } catch (e) {} window.scrollTo(0, 0); }
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("[data-quiz]"); if (b) { open(b.dataset.quiz); return; }
+    if (e.target.closest && e.target.closest("#qzBack") && from) { const k = from; from = null; window.showTab(k); }
+  });
+  return { sync: sync, QM: QM, all: function () { Object.keys(QM).forEach(addBtn); } };
+})();
 /* Skalierungsfaktor: passt Material und Layout an die Bildschirmgröße an (Basis 17 px) */
 function msK() { return (parseFloat(getComputedStyle(document.documentElement).fontSize) || 17) / 17; }
 
@@ -1936,6 +1990,7 @@ const ZRNG = {
     g("pageTitle").textContent = tp.t;
     g("pageSub").textContent = tp.s; g("pageSub").title = tp.s;
     syncGroups(which);
+    MWQuiz.sync(which);
     setTimeout(markNav, 60);
     document.title = tp.t + " – Seifferts Mathe-Werkzeuge";
     g("topicPrev").disabled = idx === 0;

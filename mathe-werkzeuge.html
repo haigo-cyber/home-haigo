@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
-<title>Seifferts Mathe-Werkzeuge (Nr. 6)</title>
+<title>Seifferts Mathe-Werkzeuge (Nr. 7)</title>
 <style>
   :root { --text:#e6e8eb; --muted:#9aa1a9; --line:#4a4f55; --dark:#121315; }
   * { box-sizing: border-box; }
@@ -729,6 +729,17 @@
     html:not(.phone) .unav button { padding:0.6rem 0.6rem; font-size:1rem; }
     html:not(.phone) .unav button.primary { order:-1; padding:1.15rem 0.6rem; font-size:1.25rem; }
   }
+
+  /* Aufgabe und Bild gemeinsam sichtbar: Bilder dürfen nie höher als der halbe Bildschirm werden, Fragen sind kompakt */
+  .ubody .dsvgw svg, .ubody > svg, .ubody .zbild svg { max-height:46vh; width:auto; max-width:100%; }
+  .ubody svg[viewBox][style*="width:100%"] { width:auto !important; max-width:100%; max-height:46vh; }
+  .pgate .popts { display:flex; flex-wrap:wrap; gap:0.5rem; }
+  html.phone .pgate .popts { flex-direction:row; flex-wrap:wrap; align-items:stretch; gap:0.4rem; margin:0.3rem 0; }
+  html.phone .pgate .popts .popt { width:auto; flex:1 1 auto; min-width:4.5rem; min-height:44px; text-align:center; padding:0.35rem 0.7rem; }
+  html.phone .pgate { padding:0.5rem 0.6rem; }
+  html.phone .pgate .unav { flex-direction:row; gap:0.4rem; width:100%; }
+  html.phone .pgate .unav button { flex:1; min-height:2.4rem; padding:0.25rem 0.5rem; font-size:0.85rem; }
+  .qmini { display:block; margin:0 auto 0.35rem !important; width:150px; height:auto; max-width:100%; }
 </style>
 </head>
 <body>
@@ -753,7 +764,7 @@
       <button class="icon-btn" id="sideToggle" aria-label="Themenleiste ein- oder ausklappen" aria-expanded="true" aria-controls="side" title="Themenleiste ein- oder ausklappen"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <div class="tb-title">
         <h1 id="pageTitle"></h1>
-        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 13.11.2026 · Nr. 6</span>
+        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 13.11.2026 · Nr. 7</span>
       </div>
       <div class="tb-speak">
         <button class="icon-btn" id="speakBtn" aria-label="Vorlesen" title="Vorlesen"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4 4 0 010 6M19 6.5a8 8 0 010 11"/></svg></button>
@@ -1482,7 +1493,7 @@ window.Predict = (function () {
       const sk = box.querySelector("[data-skip]"); if (sk) sk.addEventListener("click", () => { clear(host); advance(); });
     };
     show();
-    try { box.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) {}
+    setTimeout(() => MWAlign.go(), 30);
     return true;
   }
   function setOn(b) { on = !!b; try { localStorage.setItem("mw_predict", on ? "1" : "0"); } catch (e) {} }
@@ -1657,6 +1668,29 @@ window.Sprache = (function () {
 })();
 
 /* ===== Schrittknöpfe direkt am aktuellen Schritt (für die digitale Tafel) ===== */
+
+/* ===== Aufgabe und Bild gemeinsam im Blick: nach jedem Schritt wird die Frage oder der aktuelle Schritt direkt unter die Kopfleiste gerollt ===== */
+const MWAlign = (function () {
+  let stamp = 0, busy = false;
+  function target() {
+    const pn = document.querySelector("section[id^='panel-']:not([hidden])"); if (!pn) return null;
+    return pn.querySelector(".pgate") || pn.querySelector(".ustep.cur");
+  }
+  function go() {
+    const el = target(); if (!el) return;
+    const tb = document.querySelector(".topbar"), tbh = tb && getComputedStyle(tb).display !== "none" ? tb.getBoundingClientRect().height : 0;
+    const top = el.getBoundingClientRect().top;
+    if (Math.abs(top - (tbh + 8)) < 6) return;
+    try { window.scrollTo({ top: Math.max(0, top + window.scrollY - tbh - 8), behavior: "smooth" }); } catch (e) { window.scrollTo(0, Math.max(0, top + window.scrollY - tbh - 8)); }
+  }
+  function soon() { if (busy) return; busy = true; requestAnimationFrame(() => { busy = false; if (Date.now() - stamp < 4000) go(); }); }
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("button"); if (!b) return;
+    if (b.matches("[data-nav],[data-skip],.popt,[data-ok]") || /(Next|Back|All|Restart)$/.test(b.id || "")) { stamp = Date.now(); setTimeout(go, 80); }
+  }, true);
+  new MutationObserver(soon).observe(document.documentElement, { childList: true, subtree: true });
+  return { go: go };
+})();
 /* Skalierungsfaktor: passt Material und Layout an die Bildschirmgröße an (Basis 17 px) */
 function msK() { return (parseFloat(getComputedStyle(document.documentElement).fontSize) || 17) / 17; }
 
@@ -3179,7 +3213,7 @@ renderStell();
       if (q.kind === "yn") box._submit = () => { if (box.querySelector(".popt:disabled")) return; fb.className = "pfb no"; fb.textContent = "Tippe zuerst auf Ja oder Nein."; };
     };
     show();
-    try { box.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) { /* ohne Scroll */ }
+    setTimeout(() => MWAlign.go(), 30);
   }
 
   function render() {
@@ -10616,7 +10650,7 @@ renderStell();
   })();
   /* ================= Flächen und Umfang: die Formeln der Formelsammlung ================= */
   (function () {
-    const pre = "fl", ABS = Math.abs, PI = 3.14;
+    const pre = "fl", ABS = Math.abs, PI = 3.14; let HL = "";
     const r4 = v => Math.round(v * 1e4) / 1e4, N = v => wNUM(r4(v)), N2 = v => wNUM(Math.round(v * 100) / 100);
     const T = (x, cls) => '<span class="' + cls + '">' + x + "</span>";
     const ln = (lab, txt) => '<div class="zeq"><span class="usmall">' + lab + "</span>" + txt + "</div>";
@@ -10629,9 +10663,13 @@ renderStell();
     function fig(pts, ex, alt, notScale, extraPts) {
       const K = msK(), W = Math.round(420 * K), all = pts.concat(extraPts || []), xs = all.map(p => p[0]), ys = all.map(p => p[1]);
       const x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys), bw = Math.max(x1 - x0, 1e-6), bh = Math.max(y1 - y0, 1e-6);
-      const sc = Math.min((W - 110) / bw, 150 / bh), m = 52, H = Math.round(bh * sc + 2 * 30);
+      const sc = Math.min((W - 190) / bw, 150 / bh), m = 80, H = Math.round(bh * sc + 2 * 30);
       const X = x => m + (x - x0) * sc, Y = y => H - 30 - (y - y0) * sc;
-      const poly = '<polygon points="' + pts.map(p => f1(X(p[0])) + "," + f1(Y(p[1]))).join(" ") + '" fill="' + CB + '" fill-opacity=".12" stroke="#8fb8e8" stroke-width="3.5" stroke-linejoin="round"/>';
+      const pp = pts.map(p => f1(X(p[0])) + "," + f1(Y(p[1]))).join(" "), hatch = '<defs><pattern id="flh" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="9" height="9" fill="#5fd06f" fill-opacity=".30"/><path d="M0 0V9" stroke="#5fd06f" stroke-width="3" stroke-opacity=".75"/></pattern></defs>';
+      const poly = HL === "u" ? '<polygon points="' + pp + '" fill="' + CC + '" fill-opacity=".06" stroke="' + CC + '" stroke-width="7" stroke-linejoin="round"/>'
+        : HL === "a" ? hatch + '<polygon points="' + pp + '" fill="url(#flh)" stroke="#5fd06f" stroke-width="3" stroke-linejoin="round"/>'
+          : HL === "b" ? hatch + '<polygon points="' + pp + '" fill="url(#flh)" stroke="' + CC + '" stroke-width="6" stroke-linejoin="round"/>'
+            : '<polygon points="' + pp + '" fill="' + CB + '" fill-opacity=".12" stroke="#8fb8e8" stroke-width="3.5" stroke-linejoin="round"/>';
       return '<div class="dsvgw"><svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + alt + '">' + poly + ex(X, Y, sc) + "</svg>" + (notScale ? '<div class="note">Skizze, nicht maßstabsgetreu.</div>' : "") + "</div>";
     }
     const rmark = (X, Y, x, y, dx, dy, s) => '<path d="M' + f1(X(x) + dx * s) + "," + f1(Y(y)) + "L" + f1(X(x) + dx * s) + "," + f1(Y(y) - dy * s) + "L" + f1(X(x)) + "," + f1(Y(y) - dy * s) + '" stroke="#c3c8ce" stroke-width="2" fill="none"/>';
@@ -10661,7 +10699,7 @@ renderStell();
       if (m === "dr") {
         const g = V.c, h = V.h, a = V.a, b = V.b, xa = Math.sqrt(Math.max(b * b - h * h, 0));
         return { nm: "Dreieck", intro: "Ein <b>Dreieck</b> hat drei Seiten a, b und c. Ich nehme c als Grundseite g = " + T(N(g), "zo") + " cm. Die <b>Höhe</b> h = " + T(N(h), "zg") + " cm steht senkrecht auf der Grundseite. Die Seiten sind a = " + N(a) + " cm und b = " + N(b) + " cm.",
-          fig: fig([[0, 0], [g, 0], [xa, h]], (X, Y) => seg(X(xa), Y(0), X(xa), Y(h), CA, 3, true) + rmark(X, Y, xa, 0, 12, 12, 1) + tx((X(0) + X(g)) / 2, Y(0) + 22, "g = c = " + N(g) + " cm", CC) + tx(X(xa) + 6, (Y(0) + Y(h)) / 2 + 5, "h = " + N(h) + " cm", CA, "start") + tx((X(0) + X(xa)) / 2 - 8, (Y(0) + Y(h)) / 2 - 4, "b", CB, "end") + tx((X(g) + X(xa)) / 2 + 8, (Y(0) + Y(h)) / 2 - 4, "a", CB, "start"), "Dreieck mit Grundseite und Höhe", true, [[xa, 0]]),
+          fig: fig([[0, 0], [g, 0], [xa, h]], (X, Y) => seg(X(xa), Y(0), X(xa), Y(h), CA, 3, true) + rmark(X, Y, xa, 0, 12, 12, 1) + tx((X(0) + X(g)) / 2, Y(0) + 22, "g = c = " + N(g) + " cm", CC) + tx(X(xa) + 6, (Y(0) + Y(h)) / 2 + 5, "h = " + N(h) + " cm", CA, "start") + tx((X(0) + X(xa)) / 2 - 8, (Y(0) + Y(h)) / 2 - 4, "b = " + N(b) + " cm", CB, "end") + tx((X(g) + X(xa)) / 2 + 8, (Y(0) + Y(h)) / 2 - 4, "a = " + N(a) + " cm", CB, "start"), "Dreieck mit Grundseite und Höhe", true, [[xa, 0]]),
           q0: qw("Wie liegt die Höhe zur Grundseite?", "senkrecht, im rechten Winkel", [["entlang der Seite b", "Die Seite b ist schräg. Die Höhe steht senkrecht auf der Grundseite."], ["parallel zur Grundseite", "Parallel wäre sie nie ein Abstand. Die Höhe steht senkrecht."]]),
           uWhy: "Der <b>Umfang</b> ist die Summe aller drei Seiten. Die Höhe gehört nicht zum Rand.", uF: "u = a + b + c", uS: "u = " + N(a) + " + " + N(b) + " + " + N(g), u: a + b + g,
           uW: [[N(a + b + g + h) + " cm", "Die Höhe liegt innen und gehört nicht zum Rand."], [N(g + h) + " cm", "Es fehlen die beiden schrägen Seiten a und b."], [N(g * h / 2) + " cm", "Das ist die Fläche. Gefragt ist der Rand."]],
@@ -10671,7 +10709,7 @@ renderStell();
       if (m === "pa") {
         const a = V.a, b = V.b, h = V.h, xa = Math.sqrt(Math.max(b * b - h * h, 0));
         return { nm: "Parallelogramm", intro: "Ein <b>Parallelogramm</b> hat zwei Paare paralleler Seiten. Gegenüberliegende Seiten sind gleich lang: a = " + T(N(a), "zo") + " cm und b = " + T(N(b), "zs") + " cm. Die <b>Höhe</b> h = " + T(N(h), "zg") + " cm steht senkrecht auf a.",
-          fig: fig([[0, 0], [a, 0], [a + xa, h], [xa, h]], (X, Y) => seg(X(xa), Y(0), X(xa), Y(h), CA, 3, true) + rmark(X, Y, xa, 0, 12, 12, 1) + tx((X(0) + X(a)) / 2, Y(0) + 22, "a = " + N(a) + " cm", CC) + tx(X(xa) + 6, (Y(0) + Y(h)) / 2 + 5, "h = " + N(h) + " cm", CA, "start") + tx((X(0) + X(xa)) / 2 - 8, (Y(0) + Y(h)) / 2 + 5, "b", CB, "end"), "Parallelogramm mit Höhe", true, [[xa, 0]]),
+          fig: fig([[0, 0], [a, 0], [a + xa, h], [xa, h]], (X, Y) => seg(X(xa), Y(0), X(xa), Y(h), CA, 3, true) + rmark(X, Y, xa, 0, 12, 12, 1) + tx((X(0) + X(a)) / 2, Y(0) + 22, "a = " + N(a) + " cm", CC) + tx(X(xa) + 6, (Y(0) + Y(h)) / 2 + 5, "h = " + N(h) + " cm", CA, "start") + tx((X(0) + X(xa)) / 2 - 8, (Y(0) + Y(h)) / 2 + 5, "b = " + N(b) + " cm", CB, "end"), "Parallelogramm mit Höhe", true, [[xa, 0]]),
           q0: qw("Welche Seite wird für die Fläche gebraucht?", "die Höhe h, senkrecht zur Seite a", [["die schräge Seite b", "Die schräge Seite gehört zum Umfang. Für die Fläche braucht man die Höhe."]]),
           uWhy: "Der <b>Umfang</b>: Je zwei gegenüberliegende Seiten sind gleich lang, also a + b + a + b.", uF: "u = 2 · (a + b)", uS: "u = 2 · (" + N(a) + " + " + N(b) + ")", u: 2 * (a + b),
           uW: [[N(a + b) + " cm", "Das sind erst zwei Seiten. Der Rand hat vier Seiten."], [N(2 * (a + h)) + " cm", "Die Höhe h gehört nicht zum Rand. Dort stehen die schrägen Seiten b."], [N(a * h) + " cm", "Das ist die Fläche. Gefragt ist der Rand."]],
@@ -10681,7 +10719,7 @@ renderStell();
       if (m === "tr") {
         const a = V.a, c = V.c, h = V.h, b = V.b, d = V.d, xd = Math.sqrt(Math.max(d * d - h * h, 0));
         return { nm: "Trapez", intro: "Ein <b>Trapez</b> hat genau ein Paar paralleler Seiten: a = " + T(N(a), "zo") + " cm unten und c = " + T(N(c), "zs") + " cm oben. Die Schenkel sind b = " + N(b) + " cm und d = " + N(d) + " cm. Die <b>Höhe</b> h = " + T(N(h), "zg") + " cm ist der Abstand der parallelen Seiten.",
-          fig: fig([[0, 0], [a, 0], [xd + c, h], [xd, h]], (X, Y) => seg(X(xd), Y(0), X(xd), Y(h), CA, 3, true) + rmark(X, Y, xd, 0, 12, 12, 1) + tx((X(0) + X(a)) / 2, Y(0) + 22, "a = " + N(a) + " cm", CC) + tx((X(xd) + X(xd + c)) / 2, Y(h) - 8, "c = " + N(c) + " cm", CB) + tx(X(xd) + 6, (Y(0) + Y(h)) / 2 + 5, "h", CA, "start") + tx((X(0) + X(xd)) / 2 - 8, (Y(0) + Y(h)) / 2 + 5, "d", CD, "end") + tx((X(a) + X(xd + c)) / 2 + 8, (Y(0) + Y(h)) / 2 + 5, "b", CD, "start"), "Trapez mit Höhe", true, [[xd, 0]]),
+          fig: fig([[0, 0], [a, 0], [xd + c, h], [xd, h]], (X, Y) => seg(X(xd), Y(0), X(xd), Y(h), CA, 3, true) + rmark(X, Y, xd, 0, 12, 12, 1) + tx((X(0) + X(a)) / 2, Y(0) + 22, "a = " + N(a) + " cm", CC) + tx((X(xd) + X(xd + c)) / 2, Y(h) - 8, "c = " + N(c) + " cm", CB) + tx(X(xd) + 6, (Y(0) + Y(h)) / 2 + 5, "h = " + N(h) + " cm", CA, "start") + tx((X(0) + X(xd)) / 2 - 16, (Y(0) + Y(h)) / 2 + 5, "d = " + N(d) + " cm", CD, "end") + tx((X(a) + X(xd + c)) / 2 + 16, (Y(0) + Y(h)) / 2 + 5, "b = " + N(b) + " cm", CD, "start"), "Trapez mit Höhe", true, [[xd, 0]]),
           q0: qw("Welche Seiten sind beim Trapez parallel?", "a und c", [["b und d", "b und d sind die Schenkel. Sie sind schräg und im Allgemeinen nicht parallel."]]),
           uWhy: "Der <b>Umfang</b> ist die Summe aller vier Seiten, also beider paralleler Seiten und beider Schenkel.", uF: "u = a + b + c + d", uS: "u = " + N(a) + " + " + N(b) + " + " + N(c) + " + " + N(d), u: a + b + c + d,
           uW: [[N(a + c) + " cm", "Es fehlen die beiden Schenkel b und d."], [N(a + b + c + d + h) + " cm", "Die Höhe liegt innen und gehört nicht zum Rand."], [N((a + c) * h / 2) + " cm", "Das ist die Fläche. Gefragt ist der Rand."]],
@@ -10691,7 +10729,7 @@ renderStell();
       if (m === "ra") {
         const e = V.e, f = V.f, a = V.a;
         return { nm: "Raute", intro: "Eine <b>Raute</b> hat vier gleich lange Seiten a = " + T(N(a), "zo") + " cm. Ihre <b>Diagonalen</b> e = " + T(N(e), "zg") + " cm und f = " + T(N(f), "zs") + " cm stehen senkrecht aufeinander.",
-          fig: fig([[f / 2, 0], [f, e / 2], [f / 2, e], [0, e / 2]], (X, Y) => seg(X(f / 2), Y(0), X(f / 2), Y(e), CA, 3, true) + seg(X(0), Y(e / 2), X(f), Y(e / 2), CB, 3, true) + tx(X(f / 2) + 6, Y(e * 0.25) + 5, "e = " + N(e) + " cm", CA, "start") + tx(X(f * 0.75), Y(e / 2) - 8, "f = " + N(f) + " cm", CB) + tx((X(f / 2) + X(f)) / 2 + 10, (Y(e) + Y(e / 2)) / 2 - 4, "a", CC, "start"), "Raute mit Diagonalen", true),
+          fig: fig([[f / 2, 0], [f, e / 2], [f / 2, e], [0, e / 2]], (X, Y) => seg(X(f / 2), Y(0), X(f / 2), Y(e), CA, 3, true) + seg(X(0), Y(e / 2), X(f), Y(e / 2), CB, 3, true) + tx(X(f / 2) + 6, Y(e * 0.25) + 5, "e = " + N(e) + " cm", CA, "start") + tx(X(f * 0.75), Y(e / 2) - 8, "f = " + N(f) + " cm", CB) + tx((X(f / 2) + X(f)) / 2 + 10, (Y(e) + Y(e / 2)) / 2 - 4, "a = " + N(a) + " cm", CC, "start"), "Raute mit Diagonalen", true),
           q0: qw("Wie stehen die Diagonalen der Raute zueinander?", "senkrecht", [["parallel", "Die Diagonalen kreuzen sich, sie sind nicht parallel."]]),
           uWhy: "Der <b>Umfang</b>: Alle vier Seiten sind gleich lang.", uF: "u = 4 · a", uS: "u = 4 · " + N(a), u: 4 * a,
           uW: [[N(e + f) + " cm", "Die Diagonalen liegen innen und gehören nicht zum Rand."], [N(2 * a) + " cm", "Das sind erst zwei Seiten. Der Rand hat vier Seiten."], [N(e * f / 2) + " cm", "Das ist die Fläche. Gefragt ist der Rand."]],
@@ -10701,7 +10739,7 @@ renderStell();
       if (m === "dk") {
         const e = V.e, f = V.f, a = V.a, b = V.b, s0 = a * a - f * f / 4, s = s0 > 0 && Math.sqrt(s0) < e ? Math.sqrt(s0) : e * 0.4;
         return { nm: "Drachenviereck", intro: "Ein <b>Drachenviereck</b> hat zwei Paare gleich langer Nachbarseiten: a = " + T(N(a), "zo") + " cm und b = " + T(N(b), "zs") + " cm. Seine <b>Diagonalen</b> e = " + T(N(e), "zg") + " cm und f = " + T(N(f), "zs") + " cm stehen senkrecht aufeinander.",
-          fig: fig([[f / 2, e], [f, e - s], [f / 2, 0], [0, e - s]], (X, Y) => seg(X(f / 2), Y(0), X(f / 2), Y(e), CA, 3, true) + seg(X(0), Y(e - s), X(f), Y(e - s), CB, 3, true) + tx(X(f / 2) + 6, Y(e - s) + 26, "e = " + N(e) + " cm", CA, "start") + tx(X(f * 0.75), Y(e - s) - 8, "f = " + N(f) + " cm", CB) + tx((X(f / 2) + X(f)) / 2 + 10, (Y(e) + Y(e - s)) / 2 - 4, "a", CC, "start") + tx((X(f / 2) + X(f)) / 2 + 10, (Y(0) + Y(e - s)) / 2 + 12, "b", CD, "start"), "Drachenviereck mit Diagonalen", true),
+          fig: fig([[f / 2, e], [f, e - s], [f / 2, 0], [0, e - s]], (X, Y) => seg(X(f / 2), Y(0), X(f / 2), Y(e), CA, 3, true) + seg(X(0), Y(e - s), X(f), Y(e - s), CB, 3, true) + tx(X(f / 2) + 6, Y(e * 0.18) + 4, "e = " + N(e) + " cm", CA, "start") + tx(X(0) - 6, Y(e - s) + 4, "f = " + N(f) + " cm", CB, "end") + tx((X(f / 2) + X(f)) / 2 + 10, (Y(e) + Y(e - s)) / 2 - 4, "a = " + N(a) + " cm", CC, "start") + tx((X(0) + X(f / 2)) / 2 - 10, (Y(0) + Y(e - s)) / 2 + 14, "b = " + N(b) + " cm", CD, "end"), "Drachenviereck mit Diagonalen", true),
           q0: qw("Welche Seiten sind beim Drachenviereck gleich lang?", "die beiden oberen und die beiden unteren Nachbarseiten", [["gegenüberliegende Seiten", "Gegenüberliegende Seiten sind beim Drachen im Allgemeinen verschieden lang. Gleich lang sind benachbarte Seiten."]]),
           uWhy: "Der <b>Umfang</b>: Es gibt zwei Seiten der Länge a und zwei der Länge b.", uF: "u = 2 · (a + b)", uS: "u = 2 · (" + N(a) + " + " + N(b) + ")", u: 2 * (a + b),
           uW: [[N(a + b) + " cm", "Das sind erst zwei Seiten. Der Rand hat vier Seiten."], [N(4 * a) + " cm", "Hier wurde angenommen, dass alle Seiten gleich lang sind (Raute). Beim Drachen gibt es a und b."], [N(e + f) + " cm", "Die Diagonalen liegen innen und gehören nicht zum Rand."]],
@@ -10710,7 +10748,7 @@ renderStell();
       }
       const r = V.r;
       return { nm: "Kreis", intro: "Ein <b>Kreis</b> hat den Radius r = " + T(N(r), "zg") + " cm. Der Durchmesser ist doppelt so lang: d = 2 · r = " + T(N(2 * r), "zs") + " cm. Für die Kreiszahl nehme ich π ≈ 3,14.",
-        fig: (() => { const K = msK(), W = Math.round(420 * K), sc = Math.min(70, (W - 140) / 2), cx = W / 2, cy = sc + 24, Hh = Math.round(2 * sc + 48); return '<div class="dsvgw"><svg width="' + W + '" height="' + Hh + '" viewBox="0 0 ' + W + " " + Hh + '" role="img" aria-label="Kreis mit Radius"><circle cx="' + f1(cx) + '" cy="' + f1(cy) + '" r="' + f1(sc) + '" fill="' + CB + '" fill-opacity=".12" stroke="#8fb8e8" stroke-width="3.5"/>' + seg(cx, cy, cx + sc, cy, CA, 4) + '<circle cx="' + f1(cx) + '" cy="' + f1(cy) + '" r="3.5" fill="#e6e8eb"/>' + tx(cx + sc / 2, cy - 8, "r = " + N(r) + " cm", CA) + "</svg></div>"; })(),
+        fig: (() => { const K = msK(), W = Math.round(420 * K), sc = Math.min(70, (W - 140) / 2), cx = W / 2, cy = sc + 24, Hh = Math.round(2 * sc + 48); return '<div class="dsvgw"><svg width="' + W + '" height="' + Hh + '" viewBox="0 0 ' + W + " " + Hh + '" role="img" aria-label="Kreis mit Radius"><circle cx="' + f1(cx) + '" cy="' + f1(cy) + '" r="' + f1(sc) + '" fill="' + (HL === "a" || HL === "b" ? "#5fd06f" : CB) + '" fill-opacity="' + (HL === "a" || HL === "b" ? ".35" : HL === "u" ? ".04" : ".12") + '" stroke="' + (HL === "u" || HL === "b" ? CC : HL === "a" ? "#5fd06f" : "#8fb8e8") + '" stroke-width="' + (HL === "u" || HL === "b" ? 7 : 3.5) + '"/>' + seg(cx, cy, cx + sc, cy, CA, 4) + '<circle cx="' + f1(cx) + '" cy="' + f1(cy) + '" r="3.5" fill="#e6e8eb"/>' + tx(cx + sc / 2, cy - 8, "r = " + N(r) + " cm", CA) + "</svg></div>"; })(),
         q0: qw("Wie hängen Durchmesser d und Radius r zusammen?", "d = 2 · r", [["d = r : 2", "Der Durchmesser ist doppelt so lang wie der Radius, nicht halb so lang."], ["d = r²", "Der Durchmesser ist der Radius mal 2, nicht r mal r."]]),
         uWhy: "Der <b>Umfang</b> eines Kreises ist 2 · π · r, das ist dasselbe wie π · d.", uF: "u = 2 · π · r", uS: "u = 2 · 3,14 · " + N(r), u: 2 * PI * r,
         uW: [[N2(PI * r * r) + " cm", "Das ist π · r², die Fläche. Der Umfang ist 2 · π · r."], [N2(PI * r) + " cm", "Das ist nur der halbe Umfang. Es fehlt der Faktor 2."], [N2(2 * r) + " cm", "Das ist der Durchmesser. Für den Umfang kommt noch π dazu."]],
@@ -10719,14 +10757,16 @@ renderStell();
     }
     const ex = (v, h) => (h ? "" : "≈ ") + N2(v);
     function build(m, V) {
+      HL = "u"; const Cu = cfg(m, V); HL = "a"; const Ca = cfg(m, V); HL = "b"; const Cb = cfg(m, V); HL = "";
       const C = cfg(m, V), out = [], rd = m === "kr", sgn = rd ? "≈ " : "= ";
+      const leg = (col, t) => '<div class="note"><b style="color:' + col + '">' + t + "</b></div>";
       const U = rd ? N2(C.u) : N(C.u), AA = rd ? N2(C.A) : N(C.A);
       out.push(stp("Die Form", C.intro, C.fig, undefined, C.q0));
-      out.push(stp("Umfang", C.uWhy + " Die Formel aus der Formelsammlung: " + T(C.uF, "zo") + ". Ich setze ein: " + C.uS.replace(/^u = /, "") + " " + sgn + T(U + " cm", "zs") + ".", '<div class="zbig">' + C.uF + "</div>" + '<div class="zbig">' + C.uS + " " + sgn + U + " cm</div>", "good",
+      out.push(stp("Umfang", C.uWhy + " Die Formel aus der Formelsammlung: " + T(C.uF, "zo") + ". Ich setze ein: " + C.uS.replace(/^u = /, "") + " " + sgn + T(U + " cm", "zs") + ".", Cu.fig + leg("#ffb347", "Orange: der Rand. Seine ganze Länge ist der Umfang.") + '<div class="zbig">' + C.uF + "</div>" + '<div class="zbig">' + C.uS + " " + sgn + U + " cm</div>", "good",
         qw("Wie groß ist der Umfang?", (rd ? "≈ " : "") + U + " cm", C.uW)));
-      out.push(stp("Fläche", C.aWhy + " Die Formel aus der Formelsammlung: " + T(C.aF, "zo") + ". Ich setze ein: " + C.aS.replace(/^A = /, "") + " " + sgn + T(AA + " cm²", "zs") + ".", '<div class="zbig">' + C.aF + "</div>" + '<div class="zbig">' + C.aS + " " + sgn + AA + " cm²</div>", "good",
+      out.push(stp("Fläche", C.aWhy + " Die Formel aus der Formelsammlung: " + T(C.aF, "zo") + ". Ich setze ein: " + C.aS.replace(/^A = /, "") + " " + sgn + T(AA + " cm²", "zs") + ".", Ca.fig + leg("#5fd06f", "Grün schraffiert: die Fläche innerhalb des Randes.") + '<div class="zbig">' + C.aF + "</div>" + '<div class="zbig">' + C.aS + " " + sgn + AA + " cm²</div>", "good",
         qw("Wie groß ist die Fläche?", (rd ? "≈ " : "") + AA + " cm²", C.aW)));
-      out.push(stp("Antwort", "<b>Antwort:</b> " + C.nm + ": Der Umfang ist " + (rd ? "etwa " : "") + U + " cm und die Fläche ist " + (rd ? "etwa " : "") + AA + " cm². Der Umfang ist eine Länge (cm), die Fläche wird in Quadrat-Einheiten (cm²) gemessen.", ln("Umfang:", C.uF.replace("u = ", "u = ") + " " + sgn + U + " cm") + ln("Fläche:", C.aF + " " + sgn + AA + " cm²"), "good",
+      out.push(stp("Antwort", "<b>Antwort:</b> " + C.nm + ": Der Umfang ist " + (rd ? "etwa " : "") + U + " cm und die Fläche ist " + (rd ? "etwa " : "") + AA + " cm². Der Umfang ist eine Länge (cm), die Fläche wird in Quadrat-Einheiten (cm²) gemessen.", Cb.fig + leg("#ffb347", "Orange: Umfang (Rand) · grün schraffiert: Fläche") + ln("Umfang:", C.uF.replace("u = ", "u = ") + " " + sgn + U + " cm") + ln("Fläche:", C.aF + " " + sgn + AA + " cm²"), "good",
         qw("In welcher Einheit wird die Fläche angegeben?", "cm²", [["cm", "Das ist eine Länge. Für den Umfang passt cm, für die Fläche cm²."], ["cm³", "Das ist eine Raumeinheit (Volumen), keine Flächeneinheit."]])));
       return out;
     }
@@ -10769,7 +10809,7 @@ renderStell();
         if (m === "pa") { const t = hpick(); return { a: ri(6, 14), b: t[1][1], h: t[0] }; }
         if (m === "tr") { const t = hpick(), c = ri(3, 9); return { a: c + t[1][0] + t[2][0], c: c, h: t[0], d: t[1][1], b: t[2][1] }; }
         if (m === "ra") { const t = wpick(TRI), k = wpick([1, 2]); return { e: 2 * t[0] * k, f: 2 * t[1] * k, a: t[2] * k }; }
-        if (m === "dk") { const t = hpick(); return { e: t[1][0] + t[2][0], f: 2 * t[0], a: t[1][1], b: t[2][1] }; }
+        if (m === "dk") { let t = hpick(), k = 0; while (t[1][1] === t[2][1] && k++ < 40) t = hpick(); return { e: t[1][0] + t[2][0], f: 2 * t[0], a: t[1][1], b: t[2][1] }; }
         return { r: ri(2, 15) };
       }
     });
@@ -12135,6 +12175,28 @@ document.querySelectorAll(".card").forEach(c => {
     return { top: top, kind: "eqs", q: q, corr: corr, wrong: wrong, expl: () => expl };
   }
   const nSO = (t, why) => O(t, t, why);
+  /* kleine Skizze zu einer Quizaussage: Bild und Aussage stehen in derselben Zeile */
+  const nF = (f, t, why) => O((f || "") + t, t, why);
+  function nMini(pts, lab, o) {
+    o = o || {};
+    const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys), bw = Math.max(Math.max.apply(null, xs) - x0, 1e-6), bh = Math.max(Math.max.apply(null, ys) - y0, 1e-6);
+    const sc = Math.min(70 / bw, 40 / bh), W = 112, H = 70, X = x => 22 + (x - x0) * sc, Y = y => 56 - (y - y0) * sc, f = v => v.toFixed(1);
+    const t = (x, y, txt, anc, col) => '<text x="' + f(x) + '" y="' + f(y) + '" text-anchor="' + (anc || "middle") + '" font-size="11" font-weight="700" fill="' + (col || "#cfd6e0") + '">' + txt + "</text>";
+    const dash = (x1, y1, x2, y2) => '<path d="M' + f(X(x1)) + "," + f(Y(y1)) + "L" + f(X(x2)) + "," + f(Y(y2)) + '" stroke="#5fd06f" stroke-width="2" stroke-dasharray="4 3"/>';
+    const poly = o.circle ? '<circle cx="56" cy="35" r="' + o.circle + '" fill="#6cc0f5" fill-opacity=".12" stroke="#8fb8e8" stroke-width="2.5"/>' : '<polygon points="' + pts.map(q => f(X(q[0])) + "," + f(Y(q[1]))).join(" ") + '" fill="#6cc0f5" fill-opacity=".12" stroke="#8fb8e8" stroke-width="2.5" stroke-linejoin="round"/>';
+    return '<svg class="qmini" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Skizze" style="vertical-align:middle;margin-right:.5rem;flex:none">' + poly + lab(X, Y, t, dash) + "</svg>";
+  }
+  const nFig = {
+    re: (a, b) => nMini([[0, 0], [a, 0], [a, b], [0, b]], (X, Y, t) => t((X(0) + X(a)) / 2, 67, "a = " + a) + t(X(a) + 4, (Y(0) + Y(b)) / 2 + 4, "b = " + b, "start")),
+    qu: a => nMini([[0, 0], [a, 0], [a, a], [0, a]], (X, Y, t) => t((X(0) + X(a)) / 2, 67, "a = " + a)),
+    dr: (g, h) => nMini([[0, 0], [g, 0], [g * 0.35, h]], (X, Y, t, d) => d(g * 0.35, 0, g * 0.35, h) + t((X(0) + X(g)) / 2, 67, "g = " + g) + t(X(g * 0.35) + 3, (Y(0) + Y(h)) / 2 + 4, "h = " + h, "start", "#5fd06f")),
+    d3: (a, b, c) => { const x = (a * a - b * b + c * c) / (2 * c), y = Math.sqrt(Math.max(a * a - x * x, 0.01)); return nMini([[0, 0], [c, 0], [x, y]], (X, Y, t) => t((X(0) + X(c)) / 2, 67, "c = " + c) + t((X(0) + X(x)) / 2 - 3, (Y(0) + Y(y)) / 2, "b = " + b, "end") + t((X(c) + X(x)) / 2 + 3, (Y(0) + Y(y)) / 2, "a = " + a, "start")); },
+    pa: (a, h, b) => nMini([[0, 0], [a, 0], [a + a * 0.25, h], [a * 0.25, h]], (X, Y, t, d) => d(a * 0.25, 0, a * 0.25, h) + t((X(0) + X(a)) / 2, 67, "a = " + a) + t(X(a * 0.25) + 3, (Y(0) + Y(h)) / 2 + 4, "h = " + h, "start", "#5fd06f") + t((X(0) + X(a * 0.25)) / 2 - 2, (Y(0) + Y(h)) / 2, "b", "end")),
+    tr: (a, c, h) => { const i = (a - c) / 2; return nMini([[0, 0], [a, 0], [i + c, h], [i, h]], (X, Y, t, d) => d(i, 0, i, h) + t((X(0) + X(a)) / 2, 67, "a = " + a) + t((X(i) + X(i + c)) / 2, Y(h) - 4, "c = " + c) + t(X(i) + 3, (Y(0) + Y(h)) / 2 + 4, "h = " + h, "start", "#5fd06f")); },
+    ra: (e, f2) => nMini([[f2 / 2, 0], [f2, e / 2], [f2 / 2, e], [0, e / 2]], (X, Y, t, d) => d(f2 / 2, 0, f2 / 2, e) + d(0, e / 2, f2, e / 2) + t(X(f2 / 2) + 3, Y(e * 0.2) + 4, "e = " + e, "start", "#5fd06f") + t(X(f2 * 0.78), Y(e / 2) - 3, "f = " + f2)),
+    kr: r => nMini([[0, 0], [1, 1]], (X, Y, t) => '<path d="M56,35H' + (56 + 27) + '" stroke="#5fd06f" stroke-width="2.5"/>' + t(70, 31, "r = " + r), { circle: 27 }),
+    py: (a, b, c, q) => nMini([[0, 0], [b, 0], [0, a]], (X, Y, t) => '<path d="M' + X(0) + "," + (Y(0) - 7) + "h7v7" + '" stroke="#c3c8ce" stroke-width="1.5" fill="none" transform="translate(0,0)"/>' + t(X(0) - 3, (Y(0) + Y(a)) / 2 + 4, a === null ? "?" : "a = " + a, "end") + t((X(0) + X(b)) / 2, 67, b === null ? "b = ?" : "b = " + b) + t((X(0) + X(b)) / 2 + 6, (Y(0) + Y(a)) / 2 - 4, c === null ? "c = ?" : "c = " + c, "start", "#ffb347"))
+  };
 
   /* Negative Zahlen */
   function gNeg() {
@@ -12286,18 +12348,18 @@ document.querySelectorAll(".card").forEach(c => {
   /* Flächen und Umfang */
   function gFla() {
     const u = (x, e) => nfm(x) + " " + (e || "cm");
-    const typ = () => { const x = typ0(); if (!x) return null; const dc = v => v.replace(/(\d)\.(\d)/g, "$1,$2"); const w = x.w.filter(y => y[0] !== x.r).map(y => [dc(y[0]), y[1]]); return w.length ? { s: x.s, r: dc(x.r), w: w } : null; };
+    const typ = () => { const x = typ0(); if (!x) return null; const dc = v => v.replace(/(\d)\.(\d)/g, "$1,$2"); const w = x.w.filter(y => y[0] !== x.r).map(y => [dc(y[0]), y[1]]); return w.length ? { f: x.f, s: x.s, r: dc(x.r), w: w } : null; };
     const typ0 = () => {
       const t = ri(0, 8);
-      if (t === 0) { const a = ri(3, 15), b = ri(2, 12); if (a === b) return null; return { s: "Rechteck mit a = " + a + " cm und b = " + b + " cm: Der Umfang ist ", r: 2 * (a + b) + " cm.", w: [[(a + b) + " cm.", "Der Rand hat vier Seiten: u = 2 · (a + b)."], [(a * b) + " cm.", "a · b ist die Fläche, nicht der Umfang."]] }; }
-      if (t === 1) { const a = ri(3, 15), b = ri(2, 12); if (a === b) return null; return { s: "Rechteck mit a = " + a + " cm und b = " + b + " cm: Die Fläche ist ", r: (a * b) + " cm².", w: [[(2 * (a + b)) + " cm².", "Das ist der Umfang. Die Fläche ist A = a · b."], [(a + b) + " cm².", "Die Seiten werden multipliziert, nicht addiert."]] }; }
-      if (t === 2) { const a = ri(2, 14); return { s: "Quadrat mit a = " + a + " cm: Umfang und Fläche sind ", r: (4 * a) + " cm und " + (a * a) + " cm².", w: [[(a * a) + " cm und " + (4 * a) + " cm².", "Umfang und Fläche sind vertauscht: u = 4 · a und A = a · a."], [(2 * a) + " cm und " + (2 * a) + " cm².", "Es gilt u = 4 · a und A = a · a, nicht 2 · a."]] }; }
-      if (t === 3) { const g = ri(3, 14) * 2, h = ri(2, 12); return { s: "Dreieck mit g = " + g + " cm und h = " + h + " cm: Die Fläche ist ", r: (g * h / 2) + " cm².", w: [[(g * h) + " cm².", "Das ist die Fläche eines Rechtecks. Beim Dreieck gilt A = ½ · g · h."], [(g + h) + " cm².", "Es wird g · h gerechnet, nicht g + h, und danach halbiert."]] }; }
-      if (t === 4) { const a = ri(3, 8), b = ri(4, 9), c = ri(5, 10); if (!(a + b > c && a + c > b && b + c > a)) return null; return { s: "Dreieck mit den Seiten " + a + " cm, " + b + " cm und " + c + " cm: Der Umfang ist ", r: (a + b + c) + " cm.", w: [[((a + b + c) / 2) + " cm.", "Der Umfang ist die ganze Summe a + b + c. Man halbiert hier nicht."], [(a * b * c) + " cm.", "Die Seiten werden addiert: u = a + b + c."]] }; }
-      if (t === 5) { const a = ri(4, 14), h = ri(2, 9), b = ri(3, 10); if (b < h) return null; return { s: "Parallelogramm mit a = " + a + " cm, Höhe h = " + h + " cm und b = " + b + " cm: Die Fläche ist ", r: (a * h) + " cm².", w: [[(a * b) + " cm².", "Man braucht die Höhe h, nicht die schräge Seite b: A = a · h."], [(a * h / 2) + " cm².", "Durch 2 wird beim Dreieck geteilt, nicht beim Parallelogramm."]] }; }
-      if (t === 6) { const a = ri(6, 14), c = ri(2, 5), h = ri(2, 8); if ((a + c) * h % 2) return null; return { s: "Trapez mit a = " + a + " cm, c = " + c + " cm und h = " + h + " cm: Die Fläche ist ", r: ((a + c) * h / 2) + " cm².", w: [[((a + c) * h) + " cm².", "Das ist die Fläche des Parallelogramms aus zwei Trapezen. Ein Trapez ist die Hälfte: A = ½ · (a + c) · h."], [(a * c * h / 2) + " cm².", "Die parallelen Seiten werden addiert: (a + c)."]] }; }
-      if (t === 7) { const e = ri(3, 14), f = ri(2, 12); if (e * f % 2) return null; return { s: "Raute mit den Diagonalen e = " + e + " cm und f = " + f + " cm: Die Fläche ist ", r: (e * f / 2) + " cm².", w: [[(e * f) + " cm².", "Das ist die Fläche des umgebenden Rechtecks. Die Raute ist die Hälfte: A = ½ · e · f."], [(e + f) + " cm².", "Die Diagonalen werden multipliziert und halbiert, nicht addiert."]] }; }
-      const r = ri(2, 12); return { s: "Kreis mit r = " + r + " cm und π ≈ 3,14: Der Umfang ist ", r: nnum2(2 * 3.14 * r) + " cm.", w: [[nnum2(3.14 * r * r) + " cm.", "Das ist π · r², die Fläche. Der Umfang ist u = 2 · π · r."], [nnum2(3.14 * r) + " cm.", "Das ist nur der halbe Umfang: u = 2 · π · r."]] };
+      if (t === 0) { const a = ri(3, 15), b = ri(2, 12); if (a === b) return null; return { f: nFig.re(a, b), s: "Rechteck mit a = " + a + " cm und b = " + b + " cm: Der Umfang ist ", r: 2 * (a + b) + " cm.", w: [[(a + b) + " cm.", "Der Rand hat vier Seiten: u = 2 · (a + b)."], [(a * b) + " cm.", "a · b ist die Fläche, nicht der Umfang."]] }; }
+      if (t === 1) { const a = ri(3, 15), b = ri(2, 12); if (a === b) return null; return { f: nFig.re(a, b), s: "Rechteck mit a = " + a + " cm und b = " + b + " cm: Die Fläche ist ", r: (a * b) + " cm².", w: [[(2 * (a + b)) + " cm².", "Das ist der Umfang. Die Fläche ist A = a · b."], [(a + b) + " cm².", "Die Seiten werden multipliziert, nicht addiert."]] }; }
+      if (t === 2) { const a = ri(2, 14); return { f: nFig.qu(a), s: "Quadrat mit a = " + a + " cm: Umfang und Fläche sind ", r: (4 * a) + " cm und " + (a * a) + " cm².", w: [[(a * a) + " cm und " + (4 * a) + " cm².", "Umfang und Fläche sind vertauscht: u = 4 · a und A = a · a."], [(2 * a) + " cm und " + (2 * a) + " cm².", "Es gilt u = 4 · a und A = a · a, nicht 2 · a."]] }; }
+      if (t === 3) { const g = ri(3, 14) * 2, h = ri(2, 12); return { f: nFig.dr(g, h), s: "Dreieck mit g = " + g + " cm und h = " + h + " cm: Die Fläche ist ", r: (g * h / 2) + " cm².", w: [[(g * h) + " cm².", "Das ist die Fläche eines Rechtecks. Beim Dreieck gilt A = ½ · g · h."], [(g + h) + " cm².", "Es wird g · h gerechnet, nicht g + h, und danach halbiert."]] }; }
+      if (t === 4) { const a = ri(3, 8), b = ri(4, 9), c = ri(5, 10); if (!(a + b > c && a + c > b && b + c > a)) return null; return { f: nFig.d3(a, b, c), s: "Dreieck mit den Seiten " + a + " cm, " + b + " cm und " + c + " cm: Der Umfang ist ", r: (a + b + c) + " cm.", w: [[((a + b + c) / 2) + " cm.", "Der Umfang ist die ganze Summe a + b + c. Man halbiert hier nicht."], [(a * b * c) + " cm.", "Die Seiten werden addiert: u = a + b + c."]] }; }
+      if (t === 5) { const a = ri(4, 14), h = ri(2, 9), b = ri(3, 10); if (b < h) return null; return { f: nFig.pa(a, h, b), s: "Parallelogramm mit a = " + a + " cm, Höhe h = " + h + " cm und b = " + b + " cm: Die Fläche ist ", r: (a * h) + " cm².", w: [[(a * b) + " cm².", "Man braucht die Höhe h, nicht die schräge Seite b: A = a · h."], [(a * h / 2) + " cm².", "Durch 2 wird beim Dreieck geteilt, nicht beim Parallelogramm."]] }; }
+      if (t === 6) { const a = ri(6, 14), c = ri(2, 5), h = ri(2, 8); if ((a + c) * h % 2) return null; return { f: nFig.tr(a, c, h), s: "Trapez mit a = " + a + " cm, c = " + c + " cm und h = " + h + " cm: Die Fläche ist ", r: ((a + c) * h / 2) + " cm².", w: [[((a + c) * h) + " cm².", "Das ist die Fläche des Parallelogramms aus zwei Trapezen. Ein Trapez ist die Hälfte: A = ½ · (a + c) · h."], [(a * c * h / 2) + " cm².", "Die parallelen Seiten werden addiert: (a + c)."]] }; }
+      if (t === 7) { const e = ri(3, 14), f = ri(2, 12); if (e * f % 2) return null; return { f: nFig.ra(e, f), s: "Raute mit den Diagonalen e = " + e + " cm und f = " + f + " cm: Die Fläche ist ", r: (e * f / 2) + " cm².", w: [[(e * f) + " cm².", "Das ist die Fläche des umgebenden Rechtecks. Die Raute ist die Hälfte: A = ½ · e · f."], [(e + f) + " cm².", "Die Diagonalen werden multipliziert und halbiert, nicht addiert."]] }; }
+      const r = ri(2, 12); return { f: nFig.kr(r), s: "Kreis mit r = " + r + " cm und π ≈ 3,14: Der Umfang ist ", r: nnum2(2 * 3.14 * r) + " cm.", w: [[nnum2(3.14 * r * r) + " cm.", "Das ist π · r², die Fläche. Der Umfang ist u = 2 · π · r."], [nnum2(3.14 * r) + " cm.", "Das ist nur der halbe Umfang: u = 2 · π · r."]] };
     };
     const FM = [
       ["Der Umfang eines Rechtecks ist u = 2 · (a + b).", "Der Umfang eines Rechtecks ist u = a · b.", "Der Umfang ist die Summe aller vier Seiten, a · b ist die Fläche."],
@@ -12311,8 +12373,8 @@ document.querySelectorAll(".card").forEach(c => {
       ["Die Fläche misst man in cm², den Umfang in cm.", "Die Fläche misst man in cm, den Umfang in cm².", "Der Umfang ist eine Länge (cm), die Fläche wird in Quadrat-Einheiten (cm²) gemessen."]
     ];
     return nEqsTask("fla", "Hier stehen Aussagen zu Umfang und Fläche. Rechne mit den Formeln aus der Formelsammlung. Welche Aussagen stimmen?",
-      () => { if (Math.random() < 0.3) return nSO(pick(FM)[0]); const x = typ(); return x ? nSO(x.s + x.r) : null; },
-      () => { if (Math.random() < 0.3) { const f = pick(FM); return nSO(f[1], "Richtig: " + f[0] + " " + f[2]); } const x = typ(); if (!x) return null; const w = pick(x.w); return nSO(x.s + w[0], "Richtig wäre: " + x.s + x.r + " " + w[1]); },
+      () => { if (Math.random() < 0.3) return nSO(pick(FM)[0]); const x = typ(); return x ? nF(x.f, x.s + x.r) : null; },
+      () => { if (Math.random() < 0.3) { const f = pick(FM); return nSO(f[1], "Richtig: " + f[0] + " " + f[2]); } const x = typ(); if (!x) return null; const w = pick(x.w); return nF(x.f, x.s + w[0], "Richtig wäre: " + x.s + x.r + " " + w[1]); },
       "Rechteck: u = 2 · (a + b), A = a · b. Quadrat: u = 4 · a, A = a². Dreieck: u = a + b + c, A = ½ · g · h. Parallelogramm: u = 2 · (a + b), A = a · h. Trapez: u = a + b + c + d, A = ½ · (a + c) · h. Raute und Drachen: A = ½ · e · f. Kreis: u = 2 · π · r, A = π · r². Der Umfang ist eine Länge in cm, die Fläche wird in cm² angegeben.");
   }
 
@@ -12321,7 +12383,7 @@ document.querySelectorAll(".card").forEach(c => {
     const TR = [[3, 4, 5], [5, 12, 13], [8, 15, 17], [7, 24, 25], [20, 21, 29], [9, 40, 41], [12, 35, 37], [6, 8, 10], [9, 12, 15], [15, 20, 25], [10, 24, 26]];
     const tri = () => { const t = pick(TR), sw = Math.random() < 0.5; return sw ? [t[1], t[0], t[2]] : t; };
     const r1 = v => nfm((Math.round(v * 10) / 10).toFixed(1));
-    const typ = () => {
+    const typ0 = () => {
       const t = ri(0, 3), [a, b, c] = tri();
       if (t === 0) return { s: "Katheten " + a + " cm und " + b + " cm: Die Hypotenuse ist ", r: c + " cm lang.", w: [[(a + b) + " cm lang.", "Es gilt a² + b² = c². Man addiert nicht die Längen, sondern die Quadrate: " + a * a + " + " + b * b + " = " + c * c + "."], [(c * c) + " cm lang.", "Das ist c². Aus " + c * c + " muss noch die Wurzel gezogen werden: " + c + "."], [(a * b) + " cm lang.", "Es wird nicht multipliziert. a² + b² = " + (a * a + b * b) + ", die Wurzel daraus ist " + c + "."]] };
       if (t === 1) return { s: "Hypotenuse " + c + " cm, eine Kathete " + a + " cm: Die andere Kathete ist ", r: b + " cm lang.", w: [[(c - a) + " cm lang.", "Es gilt b² = c² − a² = " + c * c + " − " + a * a + " = " + b * b + ". Die Wurzel daraus ist " + b + "."], [r1(Math.sqrt(c * c + a * a)) + " cm lang.", "Eine Kathete wird mit Minus berechnet: c² − a²."], [(b * b) + " cm lang.", "Das ist b². Die Wurzel muss noch gezogen werden: " + b + "."]] };
@@ -12329,12 +12391,19 @@ document.querySelectorAll(".card").forEach(c => {
       const x = ri(2, 7), y = ri(2, 7), cc = Math.sqrt(x * x + y * y);
       return { s: "Katheten " + x + " cm und " + y + " cm: Die Hypotenuse ist ", r: "√" + (x * x + y * y) + " cm ≈ " + r1(cc) + " cm lang.", w: [["√" + (x + y) + " cm ≈ " + r1(Math.sqrt(x + y)) + " cm lang.", "Unter der Wurzel steht die Summe der Quadrate: " + x * x + " + " + y * y + " = " + (x * x + y * y) + "."], ["√" + (x * x * y * y) + " cm = " + (x * y) + " cm lang.", "Es wird nicht multipliziert. Unter der Wurzel steht " + x * x + " + " + y * y + "."]] };
     };
+    const typ = () => {
+      const x = typ0(); if (!x) return null; let m, f = "";
+      if ((m = x.s.match(/^Katheten (\d+) cm und (\d+) cm/))) f = nFig.py(+m[1], +m[2], null);
+      else if ((m = x.s.match(/^Hypotenuse (\d+) cm, eine Kathete (\d+) cm/))) f = nFig.py(+m[2], null, +m[1]);
+      else if ((m = x.s.match(/^Ein Dreieck mit den Seiten (\d+) cm, (\d+) cm und (\d+) cm/))) f = nFig.d3(+m[1], +m[2], +m[3]);
+      x.f = f; return x;
+    };
     return nEqsTask("pyt", "Hier stehen Aussagen zum rechtwinkligen Dreieck. Rechne mit dem Satz des Pythagoras a² + b² = c². Welche Aussagen stimmen?",
-      () => { const x = typ(); if (!x) return null; if (x.r === "nicht rechtwinklig.") return nSO(x.s + x.r); return nSO(x.s + x.r); },
+      () => { const x = typ(); if (!x) return null; return nF(x.f, x.s + x.r); },
       () => {
         const x = typ(); if (!x) return null; const w = pick(x.w);
-        if (x.r === "nicht rechtwinklig.") { const [a, b, c] = tri(); return nSO("Ein Dreieck mit den Seiten " + a + " cm, " + b + " cm und " + c + " cm ist nicht rechtwinklig.", a + "² + " + b + "² = " + (a * a + b * b) + " = " + c + "². Das Dreieck ist rechtwinklig."); }
-        return nSO(x.s + w[0], "Richtig wäre: " + x.s + x.r + " " + w[1]);
+        if (x.r === "nicht rechtwinklig.") { const [a, b, c] = tri(); return nF(nFig.d3(a, b, c), "Ein Dreieck mit den Seiten " + a + " cm, " + b + " cm und " + c + " cm ist nicht rechtwinklig.", a + "² + " + b + "² = " + (a * a + b * b) + " = " + c + "². Das Dreieck ist rechtwinklig."); }
+        return nF(x.f, x.s + w[0], "Richtig wäre: " + x.s + x.r + " " + w[1]);
       },
       "Im rechtwinkligen Dreieck gilt a² + b² = c². Die Hypotenuse c liegt dem rechten Winkel gegenüber. Eine Kathete berechnest du mit b² = c² − a². Sind die Quadrate der beiden kurzen Seiten zusammen so groß wie das Quadrat der längsten, ist das Dreieck rechtwinklig.");
   }

@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
-<title>Seifferts Mathe-Werkzeuge (Nr. 8)</title>
+<title>Seifferts Mathe-Werkzeuge (Nr. 11)</title>
 <style>
   :root { --text:#e6e8eb; --muted:#9aa1a9; --line:#4a4f55; --dark:#121315; }
   * { box-sizing: border-box; }
@@ -743,6 +743,12 @@
   .qzlink { border-color:#ffb347 !important; color:#ffd8a0; font-weight:800; }
   .qzlink:hover { background:rgba(255,179,71,.16); }
   .qzbackbar { margin:0 0 0.6rem; }
+  .wrw { display:block; white-space:pre; text-align:left; font:700 1rem/1.25 ui-monospace,"DejaVu Sans Mono",Menlo,Consolas,monospace; margin:.15rem 0 0 1.4rem; letter-spacing:0; color:#e6e8eb; }
+  .qzopt .wrw { font-size:.98rem; }
+  .wway { display:flex; flex-direction:column; align-items:flex-start; gap:.12rem; text-align:left; line-height:1.4; }
+  .wway > span:first-child { font-weight:800; }
+  .wway > span:not(:first-child) { padding-left:.9rem; border-left:2px solid rgba(143,184,232,.45); }
+  .wway .wrw { margin:.1rem 0 0 .2rem; }
 </style>
 </head>
 <body>
@@ -767,7 +773,7 @@
       <button class="icon-btn" id="sideToggle" aria-label="Themenleiste ein- oder ausklappen" aria-expanded="true" aria-controls="side" title="Themenleiste ein- oder ausklappen"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <div class="tb-title">
         <h1 id="pageTitle"></h1>
-        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 14.11.2026 · Nr. 8</span>
+        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 15.11.2026 · Nr. 11</span>
       </div>
       <div class="tb-speak">
         <button class="icon-btn" id="speakBtn" aria-label="Vorlesen" title="Vorlesen"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4 4 0 010 6M19 6.5a8 8 0 010 11"/></svg></button>
@@ -1390,9 +1396,20 @@ window.Predict = (function () {
   }
   function make(steps, shown) {
     const n = steps[shown + 1];
-    if (n.q && n.q.a && n.q.a.length === 3) return { head: n.q.head || "Was ist richtig?", opts: n.q.a.map((h, i) => ({ h: h, ok: i === 0, why: (n.q.why && n.q.why[i]) || "Das passt noch nicht. Sieh dir das Bild noch einmal an." })) };
-    if (n.r && /^[−-]?\d+(,\d+)?$/.test(String(n.r)) && (n.cls === "good" || shown + 1 === steps.length - 1)) {
-      const o = numOpts(String(n.r));
+    const seenQ = steps.slice(0, shown + 1).map(x => strip((x.h || "") + " " + (x.t || "")).replace(/[   ]/g, " ")).join(" "), a0 = n.q && n.q.a ? strip(String(n.q.a[0])).replace(/[   ]/g, " ") : "";
+    const seeAns = /^[−-]?\d+(,\d+)?$/.test(a0) && new RegExp("(=|ergibt|ist|macht|sind)\\s*" + a0 + "(?![\\d,]|\\s*[\\d])", "i").test(seenQ);
+    if (n.q && n.q.a && n.q.a.length === 3 && !seeAns) return { head: n.q.head || "Was ist richtig?", opts: n.q.a.map((h, i) => ({ h: h, ok: i === 0, why: (n.q.why && n.q.why[i]) || "Das passt noch nicht. Sieh dir das Bild noch einmal an." })) };
+    /* Das Ergebnis darf erst nach der Frage mit den drei Möglichkeiten zu sehen sein. Steht es schon im nächsten Schritt (zum Beispiel beim Zusammenzählen), wird die Frage vor diesem Schritt gestellt. Steht es schon sichtbar da, wird nicht mehr gefragt. */
+    const txt = x => strip((x.h || "") + " " + (x.t || "")).replace(/[   ]/g, " ");
+    const seen = steps.slice(0, shown + 1).map(txt).join(" ");
+    for (let j = shown + 1; j < steps.length && j <= shown + 3; j++) {
+      const sj = steps[j];
+      if (!(sj.r && /^[−-]?\d+(,\d+)?$/.test(String(sj.r)) && (sj.cls === "good" || j === steps.length - 1))) continue;
+      const A = String(sj.r), re = new RegExp("(=|ergibt|ist|macht|sind)\\s*" + A.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\d,]|\\s*[\\d])", "i");
+      if (re.test(seen)) continue;
+      let first = j; for (let k = shown + 1; k <= j; k++) if (re.test(txt(steps[k]))) { first = k; break; }
+      if (first !== shown + 1) continue;
+      const o = numOpts(A);
       if (o) return { head: "Welches Ergebnis ist richtig?", opts: o.map(x => ({ h: x[0], ok: x[1], why: x[2] })) };
     }
     return null;
@@ -1840,7 +1857,7 @@ const TOPICS = [
     i: '<path d="M4 17h16"/><path d="M6 14v6M18 14v6M12 15v4"/><path d="M12 4v6M9 7l3 3 3-3"/>' },
   { k: "das", g: "Dezimalzahlen", t: "Dezimalzahlen addieren und subtrahieren", s: "Stellengerecht rechnen: Komma unter Komma, bündeln und entbündeln",
     i: '<path d="M12 4v8M8 8h8"/><path d="M8 18h8"/><circle cx="19" cy="19" r="1.2"/>' },
-  { k: "dmd", g: "Dezimalzahlen", t: "Dezimalzahlen multiplizieren und dividieren", s: "Mit dem Rechteckfeld multiplizieren, Stelle für Stelle dividieren, beide Zahlen in dieselbe Einheit bringen",
+  { k: "dmd", g: "Dezimalzahlen", t: "Dezimalzahlen multiplizieren und dividieren", s: "Mit dem Rechteckfeld multiplizieren, Stelle für Stelle dividieren, beide Zahlen in dieselbe Einheit bringen, abbrechende und periodische Dezimalzahlen erkennen",
     i: '<rect x="3" y="4" width="11" height="11"/><path d="M8.5 4v11M3 9.5h11"/><circle cx="19" cy="19" r="1.4"/><path d="M16 19h-1"/>' },
   { k: "gro", g: "Dezimalzahlen", t: "Größen und Stellenwerte", s: "Längen, Flächen und Volumen umrechnen: Quadrat- und Würfelbild, der Einer der Einheit, mit Nullen auffüllen",
     i: '<rect x="3" y="12" width="9" height="9"/><path d="M3 12l4-4h9l-4 4M16 8v9l-4 4"/><path d="M15 4h6"/>' },
@@ -4808,9 +4825,9 @@ renderStell();
   /* ================= 4. Multiplizieren und Dividieren ================= */
   (function () {
     const pre = "dm"; let mode = "mul";
-    const DEF = { mul: { a: "1,3", b: "2,4" }, dz: { a: "7,5", b: "3" }, dd: { a: "4,8", b: "0,6" }, pe: { a: "1", b: "3" } };
+    const DEF = { mul: { a: "1,3", b: "2,4" }, dz: { a: "7,5", b: "3" }, dd: { a: "4,8", b: "0,6" }, ab: { a: "3", b: "8" }, pe: { a: "1", b: "3" } };
     const V = Object.assign({}, DEF.mul);
-    panel("dmd", pre, [["mul", "Multiplikation"], ["dz", "Division durch eine ganze Zahl"], ["dd", "Division durch eine Dezimalzahl"], ["pe", "Periodenstrich üben"]], [
+    panel("dmd", pre, [["mul", "Multiplikation"], ["dz", "Division durch eine ganze Zahl"], ["dd", "Division durch eine Dezimalzahl"], ["ab", "Abbrechend oder periodisch?"], ["pe", "Periodenstrich üben"]], [
       ["Zahlen:", "Rechenweg, Faktor, Produkt, Teilprodukt, Dividend, Divisor, Quotient, Rest, Einheit (Einer, Zehntel, Hundertstel …)"],
       ["Tätigkeiten:", "in Einheiten umschreiben, zerlegen, Rechteckfeld zeichnen, Teilprodukte addieren, Stelle für Stelle teilen, tauschen (1 Stück in 10 kleinere Stücke), Periodenstrich setzen, Probe machen"],
       ["Satzanfänge:", "1,3 sind 13 Zehntel. · Zehntel mal Zehntel gibt Hundertstel, denn ein Zehntel von einem Zehntel ist ein Hundertstel. · 13 · 24 = 10 · 24 + 3 · 24. · Ich tausche den Rest in kleinere Stücke und lege die nächste Ziffer dazu. · 3 passt nicht in 1. Ich tausche 1 Einer in 10 Zehntel. · Ich bringe beide Zahlen in dieselbe Einheit. · Zur Probe rechne ich die Umkehraufgabe."],
@@ -4934,6 +4951,27 @@ renderStell();
       out.push(step("Ergebnis", sf + " = " + T(rs, "zo") + ". Der Periodenstrich steht über den Ziffern " + T(perD, "zo") + ", die sich immer wieder wiederholen.", '<div class="zbig">' + sf + " = " + T(rs, "zo") + "</div>", "good", qStr(ld, true)));
       return out;
     }
+    /* Abbrechend oder periodisch: Wird der Rest 0, bricht die Dezimalzahl ab. Kommt ein Rest wieder, ist sie periodisch. */
+    function primz(n) { const r = []; for (let p = 2; n > 1 && p <= n; p++) while (n % p === 0) { r.push(p); n /= p; } return r; }
+    function buildAb() {
+      const qa = parse(V.a, 3, 0), qm = parse(V.b, 2, 0);
+      if (!qa || !qm || qa.n < 1 || qm.n < 2) return "Bitte zwei ganze Zahlen eingeben: Dividend von 1 bis 999, Divisor von 2 bis 99, zum Beispiel 3 : 8 oder 2 : 3.";
+      const A = qa.n, M = qm.n, ld = ldiv(A, M, 0, 40);
+      if (!ld.terminating && ld.per < 0) return "Bei " + A + " : " + M + " wiederholt sich der Rest erst sehr spät. Probiere kleinere Zahlen, zum Beispiel 3 : 8 oder 2 : 3.";
+      const sf = T(A, "zs") + " : " + T(M, "zg"), rs = qStr(ld), g = gcd(A, M), d = M / g, pz = primz(d), only25 = pz.every(x => x === 2 || x === 5), out = [];
+      const reste = ld.rows.map(r => r.r);
+      out.push(step("Aufgabe", "Ich rechne " + sf + " als Dezimalzahl und achte auf die <b>Reste</b>. Es gibt nur zwei Möglichkeiten: Entweder wird ein Rest <b>0</b>, oder ein Rest <b>kommt wieder</b>."));
+      out.push(step("Teilen und Tauschen", "Ich teile Stelle für Stelle. Bleibt ein Rest, tausche ich ihn in 10-mal so viele kleinere Stücke und teile weiter. Ich schaue bei jedem Schritt auf den Rest.", ldTable(ld, M)));
+      if (ld.terminating) {
+        out.push(step("Der Rest ist 0", "Nach dem letzten Schritt bleibt der Rest " + T(0, "zo") + ". Es ist nichts mehr zu teilen. Das Ergebnis hat nur <b>endlich viele</b> Stellen nach dem Komma: Die Dezimalzahl <b>bricht ab</b>.", '<div class="zbig">' + sf + " = " + T(rs, "zo") + "</div>" + line("Reste:", reste.join(", ") + ". Der letzte Rest ist 0.")));
+      } else {
+        const rest = ld.rows[ld.per].rin;
+        out.push(step("Ein Rest kommt wieder", "Die Reste sind der Reihe nach " + reste.join(", ") + ". Der Rest " + T(rest, "zo") + " kommt zum zweiten Mal vor. Ab hier wird genau dasselbe wieder gerechnet. Die Ziffern wiederholen sich immer wieder: Die Dezimalzahl ist <b>periodisch</b>. Die Reste können nie 0 werden.", '<div class="zbig">' + sf + " = " + T(rs, "zo") + "</div>" + line("Periodenstrich:", "Er steht über den Ziffern, die sich wiederholen.")));
+      }
+      out.push(step("Woran erkenne ich es vorher?", "Der gekürzte Nenner " + d + " = " + (pz.length ? pz.join(" · ") : "1") + (only25 ? " hat nur die Primfaktoren 2 und 5. Die Dezimalzahl <b>bricht ab</b>." : " hat einen anderen Primfaktor als 2 und 5. Die Dezimalzahl ist <b>periodisch</b>.") + " Ich kürze zuerst den Bruch " + T(A + "/" + M, "zs").replace("/", " : ") + (g > 1 ? " zu " + T((A / g) + "/" + d, "zs").replace("/", " : ") : " (er ist schon gekürzt)") + ". " + (only25 ? "Mit nur 2 und 5 im Nenner kann ich auf 10, 100 oder 1000 erweitern." : "Dann kann ich nicht auf eine Stufenzahl erweitern, und beim Teilen kommt ein Rest wieder."), '<div class="zbig">' + d + " = " + (pz.length ? pz.join(" · ") : "1") + "</div>"));
+      out.push(step("Ergebnis", sf + " = " + T(rs, "zo") + ". Das ist eine " + (ld.terminating ? "<b>abbrechende</b> Dezimalzahl: Der Rest wird 0." : "<b>periodische</b> Dezimalzahl: Ein Rest kommt wieder. Der Strich steht über " + T(qStr(ld, true).replace(/^.*\(/, "").replace(/\)$/, ""), "zo") + "."), '<div class="zbig">' + sf + " = " + T(rs, "zo") + "</div>", "good", qStr(ld, true)));
+      return out;
+    }
     function buildDd() {
       const qa = parse(V.a, 4, 3), qb = parse(V.b, 3, 3);
       if (!qa || !qb) return "Bitte zwei Dezimalzahlen eingeben (Dividend höchstens 4 Stellen vor und 3 nach dem Komma, Divisor höchstens 3 vor und 3 nach dem Komma).";
@@ -4953,17 +4991,18 @@ renderStell();
       out.push(step("Ergebnis", sf + " = " + T(A2, "zs") + " : " + T(B2, "zg") + " = " + T(d.rs, "zo") + ". Das Ergebnis sagt: " + fmt(qb.n, qb.p) + " passt " + d.rs + "-mal in " + fmt(qa.n, qa.p) + ".", '<div class="zbig">' + sf + " = " + T(d.rs, "zo") + "</div>" + rr.replace(/^<div class="zbig">.*?<\/div>/, ""), "good", d.rp));
       return out;
     }
-    const sp = stepper({ pre: pre, carry: () => mode !== "pe", build: () => mode === "mul" ? buildMul() : mode === "dz" ? buildDz() : mode === "pe" ? buildPe() : buildDd(),
-      note: () => mode === "mul" ? "Multiplikation: Ich rechne in Einheiten. Zehntel mal Zehntel gibt Hundertstel." : mode === "pe" ? "Periodenstrich: Wenn ein Rest wiederkommt, wiederholen sich die Ziffern. Der Strich steht über den Ziffern, die sich wiederholen." : mode === "dz" ? "Division durch eine ganze Zahl: Ich teile Stelle für Stelle und tausche den Rest." : "Division durch eine Dezimalzahl: Erst beide Zahlen in dieselbe Einheit bringen, dann ganze Zahlen teilen." });
+    const sp = stepper({ pre: pre, carry: () => mode !== "pe" && mode !== "ab", build: () => mode === "mul" ? buildMul() : mode === "dz" ? buildDz() : mode === "pe" ? buildPe() : mode === "ab" ? buildAb() : buildDd(),
+      note: () => mode === "mul" ? "Multiplikation: Ich rechne in Einheiten. Zehntel mal Zehntel gibt Hundertstel." : mode === "ab" ? "Abbrechend oder periodisch: Wird ein Rest 0, bricht die Dezimalzahl ab. Kommt ein Rest wieder, ist sie periodisch." : mode === "pe" ? "Periodenstrich: Wenn ein Rest wiederkommt, wiederholen sich die Ziffern. Der Strich steht über den Ziffern, die sich wiederholen." : mode === "dz" ? "Division durch eine ganze Zahl: Ich teile Stelle für Stelle und tausche den Rest." : "Division durch eine Dezimalzahl: Erst beide Zahlen in dieselbe Einheit bringen, dann ganze Zahlen teilen." });
     function inputs() {
       const o = mode === "mul" ? "·" : ":";
       $(pre + "Row").innerHTML = txtIn(pre, "a", V.a, "#6cc0f5") + sym(o) + txtIn(pre, "b", V.b, "#5fd06f");
       $(pre + "Row").querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => { V[inp.dataset.k] = inp.value; sp.reset(); sp.render(); }));
     }
-    function setMode(m) { mode = m; Object.assign(V, DEF[m]); ["mul", "dz", "dd", "pe"].forEach(k => $(pre + "_" + k).setAttribute("aria-selected", k === m ? "true" : "false")); sp.reset(); inputs(); sp.render(); }
-    ["mul", "dz", "dd", "pe"].forEach(k => $(pre + "_" + k).addEventListener("click", () => setMode(k)));
+    function setMode(m) { mode = m; Object.assign(V, DEF[m]); ["mul", "dz", "dd", "ab", "pe"].forEach(k => $(pre + "_" + k).setAttribute("aria-selected", k === m ? "true" : "false")); sp.reset(); inputs(); sp.render(); }
+    ["mul", "dz", "dd", "ab", "pe"].forEach(k => $(pre + "_" + k).addEventListener("click", () => setMode(k)));
     $(pre + "Random").addEventListener("click", () => {
       if (mode === "mul") { const pa = ri(0, 1), pb = pa === 0 ? 1 : ri(0, 1); V.a = fmt(ri(2, 40), pa); V.b = fmt(ri(2, 30), pb); }
+      else if (mode === "ab") { const ms = [2, 4, 5, 8, 10, 16, 20, 25, 3, 6, 7, 9, 11, 12, 13, 15, 18, 22], M = ms[ri(0, ms.length - 1)]; V.b = String(M); V.a = String(ri(1, M - 1)); }
       else if (mode === "pe") { const ms = [3, 6, 7, 9, 11, 12, 13, 15, 18, 22]; for (let t = 0; t < 100; t++) { const M = ms[ri(0, ms.length - 1)], A = ri(1, M - 1 + (t > 50 ? 20 : 0)); if (!ldiv(A, M, 0, 40).terminating) { V.a = String(A); V.b = String(M); break; } } }
       else if (mode === "dz") { const pa = ri(1, 2); V.b = String(ri(2, 9)); V.a = fmt(ri(5, 400), pa); }
       else { const pb = ri(1, 2); const b = ri(2, 9); const q = ri(2, 12); V.b = fmt(b, pb); const ap = Math.max(pb, ri(1, 2)); V.a = fmt(b * q * P10(ap - pb) + (Math.random() < 0.5 ? 0 : ri(1, 5)), ap); }
@@ -10998,51 +11037,260 @@ document.querySelectorAll(".card").forEach(c => {
   }
   /* Schriftlich rechnen: Welche Rechnungen stimmen? */
   function digitsSwap(r) { const s = String(r).split(""); if (s.length < 2) return r; const i = ri(0, s.length - 2); const t = s[i]; s[i] = s[i + 1]; s[i + 1] = t; return Number(s.join("")); }
+  /* ===== Schriftliche Verfahren: Rechenwege prüfen statt Ergebnisse raten ===== */
+  const RW_ST = ["Einer", "Zehner", "Hunderter", "Tausender", "Zehntausender", "Hunderttausender"];
+  const rwPre = rows => '<span class="wrw">' + rows.join("\n") + "</span>";
+  const rwCell = (s, w) => { s = String(s); while (s.length < w) s = " " + s; return s; };
+  const rwDig = n => String(n).split("").map(Number);
+  const rwAt = (arr, i) => { const k = arr.length - 1 - i; return k >= 0 ? arr[k] : 0; };
+  /* Addition: Überträge stehen unter dem Strich, jede Spalte ist 2 Zeichen breit */
+  function rwAdd(a, b, o) {
+    o = o || {};
+    const A = rwDig(a), B = rwDig(o.shift ? b * 10 : b), n = Math.max(A.length, B.length) + 1, inc = new Array(n + 3).fill(0), car = new Array(n + 3).fill(""), sum = [];
+    for (let i = 0; i < n; i++) {
+      let s = rwAt(A, i) + rwAt(B, i) + inc[i];
+      if (s >= 10) { s -= 10; const t = o.noCarryAt === i ? -1 : o.wrongColAt === i ? i + 2 : i + 1; if (t >= 0) { inc[t] += 1; car[t] = "¹"; } }
+      if (o.digitAt === i) s = (s + 1) % 10;
+      sum.push(s);
+    }
+    let last = n - 1; while (last > 0 && sum[last] === 0) last--;
+    const shown = (o.shift ? String(b) + " " : String(b)), Bs = rwDig(b);
+    const row = f => { let t = ""; for (let i = n - 1; i >= 0; i--) t += rwCell(f(i), 2); return t; };
+    const bRow = row(i => o.shift ? (i === 0 ? "" : i - 1 < Bs.length ? rwAt(Bs, i - 1) : "") : (i < Bs.length ? rwAt(Bs, i) : ""));
+    let val = 0; sum.forEach((d, i) => { if (i <= last) val += d * Math.pow(10, i); });
+    return { html: rwPre(["  " + row(i => i < A.length ? rwAt(A, i) : ""), "+ " + bRow, "  " + row(i => car[i] || ""), "  " + "──".repeat(n), "  " + row(i => i <= last ? sum[i] : "")]), val: val };
+  }
+  /* Subtraktion mit Entbündeln: Die Zeile „entbündelt“ zeigt −1 in der Spalte, die einen Zehner abgibt */
+  function rwSub(a, b, o) {
+    o = o || {};
+    const A = rwDig(a), B = rwDig(b), n = A.length, ent = new Array(n + 2).fill(""), out = []; let borrow = 0, hit = false;
+    for (let i = 0; i < n; i++) {
+      let av = rwAt(A, i) - borrow, bv = rwAt(B, i); borrow = 0;
+      if (av < bv) {
+        if (o.noEnt) { out.push(bv - av); hit = true; continue; }
+        av += 10; hit = true;
+        if (o.forgetAt === i) { /* Spalte links wird nicht verkleinert */ } else { borrow = 1; ent[i + 1] = "−1"; }
+      }
+      let d = av - bv; if (o.digitAt === i) d = (d + 1) % 10;
+      out.push(d);
+    }
+    let last = n - 1; while (last > 0 && out[last] === 0) last--;
+    const row = f => { let t = ""; for (let i = n - 1; i >= 0; i--) t += rwCell(f(i), 2); return t; };
+    let val = 0; out.forEach((d, i) => { if (i <= last) val += d * Math.pow(10, i); });
+    return { html: rwPre(["  " + row(i => rwAt(A, i)), "− " + row(i => i < B.length ? rwAt(B, i) : ""), "  " + row(i => ent[i] || ""), "  " + "──".repeat(n), "  " + row(i => i <= last ? out[i] : "")]), val: val, hit: hit };
+  }
+  /* Multiplikation: ein Teilprodukt je Ziffer, die Stellenverschiebung steht als Null dahinter */
+  function rwMul(a, b, o) {
+    o = o || {};
+    const Bd = rwDig(b), n = Bd.length, parts = []; let total = 0;
+    for (let k = 0; k < n; k++) {
+      const dgt = Bd[n - 1 - k]; let p = a * dgt; if (o.pAt === k) p += o.pDelta;
+      const zeros = o.noShift === k ? 0 : k; parts.push({ lab: dgt + " " + "EZH"[k] + ":", txt: String(p) + "0".repeat(zeros) }); total += p * Math.pow(10, zeros);
+    }
+    const shownTotal = o.sumDelta ? total + o.sumDelta : total, w = String(Math.max(shownTotal, a * b)).length + 1, bar = "─".repeat(5 + w + 1);
+    const lines = [String(a) + " · " + String(b), "─".repeat(String(a).length + 3 + String(b).length)];
+    parts.forEach(p => lines.push(rwCell(p.lab, 5) + rwCell(p.txt, w + 1)));
+    lines.push(bar, rwCell("Summe:", 5) + rwCell(String(shownTotal), w + 1));
+    return { html: rwPre(lines), val: shownTotal };
+  }
+  /* Division: von links nach rechts, Stelle für Stelle (Normalverfahren) */
+  function rwDivSteps(d, B) {
+    const n = d.length; let k = 1; while (k <= n && Number(d.slice(0, k).join("")) < B) k++;
+    if (k > n) return null;
+    const steps = []; let r = 0;
+    for (let i = k - 1; i < n; i++) { const cur = i === k - 1 ? Number(d.slice(0, k).join("")) : r * 10 + d[i], q = Math.floor(cur / B); r = cur - q * B; steps.push({ i: i, cur: cur, q: q, prod: q * B, rem: r }); }
+    return { k: k, steps: steps };
+  }
+  function rwDiv(A, B, o) {
+    o = o || {};
+    const dig = rwDig(A), dd = dig.slice(); (o.bring || []).forEach(x => { dd[x[0]] = x[1]; });
+    const S = rwDivSteps(dd, B); if (!S) return null;
+    const steps = S.steps.map(s => Object.assign({}, s));
+    const last = steps[steps.length - 1];
+    if (o.restBig) { last.q -= 1; last.prod = last.q * B; last.rem = last.cur - last.prod; }
+    if (o.lastRem) last.rem += o.lastRem;
+    const skip = new Set(); if (o.zeroDrop) steps.forEach((s, j) => { if (j > 0 && s.q === 0) skip.add(j); });
+    let qsh = steps.filter((s, j) => !skip.has(j)).map(s => s.q).join("");
+    if (o.qDigit) { const a = qsh.split(""); const j = o.qDigit[0] % a.length; a[j] = String((Number(a[j]) + o.qDigit[1] + 10) % 10); qsh = a.join(""); }
+    const m = 1, lines = [], rpad = (t, col) => " ".repeat(Math.max(0, m + col + 1 - t.length)) + t;
+    lines.push(" ".repeat(m) + A + " : " + B + " = " + qsh + (o.rest ? " Rest " + last.rem : ""));
+    steps.forEach((s, j) => {
+      if (skip.has(j)) return;
+      const sub = "−" + s.prod; lines.push(rpad(sub, s.i), rpad("─".repeat(sub.length), s.i));
+      let rem = String(s.rem), c = s.i, nj = j + 1;
+      while (nj < steps.length) { rem += dd[steps[nj].i]; c = steps[nj].i; if (skip.has(nj)) nj++; else break; }
+      lines.push(rpad(rem, c));
+    });
+    return { html: rwPre(lines), steps: steps, shownQ: qsh, rem: last.rem, k: S.k };
+  }
+  const rwPickDiv = (RM, wantZero) => {
+    for (let t = 0; t < 400; t++) {
+      let b, q;
+      if (RM) { b = ri(2, Math.max(2, Math.min(12, Math.floor(RM / 11)))); q = ri(Math.min(11, Math.floor(RM / b)), Math.floor(RM / b)); }
+      else { b = pick([2, 3, 4, 5, 6, 7, 8, 9, 12]); q = ri(11, 999); }
+      const hasZero = String(q).slice(1).indexOf("0") >= 0;
+      if (wantZero && !hasZero) continue;
+      return { b: b, q: q, a: b * q };
+    }
+    const b = 4, q = 107; return { b: b, q: q, a: b * q };
+  };
+  /* Aussagen zum Vorgehen mit den Zahlen der Aufgabe */
+  function rwTexts(op, x) {
+    const name = i => RW_ST[i] || "Stelle", e = (n, i) => rwAt(rwDig(n), i);
+    const T = [], F = [];
+    if (op === "add") {
+      const a = x.a, b = x.b, r = a + b, i = ri(0, 1), s = e(a, i) + e(b, i), ra = Math.round(a / Math.pow(10, String(a).length - 1)) * Math.pow(10, String(a).length - 1), rb = Math.round(b / Math.pow(10, String(b).length - 1)) * Math.pow(10, String(b).length - 1);
+      T.push(["Beim schriftlichen Addieren stehen Einer unter Einern, Zehner unter Zehnern und so weiter.", ""],
+        ["Bei " + a + " + " + b + " beginnt man bei den Einern: " + e(a, 0) + " + " + e(b, 0) + " = " + (e(a, 0) + e(b, 0)) + ".", ""],
+        ["Der Überschlag zu " + a + " + " + b + " ist " + ra + " + " + rb + " = " + (ra + rb) + ".", ""],
+        ["Die Probe zu " + a + " + " + b + " = " + r + " ist die Umkehraufgabe " + r + " − " + b + " = " + a + ".", ""],
+        ["Ist eine Spaltensumme größer als 9, schreibt man die Einerziffer hin und überträgt den Zehner in die nächste Spalte.", ""]);
+      if (s >= 10) T.push(["Bei " + a + " + " + b + " ergibt die " + name(i) + "-Spalte " + s + ": Man schreibt " + (s % 10) + " und überträgt 1.", ""]);
+      F.push(["Beim schriftlichen Addieren beginnt man bei der höchsten Stelle und rechnet nach rechts.", "Man beginnt bei den Einern, damit ein Übertrag in die nächste Spalte weitergegeben werden kann."],
+        ["Beim schriftlichen Addieren werden die Zahlen linksbündig untereinandergeschrieben.", "Gleiche Stellen müssen untereinander stehen: Einer unter Einer."],
+        ["Ein Übertrag wird nicht weitergegeben, man lässt ihn einfach weg.", "Der Übertrag gehört in die nächste Spalte dazu."],
+        ["Die Probe zu " + a + " + " + b + " = " + r + " ist " + r + " + " + b + " = " + a + ".", "Die Umkehraufgabe der Addition ist die Subtraktion: " + r + " − " + b + " = " + a + "."],
+        ["Der Überschlag zu " + a + " + " + b + " ist " + ra + " · " + rb + ".", "Beim Überschlag werden die gerundeten Zahlen ebenfalls addiert."]);
+      if (s >= 10) F.push(["Bei " + a + " + " + b + " ergibt die " + name(i) + "-Spalte " + s + ": Man schreibt " + s + " in die Spalte.", "In eine Spalte kommt nur eine Ziffer: Man schreibt " + (s % 10) + " und überträgt 1."]);
+    } else if (op === "sub") {
+      const a = x.a, b = x.b, r = a - b, i = ri(0, 1);
+      T.push(["Beim schriftlichen Subtrahieren steht der Minuend oben und der Subtrahend darunter.", ""],
+        ["Ist die obere Ziffer kleiner als die untere, entbündelt man: 1 Zehner wird zu 10 Einern (allgemein: 1 aus der nächsten Spalte wird zu 10).", ""],
+        ["Beim Entbündeln wird die Ziffer in der nächsten Spalte links um 1 kleiner.", ""],
+        ["Die Probe zu " + a + " − " + b + " = " + r + " ist die Umkehraufgabe " + r + " + " + b + " = " + a + ".", ""],
+        ["Beim Entbündeln ändert sich der Wert des Minuenden nicht, er wird nur anders geschrieben.", ""]);
+      F.push(["Ist die obere Ziffer kleiner als die untere, rechnet man einfach „größere minus kleinere Ziffer“.", "Dann entsteht ein falsches Ergebnis. Man muss entbündeln."],
+        ["Beim Entbündeln wird die Ziffer in der nächsten Spalte links um 1 größer.", "Sie gibt einen Zehner ab, also wird sie um 1 kleiner."],
+        ["Die Probe zu " + a + " − " + b + " = " + r + " ist " + r + " − " + b + " = " + a + ".", "Die Umkehraufgabe der Subtraktion ist die Addition: " + r + " + " + b + " = " + a + "."],
+        ["Beim schriftlichen Subtrahieren beginnt man bei der höchsten Stelle.", "Man beginnt bei den Einern, weil das Entbündeln nach links wirkt."],
+        ["Der Minuend steht unten, der Subtrahend oben.", "Der Minuend (die Zahl, von der abgezogen wird) steht oben."]);
+    } else if (op === "mul") {
+      const a = x.a, b = x.b, bd = rwDig(b), z = bd[bd.length - 2];
+      T.push(["Beim schriftlichen Multiplizieren bildet man ein Teilprodukt für jede Ziffer des zweiten Faktors.", ""],
+        ["Das Teilprodukt der Zehnerziffer wird um eine Stelle nach links versetzt, das heißt, es hat hinten eine Null.", ""],
+        ["Zum Schluss werden die Teilprodukte addiert.", ""],
+        ["Die Probe zu " + a + " · " + b + " ist die Tauschaufgabe " + b + " · " + a + ".", ""],
+        ["Der Überschlag zu " + a + " · " + b + " ist " + (Math.round(a / Math.pow(10, String(a).length - 1)) * Math.pow(10, String(a).length - 1)) + " · " + (Math.round(b / Math.pow(10, String(b).length - 1)) * Math.pow(10, String(b).length - 1)) + ".", ""]);
+      F.push(["Alle Teilprodukte werden ohne Versatz in dieselbe Spalte geschrieben.", "Jedes Teilprodukt gehört in die Spalte seiner Stelle, die Zehnerziffer in die Zehnerspalte."],
+        ["Das Teilprodukt der Zehnerziffer bekommt keine Null, weil die Zehnerziffer kleiner als die Einerziffer ist.", "Die Null (Stellenverschiebung) steht immer, egal wie groß die Ziffer ist."],
+        ["Die Teilprodukte werden zum Schluss multipliziert.", "Die Teilprodukte werden addiert."],
+        ["Die Probe zu " + a + " · " + b + " ist " + a + " + " + b + ".", "Als Probe rechnet man die Tauschaufgabe " + b + " · " + a + " oder die Umkehraufgabe " + (a * b) + " : " + a + " = " + b + "."]);
+      if (z !== undefined) F.push(["Bei " + a + " · " + b + " rechnet man die Zehnerziffer " + z + " wie eine Einerziffer und schreibt " + (z * a) + " ohne Null hin.", "Die Ziffer " + z + " steht an der Zehnerstelle: Es sind " + z + " Zehner mal " + a + ", das Teilprodukt ist " + (z * a) + "0."]);
+    } else {
+      const a = x.a, b = x.b, q = x.q, S = rwDivSteps(rwDig(a), b), pre = a >= b ? String(a).slice(0, S.k) : String(a), qd = String(q);
+      T.push(["Beim schriftlichen Dividieren beginnt man links, bei der höchsten Stelle.", ""],
+        ["Bei " + a + " : " + b + " fragt man zuerst: Wie oft passt " + b + " in " + pre + "?", ""],
+        ["Passt der Teiler in eine Stelle nicht hinein, schreibt man im Ergebnis an dieser Stelle eine 0.", ""],
+        ["Nach jeder Subtraktion muss der Rest kleiner sein als der Teiler.", ""],
+        ["Die Probe zu " + a + " : " + b + " = " + q + " ist die Umkehraufgabe " + q + " · " + b + " = " + a + ".", ""],
+        ["Man holt nach jeder Subtraktion die nächste Ziffer der Aufgabe herunter.", ""]);
+      F.push(["Beim schriftlichen Dividieren teilt man zuerst die Einer, dann die Zehner.", "Man beginnt links bei der höchsten Stelle: Wie oft passt der Teiler hinein?"],
+        ["Passt der Teiler nicht hinein, lässt man diese Stelle im Ergebnis einfach weg.", "Dann schreibt man eine 0 ins Ergebnis, sonst stimmt der Stellenwert nicht."],
+        ["Der Rest darf nach einer Subtraktion größer sein als der Teiler.", "Ist der Rest so groß wie der Teiler oder größer, passt der Teiler noch einmal hinein."],
+        ["Die Probe zu " + a + " : " + b + " = " + q + " ist " + q + " + " + b + " = ?", "Die Probe ist die Umkehraufgabe: Ergebnis mal Teiler, hier " + q + " · " + b + " = " + a + "."],
+        ["Bei " + a + " : " + b + " fragt man zuerst: Wie oft passt " + b + " in " + e(a, 0) + "?", "Man beginnt links: Wie oft passt " + b + " in " + pre + "?"],
+        ["Beim Herunterholen nimmt man die letzte Ziffer der Aufgabe zuerst.", "Man holt die Ziffern von links nach rechts herunter, in der Reihenfolge der Aufgabe."]);
+    }
+    return { T: T, F: F };
+  }
+  /* gemeinsame Aufgabe „Rechenwege prüfen“ */
+  function rwLayoutTask(op, mk) {
+    const corr = [], wrong = [], seen = {};
+    const add = (arr, o) => { if (!o || seen[o.p]) return; seen[o.p] = 1; arr.push(o); };
+    for (let i = 0; i < 40 && corr.length < 6; i++) { const x = mk(); const L = op === "add" ? rwAdd(x.a, x.b) : op === "sub" ? rwSub(x.a, x.b) : op === "mul" ? rwMul(x.a, x.b) : rwDiv(x.a, x.b, x.o || {}); if (L) add(corr, O(L.html, L.html, "")); }
+    for (let i = 0; i < 200 && wrong.length < 12; i++) {
+      const x = mk(); let W = null, why = "";
+      if (op === "add") {
+        const A = rwDig(x.a), B = rwDig(x.b), n = Math.max(A.length, B.length), cs = []; for (let c = 0; c < n; c++) if (rwAt(A, c) + rwAt(B, c) >= 10) cs.push(c);
+        const kind = pick(cs.length ? ["noc", "wc", "dig", "shift"] : ["dig", "shift"]);
+        if (kind === "noc") { W = rwAdd(x.a, x.b, { noCarryAt: pick(cs) }); why = "Der Übertrag fehlt: Er muss in die nächste Spalte."; }
+        else if (kind === "wc") { W = rwAdd(x.a, x.b, { wrongColAt: pick(cs) }); why = "Der Übertrag steht zwei Spalten zu weit links. Er gehört in die nächste Spalte."; }
+        else if (kind === "dig") { W = rwAdd(x.a, x.b, { digitAt: ri(0, Math.max(A.length, B.length) - 1) }); why = "In einer Spalte wurde falsch addiert."; }
+        else { W = rwAdd(x.a, x.b, { shift: true }); why = "Der zweite Summand ist um eine Spalte verrutscht: Einer stehen nicht unter Einern."; }
+        const ok = rwAdd(x.a, x.b); if (W && W.html !== ok.html) add(wrong, O(W.html, W.html, "Richtig wäre: " + x.a + " + " + x.b + " = " + ok.val + ". " + why));
+      } else if (op === "sub") {
+        const ok = rwSub(x.a, x.b), kind = pick(ok.hit ? ["noent", "forget", "dig"] : ["dig"]);
+        if (kind === "noent") { W = rwSub(x.a, x.b, { noEnt: true }); why = "Hier wurde „größere minus kleinere Ziffer“ gerechnet. Es muss entbündelt werden."; }
+        else if (kind === "forget") { const n = rwDig(x.a).length, cs = []; for (let c = 0; c < n; c++) cs.push(c); W = rwSub(x.a, x.b, { forgetAt: pick(cs) }); why = "Beim Entbündeln fehlt das −1: Die Spalte links muss um 1 kleiner werden."; }
+        else { W = rwSub(x.a, x.b, { digitAt: ri(0, rwDig(x.a).length - 1) }); why = "In einer Spalte wurde falsch subtrahiert."; }
+        if (W && W.html !== ok.html) add(wrong, O(W.html, W.html, "Richtig wäre: " + x.a + " − " + x.b + " = " + ok.val + ". " + why));
+      } else if (op === "mul") {
+        const ok = rwMul(x.a, x.b), nb = rwDig(x.b).length, kind = pick(nb > 1 ? ["noshift", "part", "sum"] : ["part", "sum"]);
+        if (kind === "noshift") { W = rwMul(x.a, x.b, { noShift: ri(1, nb - 1) }); why = "Das Teilprodukt wurde nicht verschoben: Es fehlt die Null der Stellenverschiebung."; }
+        else if (kind === "part") { W = rwMul(x.a, x.b, { pAt: ri(0, nb - 1), pDelta: pick([-10, 10, -1, 1, 100]) }); why = "Ein Teilprodukt ist falsch gerechnet."; }
+        else { W = rwMul(x.a, x.b, { sumDelta: pick([-10, 10, 100, -100]) }); why = "Beim Addieren der Teilprodukte wurde falsch gerechnet."; }
+        if (W && W.html !== ok.html) add(wrong, O(W.html, W.html, "Richtig wäre: " + x.a + " · " + x.b + " = " + ok.val + ". " + why));
+      } else {
+        const ok = rwDiv(x.a, x.b, x.o || {}); if (!ok) continue;
+        const st = ok.steps, kinds = ["bring", "qd", "lastrem"];
+        if (st.length > 1 && st.some((s, j) => j > 0 && s.q === 0)) kinds.push("zero", "zero");
+        if (st[st.length - 1].q >= 1 && !(x.o && x.o.rest)) kinds.push("big"); else if (st[st.length - 1].q >= 1) kinds.push("big");
+        const kind = pick(kinds), oo = Object.assign({}, x.o || {});
+        if (kind === "bring") { const dg0 = rwDig(x.a); if (dg0.length <= ok.k) continue; const idx = ri(ok.k, dg0.length - 1), nd = (dg0[idx] + ri(1, 8)) % 10; oo.bring = [[idx, nd]]; W = rwDiv(x.a, x.b, oo); why = "Beim Herunterholen steht " + nd + " statt " + dg0[idx] + ". Man holt immer die nächste Ziffer der Aufgabe herunter."; }
+        else if (kind === "qd") { oo.qDigit = [ri(0, st.length - 1), pick([-1, 1])]; W = rwDiv(x.a, x.b, oo); why = "Eine Ziffer im Ergebnis passt nicht zur Zeile darunter."; }
+        else if (kind === "lastrem") { oo.lastRem = pick([1, 2, -0 || 1]); if (st[st.length - 1].rem + oo.lastRem < 0) continue; W = rwDiv(x.a, x.b, oo); why = "Die letzte Subtraktion ist falsch: Der Rest stimmt nicht."; }
+        else if (kind === "zero") { oo.zeroDrop = true; W = rwDiv(x.a, x.b, oo); why = "Hier fehlt eine 0 im Ergebnis. Passt der Teiler nicht hinein, schreibt man 0."; }
+        else { oo.restBig = true; W = rwDiv(x.a, x.b, oo); why = "Der letzte Rest ist nicht kleiner als der Teiler. Der Teiler passt noch einmal hinein."; }
+        if (W && W.html !== ok.html) add(wrong, O(W.html, W.html, "Richtig wäre: " + x.a + " : " + x.b + " = " + ok.shownQ + (x.o && x.o.rest ? " Rest " + ok.rem : "") + ". " + why));
+      }
+    }
+    return { corr: corr, wrong: wrong };
+  }
+  function rwTextTask(op, mk) {
+    const corr = [], wrong = [], seen = {};
+    for (let i = 0; i < 60 && (corr.length < 6 || wrong.length < 12); i++) {
+      const x = mk(), t = rwTexts(op, x);
+      t.T.forEach(s => { if (corr.length < 6 && !seen[s[0]]) { seen[s[0]] = 1; corr.push(O(s[0], s[0], "")); } });
+      t.F.forEach(s => { if (wrong.length < 12 && !seen[s[0]]) { seen[s[0]] = 1; wrong.push(O(s[0], s[0], s[1])); } });
+    }
+    return { corr: corr, wrong: wrong };
+  }
   function gSwr() {
     const op = pick(["add", "sub", "mul", "div"]);
     const RA = zrq("add") ? clampR(zrq("add"), 100, 10000) : 0, RM = zrq("mul") ? clampR(zrq("mul"), 100, 100000) : 0;
     const mk = () => {
-      if (op === "add") {
-        if (RA) { const lo = Math.max(12, Math.round(RA * 0.012)), a = ri(lo, RA - lo), b = ri(lo, RA - a); return { a: a, b: b, r: a + b, s: "+" }; }
-        const a = ri(120, 9999), b = ri(120, 9999); return { a: a, b: b, r: a + b, s: "+" };
-      }
-      if (op === "sub") {
-        const R9 = RA || 10000, lo = Math.max(12, Math.round(R9 * 0.012)), alo = Math.max(40, Math.round(R9 * 0.04));
-        let a = ri(alo, R9 - 1), b = ri(lo, R9 - 1); if (a < b) { const t = a; a = b; b = t; } if (a === b) a++; return { a: a, b: b, r: a - b, s: "−" };
-      }
+      if (op === "add") { const lo = Math.max(12, Math.round((RA || 9999) * 0.012)), a = RA ? ri(lo, RA - lo) : ri(120, 9999), b = RA ? ri(lo, RA - a) : ri(120, 9999); return { a: a, b: b }; }
+      if (op === "sub") { const R9 = RA || 10000, lo = Math.max(12, Math.round(R9 * 0.012)), alo = Math.max(40, Math.round(R9 * 0.04)); let a = ri(alo, R9 - 1), b = ri(lo, R9 - 1); if (a < b) { const t = a; a = b; b = t; } if (a === b) a++; return { a: a, b: b }; }
       if (op === "mul") {
-        if (RM) { for (let t = 0; t < 300; t++) { const a = ri(12, Math.max(13, Math.min(999, Math.floor(RM / 3)))), bmax = Math.min(309, Math.floor(RM / a)); if (bmax < 3) continue; const b = ri(bmax >= 11 ? 11 : 3, bmax); if (a * b <= RM && a * b >= RM / 25) return { a: a, b: b, r: a * b, s: "·" }; } return { a: 12, b: 7, r: 84, s: "·" }; }
-        const a = ri(12, 480), b = pick([ri(11, 49), ri(11, 49), ri(102, 309)]); return { a: a, b: b, r: a * b, s: "·" };
+        if (RM) { for (let t = 0; t < 300; t++) { const a = ri(12, Math.max(13, Math.min(999, Math.floor(RM / 3)))), bmax = Math.min(309, Math.floor(RM / a)); if (bmax < 3) continue; const b = ri(bmax >= 11 ? 11 : 3, bmax); if (a * b <= RM && a * b >= RM / 25) return { a: a, b: b }; } }
+        return { a: ri(12, 480), b: pick([ri(11, 49), ri(11, 49), ri(102, 309)]) };
       }
-      if (RM) { const m = ri(2, Math.max(2, Math.min(12, Math.floor(RM / 11)))), q = ri(Math.min(11, Math.floor(RM / m)), Math.floor(RM / m)); return { a: m * q, b: m, r: q, s: ":" }; }
-      const m = ri(2, 12), q = ri(11, 320); return { a: m * q, b: m, r: q, s: ":" };
+      const d = rwPickDiv(RM, Math.random() < 0.6); return { a: d.a, b: d.b, q: d.q };
     };
-    const eq = (x, r) => x.a + " " + x.s + " " + x.b + " = " + r;
-    const O2 = (x, r, why) => O(eq(x, r), eq(x, r), why);
-    const corr = [], wrong = [];
-    for (let i = 0; i < 6; i++) { const x = mk(); corr.push(O2(x, x.r)); }
-    for (let i = 0; i < 14; i++) {
-      const x = mk(), cands = [];
-      if (op === "add") {
-        for (let e = 0; e < 5; e++) { if (dg(x.a, e) + dg(x.b, e) >= 10) cands.push([x.r - Math.pow(10, e + 1), "Der Übertrag wurde vergessen."]); }
-        cands.push([x.r + 10, "Es wurde zu viel übertragen."], [x.r - 100, "Eine Stelle wurde falsch gerechnet."], [digitsSwap(x.r), "Zwei Ziffern wurden vertauscht."]);
-      } else if (op === "sub") {
-        let cw = 0; for (let e = 0; e < 5; e++) cw += Math.abs(dg(x.a, e) - dg(x.b, e)) * Math.pow(10, e);
-        cands.push([cw, "Es wurde immer „größere minus kleinere Ziffer“ gerechnet. Dann muss man entbündeln."], [x.r + 10, "Beim Entbündeln wurde falsch gerechnet."], [x.r - 100, "Eine Stelle wurde falsch gerechnet."], [digitsSwap(x.r), "Zwei Ziffern wurden vertauscht."]);
-      } else if (op === "mul") {
-        if (x.b >= 10) cands.push([x.a * (x.b % 10) + x.a * Math.floor(x.b / 10), "Das Teilprodukt wurde nicht um eine Stelle versetzt (die Null fehlt)."]);
-        cands.push([x.r + 10, "Der Übertrag wurde falsch addiert."], [x.r - 100, "Beim Addieren der Teilprodukte wurde falsch gerechnet."], [digitsSwap(x.r), "Zwei Ziffern wurden vertauscht."]);
-      } else {
-        cands.push([x.r * 10, "Eine Null zu viel im Ergebnis."], [Math.floor(x.r / 10) || x.r + 1, "Eine Null fehlt im Ergebnis."], [x.r + 1, "Beim Teilen wurde falsch gerechnet."], [x.r - 10, "Eine Stelle wurde falsch gerechnet."], [digitsSwap(x.r), "Zwei Ziffern wurden vertauscht."]);
-      }
-      const c = pick(cands.filter(y => y[0] !== x.r && y[0] > 0));
-      if (c) wrong.push(O2(x, c[0], "Richtig wäre: " + eq(x, x.r) + ". " + c[1]));
-    }
-    const nm = { add: "Additionen", sub: "Subtraktionen", mul: "Multiplikationen", div: "Divisionen" }[op];
-    return { top: "swr", kind: "eqs", q: "Hier stehen schriftlich gerechnete " + nm + ". Welche Rechnungen stimmen?", corr: corr, wrong: wrong,
-      expl: () => "Mit dem Überschlag kannst du prüfen, ob ein Ergebnis ungefähr stimmt. Mit der " + (op === "mul" ? "Tauschaufgabe" : "Umkehraufgabe") + " prüfst du genau." };
+    const useText = Math.random() < 0.35, sp = useText ? rwTextTask(op, mk) : rwLayoutTask(op, mk);
+    const nm = { add: "Addition", sub: "Subtraktion", mul: "Multiplikation", div: "Division" }[op];
+    const q = useText ? "Hier stehen Aussagen zum schriftlichen Verfahren (" + nm + "). Welche Aussagen stimmen?" : "Hier stehen schriftliche Rechenwege zur " + nm + ". Welche Rechenwege sind richtig gerechnet, Schritt für Schritt?";
+    const expl = { add: "Einer unter Einer, von rechts nach links, Überträge in die nächste Spalte. Mit der Umkehraufgabe kannst du prüfen.", sub: "Von rechts nach links; ist die obere Ziffer kleiner, wird entbündelt und die Spalte links um 1 kleiner. Mit der Umkehraufgabe kannst du prüfen.", mul: "Ein Teilprodukt je Ziffer, jedes in die Spalte seiner Stelle (Null dahinter), dann alle addieren.", div: "Von links Stelle für Stelle: Wie oft passt der Teiler hinein? Subtrahieren, Rest kleiner als Teiler, nächste Ziffer herunterholen, bei „passt nicht“ eine 0 schreiben." }[op];
+    return { top: "swr", kind: "eqs", q: q, corr: sp.corr, wrong: sp.wrong, expl: () => expl };
   }
   const dg = (n, e) => Math.floor(n / Math.pow(10, e)) % 10;
+  /* Division mit Rest, schriftlich */
+  function gDvq() {
+    const mk = () => { const b = ri(3, 29), q = ri(21, 999), r = Math.random() < 0.15 ? 0 : ri(1, b - 1); const a = b * q + r; return { a: a, b: b, q: q, r: r, o: { rest: r > 0 } }; };
+    const corr = [], wrong = [], seen = {}, useText = Math.random() < 0.35;
+    const add = (arr, o) => { if (!o || seen[o.p]) return; seen[o.p] = 1; arr.push(o); };
+    if (useText) {
+      for (let i = 0; i < 60 && (corr.length < 6 || wrong.length < 12); i++) {
+        const x = mk(), pre = String(x.a).slice(0, rwDivSteps(rwDig(x.a), x.b).k);
+        [["Beim Dividieren mit Rest bleibt am Ende ein Rest, der kleiner ist als der Teiler.", ""], ["Die Probe zu " + x.a + " : " + x.b + " = " + x.q + " Rest " + x.r + " lautet " + x.q + " · " + x.b + " + " + x.r + " = " + x.a + ".", ""], ["Bei " + x.a + " : " + x.b + " fragt man zuerst: Wie oft passt " + x.b + " in " + pre + "?", ""], ["Wenn der Teiler in eine Stelle nicht hineinpasst, schreibt man im Ergebnis eine 0 und holt die nächste Ziffer herunter.", ""], ["Der Rest " + x.r + " ist hier richtig, weil " + x.r + " kleiner ist als der Teiler " + x.b + ".", ""]].forEach(s => { if (x.r > 0 && corr.length < 6 && !seen[s[0]]) { seen[s[0]] = 1; corr.push(O(s[0], s[0], "")); } });
+        [["Ein Rest darf so groß sein wie der Teiler.", "Dann passt der Teiler noch einmal hinein. Der Rest muss kleiner als der Teiler sein."], ["Die Probe zu " + x.a + " : " + x.b + " = " + x.q + " Rest " + x.r + " lautet " + x.q + " · " + x.b + " = " + x.a + " (ohne den Rest).", "Der Rest muss addiert werden: " + x.q + " · " + x.b + " + " + x.r + " = " + x.a + "."], ["Beim Dividieren teilt man zuerst die Einer.", "Man beginnt links bei der höchsten Stelle."], ["Wenn der Teiler nicht hineinpasst, lässt man die Stelle im Ergebnis weg.", "Man schreibt eine 0 ins Ergebnis."], ["Bei " + x.a + " : " + x.b + " ist " + (x.b + x.r) + " ein möglicher Rest.", "Der Rest muss kleiner als der Teiler " + x.b + " sein."], ["Nach dem Subtrahieren holt man die letzte Ziffer der Aufgabe herunter.", "Man holt die nächste Ziffer von links herunter."]].forEach(s => { if (wrong.length < 12 && !seen[s[0]]) { seen[s[0]] = 1; wrong.push(O(s[0], s[0], s[1])); } });
+      }
+    } else {
+      for (let i = 0; i < 40 && corr.length < 6; i++) { const x = mk(), L = rwDiv(x.a, x.b, x.o); if (L) add(corr, O(L.html, L.html, "")); }
+      for (let i = 0; i < 200 && wrong.length < 12; i++) {
+        const x = mk(), ok = rwDiv(x.a, x.b, x.o); if (!ok) continue; const st = ok.steps, kinds = ["bring", "qd", "lastrem", "big"]; if (st.some((s, j) => j > 0 && s.q === 0)) kinds.push("zero");
+        const kind = pick(kinds), oo = Object.assign({}, x.o); let W = null, why = "";
+        if (kind === "bring") { const dg0 = rwDig(x.a); if (dg0.length <= ok.k) continue; const idx = ri(ok.k, dg0.length - 1), nd = (dg0[idx] + ri(1, 8)) % 10; oo.bring = [[idx, nd]]; W = rwDiv(x.a, x.b, oo); why = "Beim Herunterholen steht " + nd + " statt " + dg0[idx] + "."; }
+        else if (kind === "qd") { oo.qDigit = [ri(0, st.length - 1), pick([-1, 1])]; W = rwDiv(x.a, x.b, oo); why = "Eine Ziffer im Ergebnis passt nicht zur Zeile darunter."; }
+        else if (kind === "lastrem") { oo.lastRem = pick([1, 2]); W = rwDiv(x.a, x.b, Object.assign(oo, { rest: true })); why = "Der Rest am Ende stimmt nicht mit der letzten Subtraktion überein."; }
+        else if (kind === "zero") { oo.zeroDrop = true; W = rwDiv(x.a, x.b, oo); why = "Hier fehlt eine 0 im Ergebnis."; }
+        else { if (st[st.length - 1].q < 1) continue; oo.restBig = true; oo.rest = true; W = rwDiv(x.a, x.b, oo); why = "Der Rest ist nicht kleiner als der Teiler: Der Teiler passt noch einmal hinein."; }
+        if (W && W.html !== ok.html) add(wrong, O(W.html, W.html, "Richtig wäre: " + x.a + " : " + x.b + " = " + x.q + (x.r ? " Rest " + x.r : "") + ". " + why));
+      }
+    }
+    return { top: "dvq", kind: "eqs", q: useText ? "Hier stehen Aussagen zum schriftlichen Dividieren mit Rest. Welche Aussagen stimmen?" : "Hier stehen schriftliche Divisionen mit Rest. Welche Rechenwege sind Schritt für Schritt richtig?", corr: corr, wrong: wrong,
+      expl: () => "Von links Stelle für Stelle teilen. Nach jeder Subtraktion muss der Rest kleiner als der Teiler sein. Probe: Ergebnis · Teiler + Rest ergibt die Ausgangszahl." };
+  }
 
   /* ---------- Rubrik 2: Brüche ---------- */
   function gGl() {
@@ -11962,7 +12210,7 @@ document.querySelectorAll(".card").forEach(c => {
     }
 
     function gDreis() {
-      const anti = Math.random() < 0.5; let paV, q, res, a, b, typeOk, typeBad, oneOk, oneBad, ruleOk, ruleBad, w1, w2, w3, U, whyType, how;
+      const anti = Math.random() < 0.5; let days, paV, q, res, a, b, typeOk, typeBad, oneOk, oneBad, ruleOk, ruleBad, w1, w2, w3, U, whyType, how;
       if (!anti) {
         const u = pick([2, 3, 4, 5, 1.5, 2.5]); a = ri(2, 6); b = a + ri(2, 6); const pa = u * a; paV = pa; res = u * b; U = " €";
         q = a + " Hefte kosten " + dz(pa) + " €. Wie viel kosten " + b + " Hefte?";
@@ -11973,7 +12221,7 @@ document.querySelectorAll(".card").forEach(c => {
         whyType = "Pro Heft kommt immer derselbe Preis dazu. Doppelt so viele Hefte kosten doppelt so viel. Das ist proportional.";
         how = "Erst auf eine Portion runterrechnen (1 Heft: durch " + a + "), dann auf " + b + " Hefte hochrechnen (mal " + b + ").";
       } else {
-        a = pick([2, 3, 4, 6]); const days = ri(2, 5) * ri(2, 6), total = a * days; U = " Tage";
+        a = pick([2, 3, 4, 6]); days = ri(2, 5) * ri(2, 6); const total = a * days; U = " Tage";
         b = pick([1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 18, 20, 24, 30].filter(x => total % x === 0 && x !== a)); res = total / b;
         q = a + " Arbeiter brauchen für eine Arbeit " + days + " Tage. Wie viele Tage brauchen " + b + " Arbeiter?";
         typeOk = "Die Zuordnung Arbeiter → Tage ist antiproportional."; typeBad = "Die Zuordnung Arbeiter → Tage ist proportional.";
@@ -12269,20 +12517,6 @@ document.querySelectorAll(".card").forEach(c => {
   }
 
   /* Schriftlich dividieren: genau das Vorgehen der Erklärung (Zehner passen in Zehner, Probe mit Umkehraufgabe) */
-  function gDvq() {
-    const mk = () => { const b = ri(3, 29), q = ri(21, 999), r = Math.random() < 0.35 ? 0 : ri(1, b - 1); return { a: b * q + r, b: b, q: q, r: r }; };
-    const t = (x, q, r) => x.a + " : " + x.b + " = " + q + (r ? " Rest " + r : "");
-    return nEqsTask("dvq", "Hier stehen Divisionen mit Rest. Prüfe mit der Probe: Ergebnis · Teiler + Rest muss die Ausgangszahl ergeben, und der Rest muss kleiner als der Teiler sein. Welche Aufgaben stimmen?",
-      () => { const x = mk(); return nSO(t(x, x.q, x.r)); },
-      () => {
-        const x = mk(), c = [[x.q + 1, x.r], [x.q - 1, x.r], [x.q - 1, x.r + x.b], [x.q, x.r + 1], [Math.floor(x.q / 10) || x.q + 2, x.r], [x.q * 10, x.r], [x.q + 1, x.r + 1]];
-        const ok = c.filter(y => y[0] > 0 && !(y[1] < x.b && y[0] * x.b + y[1] === x.a) && (y[1] > 0 || true));
-        const w = pick(ok); if (!w) return null;
-        return nSO(t(x, w[0], w[1]), w[1] >= x.b ? "Der Rest " + w[1] + " ist nicht kleiner als der Teiler " + x.b + ". Der Teiler passt noch einmal hinein." : "Probe: " + w[0] + " · " + x.b + " + " + w[1] + " = " + (w[0] * x.b + w[1]) + ", nicht " + x.a + ".");
-      },
-      "Teile nach Stellenwerten: Wie oft passt der Teiler in die ersten Stellen? Beispiel 875 : 12. Wie oft passen 12 Zehner (120) in 87 Zehner (870)? 7-mal. 7 · 120 = 840, 875 − 840 = 35. Wie oft passt 12 in 35? 2-mal, es bleibt der Rest 11. Ergebnis: 72 Rest 11. Probe: 72 · 12 + 11 = 875.");
-  }
-
   /* Terme aufstellen */
   function gTer() {
     const items = () => {
@@ -12511,10 +12745,543 @@ document.querySelectorAll(".card").forEach(c => {
   }
 
   const G = { ein: gEin, geteilt: gGeteilt, uez: gUez, stell: gStell, fl: gFl, swr: gSwr, gl: gGl, kue: gKue, gem: gGem, anteil: gAnteil, addsub: gAddSub, muldiv: gMulDiv, stufe: gStufe, bd: gBd, komma: gKomma, dadd: gDadd, dmul: gDmul, rund: gRunden, gro: gGroessen, ggtk: gGgtKgv, pfz: gPfz, tbr: gTbr, rgz: gRgz, rgr: gRgr, lae: () => gGr("lae"), geld: () => gGr("geld"), gew: () => gGr("gew"), zeit: () => gGr("zeit"), lgs: gLgs, qe: gQe, qgl: gQgl, qfu: gQf, wla: GWA.la, wmi: GWA.mi, wpf: GWA.pf, wvf: GWA.vf, wbd: GWA.bd, wte: GWA.te, war: GWA.ar, aeq: GFP.aeq, lf: GFP.lf, lfg: GFP.lfg, lp: GFP.lp, prop: GFP.prop, dreis: GFP.dreis, proz: GFP.proz, zins: GFP.zins, zz: GFP.zz, neg: gNeg, dvq: gDvq, ter: gTer, bin: gBin, pot: gPot, wur: gWur, ivs: gIvs, exw: gExw, pyt: gPyt, fla: gFla, tri: gTri, tfu: gTfu };
+  /* ---------- Rechenwege prüfen: jedes Thema fragt den erklärten Rechenweg ab, nicht nur das Ergebnis ---------- */
+  const WAY = (() => {
+    const wv = lines => '<span class="wway">' + lines.map(l => "<span>" + l + "</span>").join("") + "</span>";
+    const plain = h => String(h).replace(/<span class="ol">(.*?)<\/span>/g, "($1)").replace(/<span class="ifr"><span>(.*?)<\/span><span>(.*?)<\/span><\/span>/g, "$1/$2").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    const F = (n, d) => { if (d < 0) { n = -n; d = -d; } return d === 1 ? sg(n) : (n < 0 ? "−" : "") + fr(Math.abs(n), d); };
+    const Fr = (n, d) => { const r = R(n, d); return F(r.n, r.d); };
+    const dz = v => { const r = Math.round(v * 1000) / 1000; return sg(r).replace(".", ","); };
+    const gp = x => String(x).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    /* Aufgabe aus vielen Beispielen: richtige Wege und Wege mit genau einem typischen Fehler */
+    function task(top, q, mk, expl) {
+      const corr = [], wrong = [], seen = {};
+      for (let i = 0; i < 160 && (corr.length < 6 || wrong.length < 12); i++) {
+        let x = null; try { x = mk(); } catch (e) { x = null; }
+        if (!x || !x.ok) continue;
+        const p = x.ok.map(plain).join(" | ");
+        if (/undefined|NaN|Infinity/.test(p)) continue;
+        if (corr.length < 6 && !seen[p]) { seen[p] = 1; corr.push(O(wv(x.ok), p, "")); }
+        shuf((x.bad || []).filter(Boolean)).slice(0, 2).forEach(b => {
+          const pb = b[0].map(plain).join(" | ");
+          if (/undefined|NaN|Infinity/.test(pb) || seen[pb] || wrong.length >= 12) return;
+          seen[pb] = 1; wrong.push(O(wv(b[0]), pb, b[1]));
+        });
+      }
+      return { top: top, kind: "eqs", q: q, corr: corr, wrong: wrong, expl: () => expl };
+    }
+    const pl = (n, a, b) => n + " " + (n === 1 ? a : b);
+    const Q = "Welche Rechenwege sind Schritt für Schritt richtig?";
+
+    /* Einmaleins: Kernaufgaben, eine Reihe mehr, Verdoppeln */
+    function ein() {
+      return task("ein", "Hier wird das Einmaleins mit Kernaufgaben gerechnet. " + Q, () => {
+        const b = ri(3, 9), k = pick(["fuenf", "zehn", "reihe", "dopp"]);
+        if (k === "fuenf") { const a = ri(6, 9), r = a - 5; const ok = [a + " · " + b + " = ?", "5 · " + b + " = " + 5 * b, r + " · " + b + " = " + r * b, a + " · " + b + " = " + 5 * b + " + " + r * b + " = " + a * b];
+          const e = pick([-1, 1, 2]); return { ok: ok, bad: [[[ok[0], ok[1], r + " · " + b + " = " + (r * b + e), a + " · " + b + " = " + 5 * b + " + " + (r * b + e) + " = " + (a * b + e)], "Eine Kernaufgabe ist falsch: " + r + " · " + b + " = " + r * b + ". Richtig ist " + a * b + "."],
+            [[ok[0], ok[1], a + " · " + b + " = " + 5 * b + " + " + r + " = " + (5 * b + r)], "Es fehlen noch " + pl(r, "Reihe", "Reihen") + " mit je " + b + ", also " + r * b + ", nicht nur " + r + ". Richtig ist " + a * b + "."]]}; }
+        if (k === "zehn") { const a = ri(7, 9), r = 10 - a; const ok = [a + " · " + b + " = ?", "10 · " + b + " = " + 10 * b, r + " · " + b + " = " + r * b, a + " · " + b + " = " + 10 * b + " − " + r * b + " = " + a * b];
+          return { ok: ok, bad: [[[ok[0], ok[1], ok[2], a + " · " + b + " = " + 10 * b + " + " + r * b + " = " + (10 * b + r * b)], a + " ist weniger als 10. Deshalb wird " + r * b + " abgezogen, nicht addiert. Richtig ist " + a * b + "."],
+            [[ok[0], ok[1], a + " · " + b + " = " + 10 * b + " − " + r + " = " + (10 * b - r)], "Es " + (r === 1 ? "fehlt " : "fehlen ") + pl(r, "Reihe", "Reihen") + " mit je " + b + ". Man zieht " + r * b + " ab, nicht nur " + r + ". Richtig ist " + a * b + "."]] }; }
+        if (k === "reihe") { const a = ri(3, 9); const ok = [a + " · " + b + " = ?", (a - 1) + " · " + b + " = " + (a - 1) * b, "Eine Reihe mehr: " + (a - 1) * b + " + " + b + " = " + a * b];
+          return { ok: ok, bad: a - 1 !== b ? [[[ok[0], ok[1], "Eine Reihe mehr: " + (a - 1) * b + " + " + a + " = " + ((a - 1) * b + a)], "Eine Reihe hat " + b + " Kästchen. Man addiert " + b + ", nicht " + a + ". Richtig ist " + a * b + "."]] : [[[ok[0], ok[1], "Eine Reihe mehr: " + (a - 1) * b + " + 1 = " + ((a - 1) * b + 1)], "Eine Reihe hat " + b + " Kästchen, nicht 1. Richtig ist " + a * b + "."]] }; }
+        const a = pick([4, 6, 8]), h = a / 2; const ok = [a + " · " + b + " = ?", h + " · " + b + " = " + h * b, "Verdoppeln: " + h * b + " + " + h * b + " = " + a * b];
+        return { ok: ok, bad: [[[ok[0], ok[1], "Verdoppeln: " + h * b + " + 2 = " + (h * b + 2)], "Verdoppeln heißt: dieselbe Zahl noch einmal dazu. Richtig ist " + h * b + " + " + h * b + " = " + a * b + "."], [[ok[0], h + " · " + b + " = " + (h * b + 2), "Verdoppeln: " + (h * b + 2) + " + " + (h * b + 2) + " = " + (2 * h * b + 4)], "Die Kernaufgabe ist falsch: " + h + " · " + b + " = " + h * b + ". Richtig ist " + a * b + "."]] };
+      }, "Schwere Aufgaben rechnest du mit Kernaufgaben: 5 · … und 10 · … kennst du. Bis zur 5er-Aufgabe dazu, von der 10er-Aufgabe weg, eine Reihe mehr dazu, oder die Hälfte verdoppeln.");
+    }
+    /* Geteiltaufgaben über die Umkehraufgabe */
+    function geteilt() {
+      return task("geteilt", "Geteiltaufgaben löst du mit der Umkehraufgabe. " + Q, () => {
+        const b = ri(2, 10), c = ri(2, 10), a = b * c; const ok = [a + " : " + b + " = ?", "Ich suche: ? · " + b + " = " + a, c + " · " + b + " = " + a, "Also: " + a + " : " + b + " = " + c];
+        const w = c + pick([-1, 1]);
+        return { ok: ok, bad: [[[ok[0], ok[1], w + " · " + b + " = " + a, "Also: " + a + " : " + b + " = " + w], "Die Malaufgabe stimmt nicht: " + w + " · " + b + " = " + w * b + ". Richtig ist " + a + " : " + b + " = " + c + "."],
+          [[ok[0], "Ich suche: " + a + " · " + b + " = ?", "Also: " + a + " : " + b + " = " + a * b], "Die Umkehraufgabe ist falsch. Man sucht die Zahl, die mal " + b + " genau " + a + " ergibt."],
+          [[ok[0], ok[1], ok[2], "Also: " + a + " : " + b + " = " + b], "Gesucht ist die Zahl vor dem Malpunkt, also " + c + ". Probe: " + c + " · " + b + " = " + a + "."]] };
+      }, "Zu jeder Geteiltaufgabe gehört eine Malaufgabe (Umkehraufgabe). Bei " + "a : b fragt man: Welche Zahl mal b ergibt a?");
+    }
+    /* Zehnerübergang: erst bis zum Zehner, dann weiter */
+    function uez() {
+      const R0 = zrq("add"), RR = R0 ? clampR(R0, 20, 1000) : 100;
+      return task("uez", "Hier wird über den Zehner gerechnet: erst bis zum Zehner, dann weiter. " + Q, () => {
+        const plus = Math.random() < 0.55, b = ri(3, 9);
+        if (plus) {
+          let a; for (let t = 0; t < 50; t++) { a = RR === 20 ? ri(3, 9) : RR === 100 ? ri(12, 89) : ri(112, 989); if (a % 10 + b >= 10 && a % 10 !== 0 && a + b <= RR) break; }
+          if (!(a % 10 + b >= 10 && a % 10 !== 0)) return null;
+          const t1 = 10 - a % 10, t2 = b - t1, z = a + t1, s = a + b;
+          const ok = [a + " + " + b, b + " = " + t1 + " + " + t2, a + " + " + t1 + " = " + z, z + " + " + t2 + " = " + s];
+          const bad = [[[ok[0], ok[1], ok[2], z + " + " + t1 + " = " + (z + t1)], "Nach dem Zehner fehlt noch " + t2 + ", nicht " + t1 + ". Richtig ist " + s + "."], [[ok[0], ok[1], a + " + " + t1 + " = " + (z - 10), (z - 10) + " + " + t2 + " = " + (s - 10)], "Beim Zehner wird der Zehner größer: " + a + " + " + t1 + " = " + z + ". Richtig ist " + s + "."]];
+          return { ok: ok, bad: bad };
+        }
+        let a; for (let t = 0; t < 50; t++) { a = RR === 20 ? ri(11, 18) : RR === 100 ? ri(21, 98) : ri(121, 998); if (a % 10 < b && a % 10 !== 0) break; }
+        if (!(a % 10 < b && a % 10 !== 0)) return null;
+        const t1 = a % 10, t2 = b - t1, z = a - t1, d = a - b;
+        const ok = [a + " − " + b, b + " = " + t1 + " + " + t2, a + " − " + t1 + " = " + z, z + " − " + t2 + " = " + d];
+        return { ok: ok, bad: [[[ok[0], ok[1], ok[2], z + " + " + t2 + " = " + (z + t2)], "Auch nach dem Zehner wird weiter subtrahiert. Richtig ist " + z + " − " + t2 + " = " + d + "."], [[ok[0], ok[1], ok[2], z + " − " + t2 + " = " + (d + 10)], "Nach dem Zehner wird der Zehner kleiner: " + z + " − " + t2 + " = " + d + "."], [[ok[0], ok[1], ok[2], z + " − " + t1 + " = " + (z - t1)], "Nach dem Zehner fehlt noch " + t2 + ", nicht " + t1 + ". Richtig ist " + d + "."]] };
+      }, "Erst bis zum Zehner: Die zweite Zahl wird so zerlegt, dass der erste Teil genau zum Zehner führt. Dann rechnet man den Rest weiter.");
+    }
+    /* ggT und kgV: Teilermengen, Vielfachenreihen, Primfaktoren */
+    const divs = n => { const r = []; for (let i = 1; i <= n; i++) if (n % i === 0) r.push(i); return r; };
+    const pf = n => { const r = []; let m = n; for (let p = 2; m > 1; p++) while (m % p === 0) { r.push(p); m /= p; } return r; };
+    const set = a => "{" + a.join(", ") + "}";
+    function ggtk() {
+      return task("ggtk", "Hier werden ggT und kgV Schritt für Schritt bestimmt. " + Q, () => {
+        const g = ri(2, 9); let u, v; do { u = ri(2, 6); v = ri(2, 7); } while (u === v || gcd(u, v) !== 1); const a = g * u, b = g * v, l = a * b / g, k = pick(["tm", "vm", "pg", "pk"]);
+        if (k === "tm" && a <= 60 && b <= 60) {
+          const TA = divs(a), TB = divs(b), C = TA.filter(x => TB.indexOf(x) >= 0);
+          const ok = ["ggT(" + a + ", " + b + ")", "T(" + a + ") = " + set(TA), "T(" + b + ") = " + set(TB), "gemeinsam: " + set(C), "ggT(" + a + ", " + b + ") = " + g];
+          const TB2 = TB.filter(x => x !== g), C2 = TA.filter(x => TB2.indexOf(x) >= 0);
+          return { ok: ok, bad: [[[ok[0], ok[1], "T(" + b + ") = " + set(TB2), "gemeinsam: " + set(C2), "ggT(" + a + ", " + b + ") = " + C2[C2.length - 1]], "In T(" + b + ") fehlt der Teiler " + g + ". Prüfe: " + b + " : " + g + " = " + b / g + ". Richtig ist ggT = " + g + "."],
+            [[ok[0], ok[1], ok[2], ok[3], "ggT(" + a + ", " + b + ") = " + Math.max(a, b)], "Der ggT ist der größte gemeinsame Teiler, also die größte Zahl in der gemeinsamen Menge: " + g + "."],
+            [[ok[0], ok[1], ok[2], ok[3], "ggT(" + a + ", " + b + ") = " + (C.length > 1 ? C[1] : 1)].map(String), C.length > 2 ? "Das ist der kleinste gemeinsame Teiler über 1. Gesucht ist der größte: " + g + "." : null]].filter(x => x[1]) };
+        }
+        if (k === "vm" && l <= 120 && l / Math.min(a, b) <= 10) {
+          const VA = [], VB = []; for (let i = a; i <= l; i += a) VA.push(i); for (let i = b; i <= l; i += b) VB.push(i);
+          const ok = ["kgV(" + a + ", " + b + ")", "V(" + a + ") = {" + VA.join(", ") + ", …}", "V(" + b + ") = {" + VB.join(", ") + ", …}", "kgV(" + a + ", " + b + ") = " + l];
+          return { ok: ok, bad: [[[ok[0], ok[1], ok[2], "kgV(" + a + ", " + b + ") = " + a * b], a * b === l ? null : "Das ist das Produkt. Die kleinste Zahl, die in beiden Reihen vorkommt, ist " + l + "."],
+            [[ok[0], ok[1], ok[2], "kgV(" + a + ", " + b + ") = " + g], "Das ist der ggT. Das kgV ist die kleinste Zahl, die in beiden Reihen vorkommt: " + l + "."]].filter(x => x[1]) };
+        }
+        const PA = pf(a), PB = pf(b), PG = pf(g), common = PG.join(" · ");
+        if (k === "pg" || k === "tm") {
+          const ok = ["ggT(" + a + ", " + b + ")", a + " = " + PA.join(" · "), b + " = " + PB.join(" · "), "gemeinsame Faktoren: " + common, "ggT = " + (PG.length > 1 ? common + " = " : "") + g];
+          const bad = [[[ok[0], ok[1], ok[2], ok[3], "ggT = " + (PG.length > 1 ? PG.join(" + ") + " = " + PG.reduce((s, x) => s + x, 0) : g + 1)], PG.length > 1 ? "Die gemeinsamen Faktoren werden multipliziert, nicht addiert. Richtig ist " + g + "." : "Der gemeinsame Faktor ist " + g + ", also ist der ggT " + g + "."]];
+          if (PG.length > 1) bad.push([[ok[0], ok[1], ok[2], "gemeinsame Faktoren: " + PG.slice(1).join(" · "), "ggT = " + PG.slice(1).reduce((s, x) => s * x, 1)], "Ein gemeinsamer Faktor wurde vergessen. Beide Zahlen enthalten " + common + ". Richtig ist " + g + "."]);
+          return { ok: ok, bad: bad };
+        }
+        const rest = pf(b / g);
+        const ok = ["kgV(" + a + ", " + b + ")", a + " = " + PA.join(" · "), b + " = " + PB.join(" · "), "kgV = " + PA.join(" · ") + " · " + rest.join(" · ") + " = " + l];
+        return { ok: ok, bad: [[[ok[0], ok[1], ok[2], "kgV = " + PA.join(" · ") + " · " + PB.join(" · ") + " = " + a * b], "Die gemeinsamen Faktoren werden nur einmal genommen. Richtig ist " + l + "."], [[ok[0], ok[1], ok[2], "kgV = " + common + " = " + g], "Das sind nur die gemeinsamen Faktoren, also der ggT. Für das kgV braucht man alle Faktoren: " + l + "."]] };
+      }, "ggT: Teilermengen aufschreiben und den größten gemeinsamen Teiler suchen, oder die gemeinsamen Primfaktoren multiplizieren. kgV: Vielfachenreihen aufschreiben und die kleinste gemeinsame Zahl suchen, oder alle Primfaktoren der einen Zahl mit den fehlenden der anderen multiplizieren.");
+    }
+    /* Primfaktorzerlegung durch fortgesetztes Teilen */
+    const isP = n => n > 1 && pf(n).length === 1;
+    function pfz() {
+      return task("pfz", "Hier wird eine Zahl Schritt für Schritt in Primfaktoren zerlegt. " + Q, () => {
+        const P = []; const m = ri(3, 5); for (let i = 0; i < m; i++) P.push(pick([2, 2, 2, 3, 3, 5, 7])); P.sort((x, y) => x - y);
+        const n = P.reduce((s, x) => s * x, 1); if (n > 400 || n < 12) return null;
+        const lines = ["Zerlege " + n + " in Primfaktoren."]; let cur = n; P.forEach(p => { lines.push(cur + " : " + p + " = " + cur / p); cur /= p; });
+        const ok = lines.concat([n + " = " + P.join(" · ")]), bad = [];
+        const j = ri(1, P.length - 1), tail = P.slice(j).reduce((s, x) => s * x, 1);
+        if (!isP(tail)) { const l2 = lines.slice(0, j + 1); bad.push([l2.concat([n + " = " + P.slice(0, j).join(" · ") + " · " + tail]), tail + " ist keine Primzahl, denn " + tail + " = " + pf(tail).join(" · ") + ". Man muss weiter teilen: " + n + " = " + P.join(" · ") + "."]); }
+        bad.push([lines.concat([n + " = " + P.slice(0, -1).join(" · ")]), "Der letzte Faktor " + P[P.length - 1] + " fehlt. Probe: " + P.slice(0, -1).join(" · ") + " = " + n / P[P.length - 1] + ". Richtig: " + n + " = " + P.join(" · ") + "."]);
+        bad.push([lines.concat([n + " = 1 · " + P.join(" · ")]), "1 ist keine Primzahl und gehört nicht in die Primfaktorzerlegung."]);
+        return { ok: ok, bad: bad };
+      }, "Man teilt die Zahl so lange durch Primzahlen (2, 3, 5, 7, …), bis 1 übrig bleibt, oder bis eine Primzahl übrig bleibt. Alle Teiler zusammen sind die Primfaktoren. Probe: Alle Faktoren multiplizieren.");
+    }
+    /* Negative Zahlen am Zahlenstrahl */
+    function neg() {
+      return task("neg", "Hier wird mit negativen Zahlen am Zahlenstrahl gerechnet. " + Q, () => {
+        const a = ri(-15, 15), b = ri(1, 12), kind = pick(["p", "pn", "m", "mn"]);
+        const A = a < 0 ? "(" + sg(a) + ")" : String(a);
+        let t, right, r;
+        if (kind === "p") { t = A + " + " + b; right = true; r = a + b; }
+        else if (kind === "pn") { t = A + " + (−" + b + ")"; right = false; r = a - b; }
+        else if (kind === "m") { t = A + " − " + b; right = false; r = a - b; }
+        else { t = A + " − (−" + b + ")"; right = true; r = a + b; }
+        const why = { p: "Plus eine positive Zahl: nach rechts.", pn: "Plus eine negative Zahl: nach links.", m: "Minus eine positive Zahl: nach links.", mn: "Minus eine negative Zahl: nach rechts." }[kind];
+        const dir = right ? "rechts" : "links", odir = right ? "links" : "rechts", r2 = right ? a - b : a + b;
+        const ok = [t, "Start bei " + sg(a) + ".", why, pl(b, "Schritt", "Schritte") + " nach " + dir + ": " + sg(r) + ".", t + " = " + sg(r)];
+        const bad = [[[t, "Start bei " + sg(a) + ".", why.replace(dir, odir), pl(b, "Schritt", "Schritte") + " nach " + odir + ": " + sg(r2) + ".", t + " = " + sg(r2)], "Die Richtung ist falsch. " + why + " Richtig ist " + sg(r) + "."]];
+        if (r !== 0 && -r !== r2) bad.push([[t, "Start bei " + sg(a) + ".", why, pl(b, "Schritt", "Schritte") + " nach " + dir + ": " + sg(-r) + ".", t + " = " + sg(-r)], "Beim Zählen über die Null wurde das Vorzeichen falsch. Richtig ist " + sg(r) + "."]);
+        if (a !== 0) bad.push([[t, "Start bei " + sg(-a) + ".", why, pl(b, "Schritt", "Schritte") + " nach " + dir + ": " + sg(-a + (right ? b : -b)) + ".", t + " = " + sg(-a + (right ? b : -b))], "Der Start ist falsch: Man startet bei " + sg(a) + ". Richtig ist " + sg(r) + "."]);
+        return { ok: ok, bad: bad };
+      }, "Start bei der ersten Zahl. Plus eine positive Zahl und minus eine negative Zahl: nach rechts. Minus eine positive Zahl und plus eine negative Zahl: nach links.");
+    }
+    /* Brüche erweitern und kürzen */
+    function gl() {
+      return task("gl", "Hier werden Brüche erweitert. " + Q, () => {
+        let z, n; do { n = ri(2, 9); z = ri(1, n - 1); } while (gcd(z, n) !== 1); const k = ri(2, 6), N = n * k;
+        const ok = [F(z, n) + " = " + fr("?", N), n + " · " + k + " = " + N + ", also erweitern mit " + k, z + " · " + k + " = " + z * k, F(z, n) + " = " + fr(z * k, N)];
+        const bad = [[[ok[0], ok[1], z + " + " + (N - n) + " = " + (z + N - n), F(z, n) + " = " + fr(z + N - n, N)], "Beim Erweitern multipliziert man Zähler und Nenner mit derselben Zahl. Man addiert nicht. Richtig ist " + fr(z * k, N) + "."], [[ok[0], ok[1], "Der Zähler bleibt gleich.", F(z, n) + " = " + fr(z, N)], "Auch der Zähler wird mit " + k + " multipliziert. Richtig ist " + fr(z * k, N) + "."]];
+        if (k !== 2) bad.push([[ok[0], ok[1], z + " · 2 = " + 2 * z, F(z, n) + " = " + fr(2 * z, N)], "Zähler und Nenner werden mit derselben Zahl " + k + " multipliziert. Richtig ist " + fr(z * k, N) + "."]);
+        return { ok: ok, bad: bad };
+      }, "Erweitern: Zähler und Nenner mit derselben Zahl multiplizieren. Zuerst fragt man: Mit welcher Zahl wird der Nenner zum neuen Nenner?");
+    }
+    function kue() {
+      return task("kue", "Hier werden Brüche gekürzt. " + Q, () => {
+        let z, n; do { n = ri(2, 9); z = ri(1, n - 1); } while (gcd(z, n) !== 1); const k = ri(2, 9), Z = z * k, N = n * k;
+        const ok = [fr(Z, N) + " kürzen", "gemeinsamer Teiler: " + k, Z + " : " + k + " = " + z + " und " + N + " : " + k + " = " + n, fr(Z, N) + " = " + F(z, n)];
+        const bad = [[[ok[0], "gemeinsamer Teiler: " + k, Z + " − " + k + " = " + (Z - k) + " und " + N + " − " + k + " = " + (N - k), fr(Z, N) + " = " + fr(Z - k, N - k)], "Beim Kürzen wird geteilt, nicht subtrahiert. Richtig ist " + F(z, n) + "."], [[ok[0], "gemeinsamer Teiler: " + k, Z + " : " + k + " = " + z + ", der Nenner bleibt " + N, fr(Z, N) + " = " + fr(z, N)], "Auch der Nenner wird durch " + k + " geteilt. Richtig ist " + F(z, n) + "."]];
+        const k2 = [2, 3, 4, 5, 6, 7].filter(x => x !== k && Z % x !== 0)[0];
+        if (k2) bad.push([[ok[0], "gemeinsamer Teiler: " + k2, Z + " : " + k2 + " = " + dz(Z / k2) + " und " + N + " : " + k2 + " = " + dz(N / k2), "Das geht nicht ohne Rest."].slice(0, 3).concat([fr(Z, N) + " = " + fr(dz(Z / k2), dz(N / k2))]), k2 + " ist kein Teiler von " + Z + ". Man kürzt nur durch einen gemeinsamen Teiler, hier " + k + "."]);
+        return { ok: ok, bad: Z > k ? bad : bad.slice(1) };
+      }, "Kürzen: Zähler und Nenner durch denselben gemeinsamen Teiler teilen. Am weitesten gekürzt ist der Bruch, wenn man durch den ggT teilt.");
+    }
+    function gem() {
+      return task("gem", "Hier werden unechte Brüche und gemischte Zahlen umgewandelt. " + Q, () => {
+        const n = ri(2, 9), w = ri(1, 6), z = ri(1, n - 1), Z = w * n + z;
+        if (Math.random() < 0.5) {
+          const ok = [fr(Z, n) + " als gemischte Zahl", Z + " : " + n + " = " + w + " Rest " + z, w + " Ganze und " + fr(z, n), fr(Z, n) + " = " + w + " " + fr(z, n)];
+          const bad = [[[ok[0], Z + " : " + n + " = " + w + " Rest " + z, w + " Ganze und " + fr(n, Z), fr(Z, n) + " = " + w + " " + fr(n, Z)], "Der Rest " + z + " kommt in den Zähler, der Nenner bleibt " + n + ". Richtig ist " + w + " " + fr(z, n) + "."]];
+          if (w > 1) bad.push([[ok[0], Z + " : " + n + " = " + (w - 1) + " Rest " + (z + n), (w - 1) + " Ganze und " + fr(z + n, n), fr(Z, n) + " = " + (w - 1) + " " + fr(z + n, n)], "Der Rest " + (z + n) + " ist größer als " + n + ". Da passt noch ein Ganzes hinein. Richtig ist " + w + " " + fr(z, n) + "."]);
+          return { ok: ok, bad: bad };
+        }
+        const ok = [w + " " + fr(z, n) + " als Bruch", w + " Ganze = " + w + " · " + n + " = " + w * n + " Stücke", w * n + " + " + z + " = " + Z, w + " " + fr(z, n) + " = " + fr(Z, n)];
+        return { ok: ok, bad: [[[ok[0], w + " Ganze = " + w + " Stücke", w + " + " + z + " = " + (w + z), w + " " + fr(z, n) + " = " + fr(w + z, n)], "Ein Ganzes hat " + n + " Stücke. " + w + " Ganze sind " + w * n + " Stücke. Richtig ist " + fr(Z, n) + "."], [[ok[0], w + " Ganze = " + w + " · " + z + " = " + w * z + " Stücke", w * z + " + " + n + " = " + (w * z + n), w + " " + fr(z, n) + " = " + fr(w * z + n, n)], (w * z + n === Z) ? null : "Die Ganzen werden mit dem Nenner " + n + " multipliziert, dann kommt der Zähler " + z + " dazu. Richtig ist " + fr(Z, n) + "."]].filter(x => x[1]) };
+      }, "Unechter Bruch zu gemischter Zahl: Zähler durch Nenner teilen. Das Ergebnis sind die Ganzen, der Rest kommt in den Zähler. Gemischte Zahl zu Bruch: Ganze mal Nenner, plus Zähler.");
+    }
+    function stufe() {
+      return task("stufe", "Hier werden Brüche auf eine Stufenzahl im Nenner erweitert. " + Q, () => {
+        const opts = [[1, 2], [1, 4], [3, 4], [1, 5], [2, 5], [3, 5], [4, 5], [1, 8], [3, 8], [5, 8], [7, 8], [1, 20], [3, 20], [7, 20], [1, 25], [4, 25], [3, 50], [7, 50], [9, 125]], f = pick(opts), z = f[0], n = f[1];
+        const S = [10, 100, 1000].filter(s => s % n === 0)[0], k = S / n, Z = z * k, dg2 = String(S).length - 1, d = (Z / S).toFixed(dg2).replace(".", ",");
+        const ok = [F(z, n) + " als Dezimalbruch", n + " · " + k + " = " + S, z + " · " + k + " = " + Z, F(z, n) + " = " + fr(Z, S) + " = " + d];
+        const bad = [[[ok[0], ok[1], "Der Zähler bleibt " + z + ".", F(z, n) + " = " + fr(z, S) + " = " + (z / S).toFixed(dg2).replace(".", ",")], "Auch der Zähler wird mit " + k + " multipliziert. Richtig ist " + fr(Z, S) + " = " + d + "."]];
+        const wd = (Z / S * 10).toFixed(Math.max(0, dg2 - 1)).replace(".", ",");
+        if (dg2 > 1) bad.push([[ok[0], ok[1], ok[2], F(z, n) + " = " + fr(Z, S) + " = " + wd], fr(Z, S) + " hat " + dg2 + " Stellen nach dem Komma, weil der Nenner " + S + " ist. Richtig ist " + d + "."]);
+        if (S > 10) bad.push([[ok[0], n + " · " + k + " = " + S, z + " + " + (S - n) + " = " + (z + S - n), F(z, n) + " = " + fr(z + S - n, S)], "Beim Erweitern wird multipliziert, nicht addiert. Richtig ist " + fr(Z, S) + "."]);
+        return { ok: ok, bad: bad };
+      }, "Man sucht die Zahl, mit der der Nenner zu 10, 100 oder 1000 wird, und erweitert Zähler und Nenner damit. Der Nenner 10 gibt eine Stelle nach dem Komma, 100 zwei Stellen, 1000 drei Stellen.");
+    }
+    /* Brüche addieren und subtrahieren */
+    function addsub() {
+      return task("addsub", "Hier werden Brüche addiert oder subtrahiert. " + Q, () => {
+        const b = ri(2, 9), d = ri(2, 9); if (b === d) return null; const a = ri(1, b - 1), c = ri(1, d - 1), H = lcm(b, d), A = a * H / b, C = c * H / d, plus = Math.random() < 0.6 || A <= C;
+        const op = plus ? " + " : " − ", res = plus ? A + C : A - C, rr = R(res, H);
+        const end = fr(res, H) + (rr.d !== H ? " = " + F(rr.n, rr.d) : "");
+        const ok = [fr(a, b) + op + fr(c, d), "Hauptnenner: " + H, fr(a, b) + " = " + fr(A, H) + " und " + fr(c, d) + " = " + fr(C, H), fr(A, H) + op + fr(C, H) + " = " + end];
+        const bad = [];
+        const wn = plus ? a + c : a - c, wd = plus ? b + d : b - d;
+        if (wd > 0 && wn > 0) bad.push([[ok[0], (plus ? "Zähler plus Zähler, Nenner plus Nenner" : "Zähler minus Zähler, Nenner minus Nenner"), fr(a, b) + op + fr(c, d) + " = " + fr(wn, wd)], "Die Nenner werden nicht " + (plus ? "addiert" : "subtrahiert") + ". Man macht die Brüche erst gleichnamig. Richtig ist " + F(rr.n, rr.d) + "."]);
+        const wr = plus ? a + c : a - c; if (wr > 0) bad.push([[ok[0], ok[1], "Nur die Nenner werden zu " + H + ".", fr(a, H) + op + fr(c, H) + " = " + fr(wr, H)], "Beim Erweitern wird auch der Zähler multipliziert. Richtig ist " + F(rr.n, rr.d) + "."]);
+        bad.push([[ok[0], ok[1], ok[2], fr(A, H) + op + fr(C, H) + " = " + fr(res, 2 * H)], "Der Nenner bleibt gleich: " + H + ". Nur die Zähler werden " + (plus ? "addiert" : "subtrahiert") + "."]);
+        return { ok: ok, bad: bad };
+      }, "Erst gleichnamig machen: Hauptnenner suchen und beide Brüche erweitern. Dann die Zähler addieren oder subtrahieren. Der Nenner bleibt gleich. Zum Schluss kürzen.");
+    }
+    /* Brüche multiplizieren und dividieren */
+    function muldiv() {
+      return task("muldiv", "Hier werden Brüche multipliziert oder dividiert. " + Q, () => {
+        const b = ri(2, 9), d = ri(2, 9), a = ri(1, b - 1 || 1), c = ri(1, 9), k = pick(["m", "d", "zd"]);
+        if (k === "m") { const rr = R(a * c, b * d), end = fr(a * c, b * d) + (rr.d !== b * d ? " = " + F(rr.n, rr.d) : "");
+          const ok = [fr(a, b) + " · " + fr(c, d), "Zähler mal Zähler, Nenner mal Nenner", fr(a + " · " + c, b + " · " + d) + " = " + end];
+          const H = lcm(b, d), A2 = a * H / b, C2 = c * H / d, bad = [];
+          if (H > 1) bad.push([[ok[0], "Erst gleichnamig machen: " + fr(A2, H) + " · " + fr(C2, H), "Zähler mal Zähler, der Nenner bleibt: " + fr(A2 * C2, H)], "Beim Multiplizieren macht man nicht gleichnamig: Zähler mal Zähler, Nenner mal Nenner. Richtig ist " + F(rr.n, rr.d) + "."]);
+          if (!Req(R(a * d, b * c), rr)) bad.push([[ok[0], "Über Kreuz multiplizieren", fr(a + " · " + d, b + " · " + c) + " = " + fr(a * d, b * c)], "Über Kreuz rechnet man nicht. Zähler mal Zähler, Nenner mal Nenner: " + F(rr.n, rr.d) + "."]);
+          return { ok: ok, bad: bad };
+        }
+        if (k === "d") { const rr = R(a * d, b * c), end = fr(a * d, b * c) + (rr.d !== b * c ? " = " + F(rr.n, rr.d) : "");
+          const ok = [fr(a, b) + " : " + fr(c, d), "Mit dem Kehrbruch multiplizieren: " + fr(c, d) + " wird " + fr(d, c), fr(a, b) + " · " + fr(d, c) + " = " + end];
+          const r2 = R(b * c, a * d), r3 = R(a * c, b * d), bad = [];
+          if (!Req(r2, rr)) bad.push([[ok[0], "Mit dem Kehrbruch multiplizieren: " + fr(a, b) + " wird " + fr(b, a), fr(b, a) + " · " + fr(c, d) + " = " + fr(b * c, a * d)], "Umgedreht wird der zweite Bruch, durch den geteilt wird. Richtig ist " + F(rr.n, rr.d) + "."]);
+          if (!Req(r3, rr)) bad.push([[ok[0], "Zähler mal Zähler, Nenner mal Nenner", fr(a, b) + " · " + fr(c, d) + " = " + fr(a * c, b * d)], "Das ist eine Multiplikation. Beim Teilen multipliziert man mit dem Kehrbruch. Richtig ist " + F(rr.n, rr.d) + "."]);
+          return { ok: ok, bad: bad };
+        }
+        const n = ri(2, 6), rr = R(a, b * n);
+        const ok = [fr(a, b) + " : " + n, "Jedes Stück wird in " + n + " Teile geteilt: Der Nenner wird " + n + "-mal so groß.", fr(a, b + " · " + n) + " = " + fr(a, b * n) + (rr.d !== b * n ? " = " + F(rr.n, rr.d) : "")];
+        return { ok: ok, bad: [[[ok[0], "Der Zähler wird mit " + n + " multipliziert.", fr(a + " · " + n, b) + " = " + fr(a * n, b)], "Das wäre eine Multiplikation. Beim Teilen durch " + n + " werden die Stücke kleiner: " + F(rr.n, rr.d) + "."], [[ok[0], "Der Nenner wird durch " + n + " geteilt.", fr(a, b + " : " + n) + " = " + fr(a, dz(b / n))], "Beim Teilen durch " + n + " werden die Stücke kleiner, der Nenner also größer: " + F(rr.n, rr.d) + "."]] };
+      }, "Multiplizieren: Zähler mal Zähler, Nenner mal Nenner. Dividieren: mit dem Kehrbruch des zweiten Bruchs multiplizieren. Bruch durch eine Zahl: Nenner mal Zahl. Zum Schluss kürzen.");
+    }
+    /* Brüche und Dezimalzahlen */
+    function bd() {
+      return task("bd", "Hier werden Brüche und Dezimalzahlen ineinander umgewandelt. " + Q, () => {
+        const opts = [[1, 2], [1, 4], [3, 4], [1, 5], [2, 5], [3, 5], [1, 8], [3, 8], [1, 20], [3, 20], [1, 25], [3, 25], [3, 50], [7, 50], [1, 250]], f = pick(opts), z = f[0], n = f[1];
+        const S = [10, 100, 1000].filter(s => s % n === 0)[0], k = S / n, Z = z * k, dg2 = String(S).length - 1, d = (Z / S).toFixed(dg2).replace(".", ",");
+        if (Math.random() < 0.5) {
+          const names = { 1: "Zehntel", 2: "Hundertstel", 3: "Tausendstel" };
+          const ok = [F(z, n) + " = ?", "Erweitern mit " + k + ": " + F(z, n) + " = " + fr(Z, S), Z + " " + names[dg2] + " = " + d];
+          const bad = []; const wsh = dg2 > 1 ? (Z / S * 10).toFixed(dg2 - 1).replace(".", ",") : (Z / S / 10).toFixed(2).replace(".", ",");
+          bad.push([[ok[0], ok[1], Z + " " + names[dg2] + " = " + wsh], names[dg2] + ": Die letzte Ziffer steht an der " + dg2 + ". Stelle nach dem Komma. Richtig ist " + d + "."]);
+          bad.push([[ok[0], "Zähler und Nenner hinter das Komma schreiben", F(z, n) + " = " + z + "," + n], "Ein Bruch ist eine Division. Man erweitert auf eine Stufenzahl im Nenner. Richtig ist " + d + "."]);
+          return { ok: ok, bad: bad };
+        }
+        const rr = R(Z, S), ok = [d + " als Bruch", d + " = " + fr(Z, S), "Kürzen mit " + (S / rr.d) + ": " + F(rr.n, rr.d)];
+        const wS = dg2 === 1 ? 100 : S / 10, bad = [[[ok[0], d + " = " + fr(Z, wS), "Kürzen: " + Fr(Z, wS)], "Die Anzahl der Stellen nach dem Komma bestimmt den Nenner: " + pl(dg2, "Stelle", "Stellen") + ", also " + S + ". Richtig ist " + F(rr.n, rr.d) + "."]];
+        return { ok: ok, bad: bad };
+      }, "Bruch zu Dezimalzahl: auf den Nenner 10, 100 oder 1000 erweitern, dann in die Stellenwerttafel. Dezimalzahl zu Bruch: Nenner nach der Anzahl der Stellen hinter dem Komma, dann kürzen.");
+    }
+    /* Dezimalzahlen schriftlich addieren und subtrahieren: Komma unter Komma */
+    const lay = (a, b, op, r) => { const W = Math.max(a.length, b.length, r.length) + 2, pad = t => " ".repeat(W - t.length) + t; return '<span class="wrw">' + [pad(a), op + pad(b).slice(1), "─".repeat(W), pad(r)].join("\n") + "</span>"; };
+    function dadd() {
+      return task("dadd", "Hier werden Dezimalzahlen schriftlich addiert oder subtrahiert. " + Q, () => {
+        const X = ri(15, 999), y = ri(15, 999), x = X * 10, plus = Math.random() < 0.5; if (y % 10 === 0 || (!plus && y >= x)) return null;
+        const f1 = v => (v / 10).toFixed(1).replace(".", ","), f2 = v => (v / 100).toFixed(2).replace(".", ",");
+        const r = plus ? x + y : x - y, op = plus ? "+" : "−", t = f1(X) + " " + op + " " + f2(y);
+        const ok = [t, "Komma unter Komma, fehlende Stelle mit 0 auffüllen:", lay(f2(x), f2(y), op, f2(r))];
+        const rs = plus ? X + y : X - y, bad = [];
+        if (rs > 0) bad.push([[t, "Rechtsbündig untereinander:", lay(f1(X), f2(y), op, f2(rs))], "Das Komma steht nicht unter dem Komma: Die Zehntel von " + f1(X) + " stehen unter den Hundertsteln. Richtig ist " + f2(r) + "."]);
+        const r3 = r + pick([10, -10, 100, -100]); if (r3 > 0) bad.push([[t, "Komma unter Komma, fehlende Stelle mit 0 auffüllen:", lay(f2(x), f2(y), op, f2(r3))], (plus ? "Ein Übertrag fehlt oder ist zu viel." : "Beim Entbündeln wurde falsch gerechnet.") + " Richtig ist " + f2(r) + "."]);
+        const r4 = Math.round(r / 10); if (r % 10 && r4 > 0) bad.push([[t, "Komma unter Komma, fehlende Stelle mit 0 auffüllen:", lay(f2(x), f2(y), op, (r4 / 10).toFixed(1).replace(".", ",") + " ")], "Im Ergebnis steht das Komma unter den anderen Kommas, und es gibt zwei Stellen nach dem Komma. Richtig ist " + f2(r) + "."]);
+        return { ok: ok, bad: bad };
+      }, "Komma unter Komma schreiben, fehlende Stellen mit Nullen auffüllen. Dann rechnen wie bei natürlichen Zahlen. Das Komma im Ergebnis steht unter den anderen Kommas.");
+    }
+    /* Dezimalzahlen multiplizieren und dividieren */
+    const kst = s => (String(s).split(",")[1] || "").length;
+    const dstr = (n, k) => { if (k === 0) return String(n); let s = String(n); while (s.length <= k) s = "0" + s; let r = s.slice(0, s.length - k) + "," + s.slice(s.length - k); r = r.replace(/,?0+$/, ""); return r; };
+    function dmul() {
+      return task("dmul", "Hier wird mit Dezimalzahlen multipliziert oder dividiert. " + Q, () => {
+        const k = pick(["m", "m", "dz", "dd"]);
+        if (k === "m") {
+          const ka = ri(1, 2), kb = ri(0, 2), A = ri(12, 99), B = ri(2, 39); if (B % 10 === 0 || A % 10 === 0) return null;
+          const sa = dstr(A, ka), sb = dstr(B, kb), P = A * B, K = ka + kb;
+          const ok = [sa + " · " + sb, "Ohne Komma rechnen: " + A + " · " + B + " = " + P, "Kommastellen zählen: " + ka + " + " + kb + " = " + K, sa + " · " + sb + " = " + dstr(P, K)];
+          const bad = [[[ok[0], ok[1], "Kommastellen: so viele wie bei der längeren Zahl, also " + Math.max(ka, kb), sa + " · " + sb + " = " + dstr(P, Math.max(ka, kb))], "Die Kommastellen beider Zahlen werden addiert: " + K + " Stellen. Richtig ist " + dstr(P, K) + "."]];
+          const wp = P + pick([10, -10, 100]); if (wp > 0) bad.push([[ok[0], "Ohne Komma rechnen: " + A + " · " + B + " = " + wp, ok[2], sa + " · " + sb + " = " + dstr(wp, K)], "Das Produkt ohne Komma ist falsch: " + A + " · " + B + " = " + P + ". Richtig ist " + dstr(P, K) + "."]);
+          return { ok: ok, bad: bad.filter(b => dstr(P, Math.max(ka, kb)) !== dstr(P, K) || b[1].indexOf("addiert") < 0) };
+        }
+        if (k === "dz") {
+          const n = ri(2, 9), q = ri(11, 99), qk = ri(1, 2), Aint = q * n, sa = dstr(Aint, qk); if (Aint % 10 === 0) return null;
+          const ok = [sa + " : " + n, "Rechnen wie ohne Komma: " + Aint + " : " + n + " = " + q, "Wenn das Komma überschritten wird, setzt man im Ergebnis das Komma.", sa + " : " + n + " = " + dstr(q, qk)];
+          return { ok: ok, bad: [[[ok[0], ok[1], "Das Komma wird weggelassen.", sa + " : " + n + " = " + q], "Das Ergebnis braucht ein Komma: beim Überschreiten des Kommas im Ergebnis das Komma setzen. Richtig ist " + dstr(q, qk) + "."], [[ok[0], ok[1], ok[2], sa + " : " + n + " = " + dstr(q, qk + 1)], "Das Komma steht eine Stelle zu weit links. Überschlag: " + sa + " : " + n + " ist ungefähr " + dstr(q, qk) + "."]] };
+        }
+        const B = ri(2, 9), q = ri(2, 12), sa = dstr(B * q, 1), sb = dstr(B, 1);
+        const ok = [sa + " : " + sb, "Beide Zahlen mit 10 multiplizieren: " + B * q + " : " + B, B * q + " : " + B + " = " + q];
+        return { ok: ok, bad: [[[ok[0], "Nur den Teiler mit 10 multiplizieren: " + sa + " : " + B, sa + " : " + B + " = " + dstr(q, 1)], "Beide Zahlen werden mit 10 multipliziert, sonst ändert sich das Ergebnis. Richtig ist " + q + "."], [[ok[0], "Die erste Zahl mit 100, den Teiler mit 10 multiplizieren: " + B * q * 10 + " : " + B, B * q * 10 + " : " + B + " = " + q * 10], "Beide Zahlen werden mit derselben Zahl multipliziert. Richtig ist " + q + "."]] };
+      }, "Multiplizieren: ohne Komma rechnen, dann so viele Kommastellen wie beide Zahlen zusammen haben. Durch eine natürliche Zahl teilen: wie gewohnt rechnen, beim Überschreiten des Kommas im Ergebnis das Komma setzen. Durch eine Dezimalzahl teilen: beide Zahlen mit 10, 100 … multiplizieren, bis der Teiler eine natürliche Zahl ist.");
+    }
+    /* Größen: Umrechnen in die kleinere Einheit, rechnen, zurückwandeln */
+    function gr(key) {
+      const S = window.__dz.grSys.filter(x => x.k === key)[0], U = S.U, n = U.length, SY = U.map(u => u[0]), w = new Array(n); w[n - 1] = 1; for (let i = n - 2; i >= 0; i--) w[i] = U[i][1] * w[i + 1];
+      const toP = b => { const r = []; for (let i = 0; i < n; i++) { r.push(Math.floor(b / w[i])); b = b % w[i]; } return r; };
+      const st = A => { const r = []; A.forEach((v, i) => { if (v) r.push(gp(v) + " " + SY[i]); }); return r.join(" ") || "0 " + SY[n - 1]; };
+      return task(key, "Hier wird mit Größen gerechnet: erst in die kleinere Einheit umwandeln, dann rechnen. " + Q, () => {
+        const pr = pick(S.pairs), hi = pr[0], lo = pr[1], f = U[hi][1];
+        const mk = () => { const A = U.map(() => 0); A[hi] = ri(1, 9); A[lo] = ri(1, f - 1); return A; };
+        const A = mk(), B = mk(), kind = pick(["+", "−", "·"]), a = A[hi] * f + A[lo], b = B[hi] * f + B[lo];
+        let lhs, val, line2, x = a, y = b;
+        if (kind === "−") { if (a === b) return null; x = Math.max(a, b); y = Math.min(a, b); }
+        const PX = toP(x * w[lo]), PY = toP(y * w[lo]);
+        if (kind === "·") { const m = ri(2, 9); lhs = st(PX) + " · " + m; val = x * m; line2 = gp(x) + " " + SY[lo] + " · " + m + " = " + gp(val) + " " + SY[lo]; }
+        else { lhs = st(PX) + " " + kind + " " + st(PY); val = kind === "+" ? x + y : x - y; line2 = gp(x) + " " + SY[lo] + " " + kind + " " + gp(y) + " " + SY[lo] + " = " + gp(val) + " " + SY[lo]; }
+        const res = st(toP(val * w[lo]));
+        const conv = v => { const P = toP(v * w[lo]); return st(P) + " = " + gp(v) + " " + SY[lo]; };
+        const ok = [lhs, "Umwandeln: " + conv(x) + (kind === "·" ? "" : ", " + conv(y)), line2, (val >= f ? "Zurückwandeln: " + gp(val) + " " + SY[lo] + " = " : "Ergebnis: ") + res];
+        const wf = key === "zeit" ? 100 : f >= 100 ? f / 10 : f * 10, xw = Number(String(Math.floor(x / f)) + String(x % f)), bad = [];
+        if (xw !== x && !(key === "zeit" && f === 24)) {
+                    const vw = kind === "·" ? xw * (val / x) : kind === "+" ? xw + y : xw - y;
+          if (vw > 0) bad.push([[lhs, "Umwandeln: " + st(PX) + " = " + gp(xw) + " " + SY[lo] + (kind === "·" ? "" : ", " + conv(y)), (kind === "·" ? gp(xw) + " " + SY[lo] + " · " + val / x : gp(xw) + " " + SY[lo] + " " + kind + " " + gp(y) + " " + SY[lo]) + " = " + gp(vw) + " " + SY[lo], (vw >= f ? "Zurückwandeln: " + gp(vw) + " " + SY[lo] + " = " : "Ergebnis: ") + st(toP(vw * w[lo]))],
+            "Falsch umgewandelt: 1 " + SY[hi] + " = " + gp(f) + " " + SY[lo] + ". Also sind " + st(PX) + " = " + gp(Math.floor(x / f) * f) + " " + SY[lo] + " + " + gp(x % f) + " " + SY[lo] + " = " + gp(x) + " " + SY[lo] + ". Richtig ist " + res + "."]);
+        }
+        if (val >= f && !(key === "zeit" && f === 24)) { const hw = Math.floor(val / wf), lw = val % wf; if (hw > 0 && hw * f + lw !== val && lw < f) bad.push([[ok[0], ok[1], ok[2], "Zurückwandeln: " + gp(val) + " " + SY[lo] + " = " + gp(hw) + " " + SY[hi] + (lw ? " " + gp(lw) + " " + SY[lo] : "")], "Beim Zurückwandeln gilt 1 " + SY[hi] + " = " + gp(f) + " " + SY[lo] + ", nicht " + gp(wf) + ". Richtig ist " + res + "."]); }
+        if (kind !== "·") { const vv = kind === "+" ? val + pick([1, -1]) * (f > 10 ? 10 : 1) : val + pick([1, -1]); if (vv > 0 && vv !== val) bad.push([[ok[0], ok[1], line2.replace(/= [^=]*$/, "= " + gp(vv) + " " + SY[lo]), (vv >= f ? "Zurückwandeln: " + gp(vv) + " " + SY[lo] + " = " : "Ergebnis: ") + st(toP(vv * w[lo]))], "In der kleineren Einheit wurde falsch gerechnet. Richtig ist " + res + "."]); }
+        return { ok: ok, bad: bad };
+      }, "Erst alles in die kleinere Einheit umwandeln, dann rechnen wie mit natürlichen Zahlen, zum Schluss zurückwandeln. Umrechnen: " + U.slice(0, -1).map((u, i) => "1 " + u[0] + " = " + gp(u[1]) + " " + SY[i + 1]).join(", ") + ".");
+    }
+    /* Dreisatz */
+    function dreis() {
+      return task("dreis", "Hier wird mit dem Dreisatz gerechnet. " + Q, () => {
+        if (Math.random() < 0.5) {
+          const u = pick([2, 3, 4, 5, 6, 8, 12]), a = ri(2, 6), b = a + ri(1, 6), pa = u * a;
+          const ok = [a + " Hefte kosten " + pa + " €. Was kosten " + b + " Hefte?", "1 Heft kostet " + pa + " € : " + a + " = " + u + " €", b + " Hefte kosten " + u + " € · " + b + " = " + u * b + " €"];
+          return { ok: ok, bad: [[[ok[0], "1 Heft kostet " + pa + " € · " + a + " = " + pa * a + " €", b + " Hefte kosten " + pa * a + " € · " + b + " = " + pa * a * b + " €"], "Ein Heft kostet weniger als " + a + " Hefte. Man teilt durch " + a + ". Richtig ist " + u * b + " €."], [[ok[0], ok[1], b + " Hefte kosten " + u + " € + " + b + " = " + (u + b) + " €"], "Beim Hochrechnen multipliziert man. Richtig ist " + u + " € · " + b + " = " + u * b + " €."]] };
+        }
+        const a = pick([2, 3, 4, 6]), d = ri(2, 6) * 2, tot = a * d, b = [1, 2, 3, 4, 6, 8, 12, 24].filter(x => tot % x === 0 && x !== a)[ri(0, 2)] || 1, res = tot / b;
+        const ok = [a + " Arbeiter brauchen " + d + " Tage. Wie lange brauchen " + b + " Arbeiter?", "1 Arbeiter braucht " + d + " · " + a + " = " + tot + " Tage", b + " Arbeiter brauchen " + tot + " : " + b + " = " + res + " Tage"];
+        if (b === 1) return null;
+        return { ok: ok, bad: [[[ok[0], "1 Arbeiter braucht " + d + " : " + a + " = " + dz(d / a) + " Tage", b + " Arbeiter brauchen " + dz(d / a) + " · " + b + " = " + dz(d / a * b) + " Tage"], "Das ist antiproportional: Ein Arbeiter braucht länger, nicht kürzer. Richtig ist " + res + " Tage."], [[ok[0], ok[1], b + " Arbeiter brauchen " + tot + " · " + b + " = " + tot * b + " Tage"], "Mehr Arbeiter brauchen weniger Zeit. Man teilt durch " + b + ". Richtig ist " + res + " Tage."]] };
+      }, "Dreisatz: erst auf eine Einheit umrechnen, dann auf die gesuchte Menge. Proportional: runter durch teilen, hoch durch multiplizieren. Antiproportional: genau umgekehrt.");
+    }
+    /* Prozentrechnung mit dem Dreisatz */
+    function proz() {
+      return task("proz", "Hier wird mit dem Dreisatz über 1 % gerechnet. " + Q, () => {
+        const G = pick([40, 60, 80, 120, 150, 200, 240, 300, 400, 500, 600, 800]), p = pick([5, 10, 15, 20, 25, 30, 40, 75]), e = G / 100, W = e * p;
+        const k = pick(["W", "W", "G", "p"]);
+        if (k === "W") { const ok = [p + " % von " + G + " €", "100 % ≙ " + G + " €", "1 % ≙ " + G + " € : 100 = " + dz(e) + " €", p + " % ≙ " + dz(e) + " € · " + p + " = " + dz(W) + " €"];
+          return { ok: ok, bad: [[[ok[0], ok[1], "1 % ≙ " + G + " € : " + p + " = " + dz(G / p) + " €", p + " % ≙ " + dz(G / p) + " € · " + p + " = " + G + " €"], "Für 1 % teilt man durch 100, nicht durch " + p + ". Richtig ist " + dz(W) + " €."], [[ok[0], ok[1], ok[2], p + " % ≙ " + dz(e) + " € + " + p + " = " + dz(e + p) + " €"], "Von 1 % auf " + p + " % wird mit " + p + " multipliziert. Richtig ist " + dz(W) + " €."]] }; }
+        if (k === "G") { const ok = [p + " % sind " + dz(W) + " €. Wie viel sind 100 %?", p + " % ≙ " + dz(W) + " €", "1 % ≙ " + dz(W) + " € : " + p + " = " + dz(e) + " €", "100 % ≙ " + dz(e) + " € · 100 = " + G + " €"];
+          return { ok: ok, bad: [[[ok[0], ok[1], "100 % ≙ " + dz(W) + " € · " + p + " = " + dz(W * p) + " €"], "Erst auf 1 % runterrechnen (durch " + p + "), dann auf 100 % (mal 100). Richtig ist " + G + " €."], [[ok[0], ok[1], "1 % ≙ " + dz(W) + " € : 100 = " + dz(W / 100) + " €", "100 % ≙ " + dz(W / 100) + " € · " + p + " = " + dz(W / 100 * p) + " €"], "Die Rechenschritte sind vertauscht. " + p + " % sind gegeben: erst durch " + p + ", dann mal 100. Richtig ist " + G + " €."]] }; }
+        const ok = ["Wie viel Prozent sind " + dz(W) + " € von " + G + " €?", "1 % ≙ " + G + " € : 100 = " + dz(e) + " €", dz(W) + " € : " + dz(e) + " € = " + p, "Das sind " + p + " %."];
+        return { ok: ok, bad: [[[ok[0], ok[1], dz(e) + " € : " + dz(W) + " € = " + dz(e / W), "Das sind " + dz(e / W) + " %."], "Man fragt: Wie oft passt 1 % in " + dz(W) + " €? Also " + dz(W) + " : " + dz(e) + " = " + p + "."], [[ok[0], dz(W) + " € : " + G + " € = " + dz(W / G), "Das sind " + dz(W / G) + " %."], "Der Anteil " + dz(W / G) + " muss noch mit 100 multipliziert werden: " + p + " %."]] };
+      }, "Mit dem Dreisatz über 1 %: 100 % ist der Grundwert. 1 % ist der Grundwert durch 100. Dann mit dem Prozentsatz multiplizieren. Ist ein Prozentwert gegeben, rechnet man erst auf 1 %, dann auf 100 %.");
+    }
+    function zins() {
+      return task("zins", "Hier werden Zinsen für ein Jahr berechnet. " + Q, () => {
+        const K = pick([200, 400, 500, 800, 1000, 1200, 1500, 2000, 2500]), p = pick([1, 2, 3, 4, 5, 6]), Z = K * p / 100;
+        const ok = [K + " € zu " + p + " % für 1 Jahr", "1 % von " + K + " € = " + dz(K / 100) + " €", p + " % = " + dz(K / 100) + " € · " + p + " = " + dz(Z) + " €", "Nach 1 Jahr: " + K + " € + " + dz(Z) + " € = " + dz(K + Z) + " €"];
+        return { ok: ok, bad: [[[ok[0], ok[1], ok[2], "Nach 1 Jahr: " + dz(Z) + " €"], "Die Zinsen kommen zum Kapital dazu. Nach 1 Jahr sind es " + dz(K + Z) + " €."], [[ok[0], "1 % von " + K + " € = " + dz(K / 10) + " €", p + " % = " + dz(K / 10) + " € · " + p + " = " + dz(K / 10 * p) + " €", "Nach 1 Jahr: " + K + " € + " + dz(K / 10 * p) + " € = " + dz(K + K / 10 * p) + " €"], "1 % ist der hundertste Teil: " + K + " € : 100 = " + dz(K / 100) + " €. Richtig sind " + dz(Z) + " € Zinsen."]] };
+      }, "Zinsen für ein Jahr: 1 % ist das Kapital durch 100, dann mal Zinssatz. Das neue Kapital ist das alte Kapital plus die Zinsen.");
+    }
+    function zz() {
+      return task("zz", "Hier wird mit Zinseszins gerechnet. " + Q, () => {
+        const K = pick([1000, 2000, 5000]), p = pick([2, 5, 10]), q = 1 + p / 100, ok = [K + " € zu " + p + " % für 2 Jahre", "Wachstumsfaktor: 1 + " + dz(p / 100) + " = " + dz(q), "nach 1 Jahr: " + K + " € · " + dz(q) + " = " + dz(K * q) + " €", "nach 2 Jahren: " + dz(K * q) + " € · " + dz(q) + " = " + dz(K * q * q) + " €"];
+        return { ok: ok, bad: [[[ok[0], ok[1], ok[2], "nach 2 Jahren: " + dz(K * q) + " € + " + dz(K * p / 100) + " € = " + dz(K * q + K * p / 100) + " €"], "Im zweiten Jahr werden auch die Zinsen verzinst. Man multipliziert noch einmal mit " + dz(q) + ": " + dz(K * q * q) + " €."], [[ok[0], "Wachstumsfaktor: " + dz(p / 100), "nach 1 Jahr: " + K + " € · " + dz(p / 100) + " = " + dz(K * p / 100) + " €", "nach 2 Jahren: " + dz(K * p / 100) + " € · " + dz(p / 100) + " = " + dz(K * p * p / 10000) + " €"], "Der Faktor " + dz(p / 100) + " gibt nur die Zinsen. Der Wachstumsfaktor ist 1 + " + dz(p / 100) + " = " + dz(q) + "."]] };
+      }, "Zinseszins: Jedes Jahr wird mit dem Wachstumsfaktor 1 + p/100 multipliziert. Nach n Jahren: K · q hoch n.");
+    }
+    /* Gerade durch zwei Punkte */
+    function lp() {
+      return task("lp", "Hier wird die Gleichung einer Geraden durch zwei Punkte bestimmt. " + Q, () => {
+        const m = pick([-3, -2, -1, 1, 2, 3]), n = ri(-4, 4), x1 = ri(-3, 1), x2 = x1 + ri(1, 3), y1 = m * x1 + n, y2 = m * x2 + n, dy = y2 - y1, dx = x2 - x1;
+        const ok = ["P(" + sg(x1) + " | " + sg(y1) + ") und Q(" + sg(x2) + " | " + sg(y2) + ")", "m = (" + sg(y2) + " − " + sgp(y1) + ") : (" + sg(x2) + " − " + sgp(x1) + ") = " + sg(dy) + " : " + sg(dx) + " = " + sg(m), "n: " + sg(y1) + " = " + sg(m) + " · " + sgp(x1) + " + n, also n = " + sg(n), "f(x) = " + (m === 1 ? "" : m === -1 ? "−" : sg(m)) + "x" + (n ? (n < 0 ? " − " : " + ") + Math.abs(n) : "")];
+        const bad = [];
+        if (Math.abs(dx) !== Math.abs(dy)) bad.push([[ok[0], "m = " + sg(dx) + " : " + sg(dy) + " = " + Fr(dx, dy).replace(/^/, ""), "…"].slice(0, 2).concat(["Die Steigung ist " + Fr(dx, dy) + "."]), "Δy kommt in den Zähler, Δx in den Nenner: m = " + sg(dy) + " : " + sg(dx) + " = " + sg(m) + "."]);
+        bad.push([[ok[0], "m = (" + sg(y2) + " − " + sgp(y1) + ") : (" + sg(x1) + " − " + sgp(x2) + ") = " + sg(dy) + " : " + sg(-dx) + " = " + sg(-m), "Die Steigung ist " + sg(-m) + "."], "In Zähler und Nenner muss dieselbe Reihenfolge stehen (Q minus P). Richtig ist m = " + sg(m) + "."]);
+        if (x1 !== 0) bad.push([[ok[0], ok[1], "n ist die y-Koordinate von P, also n = " + sg(y1)], "n ist der y-Wert an der Stelle x = 0. Man setzt P in y = mx + n ein: n = " + sg(n) + "."]);
+        return { ok: ok, bad: bad };
+      }, "m = Δy : Δx = (y₂ − y₁) : (x₂ − x₁). Dann einen Punkt in y = mx + n einsetzen und nach n auflösen.");
+    }
+    /* Lineare Gleichungssysteme: Additionsverfahren */
+    function lgs() {
+      return task("lgs", "Hier wird ein Gleichungssystem mit dem Additionsverfahren gelöst. " + Q, () => {
+        const x = ri(-5, 5), y = ri(-5, 5), a1 = pick([1, 2, 3]), a2 = pick([1, 2, 3, -1]), b = pick([1, 2, 3]);
+        if (a1 + a2 === 0) return null;
+        const c1 = a1 * x + b * y, c2 = a2 * x - b * y, s = a1 + a2, cs = c1 + c2;
+        const sx = s === 1 ? "x" : s + "x", yb = b === 1 ? "y" : b + "y", ok = ["(I) " + lt(a1, b, c1) + "   (II) " + lt(a2, -b, c2), "(I) + (II): " + sx + " = " + sg(cs)].concat(s === 1 ? [] : ["x = " + sg(x)]).concat(["x in (I): " + a1 + " · " + sgp(x) + " + " + yb + " = " + sg(c1) + ", also y = " + sg(y), "L = {(" + sg(x) + " | " + sg(y) + ")}"]);
+        const k0 = ok.length - 2;
+        const bad = [];
+        const cw = c1 - c2; if (cw !== cs) bad.push([[ok[0], "(I) + (II): " + sx + " = " + sg(cw)].concat(s === 1 ? [] : ["x = " + Fr(cw, s)]), "Beim Addieren der Gleichungen werden auch die rechten Seiten addiert: " + sg(c1) + " + " + sgp(c2) + " = " + sg(cs) + "."]);
+        if (x !== y) bad.push([ok.slice(0, k0 + 1).concat(["L = {(" + sg(y) + " | " + sg(x) + ")}"]), "Im Zahlenpaar steht zuerst x, dann y: L = {(" + sg(x) + " | " + sg(y) + ")}."]);
+        const yw = (c1 + a1 * x) / b; if (yw !== y) bad.push([ok.slice(0, k0).concat(["x in (I): " + a1 + " · " + sgp(x) + " + " + yb + " = " + sg(c1) + ", also y = " + Fr(c1 + a1 * x, b), "L = {(" + sg(x) + " | " + Fr(c1 + a1 * x, b) + ")}"]), "Beim Umstellen nach y wurde ein Vorzeichen falsch: " + sg(a1 * x) + " muss abgezogen werden. Richtig ist y = " + sg(y) + "."]);
+        return { ok: ok, bad: bad };
+      }, "Additionsverfahren: Die Gleichungen so addieren, dass eine Variable wegfällt. Dann nach der anderen auflösen, das Ergebnis in eine Gleichung einsetzen und die zweite Variable berechnen. Zum Schluss L = {(x | y)}.");
+    }
+    /* Scheitelpunktform mit quadratischer Ergänzung */
+    const pol = (b, c) => "x²" + (b ? (b < 0 ? " − " : " + ") + (Math.abs(b) === 1 ? "" : Math.abs(b)) + "x" : "") + (c ? (c < 0 ? " − " : " + ") + Math.abs(c) : "");
+    const sq = d => "(x" + (d < 0 ? " + " + -d : " − " + d) + ")²";
+    function qe() {
+      return task("qe", "Hier wird die Scheitelpunktform mit der quadratischen Ergänzung bestimmt. " + Q, () => {
+        const d = ri(-5, 5), e = ri(-6, 6); if (d === 0) return null; const b = -2 * d, c = d * d + e, h = Math.abs(d);
+        const ok = ["f(x) = " + pol(b, c), "= x² " + (b < 0 ? "−" : "+") + " " + Math.abs(b) + "x + " + h + "² − " + h + "² " + (c < 0 ? "− " + -c : "+ " + c), "= " + sq(d) + " − " + d * d + " " + (c < 0 ? "− " + -c : "+ " + c), "= " + sq(d) + (e ? (e < 0 ? " − " + -e : " + " + e) : ""), "S(" + sg(d) + " | " + sg(e) + ")"];
+        const bad = [[[ok[0], ok[1], ok[2], ok[3], "S(" + sg(-d) + " | " + sg(e) + ")"], "Steht in der Klammer x " + (d < 0 ? "+ " + -d : "− " + d) + ", dann ist die x-Koordinate " + sg(d) + ". Richtig ist S(" + sg(d) + " | " + sg(e) + ")."],
+          [[ok[0], "= x² " + (b < 0 ? "−" : "+") + " " + Math.abs(b) + "x + " + Math.abs(b) + "² − " + Math.abs(b) + "² " + (c < 0 ? "− " + -c : "+ " + c), "= " + sq(d) + " − " + b * b + " " + (c < 0 ? "− " + -c : "+ " + c), "S(" + sg(d) + " | " + sg(c - b * b) + ")"], "Ergänzt wird das Quadrat der halben Zahl vor dem x: (" + Math.abs(b) + " : 2)² = " + d * d + ". Richtig ist S(" + sg(d) + " | " + sg(e) + ")."]];
+        if (c + d * d !== e) bad.push([[ok[0], ok[1], "= " + sq(d) + " + " + d * d + " " + (c < 0 ? "− " + -c : "+ " + c), "= " + sq(d) + ((c + d * d) < 0 ? " − " + -(c + d * d) : " + " + (c + d * d)), "S(" + sg(d) + " | " + sg(c + d * d) + ")"], "Die Ergänzung " + h + "² wird wieder abgezogen, nicht addiert. Richtig ist S(" + sg(d) + " | " + sg(e) + ")."]);
+        return { ok: ok, bad: bad };
+      }, "Quadratische Ergänzung: Die halbe Zahl vor dem x quadrieren, addieren und gleich wieder subtrahieren. Dann mit der binomischen Formel eine Klammer bilden. Aus f(x) = (x − d)² + e liest man S(d | e) ab.");
+    }
+    /* Quadratische Gleichungen mit der p-q-Formel */
+    function qgl() {
+      return task("qgl", "Hier wird eine quadratische Gleichung mit der p-q-Formel gelöst. " + Q, () => {
+        let x1 = ri(-7, 7), x2 = ri(-7, 7); if (x1 === x2 || (x1 + x2) % 2 !== 0) return null; if (x1 < x2) { const t = x1; x1 = x2; x2 = t; }
+        const p = -(x1 + x2), q = x1 * x2, hp = -p / 2, rad = hp * hp - q, rt = Math.sqrt(rad);
+        if (p === 0) return null;
+        const ok = [pol(p, q) + " = 0", "p = " + sg(p) + ", q = " + sg(q), "x = " + sg(hp) + " ± √(" + sgp(hp) + "² − " + sgp(q) + ") = " + sg(hp) + " ± √" + rad + " = " + sg(hp) + " ± " + rt, "x₁ = " + sg(x1) + ", x₂ = " + sg(x2)];
+        const bad = [[[ok[0], ok[1], "x = " + sg(-hp) + " ± √(" + sgp(hp) + "² − " + sgp(q) + ") = " + sg(-hp) + " ± " + rt, "x₁ = " + sg(-hp + rt) + ", x₂ = " + sg(-hp - rt)], "Vor dem p/2 steht ein Minus: −p/2 = " + sg(hp) + ". Probe: Setze die Lösungen ein. Richtig ist x₁ = " + sg(x1) + ", x₂ = " + sg(x2) + "."]];
+        const r2 = hp * hp + q;
+        if (q !== 0) bad.push([[ok[0], ok[1], "x = " + sg(hp) + " ± √(" + sgp(hp) + "² + " + sgp(q) + ") = " + sg(hp) + " ± √" + sgp(r2).replace(/[()]/g, "")].concat([r2 < 0 ? "keine Lösung" : (Number.isInteger(Math.sqrt(r2)) ? "x₁ = " + sg(hp + Math.sqrt(r2)) + ", x₂ = " + sg(hp - Math.sqrt(r2)) : "x₁ ≈ " + dz(Math.round((hp + Math.sqrt(r2)) * 100) / 100) + ", x₂ ≈ " + dz(Math.round((hp - Math.sqrt(r2)) * 100) / 100))]), "Unter der Wurzel steht (p/2)² minus q. Richtig ist x₁ = " + sg(x1) + ", x₂ = " + sg(x2) + "."]);
+        return { ok: ok, bad: bad };
+      }, "p-q-Formel für x² + px + q = 0: x = −p/2 ± √((p/2)² − q). Erst p und q mit Vorzeichen ablesen, dann einsetzen. Probe durch Einsetzen.");
+    }
+    /* Ausmultiplizieren und binomische Formeln */
+    const lin = (k, c) => (k === 1 ? "" : k === -1 ? "−" : sg(k)) + "x" + (c ? (c < 0 ? " − " + -c : " + " + c) : "");
+    function bin() {
+      return task("bin", "Hier werden Klammern ausmultipliziert. " + Q, () => {
+        const a = ri(-7, 7), b = ri(-7, 7); if (!a || !b) return null; const kind = pick(["prod", "bin"]);
+        const A = a < 0 ? " − " + -a : " + " + a, B = b < 0 ? " − " + -b : " + " + b, term = (k, c) => "x²" + (k ? (k < 0 ? " − " : " + ") + (Math.abs(k) === 1 ? "" : Math.abs(k)) + "x" : "") + (c ? (c < 0 ? " − " + -c : " + " + c) : "");
+        if (kind === "prod" && a !== b) {
+          const ok = ["(x" + A + ")(x" + B + ")", "= x · x + x · " + sgp(b) + " + " + sgp(a) + " · x + " + sgp(a) + " · " + sgp(b), "= " + term(a + b, a * b)];
+          const bad = [[[ok[0], "= x · x + " + sgp(a) + " · " + sgp(b), "= " + term(0, a * b)], "Jedes Glied der ersten Klammer wird mit jedem Glied der zweiten multipliziert. Es fehlen x · " + sgp(b) + " und " + sgp(a) + " · x. Richtig ist " + term(a + b, a * b) + "."]];
+          if (a + b !== a * b) bad.push([[ok[0], ok[1], "= " + term(a + b, a + b)], "Das letzte Glied ist das Produkt " + sgp(a) + " · " + sgp(b) + " = " + sg(a * b) + ". Richtig ist " + term(a + b, a * b) + "."]);
+          return { ok: ok, bad: bad };
+        }
+        const ok = ["(x" + A + ")²", "= (x" + A + ")(x" + A + ")", "= x² + 2 · x · " + sgp(a) + " + " + sgp(a) + "²", "= " + term(2 * a, a * a)];
+        return { ok: ok, bad: [[[ok[0], "= x² + " + sgp(a) + "²", "= " + term(0, a * a)], "Das mittlere Glied fehlt: 2 · x · " + sgp(a) + " = " + lin(2 * a, 0) + ". Richtig ist " + term(2 * a, a * a) + "."], [[ok[0], ok[1], "= x² + x · " + sgp(a) + " + " + sgp(a) + "²", "= " + term(a, a * a)], "Das mittlere Glied kommt zweimal vor: 2 · x · " + sgp(a) + ". Richtig ist " + term(2 * a, a * a) + "."], [[ok[0], ok[1], ok[2], "= " + term(2 * a, 2 * a)], a * a === 2 * a ? null : sgp(a) + "² heißt " + sgp(a) + " · " + sgp(a) + " = " + a * a + ". Richtig ist " + term(2 * a, a * a) + "."]].filter(x => x[1]) };
+      }, "Jedes Glied der ersten Klammer wird mit jedem Glied der zweiten multipliziert, dann fasst man zusammen. Binomische Formeln: (a + b)² = a² + 2ab + b², (a − b)² = a² − 2ab + b², (a + b)(a − b) = a² − b².");
+    }
+    /* Satz des Pythagoras */
+    const TRIP = [[3, 4, 5], [6, 8, 10], [5, 12, 13], [8, 15, 17], [9, 12, 15], [7, 24, 25], [12, 16, 20], [15, 20, 25], [20, 21, 29], [12, 35, 37], [9, 40, 41]];
+    function pyt() {
+      return task("pyt", "Hier wird mit dem Satz des Pythagoras gerechnet. " + Q, () => {
+        const t = pick(TRIP), a = t[0], b = t[1], c = t[2];
+        if (Math.random() < 0.5) {
+          const ok = ["Katheten a = " + a + " cm, b = " + b + " cm. Gesucht: c", "c² = a² + b² = " + a * a + " + " + b * b + " = " + c * c, "c = √" + c * c + " = " + c + " cm"];
+          return { ok: ok, bad: [[[ok[0], "c = a + b = " + a + " + " + b + " = " + (a + b) + " cm"], "Man addiert die Quadrate, nicht die Seiten: c² = a² + b². Richtig ist " + c + " cm."], [[ok[0], ok[1], "c = " + c * c + " cm"], "Zum Schluss wird die Wurzel gezogen: c = √" + c * c + " = " + c + " cm."], [[ok[0], "c² = a² + b² = " + 2 * a + " + " + 2 * b + " = " + 2 * (a + b), "c = √" + 2 * (a + b) + " ≈ " + dz(Math.round(Math.sqrt(2 * (a + b)) * 100) / 100) + " cm"], a + "² heißt " + a + " · " + a + " = " + a * a + ", nicht " + a + " · 2. Richtig ist " + c + " cm."]] };
+        }
+        const ok = ["Hypotenuse c = " + c + " cm, Kathete a = " + a + " cm. Gesucht: b", "b² = c² − a² = " + c * c + " − " + a * a + " = " + b * b, "b = √" + b * b + " = " + b + " cm"];
+        const s = c * c + a * a;
+        return { ok: ok, bad: [[[ok[0], "b² = c² + a² = " + c * c + " + " + a * a + " = " + s, "b = √" + s + " ≈ " + dz(Math.round(Math.sqrt(s) * 100) / 100) + " cm"], "Gesucht ist eine Kathete. Sie ist kürzer als die Hypotenuse. Man subtrahiert: b² = c² − a². Richtig ist " + b + " cm."], [[ok[0], ok[1], "b = " + b * b + " cm"], "Zum Schluss wird die Wurzel gezogen: b = √" + b * b + " = " + b + " cm."]] };
+      }, "Im rechtwinkligen Dreieck gilt a² + b² = c², c ist die Hypotenuse gegenüber dem rechten Winkel. Hypotenuse gesucht: Quadrate addieren, dann Wurzel. Kathete gesucht: Quadrate subtrahieren, dann Wurzel.");
+    }
+    /* Flächen und Umfang mit Formeln */
+    function fla() {
+      return task("fla", "Hier werden Flächen und Umfänge mit den Formeln berechnet. " + Q, () => {
+        const k = pick(["ur", "ar", "dr", "pa", "tr"]);
+        if (k === "ur") { const a = ri(3, 15), b = ri(2, 12); if (a === b) return null; const ok = ["Rechteck a = " + a + " cm, b = " + b + " cm: Umfang", "u = 2 · (a + b)", "u = 2 · (" + a + " + " + b + ") = 2 · " + (a + b) + " = " + 2 * (a + b) + " cm"];
+          return { ok: ok, bad: [[[ok[0], "u = a + b", "u = " + a + " + " + b + " = " + (a + b) + " cm"], "Ein Rechteck hat vier Seiten, je zwei gleich lang: u = 2 · (a + b) = " + 2 * (a + b) + " cm."], [[ok[0], "u = a · b", "u = " + a + " · " + b + " = " + a * b + " cm"], a * b === 2 * (a + b) ? null : "a · b ist der Flächeninhalt. Der Umfang ist u = 2 · (a + b) = " + 2 * (a + b) + " cm."]].filter(x => x[1]) }; }
+        if (k === "ar") { const a = ri(3, 15), b = ri(2, 12); const ok = ["Rechteck a = " + a + " cm, b = " + b + " cm: Fläche", "A = a · b", "A = " + a + " · " + b + " = " + a * b + " cm²"];
+          return { ok: ok, bad: [[[ok[0], "A = 2 · (a + b)", "A = 2 · (" + a + " + " + b + ") = " + 2 * (a + b) + " cm²"], 2 * (a + b) === a * b ? null : "Das ist der Umfang. Die Fläche ist A = a · b = " + a * b + " cm²."], [[ok[0], ok[1], "A = " + a + " · " + b + " = " + a * b + " cm"], "Eine Fläche hat die Einheit cm²."]].filter(x => x[1]) }; }
+        if (k === "dr") { const g = ri(2, 12) * 2, h = ri(3, 12); const ok = ["Dreieck g = " + g + " cm, h = " + h + " cm: Fläche", "A = g · h : 2", "A = " + g + " · " + h + " : 2 = " + g * h / 2 + " cm²"];
+          return { ok: ok, bad: [[[ok[0], "A = g · h", "A = " + g + " · " + h + " = " + g * h + " cm²"], "Ein Dreieck ist ein halbes Parallelogramm: A = g · h : 2 = " + g * h / 2 + " cm²."]] }; }
+        if (k === "pa") { const a = ri(4, 14), h = ri(3, 10), b = h + ri(1, 4); const ok = ["Parallelogramm a = " + a + " cm, b = " + b + " cm, h = " + h + " cm: Fläche", "A = a · h", "A = " + a + " · " + h + " = " + a * h + " cm²"];
+          return { ok: ok, bad: [[[ok[0], "A = a · b", "A = " + a + " · " + b + " = " + a * b + " cm²"], "Man rechnet mit der Höhe h, nicht mit der schrägen Seite b: A = a · h = " + a * h + " cm²."], [[ok[0], "A = a · h : 2", "A = " + a + " · " + h + " : 2 = " + dz(a * h / 2) + " cm²"], "Das wäre ein Dreieck. Beim Parallelogramm gilt A = a · h = " + a * h + " cm²."]] }; }
+        const a = ri(6, 16), c = ri(2, a - 2), h = ri(2, 9); if ((a + c) * h % 2) return null; const ok = ["Trapez a = " + a + " cm, c = " + c + " cm, h = " + h + " cm: Fläche", "A = (a + c) · h : 2", "A = (" + a + " + " + c + ") · " + h + " : 2 = " + (a + c) * h / 2 + " cm²"];
+        return { ok: ok, bad: [[[ok[0], "A = (a + c) · h", "A = (" + a + " + " + c + ") · " + h + " = " + (a + c) * h + " cm²"], "Es fehlt das Halbieren: A = (a + c) · h : 2 = " + (a + c) * h / 2 + " cm²."], [[ok[0], "A = a · c · h : 2", "A = " + a + " · " + c + " · " + h + " : 2 = " + dz(a * c * h / 2) + " cm²"], a * c === a + c ? null : "Die parallelen Seiten werden addiert, nicht multipliziert: A = (a + c) · h : 2 = " + (a + c) * h / 2 + " cm²."]].filter(x => x[1]) };
+      }, "Rechteck: A = a · b, u = 2 · (a + b). Dreieck: A = g · h : 2. Parallelogramm: A = a · h. Trapez: A = (a + c) · h : 2.");
+    }
+    /* Trigonometrie im rechtwinkligen Dreieck */
+    function tri() {
+      return task("tri", "Hier wird ein Winkel mit Sinus, Kosinus oder Tangens berechnet. " + Q, () => {
+        const t = pick(TRIP), g = t[0], an = t[1], hy = t[2], k = pick(["sin", "cos", "tan"]), deg = Math.atan(g / an) * 180 / Math.PI, f1 = v => (Math.round(v * 10) / 10).toFixed(1).replace(".", ","), f2 = v => (Math.round(v * 100) / 100).toFixed(2).replace(".", ",");
+        const giv = "Gegenkathete " + g + " cm, Ankathete " + an + " cm, Hypotenuse " + hy + " cm";
+        const rule = { sin: "sin α = Gegenkathete : Hypotenuse", cos: "cos α = Ankathete : Hypotenuse", tan: "tan α = Gegenkathete : Ankathete" }[k];
+        const num = { sin: g, cos: an, tan: g }[k], den = { sin: hy, cos: hy, tan: an }[k], v = num / den;
+        const inv = { sin: "sin⁻¹", cos: "cos⁻¹", tan: "tan⁻¹" }[k];
+        const ok = [giv + ". Gesucht: α", rule, k + " α = " + num + " : " + den + " ≈ " + f2(v), "α = " + inv + "(" + f2(v) + ") ≈ " + f1(deg) + "°"];
+        const wn = { sin: an, cos: g, tan: an }[k], wd = { sin: hy, cos: hy, tan: g }[k], wv = wn / wd, wdeg = { sin: Math.asin(wv), cos: Math.acos(wv), tan: Math.atan(wv) }[k] * 180 / Math.PI;
+        const bad = [[[ok[0], k + " α = " + ({ sin: "Ankathete", cos: "Gegenkathete", tan: "Ankathete" }[k]) + " : " + ({ sin: "Hypotenuse", cos: "Hypotenuse", tan: "Gegenkathete" }[k]), k + " α = " + wn + " : " + wd + " ≈ " + f2(wv), "α = " + inv + "(" + f2(wv) + ") ≈ " + f1(wdeg) + "°"], "Die Seiten sind vertauscht. Richtig ist " + rule + ". Dann ist α ≈ " + f1(deg) + "°."]];
+        if (k !== "tan") bad.push([[ok[0], rule.replace(" : Hypotenuse", "").replace("Gegenkathete", "Hypotenuse : Gegenkathete").replace("Ankathete", "Hypotenuse : Ankathete"), k + " α = " + den + " : " + num + " ≈ " + f2(1 / v), "Das geht nicht: " + k + " α ist nie größer als 1."].slice(0, 3).concat(["α = " + inv + "(" + f2(1 / v) + ")"]), "Die Hypotenuse ist die längste Seite und steht im Nenner. " + rule + ", also α ≈ " + f1(deg) + "°."]);
+        return { ok: ok, bad: bad };
+      }, "Im rechtwinkligen Dreieck: sin α = Gegenkathete : Hypotenuse, cos α = Ankathete : Hypotenuse, tan α = Gegenkathete : Ankathete. Den Winkel erhält man mit sin⁻¹, cos⁻¹ oder tan⁻¹.");
+    }
+    /* Wahrscheinlichkeit: Laplace und Pfadregeln */
+    function wla() {
+      return task("wla", "Hier wird eine Laplace-Wahrscheinlichkeit berechnet. " + Q, () => {
+        const r = ri(1, 7), b = ri(1, 7), g = ri(0, 5), n = r + b + g, col = pick([["rot", r], ["blau", b]].concat(g ? [["grün", g]] : [])), k = col[1], P = R(k, n);
+        const ok = [r + " rote, " + b + " blaue" + (g ? ", " + g + " grüne" : "") + " Kugeln. P(" + col[0] + ")?", "günstige Ergebnisse: " + k + ", mögliche Ergebnisse: " + n, "P(" + col[0] + ") = " + fr(k, n) + (P.d !== n ? " = " + F(P.n, P.d) : ""), "P(nicht " + col[0] + ") = 1 − " + F(P.n, P.d) + " = " + Fr(n - k, n)];
+        const bad = [];
+        if (n - k > 0 && k !== n - k) bad.push([[ok[0], "günstige Ergebnisse: " + k + ", ungünstige Ergebnisse: " + (n - k), "P(" + col[0] + ") = " + fr(k, n - k)], "Im Nenner stehen alle möglichen Ergebnisse (" + n + "), nicht nur die ungünstigen. Richtig ist " + F(P.n, P.d) + "."]);
+        bad.push([[ok[0], ok[1], ok[2], "P(nicht " + col[0] + ") = " + fr(1, k)], "Für das Gegenereignis rechnet man 1 − P: " + Fr(n - k, n) + "."]);
+        return { ok: ok, bad: bad };
+      }, "Laplace: P = Anzahl der günstigen Ergebnisse : Anzahl aller möglichen Ergebnisse. Gegenereignis: P(nicht A) = 1 − P(A).");
+    }
+    function wpf() {
+      return task("wpf", "Hier wird mit dem Baumdiagramm und den Pfadregeln gerechnet. " + Q, () => {
+        const r = ri(2, 6), b = ri(2, 6), n = r + b, mit = Math.random() < 0.5;
+        const p2 = mit ? [r, n] : [r - 1, n - 1], P = R(r * p2[0], n * p2[1]);
+        const ok = [r + " rote, " + b + " blaue Kugeln, zweimal ziehen " + (mit ? "mit" : "ohne") + " Zurücklegen. P(rot, rot)?", "1. Zug: P(rot) = " + fr(r, n) + "; 2. Zug: P(rot) = " + fr(p2[0], p2[1]), "Pfadregel: " + fr(r, n) + " · " + fr(p2[0], p2[1]) + " = " + fr(r * p2[0], n * p2[1]) + (P.d !== n * p2[1] ? " = " + F(P.n, P.d) : "")];
+        const bad = [];
+        const s = R(r * p2[1] + p2[0] * n, n * p2[1]); bad.push([[ok[0], ok[1], "Pfadregel: " + fr(r, n) + " + " + fr(p2[0], p2[1]) + " = " + F(s.n, s.d)], "Entlang eines Pfades wird multipliziert, nicht addiert. Richtig ist " + F(P.n, P.d) + "."]);
+        const q2 = mit ? [r - 1, n - 1] : [r, n], P2 = R(r * q2[0], n * q2[1]);
+        if (!Req(P2, P)) bad.push([[ok[0], "1. Zug: P(rot) = " + fr(r, n) + "; 2. Zug: P(rot) = " + fr(q2[0], q2[1]), "Pfadregel: " + fr(r, n) + " · " + fr(q2[0], q2[1]) + " = " + F(P2.n, P2.d)], mit ? "Mit Zurücklegen ist die Urne beim 2. Zug wieder voll: " + fr(r, n) + ". Richtig ist " + F(P.n, P.d) + "." : "Ohne Zurücklegen fehlt beim 2. Zug eine rote Kugel: " + fr(r - 1, n - 1) + ". Richtig ist " + F(P.n, P.d) + "."]);
+        return { ok: ok, bad: bad };
+      }, "Pfadregel: Entlang eines Pfades werden die Wahrscheinlichkeiten multipliziert. Summenregel: Die Wahrscheinlichkeiten mehrerer Pfade werden addiert. Ohne Zurücklegen ändert sich die Urne beim zweiten Zug.");
+    }
+    /* Abbrechende und periodische Dezimalzahlen */
+    function dvp(A, M) {
+      const ip = Math.floor(A / M); let r = A % M; const seen = {}, digs = [], res = [r]; let pr = -1;
+      while (r > 0 && digs.length < 40) { if (seen[r] !== undefined) { pr = seen[r]; break; } seen[r] = digs.length; r *= 10; digs.push(Math.floor(r / M)); r = r % M; res.push(r); }
+      return { ip: ip, digs: digs, res: res, per: pr, term: r === 0 };
+    }
+    const dpS = (d, barFrom, barTo) => { const dg = d.digs, f = d.per >= 0 ? d.per : -1; let pre, bar; if (barFrom !== undefined) { pre = dg.slice(0, barFrom).join(""); bar = dg.slice(barFrom, barTo).join(""); } else if (f >= 0) { pre = dg.slice(0, f).join(""); bar = dg.slice(f).join(""); } else { pre = dg.join(""); bar = ""; } return d.ip + (pre || bar ? "," + pre : "") + (bar ? '<span class="ol">' + bar + "</span>" : ""); };
+    const termFr = (z, n) => { const d = n / gcd(z, n); return primF(d).every(x => x === 2 || x === 5); };
+    const primF = n => { const r = []; for (let p = 2; n > 1; p++) while (n % p === 0) { r.push(p); n /= p; } return r; };
+    function per() {
+      if (Math.random() < 0.45) {
+        const askT = Math.random() < 0.5, NS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 18, 20, 25, 40], T = [], P = [], seen = {};
+        for (let i = 0; i < 80; i++) { const n = pick(NS), k = pick([1, 1, 1, 2, 3]), z = ri(1, n - 1) * (Math.random() < 0.25 ? 1 : 1); const key = z + "/" + n; if (seen[key]) continue; seen[key] = 1; (termFr(z, n) ? T : P).push([z, n]); }
+        const ex = [[3, 12], [6, 15], [9, 12], [4, 6], [7, 14]]; ex.forEach(e => { if (!seen[e[0] + "/" + e[1]] && Math.random() < 0.5) { seen[e[0] + "/" + e[1]] = 1; (termFr(e[0], e[1]) ? T : P).push(e); } });
+        const why = (z, n, wantT) => { const g = gcd(z, n), d = n / g, pf2 = primF(d), bad2 = pf2.filter(x => x !== 2 && x !== 5)[0]; return wantT ? (g > 1 ? "Gekürzt ist es " + fr(z / g, d) + ". Der Nenner " + d + " hat nur die Primfaktoren 2 und 5. Dann kann man auf 10, 100 oder 1000 erweitern: abbrechend." : "Der Nenner " + n + " hat nur die Primfaktoren 2 und 5. Dann kann man auf 10, 100 oder 1000 erweitern: abbrechend.") : (g > 1 ? "Gekürzt ist es " + fr(z / g, d) + ". Der Nenner " + d + " hat den Primfaktor " + bad2 + ". Dann kommt beim Teilen ein Rest wieder: periodisch." : "Der Nenner " + n + " hat den Primfaktor " + bad2 + ". Dann kommt beim Teilen ein Rest wieder: periodisch."); };
+        const good = shuf(askT ? T : P).slice(0, 6), wrong = shuf(askT ? P : T).slice(0, 12);
+        return { top: "dper", kind: "eqs", q: "Welche Brüche ergeben beim schriftlichen Teilen eine " + (askT ? "abbrechende" : "periodische") + " Dezimalzahl?", corr: good.map(e => O(fr(e[0], e[1]), e[0] + "/" + e[1], "")), wrong: wrong.map(e => O(fr(e[0], e[1]), e[0] + "/" + e[1], why(e[0], e[1], !askT))), expl: () => "Wird beim Teilen ein Rest 0, bricht die Dezimalzahl ab. Kommt ein Rest wieder, ist sie periodisch. Man erkennt es am gekürzten Bruch: Hat der Nenner nur die Primfaktoren 2 und 5, bricht die Dezimalzahl ab, sonst ist sie periodisch." };
+      }
+      return task("dper", "Hier wird schriftlich geteilt und auf die Reste geachtet. " + Q, () => {
+        const M = pick([3, 6, 7, 9, 11, 12, 15, 18, 22, 4, 8, 16, 20, 25, 5]), A = ri(1, M * 2 - 1); if (A % M === 0) return null;
+        const d = dvp(A, M); if (d.per < 0 && !d.term) return null;
+        const last = d.res[d.res.length - 1], t = A + " : " + M;
+        const rl = "Reste: " + d.res.join(", ");
+        const resTxt = (x, y, z) => t + " = " + dpS(d, x, y, z);
+        const okL = d.term ? "Der Rest ist 0. Das Teilen bricht ab." : "Der Rest " + last + " kommt zum zweiten Mal vor. Die Ziffern wiederholen sich.";
+        const ok = [t, rl, okL, resTxt()];
+        const bad = [];
+        if (d.term) {
+          bad.push([[t, rl, "Der Rest ist 0. Die Ziffern wiederholen sich immer wieder.", t + " = " + d.ip + "," + d.digs.slice(0, -1).join("") + '<span class="ol">' + d.digs[d.digs.length - 1] + "</span>"], "Wird der Rest 0, ist das Teilen zu Ende. Die Dezimalzahl bricht ab und bekommt keinen Periodenstrich."]);
+          if (d.digs.length > 1) bad.push([[t, rl, okL, t + " = " + d.ip + "," + d.digs.slice(0, -1).join("")], "Es fehlt die letzte Ziffer. Jeder Schritt bis zum Rest 0 liefert eine Ziffer: " + dpS(d) + "."]);
+        } else {
+          bad.push([[t, rl, "Ein Rest kommt wieder. Die Dezimalzahl bricht ab.", t + " = " + d.ip + "," + d.digs.join("")], "Wenn ein Rest wiederkommt, wird der Rest nie 0. Die Ziffern wiederholen sich, die Dezimalzahl ist periodisch."]);
+          if (d.per > 0) bad.push([[t, rl, okL, t + " = " + dpS(d, 0, d.digs.length)], "Der Strich steht nur über den Ziffern, die sich wiederholen. Die Ziffern davor gehören nicht zur Periode."]);
+          if (d.digs.length - d.per > 1) bad.push([[t, rl, okL, t + " = " + dpS(d, d.per, d.per + 1)], "Alle Ziffern, die sich wiederholen, bekommen den Strich, nicht nur die erste."]);
+          const dd = d.digs.slice(); const ix = ri(0, dd.length - 1); dd[ix] = (dd[ix] + pick([1, 2, 7])) % 10; const d2 = { ip: d.ip, digs: dd, per: d.per, term: false };
+          bad.push([[t, rl, okL, t + " = " + dpS(d2)], "Eine Ziffer stimmt nicht. Rechne jeden Schritt nach: Rest · 10 : " + M + "."]);
+          bad.push([[t, "Reste: " + d.res.slice(0, -1).join(", ") + ", 0", "Der Rest ist 0. Das Teilen bricht ab.", t + " = " + d.ip + "," + d.digs.join("")], "Der Rest wird nicht 0. Der letzte Rest ist " + last + ", und er kam schon einmal vor."]);
+        }
+        return { ok: ok, bad: bad };
+      }, "Beim schriftlichen Teilen schaut man auf die Reste. Wird ein Rest 0, bricht die Dezimalzahl ab. Kommt ein Rest zum zweiten Mal vor, wiederholen sich die Ziffern: periodisch. Der Periodenstrich steht über den Ziffern, die sich wiederholen.");
+    }
+    const list = { ein: [ein, 0.6], geteilt: [geteilt, 0.6], uez: [uez, 0.6], ggtk: [ggtk, 0.7], pfz: [pfz, 0.6], neg: [neg, 0.6], gl: [gl, 0.6], kue: [kue, 0.6], gem: [gem, 0.6], stufe: [stufe, 0.6], addsub: [addsub, 0.7], muldiv: [muldiv, 0.7], bd: [bd, 0.6], dadd: [dadd, 0.7], dmul: [dmul, 0.7], lae: [() => gr("lae"), 0.6], geld: [() => gr("geld"), 0.6], gew: [() => gr("gew"), 0.6], zeit: [() => gr("zeit"), 0.6], dreis: [dreis, 0.5], proz: [proz, 0.6], zins: [zins, 0.5], zz: [zz, 0.5], lp: [lp, 0.5], lgs: [lgs, 0.6], qe: [qe, 0.7], qgl: [qgl, 0.7], bin: [bin, 0.6], pyt: [pyt, 0.6], fla: [fla, 0.5], tri: [tri, 0.6], wla: [wla, 0.5], wpf: [wpf, 0.5], dper: [per, 1] };
+    return list;
+  })();
+  Object.keys(WAY).forEach(k => { const old = G[k], w = WAY[k]; G[k] = () => (!old || Math.random() < w[1]) ? w[0]() : old(); });
+  { const dm0 = G.dmul; G.dmul = () => Math.random() < 0.25 ? WAY.dper[0]() : dm0(); }
+  window.__qzWay = WAY;
   const RUB = {
     qz1: { help: true, t: "Zahlen und Rechenoperationen", arena: "Zahlen-Arena", col: "#7cc4f7", tops: [["ein", "Einmaleins"], ["geteilt", "Geteiltaufgaben"], ["uez", "Zehnerübergang"], ["stell", "Stellenwerte"], ["fl", "Flächenmodell"], ["swr", "Schriftlich rechnen"], ["ggtk", "ggT und kgV"], ["pfz", "Primfaktorzerlegung"], ["tbr", "Teilbarkeitsregeln"], ["rgz", "Große Zahlen runden"], ["rgr", "Runden rückwärts"], ["neg", "Negative Zahlen"], ["dvq", "Schriftlich dividieren mit Rest"]] },
     qz2: { t: "Brüche", arena: "Bruch-Arena", col: "#c4a1ff", tops: [["anteil", "Anteile am Streifen"], ["gl", "Gleichwertige Brüche"], ["kue", "Brüche kürzen"], ["gem", "Unechte Brüche und gemischte Zahlen"], ["stufe", "Stufenzahlen"], ["addsub", "Addieren und Subtrahieren"], ["muldiv", "Multiplizieren und Dividieren"]] },
-    qz3: { t: "Dezimalzahlen", arena: "Komma-Arena", col: "#7fdcae", tops: [["bd", "Brüche und Dezimalzahlen"], ["komma", "Kommaverschiebung"], ["dadd", "Addieren und Subtrahieren"], ["dmul", "Multiplizieren und Dividieren"], ["rund", "Runden am Zahlenstrahl"], ["gro", "Größen und Stellenwerte"], ["lae", "Rechnen mit Längen"], ["geld", "Rechnen mit Geld"], ["gew", "Rechnen mit Gewichten"], ["zeit", "Rechnen mit Zeit"]] },
+    qz3: { t: "Dezimalzahlen", arena: "Komma-Arena", col: "#7fdcae", tops: [["bd", "Brüche und Dezimalzahlen"], ["komma", "Kommaverschiebung"], ["dadd", "Addieren und Subtrahieren"], ["dmul", "Multiplizieren und Dividieren"], ["dper", "Abbrechend oder periodisch"], ["rund", "Runden am Zahlenstrahl"], ["gro", "Größen und Stellenwerte"], ["lae", "Rechnen mit Längen"], ["geld", "Rechnen mit Geld"], ["gew", "Rechnen mit Gewichten"], ["zeit", "Rechnen mit Zeit"]] },
     qz5: { t: "Funktionen und Prozente", arena: "Funktionen-Arena", col: "#ff8fb1", tops: [["lf", "Lineare Funktionen"], ["lfg", "Graph einer Geraden"], ["lp", "Gerade durch zwei Punkte"], ["prop", "Proportional oder antiproportional"], ["dreis", "Dreisatz"], ["proz", "Prozentrechnung"], ["zins", "Zinsen für ein Jahr"], ["zz", "Zinseszins"], ["exw", "Exponentielles Wachstum"]] },
     qz6: { t: "Wahrscheinlichkeit", arena: "Zufalls-Arena", col: "#7ee0d2", tops: [["wla", "Laplace und Gegenereignis"], ["wmi", "Mindestens ein Treffer"], ["wpf", "Baumdiagramm und Pfadregeln"], ["wvf", "Vierfeldertafel"], ["wbd", "Bedingte Wahrscheinlichkeit"], ["wte", "Test und Krankheit"], ["war", "Argumentieren"]] },
     qz4: { t: "Algebra", arena: "Algebra-Arena", col: "#ffb86b", tops: [["aeq", "Äquivalenzumformung"], ["lgs", "Lineare Gleichungssysteme"], ["qe", "Scheitelpunktform"], ["qgl", "Quadratische Gleichungen"], ["qfu", "Quadratische Funktionen"], ["ter", "Terme aufstellen"], ["bin", "Ausmultiplizieren und binomische Formeln"], ["pot", "Potenzgesetze"], ["wur", "Wurzelgesetze"], ["ivs", "Intervallschachtelung"]] },
@@ -12760,7 +13527,7 @@ document.querySelectorAll(".card").forEach(c => {
       let hit = 0, bad = 0, miss = 0; const why = [];
       stage().querySelectorAll(".qzopt").forEach(b => {
         const o = Q.opts[b.dataset.i], s = !!sel[b.dataset.i]; b.disabled = true; b.classList.remove("qzgone");
-        if (s && o.ok) { b.classList.add("qzok"); hit++; } else if (s && !o.ok) { b.classList.add("qzbad"); bad++; if (o.why) why.push(o); } else if (!s && o.ok) { b.classList.add("qzmiss"); miss++; }
+        if (s && o.ok) { b.classList.add("qzok"); hit++; } else if (s && !o.ok) { b.classList.add("qzbad"); bad++; if (o.why) why.push(Object.assign({ nr: +b.dataset.i + 1 }, o)); } else if (!s && o.ok) { b.classList.add("qzmiss"); miss++; }
       });
       const perfect = hit === Q.k && bad === 0 && !timeUp && !show;
       let fb = "", pts = 0, revived = false;
@@ -12793,7 +13560,7 @@ document.querySelectorAll(".card").forEach(c => {
         const last = st.team ? st.idx >= nQ() - 1 : (st.lives <= 0 || st.idx >= N - 1);
         $("Next").hidden = false; $("Next").textContent = last ? "Ergebnis ansehen" : "Weiter";
       }
-      if (why.length) fb += '<div class="note">' + why.map(o => "<div>" + String(o.h).replace(/\.\s*$/, "") + ": " + o.why + "</div>").join("") + "</div>";
+      if (why.length) fb += '<div class="note">' + why.map(o => "<div>" + (/class="(wway|wrw)"/.test(o.h) ? "Möglichkeit " + o.nr : String(o.h).replace(/\.\s*$/, "")) + ": " + o.why + "</div>").join("") + "</div>";
       fb += '<div class="zeq"><span class="usmall">Erklärung:</span>' + Q.expl + "</div>";
       $("Fb").innerHTML = fb; $("Check").hidden = true; if ($("Show")) $("Show").hidden = true; $("Next").focus({ preventScroll: true });
     }

@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Themengenerator</title>
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--ink:#1b2130;--mu:#5b6578;--line:#d5dbe6;--ac:#1c7ed6;--ac2:#0b5cad;--ok:#2f9e44;--bad:#e03131;--hd:#16202e}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--hd);color:#fff;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+header h1{font-size:20px;margin:0}
+.ver{font-size:12px;border:1px solid #5d6b82;border-radius:6px;padding:1px 7px;color:#c5cfdf}
+.sp{flex:1}
+button,.btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:7px 12px}
+button:hover{border-color:var(--ac)}
+button.on,button.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+button.pri:hover{background:var(--ac2)}
+header button{background:#25344a;border-color:#3b4d68;color:#fff;padding:6px 10px;font-size:14px}
+header button:hover{border-color:#8fb7ee}
+nav{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px;background:#e8edf5;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+nav button{font-weight:600}
+main{padding:14px 16px;max-width:1500px;margin:0 auto}
+.pane{display:none}.pane.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+h2{margin:0 0 8px;font-size:18px}
+.mu{color:var(--mu);font-size:13px}
+#flHelp{background:rgba(128,128,128,.14);border-radius:8px;padding:8px 10px;white-space:pre-line;line-height:1.45}
+label.f{display:block;font-weight:600;margin:10px 0 4px}
+input[type=text],textarea,select{font:inherit;width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:#fff;color:var(--ink)}
+textarea{resize:vertical;line-height:1.45}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+@media(max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
+.im{border:1px solid var(--line);border-radius:10px;padding:6px;background:#fafbfd}
+.im img{width:100%;height:100px;object-fit:contain;background:#fff;border-radius:6px}
+.im input{margin-top:4px;padding:5px 7px;font-size:14px}
+.im button{margin-top:4px;padding:3px 8px;font-size:13px;width:100%}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.viewer{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:auto;height:calc(100vh - 230px);min-height:380px;text-align:center}
+.viewer svg{display:block;margin:0 auto}
+.grp{display:inline-flex;gap:4px;align-items:center}
+.grp .mu{min-width:46px;text-align:center}
+.vbox:fullscreen{background:var(--bg);padding:10px;overflow:auto}
+.vbox.fake{position:fixed;inset:0;z-index:500;background:var(--bg);padding:10px;overflow:auto}
+body.fsOn nav{top:0}
+@media(max-width:820px){
+  header{padding:6px 10px;gap:6px}header h1{font-size:17px}header button{padding:5px 8px;font-size:13px}
+  nav{flex-wrap:nowrap;overflow-x:auto;padding:6px 10px;gap:5px;-webkit-overflow-scrolling:touch}
+  nav button{flex:none;padding:6px 10px;font-size:14px;white-space:nowrap}
+  main{padding:8px 8px}
+  .card{padding:10px}
+  .bar{gap:6px}.bar button{padding:6px 9px;font-size:14px}
+  .qtext{font-size:19px}.opt{font-size:17px;padding:10px 12px}
+  .sentr{font-size:17px;line-height:2.2}
+}
+@media(max-height:600px){header{padding:4px 10px}header h1{font-size:16px}nav{padding:4px 10px}.card{padding:8px;margin-bottom:8px}}
+.empty{padding:40px 20px;color:var(--mu);text-align:center}
+/* Mapping */
+.chip{display:inline-block;border:2px solid #8a94a6;background:#fff;border-radius:999px;padding:6px 14px;margin:4px;font-weight:600;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;position:relative;font-size:17px}
+.chip.sel{outline:3px solid #f59f00}
+.chip .dot{position:absolute;left:-3px;top:-3px;width:13px;height:13px;border-radius:50%;border:2px solid #fff}
+.chip.ok{background:#d3f9d8!important;border-color:var(--ok)!important}
+.chip.no{background:#ffe3e3!important;border-color:var(--bad)!important}
+.ghost{position:fixed;z-index:1000;pointer-events:none;opacity:.9;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.bank{min-height:56px;border:2px dashed var(--line);border-radius:12px;padding:6px;background:#fafbfd}
+.bank.hot,.gap.hot,.box.hot{background:#fff6d6}
+.sentr{font-size:19px;line-height:2.3;padding:4px 8px;border-bottom:1px solid #eef1f6}
+.gap{display:inline-block;min-width:130px;min-height:40px;vertical-align:middle;border:2px dashed #8a94a6;border-radius:10px;padding:0 4px;text-align:center;line-height:1.5;background:#fff}
+.gap .chip{margin:2px}
+.boxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-bottom:12px}
+.box{border:3px solid #8a94a6;border-radius:12px;padding:8px;min-height:120px;background:#fff}
+.box h3{margin:0 0 6px;font-size:17px}
+.msg{font-weight:700;margin:8px 0}
+/* Quiz */
+.qcard{max-width:820px;margin:0 auto}
+.qtext{font-size:22px;margin:8px 0 14px;line-height:1.5}
+.qimg{max-width:100%;max-height:260px;display:block;margin:0 auto 12px;border-radius:8px}
+.opt{display:block;width:100%;text-align:left;font-size:19px;padding:12px 16px;margin:8px 0;border-radius:12px;border:2px solid var(--line)}
+.opt.ok{background:#d3f9d8;border-color:var(--ok)}
+.opt.no{background:#ffe3e3;border-color:var(--bad)}
+.why{background:#eef4fd;border-left:4px solid var(--ac);padding:8px 12px;border-radius:6px;margin:10px 0;font-size:16px}
+.prog{height:8px;background:#e3e8f1;border-radius:6px;overflow:hidden;margin-bottom:10px}
+.prog i{display:block;height:100%;background:var(--ac)}
+/* TicTacToe */
+.ttt{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:480px;margin:10px auto}
+.cell{aspect-ratio:1;font-size:clamp(40px,10vw,84px);font-weight:800;border-radius:14px;border:3px solid var(--line);background:#fff;padding:0;line-height:1}
+.cell.x{color:#e03131}.cell.o{color:#1c7ed6}.cell.win{background:#fff3bf;border-color:#f59f00}
+.team{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:6px 0}
+.team label{display:flex;gap:6px;align-items:center;font-weight:700}
+.team input{width:170px}
+.turn{text-align:center;font-size:20px;font-weight:700;margin:6px 0}
+.modalbg{position:fixed;inset:0;background:rgba(10,16,28,.6);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:#fff;border-radius:14px;max-width:820px;width:100%;max-height:92vh;overflow:auto;padding:16px}
+.leg{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.sw{display:inline-flex;gap:2px}
+.sw button{padding:5px 10px}
+@media print{header,nav,.bar,.card.noprint{display:none!important}.viewer{height:auto!important;overflow:visible!important;border:0}main{padding:0}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Themengenerator</h1>
+  <span class="ver" id="ver">Version 16.11.2026 · Nr. 5</span>
+  <span class="mu" id="stat" style="color:#9fb0c8"></span>
+  <span class="sp"></span>
+  <button id="bEx">Beispiel laden</button>
+  <button id="bSave">Sichern (Datei)</button>
+  <button id="bLoad">Laden (Datei)</button>
+  <button id="bNew">Neu</button>
+  <button id="bFs" title="Ganzes Programm im Vollbild (Esc beendet)">⛶ Vollbild</button>
+  <input type="file" id="fLoad" accept=".json,application/json" style="display:none">
+</header>
+<nav id="nav">
+  <button data-t="in" class="on">1 · Eingabe</button>
+  <button data-t="mm">2 · Mindmap</button>
+  <button data-t="mp">3 · Mapping</button>
+  <button data-t="qz">4 · Quiz</button>
+  <button data-t="tt">5 · TicTacToe</button>
+  <button data-t="fl">6 · Pfad / Organigramm</button>
+</nav>
+<main>
+<section class="pane on" id="p_in">
+  <div class="card">
+    <label class="f" for="iTitle" style="margin-top:0">Thema (Überschrift)</label>
+    <input type="text" id="iTitle" placeholder="zum Beispiel: Dreiecke">
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h2>Wissenssätze</h2>
+      <div class="mu">Ein Satz je Zeile. Mit <b>## Überschrift</b> kannst du die Sätze in Gruppen ordnen (jede Gruppe wird ein Hauptast).</div>
+      <textarea id="iText" rows="14" spellcheck="false" placeholder="## Eigenschaften&#10;Ein Dreieck hat drei Seiten und drei Winkel.&#10;## Besondere Dreiecke&#10;Ein rechtwinkliges Dreieck hat einen Winkel von 90 Grad."></textarea>
+    </div>
+    <div class="card">
+      <h2>Fachwörter</h2>
+      <div class="mu">Ein Wort je Zeile, optional mit Erklärung: <b>Hypotenuse: längste Seite im rechtwinkligen Dreieck</b>. Mehrere Wörter ohne Erklärung dürfen auch mit Komma in einer Zeile stehen.</div>
+      <textarea id="iWords" rows="14" spellcheck="false" placeholder="Dreieck: Vieleck mit drei Ecken&#10;Winkel&#10;Hypotenuse: längste Seite im rechtwinkligen Dreieck"></textarea>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Bilder</h2>
+    <div class="mu">Bilder hinzufügen (werden verkleinert im Gerät gespeichert). Die Beschriftung sollte ein Fachwort sein, dann wird das Bild in der Mindmap dem passenden Satz zugeordnet und im Quiz abgefragt.</div>
+    <div class="bar" style="margin-top:8px"><button class="pri" id="bImg">+ Bilder wählen</button><input type="file" id="fImg" accept="image/*" multiple style="display:none"></div>
+    <div class="imgs" id="imgList"></div>
+  </div>
+  <div class="card mu" id="hint"></div>
+</section>
+
+<section class="pane" id="p_mm"><div class="vbox" id="mmBox">
+  <div class="bar">
+    <span class="grp" title="Schriftgröße"><button id="mmFsM">A−</button><span id="mmFsV" class="mu"></span><button id="mmFsP">A+</button></span>
+    <span class="grp" title="Ansicht vergrößern oder verkleinern"><button id="mmFit">Anpassen</button><button id="mmM">−</button><span id="mmZ" class="mu"></span><button id="mmP">+</button></span>
+    <span class="sp"></span>
+    <button id="mmFull">⛶ Vollbild</button><button id="mmPrint">Drucken</button><button id="mmSvg">SVG</button><button class="pri" id="mmPng">PNG</button>
+  </div>
+  <div class="viewer" id="mmView"></div>
+</div></section>
+
+<section class="pane" id="p_mp"><div class="vbox" id="mpBox">
+  <div class="bar">
+    <span class="sw"><button id="mpMove" class="on" data-cm="move">✥ Verschieben</button><button id="mpLink" data-cm="link">⤳ Verbinden</button></span>
+    <button data-cm="add">+ Wort</button><button data-cm="mix" title="Alle Begriffe durcheinander auf der Fläche verteilen">Neu mischen</button><button data-cm="grid" title="Alle Begriffe wieder in Reihen ordnen">Ordnen</button><button data-cm="grp" title="Begriffe spaltenweise nach ihrer Gruppe sortieren (Lösungshilfe)">Nach Gruppen</button><button data-cm="clr">Verbindungen löschen</button><button id="mpHid" data-cm="hid" style="display:none"></button>
+  </div>
+  <div class="bar">
+    <span class="leg">Farben: <span class="sw" id="mpCol"><button data-c="aus" title="Keine Farbhilfe">Aus</button><button data-c="leicht" class="on" title="Farbe zeigt deutlich die Gruppe">Leicht</button><button data-c="schwer" title="Nur ein kleiner Farbpunkt verrät die Gruppe">Schwer</button></span></span>
+    <span class="grp" title="Schriftgröße"><button id="mpFsM">A−</button><span id="mpFsV" class="mu"></span><button id="mpFsP">A+</button></span>
+    <span class="grp"><button id="mpFit">Anpassen</button><button id="mpM">−</button><span id="mpZ" class="mu"></span><button id="mpP">+</button></span>
+    <span class="sp"></span>
+    <button id="mpFull">⛶ Vollbild</button><button id="mpSvg">SVG</button><button class="pri" id="mpPng">PNG</button>
+  </div>
+  <div class="bar" id="mpSel" style="min-height:40px"></div>
+  <div class="viewer" id="mpView"></div>
+</div></section>
+
+<section class="pane" id="p_qz"><div id="qzHost"></div></section>
+
+<section class="pane" id="p_tt"><div id="ttHost"></div></section>
+
+<section class="pane" id="p_fl">
+  <div class="grid2">
+    <div class="card noprint">
+      <div class="bar"><span class="sw" id="flMode"><button data-m="org" class="on">Organigramm</button><button data-m="path">Pfad-Diagramm</button></span><span class="sp"></span><select id="flImg" title="Ein Bild an der Cursorstelle einfügen"></select><button id="flFrom">aus Wissenssätzen übernehmen</button><button id="flEx">Beispiel</button></div>
+      <div class="mu" id="flHelp"></div>
+      <textarea id="flText" rows="14" spellcheck="false" style="margin-top:6px"></textarea>
+    </div>
+    <div class="vbox" id="flBox">
+      <div class="bar">
+        <span class="grp" title="Schriftgröße"><button id="flFsM">A−</button><span id="flFsV" class="mu"></span><button id="flFsP">A+</button></span>
+        <span class="grp"><button id="flFit">Anpassen</button><button id="flM">−</button><span id="flZ" class="mu"></span><button id="flP">+</button></span>
+        <span class="sp"></span>
+        <button id="flFull">⛶ Vollbild</button><button id="flPrint">Drucken</button><button id="flSvg">SVG</button><button class="pri" id="flPng">PNG</button>
+      </div>
+      <div class="viewer" id="flView"></div>
+    </div>
+  </div>
+</section>
+</main>
+<div id="modalHost"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const uid = () => Math.random().toString(36).slice(2,10);
+const COLORS = ["#e8590c","#1c7ed6","#2f9e44","#ae3ec9","#d6336c","#0c8599","#f08c00","#5c940d"];
+const LSK = "themengenerator1";
+let S = {title:"", text:"", words:"", images:[], flow:"", flowMode:"org", mmFs:100, flFs:100, cmap:null};
+
+/* ---------- Speichern ---------- */
+let saveT = 0;
+function save(){
+  clearTimeout(saveT);
+  saveT = setTimeout(()=>{
+    try{ localStorage.setItem(LSK, JSON.stringify(S)); $("stat").textContent = "gespeichert"; }
+    catch(e){ $("stat").textContent = "Speicher voll: bitte „Sichern (Datei)“ nutzen"; }
+  }, 300);
+}
+function loadLS(){ try{ const v = JSON.parse(localStorage.getItem(LSK)||"null"); if(v && typeof v==="object") S = Object.assign(S, v); }catch(e){} }
+
+/* ---------- Auswertung der Eingabe ---------- */
+function shuffle(a){ a = a.slice(); for(let i=a.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+function findWord(sent, word){
+  if(!word) return null;
+  try{
+    const m = new RegExp("(?<![\\p{L}\\p{N}])"+reEsc(word)+"\\p{L}{0,3}(?![\\p{L}\\p{N}])","iu").exec(sent);
+    return m ? {s:m.index, e:m.index+m[0].length} : null;
+  }catch(e){ return null; }
+}
+function parse(){
+  const groups = []; let g = null;
+  String(S.text||"").replace(/\r/g,"").split("\n").forEach(l=>{
+    let t = l.trim(); if(!t) return;
+    const h = /^#{1,6}\s+(.*)$/.exec(t);
+    if(h){ g = {name:h[1].trim(), sents:[]}; groups.push(g); return; }
+    t = t.replace(/^[-*+•]\s+/,"").replace(/^\d+[.)]\s+/,"");
+    if(!g){ g = {name:"", sents:[]}; groups.push(g); }
+    g.sents.push(t);
+  });
+  const gr = groups.filter(x=>x.sents.length);
+  const sents = []; gr.forEach((x,gi)=>x.sents.forEach(t=>sents.push({t, gi})));
+  const words = [], seen = new Set();
+  String(S.words||"").replace(/\r/g,"").split("\n").forEach(l=>{
+    l = l.trim(); if(!l) return;
+    const m = /^([^:=]+?)\s*[:=]\s*(.+)$/.exec(l);
+    const add = (w, e)=>{ w = w.trim(); if(!w || seen.has(w.toLowerCase())) return; seen.add(w.toLowerCase()); words.push({w, e:e||""}); };
+    if(m) add(m[1], m[2].trim()); else l.split(/[,;]/).forEach(w=>add(w, ""));
+  });
+  words.forEach(w=>{
+    const s = sents.find(x=>findWord(x.t, w.w)); w.gi = s ? s.gi : -1;
+  });
+  const named = gr.length>1 || (gr.length===1 && !!gr[0].name);
+  return {groups:gr, sents, words, named};
+}
+function groupName(P, gi){ return gi>=0 && P.groups[gi] && P.groups[gi].name ? P.groups[gi].name : "Wissen"; }
+const gcol = gi => gi>=0 ? COLORS[gi%COLORS.length] : "#868e96";
+
+/* ---------- Reiter ---------- */
+let TAB = "in";
+function setTab(t){
+  TAB = t;
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on", b.dataset.t===t));
+  document.querySelectorAll(".pane").forEach(p=>p.classList.toggle("on", p.id==="p_"+t));
+  if(t==="in") renderIn(); else if(t==="mm") renderMM(); else if(t==="mp") renderMP(); else if(t==="qz") renderQZ(); else if(t==="tt") renderTT(); else if(t==="fl") renderFL(true);
+  window.scrollTo(0,0); refit();
+}
+$("nav").onclick = e=>{ const b = e.target.closest("button"); if(b) setTab(b.dataset.t); };
+
+/* ---------- 1 Eingabe ---------- */
+function renderIn(){
+  $("iTitle").value = S.title; $("iText").value = S.text; $("iWords").value = S.words;
+  imgList(); hint();
+}
+function hint(){
+  const P = parse();
+  $("hint").textContent = P.sents.length+" Wissenssätze in "+P.groups.length+" Gruppe(n), "+P.words.length+" Fachwörter, "+S.images.length+" Bilder."
+    + (P.sents.length ? "" : " Gib zuerst Wissenssätze ein, dann füllen sich alle Ausgaben.");
+}
+$("iTitle").oninput = e=>{ S.title = e.target.value; save(); };
+$("iText").oninput = e=>{ S.text = e.target.value; save(); hint(); };
+$("iWords").oninput = e=>{ S.words = e.target.value; save(); hint(); };
+function imgList(){
+  $("imgList").innerHTML = S.images.map(im=>`<div class="im" data-id="${im.id}"><img src="${im.src}" alt=""><input type="text" value="${esc(im.cap)}" placeholder="Beschriftung / Fachwort" data-cap="${im.id}"><button data-del="${im.id}">Entfernen</button></div>`).join("") || '<span class="mu">Noch keine Bilder.</span>';
+}
+$("imgList").oninput = e=>{ const id = e.target.dataset.cap; if(!id) return; const im = S.images.find(x=>x.id===id); if(im){ im.cap = e.target.value; save(); } };
+$("imgList").onclick = e=>{ const id = e.target.dataset.del; if(!id) return; S.images = S.images.filter(x=>x.id!==id); imgList(); hint(); save(); };
+$("bImg").onclick = ()=>$("fImg").click();
+function loadImg(file){
+  return new Promise(res=>{
+    const r = new FileReader();
+    r.onerror = ()=>res(null);
+    r.onload = ()=>{
+      const im = new Image();
+      im.onerror = ()=>res(null);
+      im.onload = ()=>{
+        const k = Math.min(1, 640/Math.max(im.width, im.height));
+        const c = document.createElement("canvas"); c.width = Math.max(1,Math.round(im.width*k)); c.height = Math.max(1,Math.round(im.height*k));
+        const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height);
+        res({id:uid(), src:c.toDataURL("image/jpeg",.82), cap:file.name.replace(/\.[^.]+$/,"").replace(/[_-]+/g," "), w:c.width, h:c.height});
+      };
+      im.src = r.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+$("fImg").onchange = async e=>{
+  const fs = [...e.target.files]; e.target.value = "";
+  for(const f of fs){ const o = await loadImg(f); if(o) S.images.push(o); }
+  imgList(); hint(); save();
+};
+
+/* ---------- Kopf: Beispiel, Sichern, Laden, Neu ---------- */
+const EX = {
+  title:"Dreiecke",
+  text:"## Eigenschaften\nEin Dreieck hat drei Seiten und drei Winkel.\nDie Summe der Innenwinkel im Dreieck beträgt 180 Grad.\nEin gleichseitiges Dreieck hat drei gleich lange Seiten.\n## Besondere Dreiecke\nEin rechtwinkliges Dreieck hat einen Winkel von 90 Grad.\nIm gleichschenkligen Dreieck sind zwei Seiten gleich lang.\nDie längste Seite im rechtwinkligen Dreieck heißt Hypotenuse.\n## Fläche\nDen Flächeninhalt berechnet man mit Grundseite mal Höhe geteilt durch zwei.\nDie Höhe steht senkrecht auf der Grundseite.",
+  words:"Dreieck: Vieleck mit drei Ecken\nSeite: Strecke zwischen zwei Ecken\nWinkel: Figur aus zwei Strahlen mit gemeinsamem Anfangspunkt\nInnenwinkel\ngleichseitig: alle Seiten sind gleich lang\ngleichschenklig: zwei Seiten sind gleich lang\nrechtwinklig: ein Winkel misst 90 Grad\nHypotenuse: längste Seite im rechtwinkligen Dreieck\nGrundseite\nHöhe: Abstand einer Ecke von der gegenüberliegenden Seite",
+  flow:"Dreiecke\n  Nach Seiten\n    gleichseitig\n    gleichschenklig\n    ungleichseitig\n  Nach Winkeln\n    spitzwinklig\n    rechtwinklig\n    stumpfwinklig"
+};
+$("bEx").onclick = ()=>{
+  if((S.text||S.words||S.images.length) && !confirm("Die aktuelle Eingabe durch das Beispiel ersetzen?")) return;
+  S = {title:EX.title, text:EX.text, words:EX.words, images:[], flow:EX.flow, flowMode:"org", mmFs:S.mmFs||100, flFs:S.flFs||100}; save(); resetAll(); setTab("in");
+};
+$("bNew").onclick = ()=>{
+  if((S.text||S.words||S.images.length) && !confirm("Alles löschen und neu beginnen? (Vorher mit „Sichern“ speichern.)")) return;
+  S = {title:"", text:"", words:"", images:[], flow:"", flowMode:"org", mmFs:S.mmFs||100, flFs:S.flFs||100}; save(); resetAll(); setTab("in");
+};
+$("bSave").onclick = ()=>{
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)],{type:"application/json"}));
+  a.download = "thema-"+(S.title||"ohne-titel").replace(/[^\wäöüÄÖÜß\- ]+/g,"").trim().replace(/\s+/g,"_")+".json";
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+};
+$("bLoad").onclick = ()=>$("fLoad").click();
+$("fLoad").onchange = async e=>{
+  const f = e.target.files[0]; e.target.value = ""; if(!f) return;
+  try{
+    const v = JSON.parse(await f.text());
+    if(!v || typeof v!=="object" || typeof v.text!=="string") throw new Error("keine Themendatei");
+    S = Object.assign({title:"", text:"", words:"", images:[], flow:"", flowMode:"org"}, v);
+    S.images = (Array.isArray(S.images)?S.images:[]).filter(i=>i && typeof i.src==="string").map(i=>({id:i.id||uid(), src:i.src, cap:String(i.cap||""), w:i.w||4, h:i.h||3}));
+    save(); resetAll(); setTab("in");
+  }catch(err){ alert("Die Datei kann nicht gelesen werden: "+err.message); }
+};
+function resetAll(){ MPS.sel = ""; MPS.selL = ""; QZ.state = "start"; TT.reset(); }
+
+/* ---------- Zeichen-Hilfen für SVG ---------- */
+const cx = document.createElement("canvas").getContext("2d");
+const FONT = "system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif";
+function wrap(txt, size, bold, maxW){
+  cx.font = (bold?"700 ":"400 ")+size+"px "+FONT;
+  const words = String(txt).split(/\s+/).filter(Boolean), lines = []; let cur = "";
+  words.forEach(w=>{ const t = cur ? cur+" "+w : w; if(cx.measureText(t).width<=maxW || !cur) cur = t; else{ lines.push(cur); cur = w; } });
+  if(cur) lines.push(cur); return lines.length ? lines : [""];
+}
+function textW(lines, size, bold){ cx.font = (bold?"700 ":"400 ")+size+"px "+FONT; return Math.max(...lines.map(l=>cx.measureText(l).width)); }
+function tspans(lines, x, y, size, lh, anchor){
+  const top = y - (lines.length*lh)/2 + lh/2;
+  return lines.map((l,i)=>`<text x="${x}" y="${(top+i*lh).toFixed(1)}" text-anchor="${anchor||"middle"}" dominant-baseline="central">${esc(l)}</text>`).join("");
+}
+function svgWrap(w, h, body, defs){
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" font-family="${FONT}"><defs>${defs||""}</defs><rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+}
+function download(name, blob){
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function fname(ext, kind){ return (kind+"-"+(S.title||"thema")).replace(/[^\wäöüÄÖÜß\- ]+/g,"").trim().replace(/\s+/g,"_")+"."+ext; }
+function exportPng(svg, name){
+  if(!svg) return;
+  const m = /viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(svg); const W = +m[1], H = +m[2];
+  const k = Math.min(2, 8000/Math.max(W,H));
+  const img = new Image(), url = URL.createObjectURL(new Blob([svg],{type:"image/svg+xml;charset=utf-8"}));
+  img.onload = ()=>{
+    const c = document.createElement("canvas"); c.width = Math.round(W*k); c.height = Math.round(H*k);
+    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(img,0,0,c.width,c.height);
+    URL.revokeObjectURL(url);
+    c.toBlob(b=>download(name, b), "image/png");
+  };
+  img.onerror = ()=>{ URL.revokeObjectURL(url); alert("PNG-Export nicht möglich."); };
+  img.src = url;
+}
+/* Höhe der Ansichtsfläche an das Fenster anpassen, Vollbild */
+function isFs(box){ return !!box && (document.fullscreenElement===box || box.classList.contains("fake")); }
+function fitViewers(){
+  document.querySelectorAll(".pane.on .viewer").forEach(v=>{
+    const box = v.closest(".vbox"), fs = isFs(box); let h;
+    if(fs){ const bar = box.querySelector(".bar"); h = window.innerHeight-(bar?bar.offsetHeight:0)-34; }
+    else h = window.innerHeight-(v.getBoundingClientRect().top+window.scrollY)-12;
+    v.style.height = Math.max(fs?200:340, h)+"px";
+  });
+  [["mmBox","mmFull"],["flBox","flFull"],["mpBox","mpFull"]].forEach(a=>{ const b = $(a[1]); if(b) b.textContent = isFs($(a[0])) ? "Vollbild beenden" : "⛶ Vollbild"; });
+  const bf = $("bFs"); if(bf) bf.textContent = document.fullscreenElement===document.documentElement ? "Vollbild beenden" : "⛶ Vollbild";
+}
+function refit(){ fitViewers(); if(TAB==="mm" && MMS.fit) applyZoom($("mmView"), $("mmZ"), MMS); if(TAB==="fl" && FLS.fit) applyZoom($("flView"), $("flZ"), FLS); if(TAB==="mp" && MPS.fit) applyZoom($("mpView"), $("mpZ"), MPS); }
+function toggleFs(box){
+  if(isFs(box)){ if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); box.classList.remove("fake"); }
+  else if(box.requestFullscreen) box.requestFullscreen().catch(()=>{ box.classList.add("fake"); refit(); });
+  else box.classList.add("fake");
+  setTimeout(refit, 120);
+}
+document.addEventListener("fullscreenchange", ()=>setTimeout(refit, 80));
+document.addEventListener("keydown", e=>{ if(e.key==="Escape"){ document.querySelectorAll(".vbox.fake").forEach(b=>b.classList.remove("fake")); setTimeout(refit, 50); } });
+$("bFs").onclick = ()=>{ if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); else document.documentElement.requestFullscreen().catch(()=>{ alert("Vollbild wird von diesem Browser nicht unterstützt. Tipp: Browser-Menü, Zur Startseite hinzufügen, oder F11."); }); };
+if(!document.documentElement.requestFullscreen) $("bFs").style.display = "none";
+/* Anzeige mit Zoom */
+function viewer(host, zEl, state, svg, w, h, exp){
+  fitViewers();
+  state.svg = exp || svg; state.w = w; state.h = h;
+  host.innerHTML = svg;
+  applyZoom(host, zEl, state);
+}
+function applyZoom(host, zEl, st){
+  const el = host.querySelector("svg"); if(!el) return;
+  let k;
+  if(st.fit){ k = Math.max(.1, Math.min((host.clientWidth-10)/st.w, (host.clientHeight-10)/st.h)); st.zoom = Math.round(k*100); }
+  else k = st.zoom/100;
+  el.style.width = (st.w*k)+"px"; el.style.height = (st.h*k)+"px";
+  zEl.textContent = st.zoom+" %";
+}
+function zoomBind(ids, host, st){
+  const [fit, mi, pl, zEl] = ids.map($);
+  fit.onclick = ()=>{ st.fit = true; applyZoom(host(), zEl, st); };
+  mi.onclick = ()=>{ st.fit = false; st.zoom = Math.max(20, st.zoom-10); applyZoom(host(), zEl, st); };
+  pl.onclick = ()=>{ st.fit = false; st.zoom = Math.min(300, st.zoom+10); applyZoom(host(), zEl, st); };
+}
+
+/* ---------- 2 Mindmap ---------- */
+const MMS = {fit:true, zoom:100, svg:"", w:1, h:1};
+function mmTree(){
+  const P = parse();
+  const root = {kind:"root", text:S.title||"Thema", children:[]};
+  const used = new Set();
+  const sentNode = s=>{
+    const n = {kind:"sent", text:s.t, children:[]};
+    P.words.forEach(w=>{ if(findWord(s.t, w.w)) n.children.push({kind:"word", text:w.w, children:[]}); });
+    S.images.forEach(im=>{
+      if(used.has(im.id) || !im.cap.trim()) return;
+      if(findWord(s.t, im.cap.trim())){ used.add(im.id); n.children.push({kind:"img", im, children:[]}); }
+    });
+    return n;
+  };
+  P.groups.forEach((g,gi)=>{
+    if(P.named){
+      const b = {kind:"group", text:g.name||"Wissen", gi, children:g.sents.map(t=>sentNode({t}))};
+      root.children.push(b);
+    }else g.sents.forEach(t=>root.children.push(sentNode({t})));
+  });
+  const loose = P.words.filter(w=>w.gi<0);
+  if(loose.length) root.children.push({kind:"group", text:"Weitere Fachwörter", children:loose.map(w=>({kind:"word", text:w.w+(w.e?": "+w.e:""), children:[]}))});
+  const rest = S.images.filter(im=>!used.has(im.id));
+  if(rest.length) root.children.push({kind:"group", text:"Bilder", children:rest.map(im=>({kind:"img", im, children:[]}))});
+  return {root, P};
+}
+function mmMeasure(n){
+  const K = (S.mmFs||100)/100;
+  if(n.kind==="img"){
+    const iw = 150, ih = Math.min(130, Math.round(iw*(n.im.h||3)/(n.im.w||4))), cs = 14*K, cap = wrap(n.im.cap||"", cs, true, 190);
+    n.iw = iw; n.ih = ih; n.cap = cap; n.cs = cs;
+    n.w = Math.max(iw, textW(cap,cs,true))+16; n.h = ih+16+(n.im.cap ? cap.length*cs*1.3+4 : 0);
+    return;
+  }
+  const sz = K*(n.kind==="root" ? 28 : n.kind==="group" ? 21 : n.kind==="sent" ? 16 : 15), bold = n.kind!=="sent";
+  const mw = n.kind==="root" ? 300 : n.kind==="group" ? 230 : n.kind==="sent" ? 300 : 230;
+  n.lines = wrap(n.text, sz, bold, mw); n.sz = sz; n.bold = bold; n.lh = sz*1.28;
+  const px = n.kind==="root" ? 26 : n.kind==="word" ? 12 : 14, py = n.kind==="root" ? 16 : n.kind==="word" ? 6 : 10;
+  n.w = textW(n.lines, sz, bold)+2*px; n.h = n.lines.length*n.lh+2*py;
+}
+function mmWalk(n, f, d){ f(n, d||0); n.children.forEach(c=>mmWalk(c, f, (d||0)+1)); }
+function mmRender(){
+  const {root} = mmTree();
+  if(!root.children.length) return null;
+  mmWalk(root, mmMeasure);
+  const GX = 44, GY = 12;
+  const subH = n=>{ n.sh = n.children.length ? Math.max(n.h, n.children.reduce((a,c)=>a+subH(c),0)+(n.children.length-1)*GY) : n.h; return n.sh; };
+  root.children.forEach(subH);
+  root.children.forEach((c,i)=>{ c.col = COLORS[i%COLORS.length]; mmWalk(c, x=>{ x.col = c.col; }); });
+  const tot = root.children.reduce((a,c)=>a+c.sh,0); let acc = 0; const right = [], left = [];
+  root.children.forEach(c=>{ if(root.children.length===1 || acc < tot/2){ right.push(c); acc += c.sh; } else left.push(c); });
+  root.x = -root.w/2; root.y = -root.h/2;
+  const place = (n, xIn, y0, dir)=>{
+    n.dir = dir; n.x = dir>0 ? xIn : xIn-n.w; n.y = y0+n.sh/2-n.h/2;
+    const total = n.children.reduce((a,c)=>a+c.sh,0)+(n.children.length-1)*GY;
+    let yy = y0+Math.max(0,(n.sh-total)/2);
+    n.children.forEach(c=>{ place(c, dir>0 ? n.x+n.w+GX : n.x-GX, yy, dir); yy += c.sh+GY; });
+  };
+  const side = (arr, dir)=>{
+    if(!arr.length) return; const total = arr.reduce((a,c)=>a+c.sh,0)+(arr.length-1)*GY; let yy = -total/2;
+    arr.forEach(c=>{ place(c, dir>0 ? root.w/2+GX : -root.w/2-GX, yy, dir); yy += c.sh+GY; });
+  };
+  side(right, 1); side(left, -1);
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  mmWalk(root, n=>{ x0 = Math.min(x0,n.x); y0 = Math.min(y0,n.y); x1 = Math.max(x1,n.x+n.w); y1 = Math.max(y1,n.y+n.h); });
+  const M = 30, W = Math.ceil(x1-x0+2*M), H = Math.ceil(y1-y0+2*M), ox = M-x0, oy = M-y0;
+  let edges = "", nodes = "";
+  const edge = (p, c, depth)=>{
+    const dir = c.dir, px = dir>0 ? p.x+p.w : p.x, py = p.y+p.h/2, qx = dir>0 ? c.x : c.x+c.w, qy = c.y+c.h/2, mx = (px+qx)/2;
+    edges += `<path d="M${(px+ox).toFixed(1)} ${(py+oy).toFixed(1)} C${(mx+ox).toFixed(1)} ${(py+oy).toFixed(1)} ${(mx+ox).toFixed(1)} ${(qy+oy).toFixed(1)} ${(qx+ox).toFixed(1)} ${(qy+oy).toFixed(1)}" fill="none" stroke="${c.col}" stroke-width="${depth<=1?7:depth===2?4:2.5}" stroke-linecap="round"/>`;
+  };
+  const draw = n=>{
+    const x = n.x+ox, y = n.y+oy, cxn = x+n.w/2, cyn = y+n.h/2;
+    if(n.kind==="root") nodes += `<rect x="${x}" y="${y}" width="${n.w}" height="${n.h}" rx="${n.h/2}" fill="#fff" stroke="#1b2130" stroke-width="5"/><g fill="#1b2130" font-size="${n.sz}" font-weight="700">${tspans(n.lines,cxn,cyn,n.sz,n.lh)}</g>`;
+    else if(n.kind==="group") nodes += `<rect x="${x}" y="${y}" width="${n.w}" height="${n.h}" rx="${Math.min(18,n.h/2.4)}" fill="${n.col}"/><g fill="#fff" font-size="${n.sz}" font-weight="700">${tspans(n.lines,cxn,cyn,n.sz,n.lh)}</g>`;
+    else if(n.kind==="sent") nodes += `<rect x="${x}" y="${y}" width="${n.w}" height="${n.h}" rx="10" fill="#fff" stroke="${n.col}" stroke-width="3"/><g fill="#1b2130" font-size="${n.sz}">${tspans(n.lines,x+14,cyn,n.sz,n.lh,"start")}</g>`;
+    else if(n.kind==="word") nodes += `<rect x="${x}" y="${y}" width="${n.w}" height="${n.h}" rx="${n.h/2}" fill="${n.col}" fill-opacity=".16" stroke="${n.col}" stroke-width="2"/><g fill="#1b2130" font-size="${n.sz}" font-weight="700">${tspans(n.lines,cxn,cyn,n.sz,n.lh)}</g>`;
+    else if(n.kind==="img"){
+      nodes += `<rect x="${x}" y="${y}" width="${n.w}" height="${n.h}" rx="10" fill="#fff" stroke="${n.col}" stroke-width="3"/><image href="${n.im.src}" x="${x+(n.w-n.iw)/2}" y="${y+8}" width="${n.iw}" height="${n.ih}" preserveAspectRatio="xMidYMid meet"/>`;
+      if(n.im.cap) nodes += `<g fill="#1b2130" font-size="${n.cs}" font-weight="700">${tspans(n.cap,cxn,y+8+n.ih+10+(n.cap.length*n.cs*1.3)/2,n.cs,n.cs*1.3)}</g>`;
+    }
+    n.children.forEach(c=>{ edge(n, c, 1+(c.depthHint||0)); });
+  };
+  /* Tiefen für Strichstärke */
+  mmWalk(root, (n,d)=>{ n.depth = d; });
+  const drawAll = n=>{ n.children.forEach(c=>{ edge(n, c, c.depth); }); };
+  mmWalk(root, drawAll);
+  mmWalk(root, n=>{
+    const hold = n.children; n.children = []; draw(n); n.children = hold;
+  });
+  return {svg:svgWrap(W,H,edges+nodes), w:W, h:H};
+}
+function renderMM(){
+  const host = $("mmView"), r = mmRender();
+  if(!r){ host.innerHTML = '<div class="empty">Für die Mindmap fehlen noch Wissenssätze. Gib sie im Reiter „Eingabe“ ein.</div>'; MMS.svg = ""; return; }
+  viewer(host, $("mmZ"), MMS, r.svg, r.w, r.h);
+}
+zoomBind(["mmFit","mmM","mmP","mmZ"], ()=>$("mmView"), MMS);
+$("mmPrint").onclick = ()=>window.print();
+$("mmSvg").onclick = ()=>{ if(MMS.svg) download(fname("svg","mindmap"), new Blob([MMS.svg],{type:"image/svg+xml"})); };
+$("mmPng").onclick = ()=>exportPng(MMS.svg, fname("png","mindmap"));
+window.addEventListener("resize", refit);
+window.addEventListener("orientationchange", ()=>setTimeout(refit, 200));
+$("mmFull").onclick = ()=>toggleFs($("mmBox"));
+$("flFull").onclick = ()=>toggleFs($("flBox"));
+function fsBind(key, m, p, v, again){
+  const upd = ()=>{ $(v).textContent = (S[key]||100)+" %"; };
+  $(m).onclick = ()=>{ S[key] = Math.max(60, (S[key]||100)-10); save(); upd(); again(); };
+  $(p).onclick = ()=>{ S[key] = Math.min(250, (S[key]||100)+10); save(); upd(); again(); };
+  upd();
+}
+
+/*MPNEW*/
+/* ---------- Fragenpool für Quiz und TicTacToe ---------- */
+function buildPool(){
+  const P = parse(), Q = [];
+  P.sents.forEach(s=>{
+    const c = P.words.filter(w=>findWord(s.t, w.w)).sort((a,b)=>b.w.length-a.w.length)[0]; if(!c) return;
+    const m = findWord(s.t, c.w), others = shuffle(P.words.filter(x=>x.w!==c.w && !findWord(s.t, x.w))).slice(0,3);
+    if(!others.length) return;
+    Q.push({q:"Welcher Begriff passt in die Lücke?", text:s.t.slice(0,m.s)+"_____"+s.t.slice(m.e), opts:shuffle([c.w, ...others.map(o=>o.w)]), ans:c.w, why:s.t});
+  });
+  P.words.filter(w=>w.e).forEach(w=>{
+    const others = shuffle(P.words.filter(x=>x.w!==w.w)).slice(0,3); if(!others.length) return;
+    Q.push({q:"Welcher Fachbegriff ist gemeint?", text:w.e, opts:shuffle([w.w, ...others.map(o=>o.w)]), ans:w.w, why:w.w+": "+w.e});
+  });
+  const caps = [...new Set(S.images.map(i=>i.cap.trim()).filter(Boolean))];
+  S.images.forEach(im=>{
+    const cap = im.cap.trim(); if(!cap) return;
+    let others = shuffle(caps.filter(c=>c!==cap));
+    if(others.length<3) others = others.concat(shuffle(P.words.map(w=>w.w).filter(w=>w!==cap && !others.includes(w)))).slice(0,3); else others = others.slice(0,3);
+    if(!others.length) return;
+    Q.push({q:"Was zeigt das Bild?", img:im.src, opts:shuffle([cap, ...others]), ans:cap, why:"Das Bild zeigt: "+cap});
+  });
+  return shuffle(Q);
+}
+
+/* ---------- 4 Quiz ---------- */
+const QZ = {state:"start", list:[], i:0, right:0, wrong:[], answered:false, n:10};
+function renderQZ(){
+  const host = $("qzHost");
+  if(QZ.state==="start"){
+    const pool = buildPool();
+    host.innerHTML = `<div class="card qcard"><h2>Quiz</h2>`+(pool.length ? `<p>Aus deinen Eingaben entstehen <b>${pool.length}</b> Fragen (Lückensätze, Erklärungen, Bilder).</p>
+      <label class="f">Anzahl der Fragen</label><select id="qzN" style="max-width:220px">${[5,10,15,20].filter(n=>n<pool.length).map(n=>`<option value="${n}"${QZ.n===n?" selected":""}>${n}</option>`).join("")}<option value="${pool.length}">alle ${pool.length}</option></select>
+      <p><button class="pri" id="qzGo" style="font-size:18px;padding:10px 22px">Quiz starten</button></p>`
+      : `<p class="mu">Noch keine Fragen möglich. Du brauchst Wissenssätze mit Fachwörtern darin (mindestens zwei Fachwörter), Fachwörter mit Erklärung oder beschriftete Bilder.</p>`)+`</div>`;
+    if($("qzGo")) $("qzGo").onclick = ()=>{ const n = +$("qzN").value; QZ.n = n; QZ.list = pool.slice(0,n); QZ.i = 0; QZ.right = 0; QZ.wrong = []; QZ.answered = false; QZ.state = "run"; renderQZ(); };
+    return;
+  }
+  if(QZ.state==="end"){
+    host.innerHTML = `<div class="card qcard"><h2>Ergebnis</h2><p class="qtext"><b>${QZ.right}</b> von ${QZ.list.length} richtig.</p>`
+      + (QZ.wrong.length ? `<h3>Das solltest du wiederholen</h3>`+QZ.wrong.map(q=>`<div class="why">${esc(q.why)}</div>`).join("") : `<p>Alles richtig, sehr gut!</p>`)
+      + `<p><button class="pri" id="qzAgain">Noch einmal</button></p></div>`;
+    $("qzAgain").onclick = ()=>{ QZ.state = "start"; renderQZ(); };
+    return;
+  }
+  const q = QZ.list[QZ.i];
+  host.innerHTML = `<div class="card qcard"><div class="prog"><i style="width:${Math.round(QZ.i/QZ.list.length*100)}%"></i></div>
+    <div class="mu">Frage ${QZ.i+1} von ${QZ.list.length}</div><div class="qtext"><b>${esc(q.q)}</b></div>
+    ${q.img ? `<img class="qimg" src="${q.img}" alt="">` : `<div class="qtext">${esc(q.text)}</div>`}
+    <div id="qzOpts">${q.opts.map((o,i)=>`<button class="opt" data-o="${i}">${esc(o)}</button>`).join("")}</div>
+    <div id="qzFb"></div></div>`;
+  $("qzOpts").onclick = e=>{
+    const b = e.target.closest(".opt"); if(!b || QZ.answered) return; QZ.answered = true;
+    const pick = q.opts[+b.dataset.o], good = pick===q.ans;
+    if(good) QZ.right++; else QZ.wrong.push(q);
+    document.querySelectorAll("#qzOpts .opt").forEach((x,i)=>{ if(q.opts[i]===q.ans) x.classList.add("ok"); else if(x===b) x.classList.add("no"); });
+    const last = QZ.i===QZ.list.length-1;
+    $("qzFb").innerHTML = `<div class="msg" style="color:${good?"var(--ok)":"var(--bad)"}">${good?"Richtig!":"Leider falsch."}</div><div class="why">${esc(q.why)}</div><button class="pri" id="qzNext">${last?"Ergebnis zeigen":"Weiter"}</button>`;
+    $("qzNext").onclick = ()=>{ QZ.answered = false; if(last) QZ.state = "end"; else QZ.i++; renderQZ(); };
+  };
+}
+
+/* ---------- 5 TicTacToe ---------- */
+const TT = {
+  b:Array(9).fill(""), turn:"X", names:{X:"Team Rot", O:"Team Blau"}, score:{X:0,O:0}, over:false, win:[], queue:[], msg:"",
+  reset(){ this.b = Array(9).fill(""); this.turn = "X"; this.over = false; this.win = []; this.msg = ""; },
+  next(){ if(!this.queue.length) this.queue = buildPool(); return this.queue.pop() || null; }
+};
+const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+function renderTT(){
+  const host = $("ttHost");
+  const pool = buildPool();
+  if(!pool.length){ host.innerHTML = '<div class="card"><h2>TicTacToe</h2><p class="mu">Für TicTacToe werden Fragen gebraucht. Gib Wissenssätze mit Fachwörtern, Erklärungen oder beschriftete Bilder ein.</p></div>'; return; }
+  host.innerHTML = `<div class="card"><h2>TicTacToe mit Fragen</h2>
+    <div class="mu" style="text-align:center">Wer ein Feld wählt, muss eine Frage richtig beantworten. Dann gehört das Feld dem Team. Wer drei in einer Reihe hat, gewinnt.</div>
+    <div class="team"><label style="color:#e03131">X <input type="text" id="ttX" value="${esc(TT.names.X)}"></label><label style="color:#1c7ed6">O <input type="text" id="ttO" value="${esc(TT.names.O)}"></label></div>
+    <div class="turn" id="ttInfo"></div>
+    <div class="ttt" id="ttB">${TT.b.map((v,i)=>`<button class="cell ${v.toLowerCase()}${TT.win.includes(i)?" win":""}" data-i="${i}">${v}</button>`).join("")}</div>
+    <div class="turn" style="font-size:16px">Punkte: ${esc(TT.names.X)} ${TT.score.X} : ${TT.score.O} ${esc(TT.names.O)}</div>
+    <div style="text-align:center"><button id="ttNew">Neues Spiel</button></div></div>`;
+  ttInfo();
+  $("ttX").oninput = e=>{ TT.names.X = e.target.value||"Team X"; ttInfo(); };
+  $("ttO").oninput = e=>{ TT.names.O = e.target.value||"Team O"; ttInfo(); };
+  $("ttNew").onclick = ()=>{ TT.reset(); renderTT(); };
+  $("ttB").onclick = e=>{
+    const b = e.target.closest(".cell"); if(!b || TT.over) return;
+    const i = +b.dataset.i; if(TT.b[i]) return;
+    ttAsk(i);
+  };
+}
+function ttInfo(){
+  const el = $("ttInfo"); if(!el) return;
+  if(TT.over) el.innerHTML = TT.msg;
+  else el.innerHTML = `Am Zug: <span style="color:${TT.turn==="X"?"#e03131":"#1c7ed6"}">${esc(TT.names[TT.turn])} (${TT.turn})</span>${TT.msg?`<div class="mu" style="font-weight:400">${TT.msg}</div>`:""}`;
+}
+function ttAsk(i){
+  const q = TT.next(); if(!q) return;
+  $("modalHost").innerHTML = `<div class="modalbg"><div class="modal"><div class="mu">${esc(TT.names[TT.turn])} (${TT.turn}) beantwortet:</div><div class="qtext"><b>${esc(q.q)}</b></div>
+    ${q.img ? `<img class="qimg" src="${q.img}" alt="">` : `<div class="qtext">${esc(q.text)}</div>`}
+    <div id="tqO">${q.opts.map((o,k)=>`<button class="opt" data-o="${k}">${esc(o)}</button>`).join("")}</div><div id="tqF"></div></div></div>`;
+  let done = false;
+  $("tqO").onclick = e=>{
+    const b = e.target.closest(".opt"); if(!b || done) return; done = true;
+    const good = q.opts[+b.dataset.o]===q.ans;
+    document.querySelectorAll("#tqO .opt").forEach((x,k)=>{ if(q.opts[k]===q.ans) x.classList.add("ok"); else if(x===b) x.classList.add("no"); });
+    $("tqF").innerHTML = `<div class="msg" style="color:${good?"var(--ok)":"var(--bad)"}">${good?"Richtig! Das Feld gehört euch.":"Leider falsch. Das andere Team ist dran."}</div><div class="why">${esc(q.why)}</div><button class="pri" id="tqOk">Weiter</button>`;
+    $("tqOk").onclick = ()=>{
+      $("modalHost").innerHTML = "";
+      const who = TT.turn;
+      if(good){
+        TT.b[i] = who;
+        const w = LINES.find(l=>l.every(k=>TT.b[k]===who));
+        if(w){ TT.over = true; TT.win = w; TT.score[who]++; TT.msg = `<span style="color:${who==="X"?"#e03131":"#1c7ed6"}">${esc(TT.names[who])} gewinnt!</span>`; }
+        else if(TT.b.every(Boolean)){ TT.over = true; TT.msg = "Unentschieden."; }
+      }
+      if(!TT.over){ TT.turn = who==="X" ? "O" : "X"; TT.msg = good ? "" : esc(TT.names[who])+" lag falsch."; }
+      renderTT();
+    };
+  };
+}
+
+/* ---------- 6 Pfad / Organigramm ---------- */
+const FLS = {fit:true, zoom:100, svg:"", w:1, h:1};
+const FL_HELP = {
+  org:"Eine Zeile je Kästchen. Einrücken (Leerzeichen oder Tab) macht ein Kästchen zum Unterpunkt der Zeile darüber. Gibt es mehrere Zeilen ganz links, wird das Thema als oberstes Kästchen ergänzt.\nRaute = Oberbegriff: Ein Rautenzeichen vorn (# Tiere) ergibt eine große farbige Raute, der Oberbegriff erster Ordnung. Zwei Rautenzeichen (## Säugetiere) ergeben eine kleinere Raute mit farbigem Rand, den Oberbegriff zweiter Ordnung. Zeilen ohne Rautenzeichen bleiben normale Kästchen.\nBild: ![Name] in der Zeile (Auswahl „Bild einfügen“); steht nur der Name eines Bildes in der Zeile, erscheint es von selbst.",
+  path:"Ein Schritt je Zeile, der Reihe nach. Oder ganze Wege in einer Zeile. Jede Zeile mit Pfeilen wird eine eigene Reihe.\nPfeil = führt zu: A > B zeichnet einen Pfeil von A nach B (A -> B geht auch). Mit Beschriftung auf dem Pfeil: Sonne >treibt> Pflanze (das Wort steht direkt an den Pfeilzeichen, ohne Leerzeichen).\nRaute = wichtiger Begriff oder Entscheidung: ein Rautenzeichen vorn (# Rechtwinklig?), zwei für eine kleinere Raute mit Rand.\nBild: ![Name] im Schritt (Auswahl „Bild einfügen“)."
+};
+const FL_EX = {org:EX.flow, path:"Seiten messen > Grundseite wählen > # Rechtwinklig? >ja> Höhe einzeichnen > Grundseite mal Höhe >dann> durch 2 teilen"};
+function flText(){ return S.flow || ""; }
+/* Bild im Kästchen: ![Name] verweist auf ein Bild der Eingabe; passt ein ganzer Kastentext zur Beschriftung eines Bildes, erscheint das Bild automatisch */
+function flImg(t){
+  const m = /!\[([^\]]*)\]/.exec(t||""), find = c=>S.images.find(i=>(i.cap||"").trim().toLowerCase()===c.trim().toLowerCase() && c.trim());
+  if(m){ const im = find(m[1]), rest = t.replace(m[0]," ").replace(/\s+/g," ").trim(); return im ? {t:rest, im} : {t:rest||m[1], im:null}; }
+  const im = find(t||""); return {t:(t||"").trim(), im:im||null};
+}
+function flRank(t){ const m = /^(#{1,2})\s*(.*)$/.exec((t||"").trim()); return m ? {rank:m[1].length, t:m[2]} : {rank:0, t:(t||"").trim()}; }
+function flDia(x, y, w, h, fill, stroke, sw){ return `<polygon points="${(x+w/2).toFixed(1)},${y.toFixed(1)} ${(x+w).toFixed(1)},${(y+h/2).toFixed(1)} ${(x+w/2).toFixed(1)},${(y+h).toFixed(1)} ${x.toFixed(1)},${(y+h/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>`; }
+function flDim(im, maxW, maxH){ const k = Math.min(maxW/(im.w||4), maxH/(im.h||3)); return {iw:Math.round((im.w||4)*k), ih:Math.round((im.h||3)*k)}; }
+function flImgTag(im, x, y, w, h){ return `<image href="${im.src}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet"/>`; }
+function flFill(){
+  const sel = $("flImg"); if(!sel) return;
+  sel.innerHTML = '<option value="">Bild einfügen …</option>' + S.images.filter(i=>(i.cap||"").trim()).map(i=>`<option value="${esc(i.cap.trim())}">${esc(i.cap.trim())}</option>`).join("");
+}
+function renderFL(setText){
+  document.querySelectorAll("#flMode button").forEach(b=>b.classList.toggle("on", b.dataset.m===S.flowMode));
+  $("flHelp").textContent = FL_HELP[S.flowMode];
+  if(setText) $("flText").value = S.flow;
+  flFill();
+  const r = S.flowMode==="org" ? flOrg() : flPath();
+  const host = $("flView");
+  if(!r){ host.innerHTML = '<div class="empty">Schreibe links Zeilen hinein oder nutze „Beispiel“ oder „aus Wissenssätzen übernehmen“.</div>'; FLS.svg = ""; return; }
+  viewer(host, $("flZ"), FLS, r.svg, r.w, r.h);
+}
+function flOrg(){
+  const rows = [];
+  flText().replace(/\r/g,"").split("\n").forEach(l=>{ if(!l.trim()) return; const m = /^([ \t]*)(.*)$/.exec(l); const q = flRank(m[2].replace(/^[-*+•]\s+/,"")); rows.push({ind:m[1].replace(/\t/g,"    ").length, t:q.t, rank:q.rank}); });
+  if(!rows.length) return null;
+  const minInd = Math.min(...rows.map(r=>r.ind));
+  const tops = rows.filter(r=>r.ind===minInd).length;
+  let root = tops>1 ? {t:S.title||"Thema", children:[]} : null; const stack = [];
+  if(root) stack.push({ind:minInd-1, n:root});
+  rows.forEach(r=>{
+    const n = {t:r.t, rank:r.rank, children:[]};
+    while(stack.length && stack[stack.length-1].ind>=r.ind) stack.pop();
+    if(stack.length) stack[stack.length-1].n.children.push(n); else if(!root) root = n; else root.children.push(n);
+    stack.push({ind:r.ind, n});
+  });
+  const GX = 22, GY = 56, FS = 17*(S.flFs||100)/100, LH = FS*1.3; let maxD = 0;
+  const walk = (n, d)=>{ n.d = d; maxD = Math.max(maxD,d); const sp = flImg(n.t); n.im = sp.im; n.lines = sp.t ? wrap(sp.t, FS, d<2, n.rank ? 150 : 190) : []; n.io = 0;
+    if(sp.im){ const q = flDim(sp.im, 130, 90); n.iw = q.iw; n.ih = q.ih; n.io = q.ih+(n.lines.length ? 8 : 0); }
+    n.w = Math.max(90, (n.lines.length ? textW(n.lines,FS,d<2)+28 : 0), n.iw ? n.iw+20 : 0); n.h = n.lines.length*LH+18+n.io;
+    if(n.rank){ n.w = Math.max(130, n.w*1.55); n.h = Math.max(n.h*1.6, 64); } n.children.forEach((c,i)=>{ c.col = d===0 ? COLORS[i%COLORS.length] : n.col; walk(c, d+1); }); };
+  root.col = "#1b2130"; walk(root, 0);
+  const lvH = []; const lv = (n)=>{ lvH[n.d] = Math.max(lvH[n.d]||0, n.h); n.children.forEach(lv); }; lv(root);
+  const lvY = []; let yy = 0; for(let d=0; d<=maxD; d++){ lvY[d] = yy; yy += lvH[d]+GY; }
+  const sw = n=>{ n.sw = n.children.length ? Math.max(n.w, n.children.reduce((a,c)=>a+sw(c),0)+(n.children.length-1)*GX) : n.w; return n.sw; };
+  sw(root);
+  const pos = (n, x0)=>{
+    n.cx = x0+n.sw/2; n.y = lvY[n.d];
+    let xx = x0+(n.sw-(n.children.reduce((a,c)=>a+c.sw,0)+(n.children.length-1)*GX))/2;
+    n.children.forEach(c=>{ pos(c, xx); xx += c.sw+GX; });
+  };
+  pos(root, 0);
+  const M = 30, W = Math.ceil(root.sw+2*M), H = Math.ceil(yy-GY+2*M);
+  let e = "", nd = "";
+  const draw = n=>{
+    const x = n.cx-n.w/2+M, y = n.y+M, h = lvH[n.d];
+    n.children.forEach(c=>{
+      const x1 = n.cx+M, y1 = n.y+M+n.h, x2 = c.cx+M, y2 = c.y+M, ym = y1+(y2-y1)/2;
+      e += `<path d="M${x1} ${y1} V${ym} H${x2} V${y2}" fill="none" stroke="${c.col}" stroke-width="3"/>`;
+    });
+    const fill = n.d===0 ? "#fff" : n.d===1 ? n.col : "#fff", stroke = n.d===0 ? "#1b2130" : n.col, tc = n.d===1 ? "#fff" : "#1b2130";
+    const dFill = n.rank===1 ? n.col : "#fff", dTc = n.rank===1 ? "#fff" : "#1b2130";
+    nd += (n.rank ? flDia(x, y, n.w, n.h, dFill, stroke, 3) : `<rect x="${x}" y="${y}" width="${n.w}" height="${n.h}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="${n.d===0?4:3}"/>`) + `${n.im ? flImgTag(n.im, n.cx+M-n.iw/2, y+9, n.iw, n.ih) : ""}<g fill="${n.rank ? dTc : tc}" font-size="${FS}" font-weight="${n.d<2||n.rank?700:400}">${n.lines.length ? tspans(n.lines,n.cx+M,y+n.io+(n.h-n.io)/2,FS,LH) : ""}</g>`;
+    n.children.forEach(draw);
+  };
+  draw(root);
+  return {svg:svgWrap(W,H,e+nd), w:W, h:H};
+}
+function flPath(){
+  const lines = flText().replace(/\r/g,"").split("\n").map(l=>l.trim()).filter(Boolean);
+  if(!lines.length) return null;
+  const arrows = lines.some(l=>/->|>/.test(l));
+  /* Kette: Schritte plus Beschriftung des Pfeils davor (A >Wort> B) */
+  const parse = l=>{
+    const parts = l.split(/\s*(?:->|>(\S(?:[^>]*\S)?)>|>)\s*/), items = [], labs = []; let lab = "";
+    for(let i=0; i<parts.length; i+=2){ const t = (parts[i]||"").trim(); if(i>0) lab = (parts[i-1]||"").trim(); if(t){ items.push(t); labs.push(items.length>1 ? lab : ""); } }
+    return {items, labs};
+  };
+  const chains = arrows ? lines.map(parse).filter(c=>c.items.length) : [{items:lines.map(l=>l.replace(/^[-*+•]\s+/,"").replace(/^\d+[.)]\s+/,"")), labs:[]}];
+  const hasLab = chains.some(c=>c.labs.some(Boolean));
+  const NW = 200, GX = hasLab ? 110 : 56, GY = 64, PER = 4, M = 30, FS = 17*(S.flFs||100)/100, LH = FS*1.3;
+  let y = M, e = "", nd = "", maxX = 0;
+  chains.forEach((chn, ci)=>{
+    const ch = chn.items, col = chains.length>1 ? COLORS[ci%COLORS.length] : "#1c7ed6";
+    for(let r0=0; r0<ch.length; r0+=PER){
+      const row = ch.slice(r0, r0+PER).map(t0=>{ const q = flRank(t0), sp = flImg(q.t), o = {t:t0, rank:q.rank, im:sp.im, lines:sp.t ? wrap(sp.t, FS, true, (q.rank ? NW*.56 : NW-28)) : [], io:0};
+        if(sp.im){ const d = flDim(sp.im, NW-30, 90); o.iw = d.iw; o.ih = d.ih; o.io = d.ih+(o.lines.length ? 8 : 0); }
+        o.need = o.lines.length*LH+22+o.io; if(q.rank) o.need = Math.max(o.need*1.7, 70); return o; });
+      const rh = Math.max(...row.map(s=>s.need));
+      row.forEach((s,k)=>{
+        const idx = r0+k, x = M+k*(NW+GX), first = idx===0, last = idx===ch.length-1;
+        s.x = x; s.y = y; s.h = rh;
+        const tcol = s.rank===1 ? "#fff" : (!s.rank && first) ? "#fff" : "#1b2130";
+        nd += (s.rank ? flDia(x, y, NW, rh, s.rank===1 ? col : "#fff", col, 3) : `<rect x="${x}" y="${y}" width="${NW}" height="${rh}" rx="${first||last ? rh/2 : 12}" fill="${first ? col : "#fff"}" stroke="${col}" stroke-width="3"/>`)
+          + `${s.im ? flImgTag(s.im, x+NW/2-s.iw/2, y+(rh-s.need)/2+11, s.iw, s.ih) : ""}<g fill="${tcol}" font-size="${FS}" font-weight="700">${s.lines.length ? tspans(s.lines,x+NW/2,y+(rh-s.need)/2+s.io+(s.need-s.io)/2,FS,LH) : ""}</g>`;
+        maxX = Math.max(maxX, x+NW);
+        if(k>0){
+          e += `<line x1="${x-GX+6}" y1="${y+rh/2}" x2="${x-5}" y2="${y+rh/2}" stroke="${col}" stroke-width="3.5" marker-end="url(#ar${ci%8})"/>`;
+          const lb = chn.labs[idx]; if(lb) e += `<text x="${x-GX/2}" y="${y+rh/2-9}" text-anchor="middle" font-size="${(FS*.82).toFixed(1)}" font-weight="700" fill="${col}">${esc(lb)}</text>`;
+        }
+      });
+      if(r0+PER<ch.length){
+        const lastS = row[row.length-1], nx = M+NW/2, ay = y+rh, by = y+rh+GY;
+        e += `<path d="M${lastS.x+NW/2} ${ay} V${ay+GY/2} H${nx} V${by-5}" fill="none" stroke="${col}" stroke-width="3.5" marker-end="url(#ar${ci%8})"/>`;
+        const lb = chn.labs[r0+PER]; if(lb) e += `<text x="${(lastS.x+NW/2+nx)/2}" y="${ay+GY/2-6}" text-anchor="middle" font-size="${(FS*.82).toFixed(1)}" font-weight="700" fill="${col}">${esc(lb)}</text>`;
+      }
+      y += rh+GY;
+    }
+    y += 10;
+  });
+  const W = Math.ceil(maxX+M), H = Math.ceil(y-GY-10+M);
+  const defs = COLORS.map((c,i)=>`<marker id="ar${i}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${c}"/></marker>`).join("")
+    + `<marker id="ar0b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#1c7ed6"/></marker>`;
+  let svg = svgWrap(W,H,e+nd,defs);
+  if(chains.length===1) svg = svg.replace(/url\(#ar\d\)/g, "url(#ar0b)");
+  return {svg, w:W, h:H};
+}
+$("flImg").onchange = e=>{
+  const c = e.target.value; e.target.value = ""; if(!c) return; const ta = $("flText"), a = ta.selectionStart==null ? ta.value.length : ta.selectionStart, b2 = ta.selectionEnd==null ? a : ta.selectionEnd, t = "![" + c + "]";
+  ta.value = ta.value.slice(0,a)+t+ta.value.slice(b2); ta.selectionStart = ta.selectionEnd = a+t.length; ta.dispatchEvent(new Event("input")); ta.focus();
+};
+$("flText").oninput = e=>{ S.flow = e.target.value; save(); renderFL(false); };
+$("flMode").onclick = e=>{ const b = e.target.closest("button"); if(!b) return; S.flowMode = b.dataset.m; save(); renderFL(false); };
+$("flEx").onclick = ()=>{ if(S.flow.trim() && !confirm("Den Text durch das Beispiel ersetzen?")) return; S.flow = FL_EX[S.flowMode]; save(); renderFL(true); };
+$("flFrom").onclick = ()=>{
+  const P = parse(); if(!P.sents.length){ alert("Zuerst Wissenssätze eingeben."); return; }
+  if(S.flow.trim() && !confirm("Den Text links durch Inhalte aus den Wissenssätzen ersetzen?")) return;
+  if(S.flowMode==="org"){
+    let t = (S.title||"Thema")+"\n";
+    P.groups.forEach((g,gi)=>{
+      if(P.named) t += "  "+(g.name||"Wissen")+"\n";
+      const ind = P.named ? "    " : "  ";
+      const ws = P.words.filter(w=>w.gi===gi);
+      if(ws.length) ws.forEach(w=>{ t += ind+w.w+"\n"; }); else g.sents.forEach(s=>{ t += ind+s.replace(/[.!?]$/,"")+"\n"; });
+    });
+    S.flow = t.trim();
+  }else S.flow = P.sents.map(s=>s.t.replace(/[.!?]$/,"")).join("\n");
+  save(); renderFL(true);
+};
+zoomBind(["flFit","flM","flP","flZ"], ()=>$("flView"), FLS);
+$("flPrint").onclick = ()=>window.print();
+$("flSvg").onclick = ()=>{ if(FLS.svg) download(fname("svg", S.flowMode==="org" ? "organigramm" : "pfad"), new Blob([FLS.svg],{type:"image/svg+xml"})); };
+$("flPng").onclick = ()=>exportPng(FLS.svg, fname("png", S.flowMode==="org" ? "organigramm" : "pfad"));
+
+/* ---------- 3 Mapping: Begriffe selbst verbinden ---------- */
+const MPS = {fit:true, zoom:100, svg:"", w:1, h:1, mode:"move", sel:"", selL:"", drag:null, link:null, nodes:[], cur:null, dim:null, last:null, raf:0};
+const LINK_WORDS = ["ist ein","hat","gehört zu","besteht aus","führt zu","bedeutet","zum Beispiel","verursacht","braucht","liegt in"];
+function cmap(){
+  const m = S.cmap = S.cmap || {};
+  m.pos = m.pos || {}; m.links = m.links || []; m.words = m.words || []; m.hide = m.hide || [];
+  if(!["aus","leicht","schwer"].includes(m.col)) m.col = "leicht";
+  if(!m.fs) m.fs = 100;
+  return m;
+}
+function cmNodes(){
+  const P = parse(), m = cmap(), hide = new Set(m.hide), out = [];
+  const add = (key, text, kind, g, ref)=>{ if(hide.has(key)) return; out.push({key, text:String(text||"").trim()||"…", kind, g, ref}); };
+  add("doc", S.title||"Thema", "title", -1);
+  if(P.named) P.groups.forEach((g,gi)=>add("g"+gi, g.name||"Wissen", "head", gi));
+  P.words.forEach(w=>add("w:"+w.w, w.w, "pt", w.gi));
+  S.images.forEach(im=>{ const cp = (im.cap||"").trim(), wd = P.words.find(x=>x.w.toLowerCase()===cp.toLowerCase()); add("i:"+im.id, cp, "img", wd ? wd.gi : -1, im); });
+  m.words.forEach(w=>{ if((w.text||"").trim()) add(w.id, w.text, "word", -2, w); });
+  return out;
+}
+function cmMeasure(n, K){
+  const strong = n.kind==="head" || n.kind==="title";
+  const sz = K*(n.kind==="title" ? 24 : strong ? 21 : 18);
+  n.sz = sz; n.lh = sz*1.25;
+  if(n.kind==="img"){
+    const iw = 120, ih = Math.min(100, Math.round(iw*(n.ref.h||3)/(n.ref.w||4))), cs = 15*K;
+    n.cap = n.text==="…" ? [] : wrap(n.text, cs, true, 180); n.cs = cs; n.iw = iw; n.ih = ih;
+    n.w = Math.max(iw, n.cap.length ? textW(n.cap, cs, true) : 0)+16; n.h = ih+14+(n.cap.length ? n.cap.length*cs*1.3+4 : 0);
+    return;
+  }
+  n.lines = wrap(n.text, sz, strong, 260);
+  n.w = textW(n.lines, sz, strong)+sz*1.2; n.h = n.lines.length*n.lh+sz*.9;
+}
+function cmEdge(n, tx, ty){
+  const dx = tx-n.x, dy = ty-n.y; if(!dx && !dy) return [n.x, n.y];
+  const t = Math.min(dx ? (n.w/2+3)/Math.abs(dx) : 1e9, dy ? (n.h/2+3)/Math.abs(dy) : 1e9);
+  return [n.x+dx*t, n.y+dy*t];
+}
+const f1 = v=>(+v).toFixed(1);
+function cmDraw(){
+  const m = cmap(), nodes = cmNodes(); if(nodes.length<2 && !m.links.length && nodes[0] && nodes[0].kind==="title" && !parse().words.length) return null;
+  const K = m.fs/100, fs = 18*K;
+  nodes.forEach(n=>{
+    cmMeasure(n, K);
+    n.gc = n.kind==="title" ? "#1b2130" : n.kind==="word" ? "#868e96" : gcol(n.g);
+    n.col = n.gc;
+    if(m.col!=="leicht" && (n.kind==="head" || n.kind==="pt" || n.kind==="img")) n.col = n.kind==="head" ? "#495057" : "#868e96";
+  });
+  const gx = fs*1.3, gy = fs*1.5; let tot = 0; nodes.forEach(n=>{ tot += (n.w+gx)*(n.h+gy); });
+  const W0 = Math.max(1000, Math.ceil(Math.sqrt(tot*3.2*1.5))), H0 = Math.max(640, Math.ceil(W0/1.5));
+  const placed = nodes.filter(n=>m.pos[n.key]), free = nodes.filter(n=>!m.pos[n.key]);
+  placed.forEach(n=>{ n.x = m.pos[n.key][0]; n.y = m.pos[n.key][1]; });
+  let y0 = placed.length ? Math.max(...placed.map(n=>n.y+n.h/2))+gy*1.5 : gy, x = gx, rowH = 0;
+  free.forEach(n=>{
+    if(x+n.w > W0-gx && x>gx){ x = gx; y0 += rowH+gy; rowH = 0; }
+    n.x = x+n.w/2; n.y = y0+n.h/2; x += n.w+gx; rowH = Math.max(rowH, n.h);
+  });
+  let W = W0, H = H0;
+  nodes.forEach(n=>{ W = Math.max(W, n.x+n.w/2+gx); H = Math.max(H, n.y+n.h/2+gy); });
+  if(MPS.dim){ W = Math.max(W, MPS.dim.W); H = Math.max(H, MPS.dim.H); }
+  MPS.nodes = nodes; MPS.cur = {W, H};
+  const byKey = new Map(nodes.map(n=>[n.key, n]));
+  const head = (p, q, col)=>{ const dx = p[0]-q[0], dy = p[1]-q[1], L = Math.hypot(dx,dy)||1, ux = dx/L, uy = dy/L, hl = fs*.95, hw = fs*.4;
+    return `<polygon points="${f1(p[0])},${f1(p[1])} ${f1(p[0]-ux*hl-uy*hw)},${f1(p[1]-uy*hl+ux*hw)} ${f1(p[0]-ux*hl+uy*hw)},${f1(p[1]-uy*hl-ux*hw)}" fill="${col}"/>`; };
+  const draw = live=>{
+    let sL = "", sN = "", sB = "";
+    m.links.forEach(l=>{
+      const A = byKey.get(l.a), B = byKey.get(l.b); if(!A || !B || A===B) return;
+      const pa = cmEdge(A, B.x, B.y), pb = cmEdge(B, A.x, A.y), sel = live && MPS.selL===l.id, col = sel ? "#f59f00" : "#1b2130";
+      let g = live ? `<g class="ml" data-l="${esc(l.id)}" style="cursor:pointer;touch-action:none"><line x1="${f1(pa[0])}" y1="${f1(pa[1])}" x2="${f1(pb[0])}" y2="${f1(pb[1])}" stroke="transparent" stroke-width="24"/>` : "<g>";
+      g += `<line x1="${f1(pa[0])}" y1="${f1(pa[1])}" x2="${f1(pb[0])}" y2="${f1(pb[1])}" stroke="${col}" stroke-width="${sel?4:2.5}" stroke-linecap="round"/>`;
+      if(l.op!=="--") g += head(pb, pa, col);
+      if(l.op==="<->") g += head(pa, pb, col);
+      if(l.label){
+        const cs = fs*.9, lines = wrap(l.label, cs, false, fs*12), lw = textW(lines, cs, false)+cs*.8, lh = lines.length*cs*1.25+cs*.35, mx = (pa[0]+pb[0])/2, my = (pa[1]+pb[1])/2;
+        sB += (live ? `<g class="ml" data-l="${esc(l.id)}" style="cursor:pointer;touch-action:none">` : "<g>") + `<rect x="${f1(mx-lw/2)}" y="${f1(my-lh/2)}" width="${f1(lw)}" height="${f1(lh)}" rx="4" fill="#fff" stroke="${col}" stroke-width="1"/><g fill="${col}" font-size="${cs}">${tspans(lines, f1(mx), f1(my), cs, cs*1.25)}</g></g>`;
+      }
+      sL += g+"</g>";
+    });
+    nodes.forEach(n=>{
+      let g = live ? `<g class="mn" data-k="${esc(n.key)}" style="cursor:grab;touch-action:none">` : "<g>";
+      const rx = n.x-n.w/2, ry = n.y-n.h/2;
+      if(n.kind==="head") g += `<rect x="${f1(rx)}" y="${f1(ry)}" width="${f1(n.w)}" height="${f1(n.h)}" rx="${f1(n.h/2.6)}" fill="${n.col}"/><g fill="#fff" font-size="${n.sz}" font-weight="700">${tspans(n.lines, f1(n.x), f1(n.y), n.sz, n.lh)}</g>`;
+      else if(n.kind==="title") g += `<rect x="${f1(rx)}" y="${f1(ry)}" width="${f1(n.w)}" height="${f1(n.h)}" rx="${f1(n.h/2)}" fill="#fff" stroke="#1b2130" stroke-width="4"/><g fill="#1b2130" font-size="${n.sz}" font-weight="700">${tspans(n.lines, f1(n.x), f1(n.y), n.sz, n.lh)}</g>`;
+      else if(n.kind==="img"){
+        g += `<rect x="${f1(rx)}" y="${f1(ry)}" width="${f1(n.w)}" height="${f1(n.h)}" rx="10" fill="#fff" stroke="${n.col}" stroke-width="3"/>`
+          + (m.col==="leicht" && n.g>=0 ? `<rect x="${f1(rx)}" y="${f1(ry)}" width="${f1(n.w)}" height="${f1(n.h)}" rx="10" fill="${n.gc}" fill-opacity=".14"/>` : "")
+          + `<image href="${n.ref.src}" x="${f1(n.x-n.iw/2)}" y="${f1(ry+7)}" width="${n.iw}" height="${n.ih}" preserveAspectRatio="xMidYMid meet"/>`
+          + (n.cap.length ? `<g fill="#1b2130" font-size="${n.cs}" font-weight="700">${tspans(n.cap, f1(n.x), f1(ry+7+n.ih+8+n.cap.length*n.cs*1.3/2), n.cs, n.cs*1.3)}</g>` : "");
+      }else g += `<rect x="${f1(rx)}" y="${f1(ry)}" width="${f1(n.w)}" height="${f1(n.h)}" rx="10" fill="#fff" stroke="${n.col}" stroke-width="3"/>`
+        + (m.col==="leicht" && n.kind==="pt" && n.g>=0 ? `<rect x="${f1(rx)}" y="${f1(ry)}" width="${f1(n.w)}" height="${f1(n.h)}" rx="10" fill="${n.gc}" fill-opacity=".16"/>` : "")
+        + `<g fill="#1b2130" font-size="${n.sz}" font-weight="600">${tspans(n.lines, f1(n.x), f1(n.y), n.sz, n.lh)}</g>`;
+      if(m.col==="schwer" && (n.kind==="head" || n.kind==="pt" || n.kind==="img") && n.g>=0) g += `<circle cx="${f1(rx+4)}" cy="${f1(ry+4)}" r="${f1(fs*.36)}" fill="${n.gc}" stroke="${n.kind==="head" ? "#fff" : "#fff"}" stroke-width="2"/>`;
+      if(live && (MPS.sel===n.key || (MPS.link && MPS.link.from===n.key))) g += `<rect x="${f1(rx-6)}" y="${f1(ry-6)}" width="${f1(n.w+12)}" height="${f1(n.h+12)}" rx="${f1(Math.min(n.h/2.2+4,26))}" fill="none" stroke="#f59f00" stroke-width="4" stroke-dasharray="9 6"/>`;
+      sN += g+"</g>";
+    });
+    let rb = "";
+    if(live && MPS.link){ const A = byKey.get(MPS.link.from); if(A) rb = `<line x1="${f1(A.x)}" y1="${f1(A.y)}" x2="${f1(MPS.link.x)}" y2="${f1(MPS.link.y)}" stroke="#f59f00" stroke-width="3" stroke-dasharray="8 6" stroke-linecap="round" pointer-events="none"/>`; }
+    return sL+sN+sB+rb;
+  };
+  W = Math.ceil(W); H = Math.ceil(H);
+  return {W, H, live:svgWrap(W,H,draw(true)), stat:svgWrap(W,H,draw(false))};
+}
+function renderMP(){
+  const host = $("mpView"), m = cmap();
+  document.querySelectorAll("#mpCol button").forEach(b=>b.classList.toggle("on", b.dataset.c===m.col));
+  $("mpMove").classList.toggle("on", MPS.mode==="move"); $("mpLink").classList.toggle("on", MPS.mode==="link");
+  $("mpFsV").textContent = m.fs+" %";
+  $("mpHid").style.display = m.hide.length ? "" : "none"; $("mpHid").textContent = "Ausgeblendete zeigen ("+m.hide.length+")";
+  const c = cmDraw();
+  if(!c){ host.innerHTML = '<div class="empty">Für das Mapping brauchst du Fachwörter (und Wissenssätze). Gib sie im Reiter „Eingabe“ ein.</div>'; MPS.svg = ""; MPS.nodes = []; mpBar(); return; }
+  viewer(host, $("mpZ"), MPS, c.live, c.W, c.H, c.stat);
+  mpBar();
+}
+function mpBar(){
+  const m = cmap(), nodes = MPS.nodes, el = $("mpSel");
+  const n = MPS.sel ? nodes.find(x=>x.key===MPS.sel) : null, l = MPS.selL ? m.links.find(x=>x.id===MPS.selL) : null;
+  if(MPS.sel && !n) MPS.sel = ""; if(MPS.selL && !l) MPS.selL = "";
+  const nm = k=>{ const x = nodes.find(y=>y.key===k); return x ? x.text : "?"; };
+  let h;
+  if(n) h = `<b>${esc(n.text)}</b>`+(n.kind==="word"||n.kind==="title" ? `<button data-cm="edit">Text ändern</button>` : "")+(n.kind==="title" ? "" : `<button data-cm="del">${n.kind==="word" ? "Wort löschen" : "Aus der Karte nehmen"}</button>`);
+  else if(l) h = `<b>${esc(nm(l.a))} ${l.op==="--" ? "—" : l.op==="<->" ? "↔" : "→"} ${esc(nm(l.b))}${l.label ? " · "+esc(l.label) : ""}</b><button data-cm="ledit">Beschriftung / Richtung</button><button data-cm="ldel">Verbindung löschen</button>`;
+  else h = `<span class="mu">${MPS.mode==="link" ? "Verbinden: Ziehe einen Begriff auf einen anderen, dann schreibst du auf den Pfeil, wie die beiden zusammenhängen." : "Verschieben: Begriffe mit Finger oder Maus ziehen. Zum Verbinden oben „Verbinden“ wählen (oder Umschalt-Taste beim Ziehen)."}</span>`;
+  el.innerHTML = h;
+}
+function mpModal(html){ $("modalHost").innerHTML = `<div class="modalbg"><div class="modal" style="max-width:520px">${html}</div></div>`; }
+function mpClose(){ $("modalHost").innerHTML = ""; }
+function mpText(title, val, multi, ok, cb){
+  mpModal(`<h2>${esc(title)}</h2>${multi ? `<textarea id="tdIn" rows="5" placeholder="Ein Wort je Zeile">${esc(val)}</textarea>` : `<input type="text" id="tdIn" value="${esc(val)}">`}<div class="bar" style="margin:12px 0 0"><span class="sp"></span><button id="tdNo">Abbrechen</button><button class="pri" id="tdOk">${esc(ok)}</button></div>`);
+  const inp = $("tdIn"); inp.focus(); try{ inp.select(); }catch(e){}
+  const done = ()=>{ const v = inp.value; mpClose(); cb(v); };
+  $("tdNo").onclick = mpClose; $("tdOk").onclick = done;
+  if(!multi) inp.onkeydown = e=>{ if(e.key==="Enter"){ e.preventDefault(); done(); } else if(e.key==="Escape") mpClose(); };
+}
+function mpLinkDlg(l, isNew){
+  const nm = k=>{ const x = MPS.nodes.find(y=>y.key===k); return x ? x.text : "?"; };
+  mpModal(`<h2>${isNew ? "Wie hängen die Begriffe zusammen?" : "Verbindung ändern"}</h2>
+    <p style="font-size:17px;margin:0 0 10px"><b id="lkA">${esc(nm(l.a))}</b> … <b id="lkB">${esc(nm(l.b))}</b></p>
+    <input type="text" id="lkT" placeholder="Beschriftung, zum Beispiel: gehört zu" value="${esc(l.label)}">
+    <div style="margin:8px 0">${LINK_WORDS.map(t=>`<button data-lk="${esc(t)}" style="margin:3px;padding:4px 10px">${esc(t)}</button>`).join("")}</div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:15px">Pfeil <select id="lkO" style="width:auto"><option value="->">von links nach rechts (→)</option><option value="<->">in beide Richtungen (↔)</option><option value="--">ohne Pfeil (—)</option></select><button id="lkS" title="Richtung tauschen">⇄ tauschen</button></label>
+    <div class="bar" style="margin:14px 0 0"><span class="sp"></span><button id="lkNo">${isNew ? "Ohne Verbindung" : "Abbrechen"}</button><button class="pri" id="lkOk">${isNew ? "Verbinden" : "Speichern"}</button></div>`);
+  $("lkO").value = l.op; const inp = $("lkT"); inp.focus();
+  document.querySelectorAll("#modalHost [data-lk]").forEach(b=>b.onclick = ()=>{ inp.value = b.dataset.lk; inp.focus(); });
+  $("lkS").onclick = ()=>{ const t = l.a; l.a = l.b; l.b = t; $("lkA").textContent = nm(l.a); $("lkB").textContent = nm(l.b); };
+  const done = ()=>{
+    l.label = inp.value.trim().slice(0,120); l.op = $("lkO").value;
+    const m = cmap(); if(isNew) m.links.push(l);
+    MPS.selL = l.id; MPS.sel = ""; mpClose(); save(); renderMP();
+  };
+  $("lkNo").onclick = mpClose; $("lkOk").onclick = done;
+  inp.onkeydown = e=>{ if(e.key==="Enter"){ e.preventDefault(); done(); } else if(e.key==="Escape") mpClose(); };
+}
+function mpMix(){
+  const m = cmap(), nodes = MPS.nodes.slice(), W = MPS.cur.W, H = MPS.cur.H, put = []; m.pos = {};
+  shuffle(nodes).forEach(n=>{
+    let x = 0, y = 0, ok = false;
+    for(let t=0; t<80 && !ok; t++){
+      x = n.w/2+4+Math.random()*Math.max(1,W-n.w-8); y = n.h/2+4+Math.random()*Math.max(1,H-n.h-8);
+      ok = !put.some(r=>Math.abs(r.x-x)<(r.w+n.w)/2+10 && Math.abs(r.y-y)<(r.h+n.h)/2+10);
+    }
+    put.push({x, y, w:n.w, h:n.h}); m.pos[n.key] = [Math.round(x), Math.round(y)];
+  });
+}
+function mpByGroup(){
+  const m = cmap(), nodes = MPS.nodes, gx = 40, gy = 20, cols = new Map(); m.pos = {};
+  const title = nodes.find(n=>n.kind==="title");
+  nodes.forEach(n=>{ if(n===title) return; const k = n.g>=0 ? n.g : 99; if(!cols.has(k)) cols.set(k, []); cols.get(k).push(n); });
+  const keys = [...cols.keys()].sort((a,b)=>a-b);
+  let x = gx, y0 = title ? title.h+gy*2 : gy; const tw = [];
+  keys.forEach(k=>{
+    const arr = cols.get(k).sort((a,b)=>(a.kind==="head"?0:1)-(b.kind==="head"?0:1)), cw = Math.max(...arr.map(n=>n.w));
+    let y = y0; arr.forEach(n=>{ m.pos[n.key] = [Math.round(x+cw/2), Math.round(y+n.h/2)]; y += n.h+gy; });
+    x += cw+gx;
+  });
+  if(title) m.pos[title.key] = [Math.round((x-gx+gx)/2), Math.round(gy+title.h/2)];
+}
+function mpAct(act){
+  const m = cmap(), n = MPS.sel ? MPS.nodes.find(x=>x.key===MPS.sel) : null, l = MPS.selL ? m.links.find(x=>x.id===MPS.selL) : null;
+  const ch = ()=>{ save(); renderMP(); };
+  if(act==="move" || act==="link"){ MPS.mode = act; MPS.link = null; renderMP(); return; }
+  if(act==="add"){ mpText("Neue Wörter", "", true, "Hinzufügen", v=>{ const ws = v.split(/\r?\n/).map(s=>s.trim()).filter(Boolean); if(!ws.length) return; ws.forEach(t=>m.words.push({id:"x"+uid(), text:t})); ch(); }); return; }
+  if(act==="mix"){ if(!MPS.nodes.length) return; mpMix(); ch(); return; }
+  if(act==="grid"){ m.pos = {}; ch(); return; }
+  if(act==="grp"){ if(!MPS.nodes.length) return; mpByGroup(); ch(); return; }
+  if(act==="clr"){ if(!m.links.length){ return; } if(!confirm("Alle "+m.links.length+" Verbindungen löschen? Die Begriffe bleiben.")) return; m.links = []; MPS.selL = ""; ch(); return; }
+  if(act==="hid"){ m.hide = []; ch(); return; }
+  if(act==="ledit" && l){ mpLinkDlg(l, false); return; }
+  if(act==="ldel" && l){ m.links = m.links.filter(x=>x.id!==l.id); MPS.selL = ""; ch(); return; }
+  if(!n) return;
+  if(act==="edit"){ mpText(n.kind==="title" ? "Thema ändern" : "Text ändern", n.kind==="title" ? (S.title||"") : n.text, false, "Speichern", v=>{ v = v.replace(/\s+/g," ").trim(); if(!v) return; if(n.kind==="title") S.title = v; else n.ref.text = v; ch(); }); return; }
+  if(act==="del"){
+    if(n.kind==="word"){ m.words = m.words.filter(w=>w.id!==n.key); m.links = m.links.filter(x=>x.a!==n.key && x.b!==n.key); }
+    else if(!m.hide.includes(n.key)) m.hide.push(n.key);
+    MPS.sel = ""; ch();
+  }
+}
+$("mpBox").addEventListener("click", e=>{ const b = e.target.closest("[data-cm]"); if(b) mpAct(b.dataset.cm); });
+$("mpCol").onclick = e=>{ const b = e.target.closest("button"); if(!b) return; cmap().col = b.dataset.c; save(); renderMP(); };
+fsBind2();
+function fsBind2(){
+  $("mpFsM").onclick = ()=>{ cmap().fs = Math.max(60, cmap().fs-10); MPS.fit = false; MPS.zoom = Math.max(MPS.zoom,60); save(); renderMP(); };
+  $("mpFsP").onclick = ()=>{ cmap().fs = Math.min(250, cmap().fs+10); MPS.fit = false; save(); renderMP(); };
+}
+zoomBind(["mpFit","mpM","mpP","mpZ"], ()=>$("mpView"), MPS);
+$("mpFull").onclick = ()=>toggleFs($("mpBox"));
+$("mpSvg").onclick = ()=>{ if(MPS.svg) download(fname("svg","mapping"), new Blob([MPS.svg],{type:"image/svg+xml"})); };
+$("mpPng").onclick = ()=>exportPng(MPS.svg, fname("png","mapping"));
+(function(){
+  const host = $("mpView");
+  const pt = e=>{ const svg = host.querySelector("svg"); if(!svg || !MPS.cur) return [0,0]; const r = svg.getBoundingClientRect(), k = r.width/MPS.cur.W; return [(e.clientX-r.left)/k, (e.clientY-r.top)/k]; };
+  const redraw = ()=>{ if(MPS.raf) return; MPS.raf = requestAnimationFrame(()=>{ MPS.raf = 0; renderMP(); }); };
+  host.addEventListener("pointerdown", e=>{
+    if(e.button>0) return;
+    const ne = e.target.closest(".mn"), le = e.target.closest(".ml");
+    MPS.dim = MPS.cur ? {W:MPS.cur.W, H:MPS.cur.H} : null;
+    if(ne){
+      const key = ne.dataset.k, n = MPS.nodes.find(x=>x.key===key); if(!n) return;
+      MPS.sel = key; MPS.selL = ""; const p = pt(e);
+      if(MPS.mode==="link" || e.shiftKey) MPS.link = {from:key, x:p[0], y:p[1]};
+      else MPS.drag = {key, dx:n.x-p[0], dy:n.y-p[1], moved:false, sx:e.clientX, sy:e.clientY};
+    }else if(le){ MPS.selL = le.dataset.l; MPS.sel = ""; MPS.drag = {key:"", moved:false, sx:e.clientX, sy:e.clientY, linkId:le.dataset.l}; }
+    else{ MPS.sel = ""; MPS.selL = ""; MPS.drag = null; MPS.dim = null; renderMP(); return; }
+    try{ host.setPointerCapture(e.pointerId); }catch(_){} e.preventDefault(); renderMP();
+  });
+  host.addEventListener("pointermove", e=>{
+    if(MPS.link){ const p = pt(e); MPS.link.x = p[0]; MPS.link.y = p[1]; redraw(); return; }
+    const d = MPS.drag; if(!d || !d.key) return;
+    const m = cmap();
+    if(!d.moved){ if(Math.hypot(e.clientX-d.sx, e.clientY-d.sy)<4) return; d.moved = true; MPS.nodes.forEach(n=>{ if(!m.pos[n.key]) m.pos[n.key] = [Math.round(n.x), Math.round(n.y)]; }); }
+    const n = MPS.nodes.find(x=>x.key===d.key); if(!n) return; const p = pt(e), W = MPS.dim.W, H = MPS.dim.H;
+    m.pos[d.key] = [Math.round(Math.min(W-n.w/2-4, Math.max(n.w/2+4, p[0]+d.dx))), Math.round(Math.min(H-n.h/2-4, Math.max(n.h/2+4, p[1]+d.dy)))]; redraw();
+  });
+  const finish = (e, cancel)=>{
+    const d = MPS.drag, lk = MPS.link; MPS.drag = null; MPS.link = null;
+    let dialog = null, edit = null;
+    if(lk && !cancel){
+      const el = document.elementFromPoint(e.clientX, e.clientY), te = el && el.closest ? el.closest(".mn") : null;
+      if(te && te.dataset.k!==lk.from) dialog = {id:"l"+uid(), a:lk.from, b:te.dataset.k, label:"", op:"->"};
+    }
+    if(d && d.moved && !cancel) save();
+    if(d && !d.moved && !cancel){
+      const now = Date.now(), id = d.key || ("L"+d.linkId);
+      if(MPS.last && MPS.last.id===id && now-MPS.last.t<400){ edit = d.key ? "node" : "link"; MPS.last = null; } else MPS.last = {id, t:now};
+    }
+    MPS.dim = null; renderMP();
+    if(dialog) mpLinkDlg(dialog, true);
+    else if(edit==="node") mpAct("edit");
+    else if(edit==="link") mpAct("ledit");
+  };
+  host.addEventListener("pointerup", e=>finish(e, false));
+  host.addEventListener("pointercancel", e=>finish(e, true));
+})();
+document.addEventListener("keydown", e=>{
+  if(TAB!=="mp" || $("modalHost").innerHTML) return;
+  const t = e.target; if(t && (t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.tagName==="SELECT")) return;
+  if(e.key==="Escape"){ MPS.sel = ""; MPS.selL = ""; MPS.link = null; renderMP(); }
+  else if((e.key==="Delete"||e.key==="Backspace") && MPS.selL){ e.preventDefault(); mpAct("ldel"); }
+});
+
+fsBind("mmFs","mmFsM","mmFsP","mmFsV", ()=>renderMM());
+fsBind("flFs","flFsM","flFsP","flFsV", ()=>renderFL(false));
+/* ---------- Start ---------- */
+loadLS();
+$("mmFsV").textContent = (S.mmFs||100)+" %"; $("flFsV").textContent = (S.flFs||100)+" %";
+if(!S.text && !S.words && !S.images.length && !S.title){ S.title = ""; }
+renderIn();
+</script>
+</body>
+</html>

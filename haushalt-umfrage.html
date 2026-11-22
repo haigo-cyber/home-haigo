@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Umfrage: Wer macht was zuhause?</title>
+<style>
+:root{
+  --c1:#1ba1dc; --c2:#fbaa19; --c3:#bdbdbd; --c4:#c4e000; --c5:#12b956; --c6:#16164a;
+  --bg:#f4f6f8; --card:#fff; --line:#d7dde3; --text:#1d2733; --muted:#66727f; --accent:#2563eb;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+header{background:#fff;border-bottom:1px solid var(--line);padding:12px 18px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+header h1{font-size:18px;margin:0;flex:1 1 260px}
+.tabs{display:flex;gap:6px}
+.tabs button{border:1px solid var(--line);background:#fff;padding:8px 16px;border-radius:8px;font-size:15px;cursor:pointer}
+.tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:16px}
+.card h2{font-size:16px;margin:0 0 10px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+input[type=text],select{padding:8px 10px;border:1px solid var(--line);border-radius:7px;font-size:15px;color:var(--text);background:#fff}
+button.btn{padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:14px;cursor:pointer}
+button.btn:hover{background:#eef2f6}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{background:#1d4fd0}
+button.danger{color:#b91c1c}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:9px 14px;font-size:14px;cursor:pointer;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent);color:#fff}
+table.q{border-collapse:collapse;width:100%;margin-top:6px}
+table.q th,table.q td{border:1px solid var(--line);padding:4px;text-align:center}
+table.q th{font-size:12px;font-weight:600;line-height:1.2}
+table.q td.t{text-align:left;padding:6px 10px;white-space:nowrap}
+table.q th.h1{border-top:5px solid var(--c1)}table.q th.h2{border-top:5px solid var(--c2)}
+table.q th.h3{border-top:5px solid var(--c3)}table.q th.h4{border-top:5px solid var(--c4)}
+table.q th.h5{border-top:5px solid var(--c5)}table.q th.h6{border-top:5px solid var(--c6)}
+table.q td button{width:100%;min-width:44px;height:36px;border:0;background:transparent;border-radius:6px;cursor:pointer;font-size:16px;font-weight:700;color:transparent}
+table.q td button:hover{background:#e8eef5}
+table.q td button.sel{color:#111}
+table.q td button.sel.s1{background:var(--c1)}table.q td button.sel.s2{background:var(--c2)}
+table.q td button.sel.s3{background:var(--c3)}table.q td button.sel.s4{background:var(--c4)}
+table.q td button.sel.s5{background:var(--c5)}table.q td button.sel.s6{background:var(--c6);color:#fff}
+.hint{font-size:13px;color:var(--muted);margin:6px 0 0}
+.codein{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:3px;width:150px}
+table.list{border-collapse:collapse;width:100%}
+table.list th,table.list td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
+table.list td.code{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:2px}
+table.list tr.inc td{background:#fff7e6}
+.small{font-size:13px;color:var(--muted)}
+#chartwrap{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px;overflow:auto}
+#chartwrap svg{width:100%;height:auto;display:block;max-width:1000px;margin:0 auto}
+.hidden{display:none}
+.msg{font-size:13px;margin-left:8px}
+@media print{
+  header,.noprint,.tabs{display:none!important}
+  body{background:#fff} main{padding:0;max-width:none}
+  #chartwrap{border:0;padding:0}
+  #viewInput{display:none!important}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Umfrage: Wer macht was bei euch zuhause?</h1>
+  <div class="tabs">
+    <button id="tabIn" class="on">Eingabe</button>
+    <button id="tabOut">Auswertung</button>
+  </div>
+</header>
+
+<main>
+<section id="viewInput">
+  <div class="card">
+    <div class="row">
+      <label class="f">Klasse
+        <input type="text" id="cls" placeholder="z. B. 6c" style="width:110px">
+      </label>
+      <label class="f">Datum der Erhebung
+        <input type="text" id="dat" placeholder="z. B. 21.10.2026" style="width:150px">
+      </label>
+      <span class="small" id="summary"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 id="formTitle">Neues Kind eingeben</h2>
+    <div class="row">
+      <label class="f">Code oder Vorname
+        <input type="text" id="kidName" placeholder="z. B. K07" style="width:170px" autocomplete="off">
+      </label>
+      <div class="f">Geschlecht
+        <div class="seg" id="sexSeg">
+          <button data-v="m">Junge</button>
+          <button data-v="w">Mädchen</button>
+          <button data-v="" class="on">keine Angabe</button>
+        </div>
+      </div>
+      <label class="f">Schnelleingabe (10 Ziffern 1 bis 6, 0 oder Punkt = leer)
+        <input type="text" id="kidCode" class="codein" maxlength="10" placeholder="3345 ..." autocomplete="off" inputmode="numeric">
+      </label>
+    </div>
+
+    <table class="q" id="qtable">
+      <thead>
+        <tr>
+          <th style="width:28%;text-align:left">Tätigkeit im Haushalt</th>
+          <th class="h1">1<br>ausschl. Mann / Vater</th>
+          <th class="h2">2<br>überw. Mann / Vater</th>
+          <th class="h3">3<br>beide gleich</th>
+          <th class="h4">4<br>überw. Frau / Mutter</th>
+          <th class="h5">5<br>ausschl. Frau / Mutter</th>
+          <th class="h6">6<br>andere / entfällt</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="hint">Pro Zeile ein Feld anklicken. Ein zweiter Klick auf dasselbe Feld nimmt die Auswahl zurück. In das Schnelleingabefeld kann man die zehn Kreuze direkt als Ziffernfolge tippen, die Tabelle füllt sich dann mit. Mit Enter in einem der beiden Textfelder wird gespeichert.</p>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="btnSave">Speichern und nächstes Kind</button>
+      <button class="btn" id="btnClear">Formular leeren</button>
+      <span class="msg" id="formMsg"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Erfasste Kinder</h2>
+    <div id="listWrap"></div>
+    <div class="row noprint" style="margin-top:12px">
+      <button class="btn" id="btnExportJson">Daten sichern (JSON)</button>
+      <button class="btn" id="btnImport">Daten laden (JSON)</button>
+      <button class="btn" id="btnCsv">Als Tabelle (CSV)</button>
+      <button class="btn" id="btnDemo">Beispieldaten laden</button>
+      <button class="btn danger" id="btnWipe">Alle Daten löschen</button>
+      <input type="file" id="fileIn" accept=".json,application/json" class="hidden">
+    </div>
+    <p class="hint">Die Daten bleiben im Browser dieses Geräts gespeichert. Für eine Sicherung oder zum Wechsel des Geräts bitte die JSON-Datei speichern.</p>
+  </div>
+</section>
+
+<section id="viewOut" class="hidden">
+  <div class="card noprint">
+    <div class="row">
+      <div class="f">Darstellung
+        <div class="seg" id="modeSeg">
+          <button data-v="sex" class="on">Jungen und Mädchen</button>
+          <button data-v="all">Alle zusammen</button>
+          <button data-v="three">Jungen, Mädchen, Alle</button>
+        </div>
+      </div>
+      <label class="f">Titel
+        <input type="text" id="oTitle" style="width:300px">
+      </label>
+      <label class="f">Untertitel
+        <input type="text" id="oSub" style="width:300px">
+      </label>
+      <label class="f">Quellenzeile (leer = automatisch)
+        <input type="text" id="oSrc" style="width:300px">
+      </label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="btnPng">Als Bild speichern (PNG)</button>
+      <button class="btn" id="btnSvg">Als SVG speichern</button>
+      <button class="btn" id="btnPrint">Drucken</button>
+    </div>
+  </div>
+  <div id="chartwrap"></div>
+</section>
+</main>
+
+<script>
+(function(){
+"use strict";
+
+var TASKS = [
+  {lines:["Wäsche","waschen"], full:"Wäsche waschen"},
+  {lines:["Bügeln"], full:"Bügeln"},
+  {lines:["Wohnung","aufräumen"], full:"Wohnung aufräumen"},
+  {lines:["Bäder und","Toiletten säubern"], full:"Bäder und Toiletten säubern"},
+  {lines:["Kochen unter","der Woche"], full:"Kochen unter der Woche"},
+  {lines:["Staubsaugen,","Boden reinigen"], full:"Staubsaugen, Boden reinigen"},
+  {lines:["Gartenarbeit"], full:"Gartenarbeit"},
+  {lines:["Müll entsorgen"], full:"Müll entsorgen"},
+  {lines:["Autowäsche /","Autopflege"], full:"Autowäsche / Autopflege"},
+  {lines:["Reparaturen","im / am Haus"], full:"Reparaturen im / am Haus"}
+];
+var CATS = [
+  {col:"#1ba1dc", txt:"#111", leg:"ausschließlich der Mann / Vater"},
+  {col:"#fbaa19", txt:"#111", leg:"überwiegend der Mann / Vater"},
+  {col:"#bdbdbd", txt:"#111", leg:"beide etwa gleich"},
+  {col:"#c4e000", txt:"#111", leg:"überwiegend die Frau / Mutter"},
+  {col:"#12b956", txt:"#111", leg:"ausschließlich die Frau / Mutter"},
+  {col:"#16164a", txt:"#fff", leg:"andere Person oder fällt nicht an"}
+];
+var KEY = "haushaltUmfrage_v1";
+var DEF_TITLE = "Erledigung von Tätigkeiten im gemeinsamen Haushalt,";
+var DEF_SUB = "Wahrnehmung der Kinder, Angaben in Prozent";
+
+var S = {cls:"", dat:"", title:"", sub:"", src:"", mode:"sex", kids:[], nextId:1};
+var cur = emptyAns();
+var curSex = "";
+var editId = null;
+
+function emptyAns(){ return [0,0,0,0,0,0,0,0,0,0]; }
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+/* ---------- Speicher ---------- */
+function load(){
+  try{
+    var raw = localStorage.getItem(KEY);
+    if(raw){ var o = JSON.parse(raw); if(o && Array.isArray(o.kids)){ S = Object.assign(S,o); } }
+  }catch(e){}
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
+}
+
+/* ---------- Eingabe ---------- */
+function buildTable(){
+  var tb = document.querySelector("#qtable tbody");
+  var h = "";
+  TASKS.forEach(function(t,i){
+    h += "<tr><td class='t'>"+(i+1)+". "+esc(t.full)+"</td>";
+    for(var c=1;c<=6;c++){
+      h += "<td><button type='button' data-t='"+i+"' data-c='"+c+"' class='s"+c+"' aria-pressed='false'>X</button></td>";
+    }
+    h += "</tr>";
+  });
+  tb.innerHTML = h;
+  tb.addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return;
+    var t = +b.dataset.t, c = +b.dataset.c;
+    cur[t] = (cur[t] === c) ? 0 : c;
+    paintTable(); syncCode();
+  });
+}
+function paintTable(){
+  var bs = document.querySelectorAll("#qtable tbody button");
+  bs.forEach(function(b){
+    var on = cur[+b.dataset.t] === +b.dataset.c;
+    b.classList.toggle("sel", on);
+    b.setAttribute("aria-pressed", on ? "true":"false");
+  });
+}
+function codeOf(ans){ return ans.map(function(v){ return v ? String(v) : "."; }).join(""); }
+function syncCode(){ $("kidCode").value = codeOf(cur).replace(/\.+$/,""); }
+function parseCode(str){
+  var a = emptyAns();
+  for(var i=0;i<10 && i<str.length;i++){
+    var ch = str.charAt(i);
+    if(ch>="1" && ch<="6") a[i] = +ch;
+  }
+  return a;
+}
+function setSex(v){
+  curSex = v;
+  document.querySelectorAll("#sexSeg button").forEach(function(b){ b.classList.toggle("on", b.dataset.v === v); });
+}
+function resetForm(){
+  editId = null; cur = emptyAns(); setSex("");
+  $("kidName").value = ""; $("kidCode").value = "";
+  $("formTitle").textContent = "Neues Kind eingeben";
+  $("btnSave").textContent = "Speichern und nächstes Kind";
+  paintTable();
+}
+function flash(msg, bad){
+  var m = $("formMsg"); m.textContent = msg; m.style.color = bad ? "#b91c1c" : "#15803d";
+  clearTimeout(flash.t); flash.t = setTimeout(function(){ m.textContent=""; }, 3500);
+}
+function saveKid(){
+  var name = $("kidName").value.trim();
+  var answered = cur.filter(function(v){return v>0;}).length;
+  if(answered === 0){ flash("Es wurde noch nichts angekreuzt.", true); return; }
+  if(!name){ name = "Kind " + (editId ? "" : (S.kids.length+1)); name = name.trim(); }
+  var msg;
+  if(editId){
+    var k = S.kids.filter(function(x){return x.id===editId;})[0];
+    if(k){ k.name = name; k.sex = curSex; k.a = cur.slice(); }
+    msg = "Änderung gespeichert.";
+  } else {
+    S.kids.push({id:S.nextId++, name:name, sex:curSex, a:cur.slice()});
+    msg = "Gespeichert: " + name + (answered<10 ? " ("+(10-answered)+" Aufgabe(n) ohne Kreuz)" : "");
+  }
+  save(); resetForm(); renderList(); flash(msg, false);
+  $("kidName").focus();
+}
+function renderList(){
+  var m = S.kids.filter(function(k){return k.sex==="m";}).length;
+  var w = S.kids.filter(function(k){return k.sex==="w";}).length;
+  var o = S.kids.length - m - w;
+  $("summary").textContent = S.kids.length + " Kinder erfasst (" + m + " Jungen, " + w + " Mädchen, " + o + " ohne Angabe)";
+  if(!S.kids.length){ $("listWrap").innerHTML = "<p class='small'>Noch keine Kinder erfasst.</p>"; return; }
+  var h = "<table class='list'><thead><tr><th>Nr.</th><th>Code / Name</th><th>Geschlecht</th><th>Kreuze (1 bis 6)</th><th></th></tr></thead><tbody>";
+  S.kids.forEach(function(k,i){
+    var inc = k.a.some(function(v){return v===0;});
+    h += "<tr class='"+(inc?"inc":"")+"'><td>"+(i+1)+"</td><td>"+esc(k.name)+"</td><td>"+
+      (k.sex==="m"?"Junge":k.sex==="w"?"Mädchen":"–")+"</td><td class='code'>"+codeOf(k.a)+"</td><td>"+
+      "<button class='btn' data-ed='"+k.id+"'>Bearbeiten</button> <button class='btn danger' data-del='"+k.id+"'>Löschen</button></td></tr>";
+  });
+  h += "</tbody></table><p class='small'>Orange hinterlegte Zeilen haben mindestens eine unbeantwortete Aufgabe (Punkt in der Kreuzfolge).</p>";
+  $("listWrap").innerHTML = h;
+}
+
+/* ---------- Auswertung ---------- */
+function percents(counts){
+  var n = counts.reduce(function(a,b){return a+b;},0);
+  if(!n) return null;
+  var ex = counts.map(function(c){return c/n*100;});
+  var fl = ex.map(Math.floor);
+  var rest = 100 - fl.reduce(function(a,b){return a+b;},0);
+  var idx = ex.map(function(v,i){return {i:i, f:v-Math.floor(v)};}).sort(function(a,b){return b.f-a.f;});
+  for(var j=0;j<rest;j++) fl[idx[j].i]++;
+  return fl;
+}
+function groupsFor(mode){
+  if(mode==="all") return [{key:"a",label:"Alle"}];
+  if(mode==="three") return [{key:"m",label:"Jungen"},{key:"w",label:"Mädchen"},{key:"a",label:"Alle"}];
+  return [{key:"m",label:"Jungen"},{key:"w",label:"Mädchen"}];
+}
+function kidsOf(key){
+  return S.kids.filter(function(k){ return key==="a" || k.sex===key; });
+}
+function autoSource(){
+  var m = S.kids.filter(function(k){return k.sex==="m";}).length;
+  var w = S.kids.filter(function(k){return k.sex==="w";}).length;
+  var parts = ["Eigene Erhebung"];
+  if(S.cls) parts.push("Klasse " + S.cls);
+  if(S.dat) parts.push(S.dat);
+  var s = parts.join(", ") + ", n = " + S.kids.length;
+  if(m||w) s += " (" + m + " Jungen, " + w + " Mädchen" + (S.kids.length-m-w ? ", " + (S.kids.length-m-w) + " ohne Angabe" : "") + ")";
+  var incomplete = S.kids.some(function(k){return k.a.some(function(v){return v===0;});});
+  if(incomplete) s += ". Nur beantwortete Angaben berücksichtigt.";
+  return s;
+}
+function buildSvg(){
+  var W = 900, X0 = 210, X1 = 880, BW = X1 - X0;
+  var groups = groupsFor(S.mode);
+  var bh = 22, gap = 3, padG = 9;
+  var gh = groups.length*bh + (groups.length-1)*gap + 2*padG;
+  var top = 92;
+  var axisH = 48;
+  var legendY = top + TASKS.length*gh + axisH + 14;
+  var H = legendY + 78 + 40;
+  var font = "Arial, Helvetica, sans-serif";
+  var out = [];
+  out.push("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 "+W+" "+H+"' width='"+W+"' height='"+H+"' font-family='"+font+"'>");
+  out.push("<rect x='0' y='0' width='"+W+"' height='"+H+"' fill='#fff'/>");
+  out.push("<rect x='1.5' y='1.5' width='"+(W-3)+"' height='"+(H-3)+"' fill='none' stroke='#c4e000' stroke-width='3'/>");
+  var title = S.title || DEF_TITLE, sub = S.sub || DEF_SUB;
+  out.push("<text x='16' y='34' font-size='19' font-weight='700' fill='#111'>"+esc(title)+"</text>");
+  out.push("<text x='16' y='58' font-size='16' fill='#111'>"+esc(sub)+"</text>");
+
+  // Gitterlinien
+  for(var g=0; g<=100; g+=20){
+    var gx = X0 + BW*g/100;
+    out.push("<line x1='"+gx+"' y1='"+top+"' x2='"+gx+"' y2='"+(top+TASKS.length*gh)+"' stroke='#e3e6ea' stroke-width='1'/>");
+  }
+
+  TASKS.forEach(function(t,ti){
+    var gy = top + ti*gh;
+    // Trennlinie
+    out.push("<line x1='12' y1='"+gy+"' x2='"+X1+"' y2='"+gy+"' stroke='#bfc5cc' stroke-width='1'/>");
+    // Aufgabenname
+    var ty = gy + gh/2 - (t.lines.length-1)*8 + 5;
+    t.lines.forEach(function(ln,li){
+      out.push("<text x='14' y='"+(ty+li*16)+"' font-size='14' fill='#111'>"+esc(ln)+"</text>");
+    });
+    groups.forEach(function(gr,gi){
+      var by = gy + padG + gi*(bh+gap);
+      out.push("<text x='"+(X0-8)+"' y='"+(by+bh/2+4.5)+"' font-size='13.5' fill='#111' text-anchor='end'>"+esc(gr.label)+"</text>");
+      var counts = [0,0,0,0,0,0];
+      kidsOf(gr.key).forEach(function(k){ var v = k.a[ti]; if(v>=1&&v<=6) counts[v-1]++; });
+      var p = percents(counts);
+      if(!p){
+        out.push("<rect x='"+X0+"' y='"+by+"' width='"+BW+"' height='"+bh+"' fill='#f3f4f6' stroke='#d7dde3'/>");
+        out.push("<text x='"+(X0+BW/2)+"' y='"+(by+bh/2+4)+"' font-size='12' fill='#888' text-anchor='middle'>keine Angaben</text>");
+        return;
+      }
+      var x = X0;
+      p.forEach(function(v,ci){
+        if(v<=0) return;
+        var w = BW*v/100;
+        out.push("<rect x='"+x.toFixed(2)+"' y='"+by+"' width='"+w.toFixed(2)+"' height='"+bh+"' fill='"+CATS[ci].col+"'/>");
+        if(w >= 11){
+          out.push("<text x='"+(x+w/2).toFixed(2)+"' y='"+(by+bh/2+4.5)+"' font-size='"+(w<16?11:13.5)+"' font-weight='700' fill='"+CATS[ci].txt+"' text-anchor='middle'>"+v+"</text>");
+        }
+        x += w;
+      });
+    });
+  });
+  var yEnd = top + TASKS.length*gh;
+  out.push("<line x1='12' y1='"+yEnd+"' x2='"+X1+"' y2='"+yEnd+"' stroke='#bfc5cc' stroke-width='1'/>");
+  // Achse
+  out.push("<line x1='"+X0+"' y1='"+yEnd+"' x2='"+X1+"' y2='"+yEnd+"' stroke='#111' stroke-width='1.5'/>");
+  for(var a=0; a<=100; a+=20){
+    var ax = X0 + BW*a/100;
+    out.push("<line x1='"+ax+"' y1='"+yEnd+"' x2='"+ax+"' y2='"+(yEnd+6)+"' stroke='#111' stroke-width='1.5'/>");
+    out.push("<text x='"+ax+"' y='"+(yEnd+22)+"' font-size='13' fill='#111' text-anchor='middle'>"+a+"</text>");
+  }
+  out.push("<text x='"+(X0+BW/2)+"' y='"+(yEnd+42)+"' font-size='12' fill='#555' text-anchor='middle'>Prozent</text>");
+  // Legende (3 Spalten x 2 Zeilen)
+  var colX = [16, 316, 616];
+  CATS.forEach(function(c,i){
+    var lx = colX[i%3], ly = legendY + Math.floor(i/3)*28;
+    out.push("<rect x='"+lx+"' y='"+ly+"' width='20' height='16' fill='"+c.col+"'/>");
+    out.push("<text x='"+(lx+28)+"' y='"+(ly+13)+"' font-size='13.5' fill='#111'>"+esc(c.leg)+"</text>");
+  });
+  // Quelle
+  var src = S.src || autoSource();
+  out.push("<text x='16' y='"+(H-16)+"' font-size='12.5' font-style='italic' fill='#333'>"+esc(src)+"</text>");
+  out.push("</svg>");
+  return out.join("");
+}
+function renderChart(){
+  if(!S.kids.length){
+    $("chartwrap").innerHTML = "<p class='small' style='padding:14px'>Noch keine Daten. Bitte zuerst im Reiter Eingabe Kinder erfassen oder Beispieldaten laden.</p>";
+    return;
+  }
+  $("chartwrap").innerHTML = buildSvg();
+}
+
+/* ---------- Export ---------- */
+function download(name, blob){
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function fileBase(){ return "Haushaltsumfrage" + (S.cls ? "_" + S.cls.replace(/[^\wäöüÄÖÜß-]+/g,"") : ""); }
+function exportPng(){
+  if(!S.kids.length) return;
+  var svg = buildSvg();
+  var img = new Image();
+  var url = URL.createObjectURL(new Blob([svg], {type:"image/svg+xml;charset=utf-8"}));
+  img.onload = function(){
+    var vb = svg.match(/viewBox='0 0 (\d+) (\d+)'/);
+    var w = +vb[1], h = +vb[2], sc = 2;
+    var cv = document.createElement("canvas"); cv.width = w*sc; cv.height = h*sc;
+    var ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(url);
+    cv.toBlob(function(b){ download(fileBase()+".png", b); }, "image/png");
+  };
+  img.src = url;
+}
+function exportSvg(){
+  if(!S.kids.length) return;
+  download(fileBase()+".svg", new Blob([buildSvg()], {type:"image/svg+xml"}));
+}
+function exportJson(){
+  download(fileBase()+"_Daten.json", new Blob([JSON.stringify(S,null,1)], {type:"application/json"}));
+}
+function exportCsv(){
+  var head = ["Nr","Name","Geschlecht"].concat(TASKS.map(function(t){return t.full;}));
+  var rows = [head];
+  S.kids.forEach(function(k,i){
+    rows.push([i+1, k.name, k.sex==="m"?"Junge":k.sex==="w"?"Mädchen":""].concat(k.a.map(function(v){return v||"";})));
+  });
+  var csv = rows.map(function(r){
+    return r.map(function(c){ c = String(c); return /[;"\n]/.test(c) ? '"'+c.replace(/"/g,'""')+'"' : c; }).join(";");
+  }).join("\r\n");
+  download(fileBase()+".csv", new Blob(["\ufeff"+csv], {type:"text/csv;charset=utf-8"}));
+}
+function importJson(file){
+  var r = new FileReader();
+  r.onload = function(){
+    try{
+      var o = JSON.parse(r.result);
+      if(!o || !Array.isArray(o.kids)) throw new Error("Format");
+      if(S.kids.length && !confirm("Die vorhandenen Daten werden durch die Datei ersetzt. Fortfahren?")) return;
+      S = Object.assign({cls:"",dat:"",title:"",sub:"",src:"",mode:"sex",kids:[],nextId:1}, o);
+      S.kids.forEach(function(k){ if(k.id>=S.nextId) S.nextId = k.id+1; });
+      save(); initFields(); renderList(); resetForm();
+    }catch(e){ alert("Die Datei konnte nicht gelesen werden."); }
+  };
+  r.readAsText(file);
+}
+
+/* ---------- Beispieldaten ---------- */
+function demo(){
+  if(S.kids.length && !confirm("Die vorhandenen Daten werden durch Beispieldaten ersetzt. Fortfahren?")) return;
+  var seed = 12345;
+  function rnd(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; }
+  var W = [
+    [1,3,15,41,39,1],[1,3,8,33,52,3],[3,3,30,38,26,0],[2,4,18,40,34,2],[1,5,17,40,37,0],
+    [2,6,28,35,26,3],[8,22,27,8,3,32],[9,30,38,15,8,0],[39,35,12,3,3,8],[41,40,9,3,1,6]
+  ];
+  var names = ["Anna","Ben","Clara","David","Elif","Finn","Greta","Hamza","Ida","Jonas","Klara","Luca","Mia","Noah","Olivia","Paul","Queen","Ravi","Sophie","Tim","Uma","Viktor","Wiebke","Yusuf"];
+  S.kids = []; S.nextId = 1;
+  names.forEach(function(n,i){
+    var a = W.map(function(wt){
+      var s = wt.reduce(function(x,y){return x+y;},0), r = rnd()*s, c = 0;
+      for(var j=0;j<6;j++){ r -= wt[j]; if(r<=0){ c=j+1; break; } }
+      return c || 3;
+    });
+    if(i===5) a[6] = 0;
+    S.kids.push({id:S.nextId++, name:n, sex:(i%2?"w":"m"), a:a});
+  });
+  if(!S.cls) S.cls = "6c";
+  save(); initFields(); renderList();
+}
+
+/* ---------- Start ---------- */
+function initFields(){
+  $("cls").value = S.cls || ""; $("dat").value = S.dat || "";
+  $("oTitle").value = S.title || ""; $("oTitle").placeholder = DEF_TITLE;
+  $("oSub").value = S.sub || ""; $("oSub").placeholder = DEF_SUB;
+  $("oSrc").value = S.src || ""; $("oSrc").placeholder = autoSource();
+  document.querySelectorAll("#modeSeg button").forEach(function(b){ b.classList.toggle("on", b.dataset.v === S.mode); });
+}
+function showTab(out){
+  $("viewInput").classList.toggle("hidden", out);
+  $("viewOut").classList.toggle("hidden", !out);
+  $("tabIn").classList.toggle("on", !out);
+  $("tabOut").classList.toggle("on", out);
+  if(out){ $("oSrc").placeholder = autoSource(); renderChart(); }
+}
+
+load();
+buildTable(); paintTable(); initFields(); renderList();
+
+$("tabIn").onclick = function(){ showTab(false); };
+$("tabOut").onclick = function(){ showTab(true); };
+$("cls").oninput = function(){ S.cls = this.value.trim(); save(); };
+$("dat").oninput = function(){ S.dat = this.value.trim(); save(); };
+document.querySelectorAll("#sexSeg button").forEach(function(b){ b.onclick = function(){ setSex(b.dataset.v); }; });
+$("kidCode").oninput = function(){
+  this.value = this.value.replace(/[^0-6.\-\s]/g,"");
+  cur = parseCode(this.value); paintTable();
+};
+function enterSave(e){ if(e.key==="Enter"){ e.preventDefault(); saveKid(); } }
+$("kidName").onkeydown = enterSave; $("kidCode").onkeydown = enterSave;
+$("btnSave").onclick = saveKid;
+$("btnClear").onclick = resetForm;
+$("listWrap").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if(!b) return;
+  if(b.dataset.del){
+    var id = +b.dataset.del, k = S.kids.filter(function(x){return x.id===id;})[0];
+    if(k && confirm("Eintrag \""+k.name+"\" löschen?")){
+      S.kids = S.kids.filter(function(x){return x.id!==id;});
+      if(editId===id) resetForm();
+      save(); renderList();
+    }
+  } else if(b.dataset.ed){
+    var id2 = +b.dataset.ed, k2 = S.kids.filter(function(x){return x.id===id2;})[0];
+    if(!k2) return;
+    editId = id2; cur = k2.a.slice(); setSex(k2.sex || "");
+    $("kidName").value = k2.name; syncCode(); paintTable();
+    $("formTitle").textContent = "Eintrag bearbeiten: " + k2.name;
+    $("btnSave").textContent = "Änderung speichern";
+    window.scrollTo({top:0, behavior:"smooth"});
+  }
+});
+$("btnExportJson").onclick = exportJson;
+$("btnCsv").onclick = exportCsv;
+$("btnImport").onclick = function(){ $("fileIn").click(); };
+$("fileIn").onchange = function(){ if(this.files[0]) importJson(this.files[0]); this.value = ""; };
+$("btnDemo").onclick = demo;
+$("btnWipe").onclick = function(){
+  if(S.kids.length && confirm("Wirklich alle erfassten Daten löschen? Bitte vorher sichern.")){
+    S.kids = []; S.nextId = 1; save(); resetForm(); renderList();
+  }
+};
+document.querySelectorAll("#modeSeg button").forEach(function(b){
+  b.onclick = function(){ S.mode = b.dataset.v; save(); document.querySelectorAll("#modeSeg button").forEach(function(x){ x.classList.toggle("on", x===b); }); renderChart(); };
+});
+$("oTitle").oninput = function(){ S.title = this.value; save(); renderChart(); };
+$("oSub").oninput = function(){ S.sub = this.value; save(); renderChart(); };
+$("oSrc").oninput = function(){ S.src = this.value; save(); renderChart(); };
+$("btnPng").onclick = exportPng;
+$("btnSvg").onclick = exportSvg;
+$("btnPrint").onclick = function(){ window.print(); };
+
+})();
+</script>
+</body>
+</html>

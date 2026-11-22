@@ -2420,6 +2420,7 @@ async function loadAll(){
   await Promise.all([loadNotes(), loadLinks(), loadDistractions()]);
   await loadWorkspace();
   try{ await foSessSync(); }catch(e){ logErr("stumm", e); }
+  try{ await viSync(); }catch(e){ logErr("stumm", e); }
 }
 async function loadCalendars(){
   try{
@@ -2472,6 +2473,7 @@ async function refreshFromServer(force){
     _lastRefresh = Date.now();
     recurringGoalsMaybe();
     try{ await foSessSync(); }catch(e){ logErr("stumm", e); }
+    try{ await viSync(); }catch(e){ logErr("stumm", e); }
     if(changed){ try{ render(); }catch(e){ logErr("refresh/render", e); } toast("Von einem anderen Gerät aktualisiert"); }
   }catch(e){ logErr("refreshFromServer", e); }
   finally{ _refreshing = false; }
@@ -3522,6 +3524,62 @@ const NAV_GROUPS = {
     {k:"settings",label:"Konto",v:"settings"},{k:"stats",label:"Statistik",v:"stats"},
     {k:"trash",label:"Papierkorb",act:"trash"},{k:"done",label:"Zuletzt abgehakt",act:"done"}]}
 };
+/* Ansichten ein- und ausblenden (seit v309): betrifft nur Navigation und Umschalter, nie Daten oder Funktionen.
+   Heute und Konto lassen sich nicht ausblenden. Gespeichert lokal (viHide, viT) und über das Tabellenblatt "Ansicht". */
+const VI_TOP = [["focus","Fokus"],["log","Logbuch"],["grp_plan","Struktur (ganzer Reiter)"],["grp_lists","Listen (ganzer Reiter)"]];
+const VI_DEFAULT = {kalender:true, day:true, job:true, meta:true, deadlines:true, gantt:true};   // Grundeinstellung: in Struktur nur Dokumente
+let viHide = (()=>{ try{ const v = JSON.parse(localStorage.getItem("viHide")||"null"); if(v && typeof v==="object") return v; }catch(_){} return Object.assign({}, VI_DEFAULT); })();
+let viT = (()=>{ try{ return +localStorage.getItem("viT")||0; }catch(_){ return 0; } })();
+function viHidden(k){ return !!viHide[k]; }
+function viItems(g){ return NAV_GROUPS[g].items.filter(x=>!viHidden(x.k)); }
+function viTopHidden(k){ return viHidden(k) || (NAV_GROUPS[k] && viItems(k).length===0); }
+function viSave(){ try{ localStorage.setItem("viHide", JSON.stringify(viHide)); localStorage.setItem("viT", String(viT)); }catch(_){ logErr("stumm", _); } }
+function viApplyNav(){
+  const nv = document.getElementById("nav"); if(!nv) return;
+  VI_TOP.forEach(([k])=>{ const b = nv.querySelector('button[data-view="'+k+'"]'); if(b) b.style.display = viTopHidden(k) ? "none" : ""; });
+}
+function viSet(k, hidden){
+  if(hidden) viHide[k] = true; else delete viHide[k];
+  viT = Date.now(); viSave(); viApplyNav(); viKick();
+  if(k==="focus" && !hidden) foSessKick();
+}
+function viReset(hideAll){ viHide = hideAll ? Object.assign({}, VI_DEFAULT) : {}; viT = Date.now(); viSave(); viApplyNav(); viKick(); }
+let _viBusy = false, _viTimer = 0;
+function viKick(){ clearTimeout(_viTimer); _viTimer = setTimeout(()=>{ viSync().catch(e=>logErr("stumm", e)); }, 2500); }
+async function viSync(){
+  if(_viBusy || !accessToken || !spreadsheetId) return false;
+  _viBusy = true; let changed = false;
+  try{
+    let srv = null, missing = false;
+    try{
+      const r = await api(`${SHEETS}/${spreadsheetId}/values/Ansicht!A1:B1`);
+      const row = (r.values||[])[0];
+      if(row && row[1]){ try{ srv = JSON.parse(row[1]); }catch(_){ srv = null; } }
+    }catch(e){ if(String((e && e.message)||e).includes("Unable to parse range")) missing = true; else throw e; }
+    const st = srv && +srv.t || 0;
+    if(srv && srv.h && typeof srv.h==="object" && st>viT){ viHide = srv.h; viT = st; viSave(); viApplyNav(); changed = true; }
+    else if(missing || st<viT){
+      if(missing){
+        try{ await api(`${SHEETS}/${spreadsheetId}:batchUpdate`, {method:"POST", body:JSON.stringify({requests:[{addSheet:{properties:{title:"Ansicht"}}}]})}); }catch(e){ logErr("stumm", e); }
+        await new Promise(r=>setTimeout(r, 800));
+      }
+      if(viT>0) await api(`${SHEETS}/${spreadsheetId}/values/Ansicht!A1:B1?valueInputOption=RAW`, {method:"PUT", body:JSON.stringify({values:[["viHide", JSON.stringify({t:viT, h:viHide})]]})});
+    }
+    if(changed){ try{ render(); }catch(e){ logErr("stumm", e); } }
+  }catch(e){ logErr("viSync", e); }
+  finally{ _viBusy = false; }
+  return changed;
+}
+function viCardHtml(){
+  const box = (k,l)=>`<label style="display:flex;align-items:center;gap:6px;font-size:14px;padding:3px 0"><input type="checkbox" data-vi="${esc(k)}"${viHidden(k)?"":" checked"}> ${esc(l)}</label>`;
+  const grp = (g,t)=>`<div style="margin-top:10px"><b style="font-size:13px">${t}</b>${NAV_GROUPS[g].items.filter(x=>x.k!=="settings").map(x=>box(x.k,x.label)).join("")}</div>`;
+  return `<div class="card"><div class="body"><div class="title">Ansichten ein- und ausblenden</div>
+    <div class="sub" style="margin-bottom:8px">Haken gesetzt: Die Ansicht ist in der Navigation sichtbar. Ausblenden ändert keine Daten und keine Funktion. Heute und Konto bleiben immer sichtbar, und die Heute-Ansicht zeigt weiter Metaprojekte, Projekte und Unterrichtsstunden. Die Einstellung gilt auf allen Geräten, sobald sie sich mit Google abgleichen.</div>
+    <b style="font-size:13px">Hauptleiste</b>${VI_TOP.map(([k,l])=>box(k,l)).join("")}
+    ${grp("grp_plan","Struktur")}${grp("grp_lists","Listen")}${grp("grp_acc","Konto")}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="icon-btn" id="viAll">Alles einblenden</button><button class="icon-btn" id="viDef">Grundeinstellung (Struktur nur Dokumente)</button></div>
+    <div class="sub" style="margin-top:8px">Fokus ausblenden: Dieses ToDo schreibt dann keine Fokus-Sitzungen mehr ins Tabellenblatt Fokus, es liest sie nur noch (die Punkte zählen weiter). Geschrieben werden sie dann von Seifferts Zeit.</div></div></div>`;
+}
 function navKey(v){ for(const g in NAV_GROUPS) if(NAV_GROUPS[g].views.includes(v)) return g; return v; }
 function navItemKey(g){
   const it = NAV_GROUPS[g].items.find(x=>x.v===view && (x.mode?x.mode===tp.mode:true) && (x.tab?x.tab===wsTab:true));
@@ -3535,8 +3593,8 @@ function navGo(g, k){
   if(it.tab){ wsTab = it.tab; try{ localStorage.setItem("wsTab", wsTab); }catch(_){ logErr("stumm", _); } }
   render();
 }
-function navLast(g){ let k = ""; try{ k = localStorage.getItem("navLast_"+g)||""; }catch(_){ logErr("stumm", _); } const it = NAV_GROUPS[g].items.find(x=>x.k===k && !x.act) || NAV_GROUPS[g].items[0]; return it.k; }
-function navBarHtml(g){ const cur = navItemKey(g); return `<div class="tp-bar nav-sub" style="margin-bottom:10px;flex-wrap:wrap">${NAV_GROUPS[g].items.map(x=>`<button class="tp-btn${x.k===cur?" on":""}" data-navsub="${x.k}" data-navg="${g}">${x.label}</button>`).join("")}${g==="grp_plan"?`<span style="flex:1"></span><button class="tp-btn" data-fs="-" title="Schrift kleiner" aria-label="Schrift kleiner">A−</button><button class="tp-btn" data-fs="+" title="Schrift größer" aria-label="Schrift größer">A+</button>`:""}</div>`; }
+function navLast(g){ let k = ""; try{ k = localStorage.getItem("navLast_"+g)||""; }catch(_){ logErr("stumm", _); } const vis = viItems(g), it = vis.find(x=>x.k===k && !x.act) || vis[0] || NAV_GROUPS[g].items[0]; return it.k; }
+function navBarHtml(g){ const cur = navItemKey(g); return `<div class="tp-bar nav-sub" style="margin-bottom:10px;flex-wrap:wrap">${NAV_GROUPS[g].items.filter(x=>!viHidden(x.k) || x.k===cur).map(x=>`<button class="tp-btn${x.k===cur?" on":""}" data-navsub="${x.k}" data-navg="${g}">${x.label}</button>`).join("")}${g==="grp_plan"?`<span style="flex:1"></span><button class="tp-btn" data-fs="-" title="Schrift kleiner" aria-label="Schrift kleiner">A−</button><button class="tp-btn" data-fs="+" title="Schrift größer" aria-label="Schrift größer">A+</button>`:""}</div>`; }
 function navFsApply(){ if(typeof main==="undefined") return; if(navKey(view)==="grp_plan") main.style.setProperty("--f", String(tpFsGet())); else main.style.removeProperty("--f"); }
 (function(){
   const r0 = render;
@@ -3544,7 +3602,9 @@ function navFsApply(){ if(typeof main==="undefined") return; if(navKey(view)==="
     const g = navKey(view);
     if(NAV_GROUPS[g]){ const k = navItemKey(g); if(k){ try{ localStorage.setItem("navLast_"+g, k); }catch(_){ logErr("stumm", _); } } }
     navFsApply();
+    if((view==="focus" || view==="log") && viHidden(view)) view = "today";
     const res = r0.apply(this, arguments);
+    viApplyNav();
     if(NAV_GROUPS[g] && main && !main.querySelector(".nav-sub")) main.insertAdjacentHTML("afterbegin", navBarHtml(g));
     return res;
   };
@@ -4012,6 +4072,8 @@ function render(){
         <button class="icon-btn" id="hideDoneBtn">${hideDoneAll()?"Einblenden":"Ausblenden"}</button>
       </div>
 
+      ${viCardHtml()}
+
       <div class="card">
         <div class="body"><div class="title">Im Fokus nach vorne ziehen</div><div class="sub" style="margin-bottom:8px">Einträge mit diesem Tag stehen in der Fokus-Ansicht vorn, zum Beispiel alle Job-Aufgaben</div>
           <select id="foFrontSel">${foFrontOptions().map(([k,l])=>`<option value="${esc(k)}"${k===foFront?" selected":""}>${esc(l)}</option>`).join("")}</select></div>
@@ -4076,6 +4138,9 @@ function render(){
     document.querySelectorAll("[data-sollh]").forEach(el=>{ el.onchange=()=>{ const e = foSoll[+el.dataset.sollh]; if(!e) return; e.h = Math.max(0.5, Math.min(999, parseFloat(String(el.value).replace(",","."))||e.h)); foSollSave(); render(); }; });
     document.querySelectorAll("[data-sollper]").forEach(el=>{ el.onchange=()=>{ const e = foSoll[+el.dataset.sollper]; if(!e) return; e.per = el.value==="m"?"m":"w"; foSollSave(); render(); }; });
     document.querySelectorAll("[data-solldel]").forEach(el=>{ el.onclick=()=>{ foSoll.splice(+el.dataset.solldel,1); foSollSave(); render(); }; });
+    document.querySelectorAll("[data-vi]").forEach(cb=>{ cb.onchange=()=>{ viSet(cb.dataset.vi, !cb.checked); toast(cb.checked?"Eingeblendet":"Ausgeblendet"); }; });
+    const via=$("viAll"); if(via) via.onclick=()=>{ viReset(false); render(); toast("Alle Ansichten eingeblendet"); };
+    const vid=$("viDef"); if(vid) vid.onclick=()=>{ viReset(true); render(); toast("Grundeinstellung: in Struktur nur Dokumente"); };
     const ffs=$("foFrontSel"); if(ffs) ffs.onchange=()=>{ foFront = ffs.value; foStore("foFront", foFront); toast(foFront?"Im Fokus vorn: "+foTagName(foFront):"Im Fokus keine Bevorzugung"); };
     const dcs=$("defCalSel"); if(dcs) dcs.onchange=()=>{ defaultCalId=dcs.value; localStorage.setItem("defcal",defaultCalId); toast("Standard-Kalender gesetzt"); };
     ksBindSettings();
@@ -4546,7 +4611,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v307";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v309";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -13827,7 +13892,7 @@ async function foSessSync(){
     const srvIds = new Set(srv.map(x=>x.id)), merged = foSessNorm(foSessions.concat(srv));
     const localIds = new Set(foSessions.map(foSessId));
     if(merged.length!==foSessions.length || merged.some(x=>!localIds.has(x.id))){ foSessions = merged; foStore("foSessions", foSessions); changed = true; }
-    const needPush = missing || merged.some(x=>!srvIds.has(x.id)) || srv.length>merged.length;
+    const needPush = !viHidden("focus") && (missing || merged.some(x=>!srvIds.has(x.id)) || srv.length>merged.length);   // Fokus ausgeblendet: Seifferts Zeit schreibt, hier nur lesen
     if(needPush){
       const body = JSON.stringify({values:[["id","ref","title","meta","tags","next","start","end","ms"]].concat(merged.map(foSessRow))});
       const url = `${SHEETS}/${spreadsheetId}/values/Fokus!A1?valueInputOption=RAW`;

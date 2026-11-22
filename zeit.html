@@ -66,17 +66,19 @@ const COLS=['--c0','--c1','--c2','--c3','--c4','--c5','--c6','--c7'];
 const MN=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
 const CATS=['Unterricht','Vorbereitung','Korrektur','Konferenz und Gremien','Inklusion, NTA, AO-SF','Beratung und Elterngespräche','Aufsicht und Vertretung','Organisation','Fortbildung','Sonstiges'];
-function defaultsAbr(name){return{id:uid(),name:name||'Abrechnung',mode:'monat',startMonth:1,entries:[],free:[],days:{},settled:{},set:{wd:[5,5,5,5,5],unit:45,cats:[...CATS],schools:['EvT','Herder']}}}
+function defaultsAbr(name){return{id:uid(),name:name||'Abrechnung',mode:'monat',startMonth:1,entries:[],free:[],days:{},dayS:{},settled:{},set:{wd:[5,5,5,5,5],unit:45,cats:[...CATS],schools:['EvT','Herder']}}}
 function normAbr(j){const d=defaultsAbr(j.name);const r={...d,...j,id:j.id||d.id,set:{...d.set,...(j.set||{})}};
  if(!Array.isArray(r.entries))r.entries=[];if(!Array.isArray(r.free))r.free=[];
- if(!r.days||typeof r.days!=='object')r.days={};if(!r.settled||typeof r.settled!=='object')r.settled={};
+ if(!r.days||typeof r.days!=='object')r.days={};if(!r.dayS||typeof r.dayS!=='object')r.dayS={};if(!r.settled||typeof r.settled!=='object')r.settled={};
  if(r.mode!=='jahr')r.mode='monat';r.startMonth=Math.min(12,Math.max(1,+r.startMonth||1));
  if(j.set&&j.set.soll!=null&&!j.set.wd)r.set.wd=Array(5).fill(j.set.soll/5);
  if(!Array.isArray(r.set.wd)||r.set.wd.length!==5)r.set.wd=[5,5,5,5,5];delete r.set.soll;return r}
+function normFokus(j){const f=(j&&Array.isArray(j.fokus)?j.fokus:[]).filter(x=>x&&x.id&&x.start&&x.end&&+x.ms>0).map(x=>({id:String(x.id),ref:String(x.ref||''),title:String(x.title||''),meta:String(x.meta||''),tags:Array.isArray(x.tags)?x.tags.map(String):String(x.tags||'').split(',').map(t=>t.trim()).filter(Boolean),next:!!x.next,start:String(x.start),end:String(x.end),ms:Math.round(+x.ms)}));
+ const run=j&&j.fokusRun&&j.fokusRun.start&&!isNaN(Date.parse(j.fokusRun.start))?{title:String(j.fokusRun.title||''),start:String(j.fokusRun.start),tags:Array.isArray(j.fokusRun.tags)?j.fokusRun.tags.map(String):[]}:null;const used=(j&&Array.isArray(j.fokusUsed)?j.fokusUsed:[]).map(String).slice(-3000);return{fokus:f,fokusRun:run,fokusUsed:used}}
 function normRoot(j){
- if(j&&Array.isArray(j.abr)&&j.abr.length){const abr=j.abr.map(normAbr);return{format:3,cur:abr.some(a=>a.id===j.cur)?j.cur:abr[0].id,abr}}
- if(j&&Array.isArray(j.entries)){const a=normAbr({...j,name:j.name||'Abrechnung 1'});return{format:3,cur:a.id,abr:[a]}}
- const a=defaultsAbr('Abrechnung 1');return{format:3,cur:a.id,abr:[a]}}
+ if(j&&Array.isArray(j.abr)&&j.abr.length){const abr=j.abr.map(normAbr);return{format:3,cur:abr.some(a=>a.id===j.cur)?j.cur:abr[0].id,abr,...normFokus(j)}}
+ if(j&&Array.isArray(j.entries)){const a=normAbr({...j,name:j.name||'Abrechnung 1'});return{format:3,cur:a.id,abr:[a],...normFokus(j)}}
+ const a=defaultsAbr('Abrechnung 1');return{format:3,cur:a.id,abr:[a],...normFokus(j)}}
 function load(){
  try{if(LX)return normRoot(LX.init||{})}catch(e){}
  try{const j=JSON.parse(localStorage.getItem(KEY));if(j)return normRoot(j)}catch(e){}return normRoot({})}
@@ -130,13 +132,14 @@ function entriesOf(ym){return S.entries.filter(e=>e.date.startsWith(ym)).sort((a
 function byCat(list){const m={};list.forEach(e=>m[e.cat]=(m[e.cat]||0)+e.u);return Object.entries(m).sort((a,b)=>b[1]-a[1])}
 
 function $(s){return document.querySelector(s)}
-const TABS=[['erfassen','Erfassen'],['tage','Tage'],['liste','Liste'],['diagramme','Diagramme'],['bericht','Bericht'],['daten','Einstellungen und Daten']];
+const TABS=[['erfassen','Erfassen'],['tage','Tage'],['liste','Liste'],['diagramme','Diagramme'],['bericht','Bericht'],['fokus','Fokus'],['daten','Einstellungen und Daten']];
 function nav(){$('#nav').innerHTML=TABS.map(t=>`<button class="${ui.tab===t[0]?'on':''}" onclick="go('${t[0]}')">${t[1]}</button>`).join('')+(LX?`<button class="chip" id="chip" onclick="chipClick()">Drive: ...</button>`:'');chipShow()}
-function go(t){ui.tab=t;render()}
-function abrBar(){$('#abrbar').innerHTML=R.abr.map(a=>`<button class="${a.id===S.id?'on':''}" onclick="switchAbr('${a.id}')" title="${a.mode==='jahr'?'Abrechnung für das ganze Jahr':'monatsweise Abrechnung'}">${esc(a.name)} <small>${a.mode==='jahr'?'Jahr':'Monat'}</small></button>`).join('')+'<button onclick="newAbrGo()">+ Neue Abrechnung</button>'}
+function go(t){ui.tab=t;if(t==='fokus')foPull();render()}
+function abrBar(){$('#abrbar').innerHTML=R.abr.map(a=>`<button class="${a.id===S.id?'on':''}" onclick="switchAbr('${a.id}')" title="${a.mode==='jahr'?'Abrechnung für das ganze Jahr':'monatsweise Abrechnung'}">${esc(a.name)} <small>${a.mode==='jahr'?'Jahr':'Monat'}</small></button>`).join('')+'<button onclick="newAbrGo()">+ Neue Abrechnung</button><span class="mut" style="margin-left:14px;align-self:center">Diese Abrechnung:</span><button class="'+(S.mode==='monat'?'on':'')+'" onclick="setMode(\'monat\')" title="Überstunden je Monat abrechnen">monatlich</button><button class="'+(S.mode==='jahr'?'on':'')+'" onclick="setMode(\'jahr\')" title="Ein Saldo über das ganze Schuljahr (Beginn einstellbar, Vorgabe August)">schuljährlich</button>'}
+function setMode(m){if(S.mode===m)return;if(m==='jahr'&&(!S.startMonth||S.startMonth===1))S.startMonth=8;S.mode=m;istMap=null;ui.ay=ayOf(todayIso());ui.month=todayIso().slice(0,7);save();render()}
 function switchAbr(id){const a=R.abr.find(x=>x.id===id);if(!a)return;R.cur=id;S=a;istMap=null;ui.edit=null;ui.fc='';ui.month=todayIso().slice(0,7);ui.ay=ayOf(todayIso());save();render()}
 function newAbrGo(){ui.tab='daten';render();const e=$('#na_name');if(e){e.scrollIntoView({block:'center'});e.focus()}}
-function render(){nav();abrBar();({erfassen:vErfassen,tage:vTage,liste:vListe,diagramme:vDiagramme,bericht:vBericht,daten:vDaten})[ui.tab]();}
+function render(){nav();abrBar();({erfassen:vErfassen,tage:vTage,liste:vListe,diagramme:vDiagramme,bericht:vBericht,fokus:vFokus,daten:vDaten})[ui.tab]();}
 
 /* Erfassen */
 function opts(list,sel){return list.map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('')}
@@ -157,8 +160,8 @@ function vErfassen(){
  <div class="card"><h2>${esc(S.name)}: Übersicht (in Schulstunden)</h2>${kpis()}<p class="mut">Eine Schulstunde sind ${S.set.unit} Minuten, das Soll ${fu(sollWeek())} Schulstunden je Woche. Das Soll jedes einzelnen Tages können Sie im Reiter Tage oder beim Erfassen ändern; Standardwerte je Wochentag, Ferien und freie Tage stehen unter Einstellungen.</p></div>
  <div class="card"><h2>${e?'Eintrag ändern':'Schulstunden erfassen'}</h2>
  <div class="row">
- <div><label>Datum</label><input type="date" id="fd" value="${e?e.date:todayIso()}" onchange="$('#fsoll').value=fu0(sollDay(this.value))"></div>
- <div><label>Soll dieses Tages (Schulstunden)</label><input type="number" min="0" step="0.5" id="fsoll" value="${fu0(sollDay(e?e.date:todayIso()))}"></div>
+ <div><label>Datum</label><input type="date" id="fd" value="${e?e.date:(ui.fdate||todayIso())}" onchange="ui.fdate=this.value;$('#fsoll').value=fu0(sollDay(this.value))"></div>
+ <div><label>Soll dieses Tages (Schulstunden)</label><input type="number" min="0" step="0.5" id="fsoll" value="${fu0(sollDay(e?e.date:(ui.fdate||todayIso())))}"></div>
  <div><label>Schulstunden (ganze Zahl)</label><input type="number" min="1" step="1" id="fu" value="${e?e.u:''}" onkeydown="if(event.key==='Enter')saveEntry()"></div>
  <div><label>Tätigkeit</label><select id="fc">${opts(S.set.cats,e?.cat)}</select></div>
  <div><label>Schule</label><select id="fsch">${opts(S.set.schools,e?.school)}</select></div></div>
@@ -176,7 +179,7 @@ function saveEntry(){
  const rec={id:ui.edit||uid(),date,u,cat:$('#fc').value,school:$('#fsch').value,note:$('#fn').value.trim()};
  const sv=$('#fsoll').value;if(sv!==''&&Number(sv)>=0)setSoll(date,sv,true);
  const i=S.entries.findIndex(x=>x.id===rec.id);if(i>=0)S.entries[i]=rec;else S.entries.push(rec);
- ui.edit=null;save();render();
+ ui.fdate=date;ui.edit=null;save();render();
 }
 function editE(id){ui.edit=id;ui.tab='erfassen';render();scrollTo(0,0)}
 function delE(id){if(confirm('Eintrag löschen?')){S.entries=S.entries.filter(e=>e.id!==id);save();render()}}
@@ -186,18 +189,30 @@ function setSoll(iso,val,quiet){
  if(val===''||val==null||Number(val)===sollDefault(iso)){delete S.days[iso]}
  else{const v=Number(val);if(!(v>=0)){if(!quiet)alert('Bitte eine Zahl ab 0 eingeben.');return}S.days[iso]=v}
  save();if(!quiet)vTage()}
-function resetSoll(iso){delete S.days[iso];save();vTage()}
+function resetSoll(iso){delete S.days[iso];delete S.dayS[iso];save();vTage()}
+/* Soll je Schule: S.dayS[datum]={Schule:Stunden}; das Tagessoll S.days[datum] ist dann die Summe, damit alle Auswertungen unverändert bleiben */
+function setSollS(iso,school,val){const m=S.dayS[iso]||(S.dayS[iso]={});
+ if(val===''||val==null)delete m[school];else{const v=Number(val);if(!(v>=0)){alert('Bitte eine Zahl ab 0 eingeben.');return}m[school]=v}
+ const ks=Object.keys(m);if(!ks.length){delete S.dayS[iso];delete S.days[iso]}else S.days[iso]=ks.reduce((a,k)=>a+m[k],0);
+ save();vTage()}
+function istSchool(iso){const m={};S.entries.forEach(e=>{if(e.date===iso)m[e.school]=(m[e.school]||0)+e.u});return m}
+function quickAdd(iso,i){const u=Number(($('#qh'+i)||{}).value);if(!Number.isInteger(u)||u<1){alert('Bitte eine ganze Zahl an Schulstunden (mindestens 1) angeben.');return}
+ ui.qs=$('#qs'+i).value;ui.qc=$('#qc'+i).value;S.entries.push({id:uid(),date:iso,u,cat:ui.qc,school:ui.qs,note:''});save();vTage()}
 function vTage(){
- const [a,b]=monthRange(ui.month);let rows='',ti=0,ts=0;
- for(let d=a;d<=b;d=addDays(d,1)){const w=dOf(d).getDay(),we=w==0||w==6,i=istDay(d),s=sollDay(d),ov=S.days[d]!=null;ti+=i;ts+=s;
+ const [a,b]=monthRange(ui.month),sch=S.set.schools;let rows='',ti=0,ts=0,n=0;
+ const qs=ui.qs&&sch.includes(ui.qs)?ui.qs:sch[0],qc=ui.qc&&S.set.cats.includes(ui.qc)?ui.qc:(S.set.cats.includes('Sonstiges')?'Sonstiges':S.set.cats[0]);
+ for(let d=a;d<=b;d=addDays(d,1),n++){const w=dOf(d).getDay(),we=w==0||w==6,i=istDay(d),s=sollDay(d),ov=S.days[d]!=null||S.dayS[d],m=S.dayS[d]||{},im=istSchool(d);ti+=i;ts+=s;
+  const hasS=!!S.dayS[d];
   rows+=`<tr ${we?'style="opacity:.6"':''}><td>${fmtDate(d)}${isFree(d)?' <span class="mut">frei</span>':''}</td>
-  <td class="n"><input type="number" min="0" step="0.5" style="width:90px;text-align:right" value="${fu0(s)}" onchange="setSoll('${d}',this.value)" title="Standard: ${fu(sollDefault(d))}"></td>
-  <td class="n">${fu(i)}</td><td class="n ${i-s>=-0.04?'pos':'neg'}">${i||s?sg(i-s):''}</td>
+  <td class="n"><input type="number" min="0" step="0.5" style="width:80px;text-align:right" value="${fu0(s)}" ${hasS?'disabled title="Summe der Schulen, links daneben änderbar"':`onchange="setSoll('${d}',this.value)" title="Standard: ${fu(sollDefault(d))}"`}></td>
+  ${sch.map(k=>`<td class="n"><input type="number" min="0" step="0.5" style="width:64px;text-align:right" placeholder="–" value="${m[k]!=null?fu0(m[k]):''}" onchange="setSollS('${d}','${esc(k)}',this.value)" title="Soll ${esc(k)}"></td>`).join('')}
+  <td class="n">${fu(i)}${S.entries.filter(e=>e.date===d).map(e=>`<div class="mut" style="white-space:nowrap">${esc(e.school)}, ${esc(e.cat)}: ${fu(e.u)} <a href="#" onclick="editE('${e.id}');return false" title="Eintrag ändern">ändern</a> <a href="#" onclick="delE('${e.id}');return false" title="Eintrag löschen">löschen</a></div>`).join('')}</td><td class="n ${i-s>=-0.04?'pos':'neg'}">${i||s?sg(i-s):''}</td>
+  <td class="n" style="white-space:nowrap"><input id="qh${n}" type="number" min="1" step="1" placeholder="Std." style="width:56px" onkeydown="if(event.key==='Enter')quickAdd('${d}',${n})"> <select id="qs${n}">${opts(sch,qs)}</select> <select id="qc${n}">${opts(S.set.cats,qc)}</select> <button class="b s" onclick="quickAdd('${d}',${n})" title="Eintrag für diesen Tag anlegen">+</button></td>
   <td class="n">${ov?`<button class="g s" onclick="resetSoll('${d}')">Standard (${fu(sollDefault(d))})</button>`:''}</td></tr>`}
  $('#main').innerHTML=`<div class="card"><h2>Tage: Soll und Ist</h2>
  <div class="bar">${monthSel(ui.month,'setMonth')}<b>Ist ${fu(ti)}, Soll ${fu(ts)}, Differenz ${sg(ti-ts)}</b></div>
- <p class="mut">Das Soll jedes Tages ist frei änderbar, auch nachträglich (Halbe Schulstunden sind möglich). Geänderte Tage haben den Knopf Standard, der den Standardwert des Wochentags wiederherstellt.</p>
- <table><tr><th>Tag</th><th class="n">Soll</th><th class="n">Ist</th><th class="n">Differenz</th><th></th></tr>${rows}</table></div>`}
+ <p class="mut">Soll: Die erste Spalte ist das Tagessoll (frei änderbar, auch halbe Stunden). Tragen Sie Stunden bei einer Schule ein, wird das Tagessoll zur Summe der Schulen. Rechts legt das Feld Std. mit Schule und Tätigkeit sofort einen Eintrag für den Tag an (Enter oder +). Standard stellt den Wochentagswert wieder her.</p>
+ <div style="overflow-x:auto"><table><tr><th>Tag</th><th class="n">Soll</th>${sch.map(k=>`<th class="n">Soll ${esc(k)}</th>`).join('')}<th class="n">Ist</th><th class="n">Differenz</th><th>Schnell eintragen</th><th></th></tr>${rows}</table></div></div>`}
 
 /* Liste */
 function monthSel(v,fn){const ym=[...new Set(S.entries.map(e=>e.date.slice(0,7)).concat([todayIso().slice(0,7)]))].sort().reverse();
@@ -381,6 +396,47 @@ function imp(file){if(!file)return;const r=new FileReader();r.onload=()=>{try{co
 function dl2(){const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
  down('\ufeffDatum;Schulstunden;Tätigkeit;Schule;Notiz\n'+[...S.entries].sort((a,b)=>a.date<b.date?-1:1).map(e=>[e.date,e.u,e.cat,e.school,e.note].map(q).join(';')).join('\n'),'zeit-'+fname(S.name)+'-alle-daten.csv','text/csv')}
 
+/* Fokus: Zeitmessung mit Sitzungen im Format der ToDo-Tabelle (Blatt Fokus). Punkte berechnet das ToDo, hier nur Zeiten. */
+const fo={t:null};
+function foFmt(ms){const s=Math.floor(ms/1000);return pad(Math.floor(s/3600))+':'+pad(Math.floor(s/60)%60)+':'+pad(s%60)}
+function foMin(ms){return Math.round(ms/60000)}
+function foStart(){const t=($('#fo_t')||{}).value||'',g=($('#fo_g')||{}).value||'';R.fokusRun={title:t.trim(),start:new Date().toISOString(),tags:g?[g]:[]};save();render()}
+function foStop(){const r=R.fokusRun;if(!r)return;const end=new Date(),ms=end-new Date(r.start);R.fokusRun=null;
+ if(ms>=1000){const title=(r.title||'Fokus').trim();R.fokus.push({id:'z|'+uid(),ref:'',title,meta:'',tags:r.tags||[],next:false,start:r.start,end:end.toISOString(),ms});}
+ save();foPush();render()}
+function foDrop(){if(!R.fokusRun||!confirm('Laufende Messung verwerfen?'))return;R.fokusRun=null;save();render()}
+function foDel(id){if(!confirm('Diese Sitzung löschen?'))return;R.fokus=R.fokus.filter(x=>x.id!==id);save();render()}
+const FO_WORK={evt:'EvT',herder:'Herder',job:'Job'};
+function foCatOf(t){t=String(t).toLowerCase();const m=[[/korrektur|korrigier|klassenarbeit|klausur/,'Korrektur'],[/vorbereit|planung|material|arbeitsblatt/,'Vorbereitung'],[/konferenz|gremi|sitzung|dienstbesprechung/,'Konferenz und Gremien'],[/nta|ao-sf|aosf|inklusion|gutachten|förderplan|foerderplan/,'Inklusion, NTA, AO-SF'],[/eltern|beratung|gespräch|gespraech/,'Beratung und Elterngespräche'],[/aufsicht|vertretung/,'Aufsicht und Vertretung'],[/fortbildung|fobi/,'Fortbildung'],[/organis|verwaltung|e-?mail|mails/,'Organisation'],[/unterricht|stunde/,'Unterricht']];
+ for(const [re,c] of m)if(re.test(t)&&S.set.cats.includes(c))return c;return S.set.cats.includes('Sonstiges')?'Sonstiges':S.set.cats[0]}
+function foProps(){const used=new Set(R.fokusUsed),g={};
+ R.fokus.forEach(x=>{if(used.has(x.id))return;const k=(x.tags||[]).map(t=>String(t).toLowerCase()).find(t=>FO_WORK[t]);if(!k)return;const d=isoOf(new Date(x.start)),key=d+'|'+k;
+  const e=g[key]||(g[key]={key,date:d,tag:k,ms:0,ids:[],titles:[]});e.ms+=x.ms;e.ids.push(x.id);if(x.title&&!e.titles.includes(x.title))e.titles.push(x.title)});
+ return Object.values(g).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0)}
+function foSchoolOf(tag){const n=FO_WORK[tag];if(tag==='job')return S.set.schools[0]||'';return S.set.schools.find(x=>x.toLowerCase()===n.toLowerCase())||n}
+function foAccept(i){const p=foProps()[i];if(!p)return;const u=Math.max(1,parseInt(($('#fp_u'+i)||{}).value)||1);
+ S.entries.push({id:uid(),date:p.date,u,cat:($('#fp_c'+i)||{}).value||foCatOf(p.titles.join(' ')),school:($('#fp_s'+i)||{}).value||foSchoolOf(p.tag),note:('Fokus: '+p.titles.join(', ')).slice(0,200)});
+ R.fokusUsed.push(...p.ids);save();render()}
+function foSkip(i){const p=foProps()[i];if(!p||!confirm('Diesen Vorschlag verwerfen? Es wird kein Eintrag angelegt.'))return;R.fokusUsed.push(...p.ids);save();render()}
+function foPull(){if(!LX)return;api('fokus/pull','POST').then(r=>{if(!r||!r.ok){if(r&&r.msg){ui.foMsg=r.msg;if(ui.tab==='fokus')render()}return}ui.foPulled=true;
+ const have=new Set(R.fokus.map(x=>x.id));let n=0;normFokus({fokus:r.rows}).fokus.forEach(x=>{if(!have.has(x.id)){R.fokus.push(x);n++}});
+ ui.foMsg=n?n+' neue Sitzungen aus der ToDo-Tabelle übernommen.':'ToDo-Tabelle gelesen, nichts Neues ('+r.rows.length+' Sitzungen dort).';if(n)save();if(ui.tab==='fokus')render()}).catch(()=>{})}
+function foPush(){if(LX)api('fokus/push','POST',{rows:R.fokus.slice(-900)}).then(r=>{ui.foMsg=r&&r.msg||'';if(ui.tab==='fokus')render()}).catch(()=>{})}
+function vFokus(){const run=R.fokusRun,today=todayIso();
+ const day=R.fokus.filter(x=>isoOf(new Date(x.start))===today).sort((a,b)=>a.start<b.start?1:-1);
+ const sum=day.reduce((a,x)=>a+x.ms,0);
+ const days={};R.fokus.forEach(x=>{const d=isoOf(new Date(x.start));days[d]=(days[d]||0)+x.ms});
+ const last=Object.keys(days).sort().reverse().slice(0,14);
+ $('#main').innerHTML=`<div class="card"><h2>Fokus</h2>
+ ${run?`<p style="font-size:34px;margin:6px 0" id="fo_clock">${foFmt(Date.now()-new Date(run.start))}</p><p>${esc(run.title||'ohne Titel')}</p>
+ <button class="b" onclick="foStop()">Beenden und speichern</button> <button class="g" onclick="foDrop()">Verwerfen</button>`
+ :`<div class="bar"><input id="fo_t" placeholder="Woran arbeite ich?" style="min-width:260px" onkeydown="if(event.key==='Enter')foStart()"><select id="fo_g" title="Zählt als Arbeitszeit, wenn EvT, Herder oder Job gewählt ist"><option value="">ohne Zuordnung</option><option value="evt">EvT</option><option value="herder">Herder</option><option value="job">Job</option></select><button class="b" onclick="foStart()">Start</button></div>`}
+ <p class="mut">Die Sitzungen werden mit den Zeitdaten gesichert${LX?' und, wenn eingerichtet, in das Blatt Fokus der ToDo-Tabelle geschrieben':''}. Punkte und Auswertung zeigt das ToDo.${ui.foMsg?'<br>'+esc(ui.foMsg):''}</p></div>
+ ${(()=>{const pr=foProps();return pr.length?`<div class="card"><h3>Vorschläge für die Arbeitszeit</h3><p class="mut">Sitzungen mit EvT, Herder oder Job. Ein Eintrag entsteht erst, wenn Sie bestätigen. Schulstunden sind auf ganze Stunden gerundet (eine Stunde = ${S.set.unit} Minuten).</p><table><tr><th>Datum</th><th>Zuordnung</th><th>Minuten</th><th>Stunden</th><th>Tätigkeit</th><th>Schule</th><th></th></tr>${pr.map((p,i)=>`<tr><td>${fmtDate(p.date)}</td><td>${esc(FO_WORK[p.tag])}</td><td>${foMin(p.ms)}</td><td><input id="fp_u${i}" type="number" min="1" step="1" style="width:60px" value="${Math.max(1,Math.round(p.ms/60000/S.set.unit))}"></td><td><select id="fp_c${i}">${S.set.cats.map(c=>`<option${c===foCatOf(p.titles.join(' '))?' selected':''}>${esc(c)}</option>`).join('')}</select></td><td><select id="fp_s${i}">${S.set.schools.map(c=>`<option${c===foSchoolOf(p.tag)?' selected':''}>${esc(c)}</option>`).join('')}</select></td><td><button class="b" onclick="foAccept(${i})">Eintragen</button> <button class="g" onclick="foSkip(${i})">Verwerfen</button></td></tr>`).join('')}</table></div>`:''})()}
+ <div class="card"><h3>Heute: ${foMin(sum)} Minuten</h3>${day.length?`<table><tr><th>Von</th><th>Bis</th><th>Minuten</th><th>Titel</th><th>Zuordnung</th><th></th></tr>${day.map(x=>`<tr><td>${new Date(x.start).toTimeString().slice(0,5)}</td><td>${new Date(x.end).toTimeString().slice(0,5)}</td><td>${foMin(x.ms)}</td><td>${esc(x.title)}</td><td>${esc((x.tags||[]).join(', '))}</td><td><button class="g" onclick="foDel('${esc(x.id)}')">Löschen</button></td></tr>`).join('')}</table>`:'<p class="mut">Noch keine Sitzung heute.</p>'}</div>
+ <div class="card"><h3>Letzte Tage</h3>${last.length?`<table>${last.map(d=>`<tr><td>${fmtDate(d)}</td><td>${foMin(days[d])} Minuten</td></tr>`).join('')}</table>`:'<p class="mut">Noch keine Sitzungen.</p>'}</div>`}
+setInterval(()=>{const c=$('#fo_clock');if(c&&R.fokusRun)c.textContent=foFmt(Date.now()-new Date(R.fokusRun.start))},500);
+
 /* Linux-App: Drive, Sicherung, Statusanzeige */
 function api(path,method,body){return fetch(LX.base+'/api/'+path,{method:method||'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(r=>r.json())}
 function chipShow(){const c=$('#chip');if(c&&ui.drive)c.textContent='Drive: '+ui.drive.label}
@@ -388,7 +444,7 @@ function chipClick(){if(!ui.drive||ui.drive.state!=='ok'){driveLogin()}else{driv
 async function pollStatus(){
  try{const st=await api('status');
   if(st.seq!==LX.seq){location.reload();return}
-  ui.drive=st.drive;ui.backup=st.backup;chipShow();if(ui.tab==='daten')driveCard()}catch(e){}}
+  ui.drive=st.drive;ui.backup=st.backup;chipShow();if(st.drive.state==='ok'&&!ui.foPulled&&!ui.foTry){ui.foTry=true;foPull();setTimeout(()=>{ui.foTry=false},20000)}if(ui.tab==='daten')driveCard()}catch(e){}}
 function driveCard(){const el=$('#drivecard');if(!el||!ui.drive)return;const d=ui.drive,b=ui.backup||{};
  el.innerHTML=`<h2>Google Drive und Laptop-Sicherung</h2>
  <p>Drive: <b>${esc(d.label)}</b>${d.last?', letzter Abgleich '+esc(d.last):''}${d.msg?'<br><span class="mut">'+esc(d.msg)+'</span>':''}</p>
@@ -398,6 +454,7 @@ function driveCard(){const el=$('#drivecard');if(!el||!ui.drive)return;const d=u
  <button class="g" onclick="driveSync()">Jetzt abgleichen</button>
  <button class="g" onclick="setHandoff()">Anmelde-Adresse ändern</button>
  <button class="g" onclick="setClient()">Client-ID ändern</button>
+ <button class="g" onclick="setSheet()">ToDo-Tabelle für Fokus eintragen</button>
  <h3>Laptop</h3><p class="mut">Hauptdatei und Sicherungen: ${esc(b.dir||'')}<br>Letzte Sicherung: ${esc(b.last||'noch keine')}</p>
  <button class="g" onclick="api('backup','POST').then(pollStatus)">Sicherung jetzt anlegen</button>
  <button class="g" onclick="api('open_data','POST')">Datenordner öffnen</button>`}
@@ -408,8 +465,9 @@ async function ensureSettings(){const st=await api('status');
 async function driveLogin(){if(!await ensureSettings())return;await api('drive/login','POST');pollStatus()}
 async function driveSync(){const r=await api('drive/sync','POST');if(r.need_login){driveLogin();return}pollStatus()}
 async function setHandoff(){const u=prompt('Internetadresse der veröffentlichten Seite:',(ui.drive&&ui.drive.handoff_url)||'');if(u!==null){await api('settings','POST',{handoff_url:u.trim()});pollStatus()}}
+async function setSheet(){const c=prompt('Tabellen-ID der ToDo-Tabelle (der lange Teil der Adresse zwischen /d/ und /edit). Leer lassen zum Abschalten:');if(c!==null){await api('settings','POST',{todo_sheet_id:c.trim()});alert('Gespeichert. Danach bitte einmal neu mit Google verbinden, damit der Zugriff auf Tabellen erteilt wird.');pollStatus()}}
 async function setClient(){const c=prompt('Google Client-ID:');if(c){await api('settings','POST',{client_id:c.trim()});pollStatus()}}
-if(LX){window.print=()=>{api('pdf','POST')};pollStatus();setInterval(pollStatus,3000)}
+if(LX){window.print=()=>{api('pdf','POST')};pollStatus();setInterval(pollStatus,3000);setTimeout(foPull,4000);setInterval(foPull,120000)}
 
 ui.ay=ayOf(todayIso());
 render();
@@ -428,7 +486,7 @@ render();
  sc.onerror=()=>msg('Die Google-Bibliothek konnte nicht geladen werden.');
  document.head.appendChild(sc);
  document.getElementById('hob').onclick=()=>{
-  try{google.accounts.oauth2.initTokenClient({client_id:cid,scope:'https://www.googleapis.com/auth/drive.file',
+  try{google.accounts.oauth2.initTokenClient({client_id:cid,scope:'https://www.googleapis.com/auth/drive.file'+(p.get('linuxsheets')==='1'?' https://www.googleapis.com/auth/spreadsheets':''),
    callback:r=>{if(r.error||!r.access_token){msg('Anmeldung fehlgeschlagen: '+(r.error||'kein Token'));return}
     msg('Übergabe an die App ...');
     location.href='http://127.0.0.1:'+port+'/auth/token?state='+encodeURIComponent(st)+'&token='+encodeURIComponent(r.access_token)+'&expires='+encodeURIComponent(r.expires_in||3300)},

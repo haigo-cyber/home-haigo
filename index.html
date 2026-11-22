@@ -4611,7 +4611,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v309";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v313";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -13790,9 +13790,15 @@ function foFrontOptions(){
 }
 function foSetFront(k){ foFront = String(k||""); foStore("foFront", foFront); render(); }
 /* Fokus-Punkte: Zeit mit dem Fokus-Timer bei Einträgen mit bestimmten Tags bringt XP (je foXpMin Minuten foXpPts Punkte, pro Tag gesammelt) */
-let foXpTags = (()=>{ const v = foLoad("foXpTags", ["job","projekt"]); return Array.isArray(v) ? v.map(x=>String(x).toLowerCase()) : ["job","projekt"]; })();
+let foXpTags = (()=>{ const v = foLoad("foXpTags", ["job","projekt","evt","herder"]); return Array.isArray(v) ? v.map(x=>String(x).toLowerCase()) : ["job","projekt","evt","herder"]; })();
 let foXpMin = Math.min(240, Math.max(1, parseInt(foLoad("foXpMin", 10))||10));
-let foXpPts = (()=>{ const v = parseInt(foLoad("foXpPts", 1)); return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 1; })();
+let foXpPts = (()=>{ const v = parseInt(foLoad("foXpPts", 10)); return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 10; })();
+/* Einmalig (v309): Arbeit mit den Tags EvT, Herder, Job zählt 10 Punkte je volle 10 Minuten (Zeit und ToDo zählen dieselben Tags) */
+(function(){ try{ if(foLoad("foXpMig309", false)) return;
+  ["evt","herder","job"].forEach(t=>{ if(!foXpTags.includes(t)) foXpTags.push(t); }); foStore("foXpTags", foXpTags);
+  if(foXpPts===1){ foXpPts = 10; foStore("foXpPts", 10); }
+  if(foXpMin!==10){ foXpMin = 10; foStore("foXpMin", 10); }
+  foStore("foXpMig309", true); }catch(e){ logErr("stumm", e); } })();
 /* Next Focus: der eine nächste Fokus ({ref,title}); solange er offen ist, ist er immer die aktuelle Aufgabe und zählt immer Fokus-Punkte */
 let foNx = (()=>{ const v = foLoad("foNext", null); return v && typeof v.ref==="string" && v.ref ? {ref:v.ref, title:String(v.title||"")} : null; })();
 let foNextSeen = false;
@@ -13820,7 +13826,7 @@ function foNextCheck(){
 }
 function foFocusInfo(){
   const per = {};
-  foSessions.forEach(s=>{ if(s && foQual(s.tags, s.next)){ const k = dateKey(new Date(s.start)); per[k] = (per[k]||0) + (+s.ms||0); } });
+  foSessLive().forEach(s=>{ if(s && foQual(s.tags, s.next)){ const k = dateKey(new Date(s.start)); per[k] = (per[k]||0) + (+s.ms||0); } });
   if(foTimer && foQual(foTimer.tags, foTimer.next)){ const k = todayKey(); per[k] = (per[k]||0) + foElapsed(); }
   const blk = Math.max(1, foXpMin)*60000; let pts = 0, ms = 0;
   Object.keys(per).forEach(k=>{ pts += Math.floor(per[k]/blk)*foXpPts; ms += per[k]; });
@@ -13845,7 +13851,7 @@ function foSollMatch(e, x){
 function foSollHits(x){ return foSoll.filter(e=>foSollMatch(e, x)); }
 function foSollIst(e){
   const from = foSollFrom(e.per).getTime(); let ms = 0;
-  foSessions.forEach(x=>{ if(x && foSollMatch(e, x) && Date.parse(x.start)>=from) ms += (+x.ms||0); });
+  foSessLive().forEach(x=>{ if(x && foSollMatch(e, x) && Date.parse(x.start)>=from) ms += (+x.ms||0); });
   if(foTimer && foSollMatch(e, foTimer) && foTimer.startedAt>=from) ms += foElapsed();
   return ms;
 }
@@ -13864,20 +13870,61 @@ function foSollHtml(){
 }
 function foXpRemain(){ const i = foFocusInfo(); return i.blk - (i.todayMs % i.blk); }
 function foTimerSave(){ foStore("foTimer", foTimer); }
+function foSessLive(){ return foSessions.filter(x=>x && !x.del); }
+/* Sitzung nachträglich ändern oder löschen. Gleiche Sitzungen mit anderer id (gleicher Start und gleiche Dauer) werden mit erfasst, damit sie nicht wieder auftauchen. */
+function foSessChange(id, ch){
+  const x = foSessions.find(y=>foSessId(y)===id); if(!x) return false;
+  const grp = foSessions.filter(y=>y!==x && !y.del && y.start===x.start && Math.round(+y.ms)===Math.round(+x.ms));
+  const now = new Date().toISOString();
+  grp.forEach(y=>{ y.del = true; y.ms = 0; y.mod = now; });
+  if(ch.del){ x.del = true; x.ms = 0; }
+  else{
+    if(ch.ms>0){ x.ms = Math.round(ch.ms); x.end = new Date(Date.parse(x.start)+x.ms).toISOString(); }
+    if(ch.title!==undefined) x.title = String(ch.title).trim();
+    if(ch.tags) x.tags = ch.tags;
+  }
+  x.mod = now; foSessSave(); return true;
+}
+function foSessEditor(){
+  let ov = document.getElementById("foSessOv"); if(ov) ov.remove();
+  ov = document.createElement("div"); ov.id = "foSessOv";
+  ov.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 10px";
+  const days = Array.from(new Set(foSessLive().map(s=>dateKey(new Date(s.start))))).sort().reverse().slice(0,21);
+  const inp = "background:#1c1f26;color:inherit;border:1px solid #3a3f4b;border-radius:6px;padding:4px 6px;font:inherit";
+  const body = days.map(k=>{
+    const list = foSessLive().filter(s=>dateKey(new Date(s.start))===k).sort((a,b)=>a.start<b.start?-1:1), tot = list.reduce((a,s)=>a+s.ms,0);
+    return `<div style="margin:12px 0 4px"><b>${esc(k.split("-").reverse().join("."))}</b> · ${esc(foMinText(tot))}</div>`+list.map(s=>{
+      const t = new Date(s.start).toTimeString().slice(0,5);
+      return `<div data-sid="${esc(foSessId(s))}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:3px 0"><span style="width:44px">${t}</span><input data-f="min" type="number" min="1" value="${Math.round(s.ms/60000)}" style="width:64px;${inp}"> Min.<input data-f="title" value="${esc(s.title||"")}" placeholder="Titel" style="flex:1;min-width:160px;${inp}"><input data-f="tags" value="${esc((s.tags||[]).join(", "))}" placeholder="Tags, mit Komma" style="width:150px;${inp}"><button class="fo-btn" data-a="save">Speichern</button><button class="fo-btn" data-a="del">Löschen</button></div>`;
+    }).join("");
+  }).join("") || "<p>Noch keine Sitzungen.</p>";
+  ov.innerHTML = `<div style="background:#14171c;color:#e6e8ec;border-radius:12px;padding:16px 18px;max-width:860px;width:100%"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px">Fokus-Sitzungen bearbeiten</b><button class="fo-btn" data-a="close">Schließen</button></div><div style="opacity:.7;font-size:13px;margin-top:4px">Dauer, Titel und Tags (z. B. evt, herder, job) lassen sich ändern. Die Änderung gilt auch für Seifferts Zeit, sobald beide synchronisiert sind. Der Start einer Sitzung bleibt unverändert.</div>${body}</div>`;
+  ov.addEventListener("click", e=>{
+    const b = e.target.closest("button[data-a]"); if(e.target===ov){ ov.remove(); return; } if(!b) return;
+    if(b.dataset.a==="close"){ ov.remove(); render(); return; }
+    const row = b.closest("[data-sid]"); const id = row.dataset.sid, q = f=>row.querySelector('[data-f="'+f+'"]');
+    if(b.dataset.a==="del"){ if(!confirm("Diese Sitzung löschen?")) return; foSessChange(id, {del:true}); foSessEditor(); return; }
+    const min = parseFloat(q("min").value); if(!(min>0)){ toast("Dauer in Minuten angeben"); return; }
+    foSessChange(id, {ms:min*60000, title:q("title").value, tags:q("tags").value.split(",").map(t=>t.trim().toLowerCase()).filter(Boolean)});
+    toast("Gespeichert"); b.textContent = "✓"; 
+  });
+  document.body.appendChild(ov);
+}
 function foSessSave(){ foSessions = foSessNorm(foSessions); foStore("foSessions", foSessions); foSessKick(); }
 /* ---- Fokus-Sitzungen über Google: Tabellenblatt "Fokus", eine Sitzung pro Zeile, Zusammenführen über eine feste ID ---- */
-const FOS_MAX = 900, FOS_COLS = "I";
+const FOS_MAX = 900, FOS_COLS = "J";
 let _fosBusy = false, _fosTimer = 0;
 function foSessId(x){ return x.id || (x.start+"|"+x.ref); }
 function foSessNorm(list){
   const m = new Map();
-  (Array.isArray(list)?list:[]).forEach(x=>{ if(!x || !x.start || !(+x.ms>0) || isNaN(Date.parse(x.start))) return; x.id = foSessId(x); if(!m.has(x.id)) m.set(x.id, x); });
-  return Array.from(m.values()).sort((a,b)=>a.start<b.start?-1:a.start>b.start?1:0).slice(-FOS_MAX);
+  (Array.isArray(list)?list:[]).forEach(x=>{ if(!x || !x.start || (!(+x.ms>0) && !x.del) || isNaN(Date.parse(x.start))) return; x.id = foSessId(x); const o = m.get(x.id); if(!o || String(x.mod||"")>String(o.mod||"")) m.set(x.id, x); });   // gleiche id: die zuletzt bearbeitete Fassung gewinnt; gelöschte Sitzungen bleiben als Markierung (del), damit das Löschen auch auf andere Geräte kommt
+  const seen = new Set();   // Schutz gegen doppelte Sitzungen mit verschiedener id: gleicher Start und gleiche Dauer ist dieselbe Sitzung
+  return Array.from(m.values()).sort((a,b)=>a.start<b.start?-1:a.start>b.start?1:0).filter(x=>{ const k = x.del ? "del|"+x.id : x.start+"|"+Math.round(+x.ms||0); if(seen.has(k)) return false; seen.add(k); return true; }).slice(-FOS_MAX);
 }
-function foSessRow(x){ return [x.id, x.ref||"", x.title||"", x.meta||"", (x.tags||[]).join(","), x.next?"1":"0", x.start, x.end||"", String(Math.round(+x.ms||0))]; }
+function foSessRow(x){ return [x.id, x.ref||"", x.title||"", x.meta||"", (x.tags||[]).join(","), x.next?"1":"0", x.start, x.end||"", String(x.del?0:Math.round(+x.ms||0)), x.mod||""]; }
 function foSessFromRow(r){
   if(!r || !r[0] || !r[6]) return null;
-  return {id:String(r[0]), ref:r[1]||"", title:r[2]||"", meta:r[3]||"", tags:String(r[4]||"").split(",").map(t=>t.trim()).filter(Boolean), next:r[5]==="1", start:r[6], end:r[7]||"", ms:+r[8]||0};
+  return {id:String(r[0]), ref:r[1]||"", title:r[2]||"", meta:r[3]||"", tags:String(r[4]||"").split(",").map(t=>t.trim()).filter(Boolean), next:r[5]==="1", start:r[6], end:r[7]||"", ms:+r[8]||0, mod:r[9]||"", ...((+r[8]||0)>0 ? {} : {del:true})};
 }
 function foSessKick(){ clearTimeout(_fosTimer); _fosTimer = setTimeout(()=>{ foSessSync().catch(e=>logErr("stumm", e)); }, 4000); }
 async function foSessSync(){
@@ -13889,12 +13936,12 @@ async function foSessSync(){
       const r = await api(`${SHEETS}/${spreadsheetId}/values/Fokus!A2:${FOS_COLS}${FOS_MAX+200}`);
       srv = (r.values||[]).map(foSessFromRow).filter(Boolean);
     }catch(e){ if(String((e && e.message)||e).includes("Unable to parse range")) missing = true; else throw e; }
-    const srvIds = new Set(srv.map(x=>x.id)), merged = foSessNorm(foSessions.concat(srv));
+    const srvIds = new Set(srv.map(x=>x.id)), srvMod = new Map(srv.map(x=>[x.id, x.mod||""])), merged = foSessNorm(foSessions.concat(srv));
     const localIds = new Set(foSessions.map(foSessId));
-    if(merged.length!==foSessions.length || merged.some(x=>!localIds.has(x.id))){ foSessions = merged; foStore("foSessions", foSessions); changed = true; }
-    const needPush = !viHidden("focus") && (missing || merged.some(x=>!srvIds.has(x.id)) || srv.length>merged.length);   // Fokus ausgeblendet: Seifferts Zeit schreibt, hier nur lesen
+    if(merged.length!==foSessions.length || merged.some(x=>!localIds.has(x.id)) || merged.some(x=>{ const o = foSessions.find(y=>foSessId(y)===x.id); return o && String(o.mod||"")!==String(x.mod||""); })){ foSessions = merged; foStore("foSessions", foSessions); changed = true; }
+    const needPush = !viHidden("focus") && (missing || merged.some(x=>!srvIds.has(x.id) || srvMod.get(x.id)!==(x.mod||"")) || srv.length>merged.length);   // Fokus ausgeblendet: Seifferts Zeit schreibt, hier nur lesen
     if(needPush){
-      const body = JSON.stringify({values:[["id","ref","title","meta","tags","next","start","end","ms"]].concat(merged.map(foSessRow))});
+      const body = JSON.stringify({values:[["id","ref","title","meta","tags","next","start","end","ms","mod"]].concat(merged.map(foSessRow))});
       const url = `${SHEETS}/${spreadsheetId}/values/Fokus!A1?valueInputOption=RAW`;
       if(missing){
         try{ await api(`${SHEETS}/${spreadsheetId}:batchUpdate`, {method:"POST", body:JSON.stringify({requests:[{addSheet:{properties:{title:"Fokus"}}}]})}); }catch(e){ logErr("stumm", e); }
@@ -14306,7 +14353,7 @@ function logbookHtml(){
   let week = 0; for(let i=0;i<7;i++){ week += (byDay.get(dateKey(new Date(Date.now()-i*864e5)))||[]).length; }
   let streak = 0; { let i = nToday ? 0 : 1; while(byDay.has(dateKey(new Date(Date.now()-i*864e5)))){ streak++; i++; } }
   const liveS = ()=>{ if(!foTimer) return null; const ms = foElapsed(); return ms>=10000 ? {ref:foTimer.ref, title:foTimer.title, tags:foTimer.tags, next:foTimer.next, start:new Date(foTimer.startedAt).toISOString(), end:new Date().toISOString(), ms, live:true} : null; };
-  const sessDay = k=>{ const a = foSessions.filter(s=>dateKey(new Date(s.start))===k), l = liveS(); if(l && dateKey(new Date(l.start))===k) a.push(l); return a; };
+  const sessDay = k=>{ const a = foSessLive().filter(s=>dateKey(new Date(s.start))===k), l = liveS(); if(l && dateKey(new Date(l.start))===k) a.push(l); return a; };
   const msToday = sessDay(today).reduce((a,s)=>a+s.ms,0);
   let msWeek = 0; for(let i=0;i<7;i++) msWeek += sessDay(dateKey(new Date(Date.now()-i*864e5))).reduce((a,s)=>a+s.ms,0);
   const tile = (n,l)=>`<div class="lb-tile"><div class="lb-n">${n}</div><div class="lb-l">${l}</div></div>`;
@@ -14314,9 +14361,12 @@ function logbookHtml(){
     <div class="lb-tiles">${tile(nToday,"heute erledigt")}${tile(week,"in 7 Tagen")}${tile(streak?streak+" 🔥":"0","Tage in Folge")}${tile(msToday?foMinText(msToday):"0 Min.","Fokus heute")}</div>`;
   h += foSollHtml();
   { const fi = foFocusInfo(); if(foXpPts>0 && fi.todayMs>0) h += `<div class="lb-note">⭐ Heute <b>${fi.todayPts} Punkt${fi.todayPts===1?"":"e"}</b> durch intensives Arbeiten (${foMinText(fi.todayMs)} an Punkte-Tags). Insgesamt ${fi.pts} Fokus-Punkte.</div>`; }
+  { const fi2 = foFocusInfo(), tl = foTimer && foQual(foTimer.tags, foTimer.next) ? foElapsed() : 0, ns = foSessLive().filter(s=>dateKey(new Date(s.start))===today && foQual(s.tags, s.next)).length;
+    h += `<div class="lb-note">Heute gezählt: ${esc(foMinText(Math.max(0, fi2.todayMs-tl)))} aus ${ns} gespeicherten Sitzung${ns===1?"":"en"}${tl?` plus ${esc(foMinText(tl))} aus der ${foTimer.run?"laufenden":"pausierten"} Messung`:""}. <button class="fo-btn" data-lb="sess">✎ Fokus-Sitzungen bearbeiten</button></div>`; }
   if(msWeek) h += `<div class="lb-note">⏱ In den letzten 7 Tagen konzentriert gearbeitet: <b>${foMinText(msWeek)}</b></div>`;
+  if(foTimer){ const el = foElapsed(); h += `<div class="lb-note">⏱ In diesen Zahlen steckt eine ${foTimer.run?"laufende":"pausierte"} Messung: <b>${esc(foTimer.title||"ohne Titel")}</b>, ${esc(foMinText(el))}, gestartet ${esc(new Date(foTimer.startedAt).toLocaleString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}))}. Sie zählt erst als Sitzung, wenn sie beendet wird, und wird bis dahin auf heute gerechnet. <button class="fo-btn" data-lb="tstop">Beenden und speichern</button> <button class="fo-btn" data-lb="tdrop">Verwerfen</button></div>`; }
   if(lbErr) h += `<div class="lb-note">Ziele und Google-Aufgaben konnten gerade nicht geladen werden. <button class="fo-btn" data-lb="reload">Neu laden</button></div>`;
-  const days = Array.from(new Set([...byDay.keys(), ...foSessions.map(s=>dateKey(new Date(s.start))), ...(liveS()?[today]:[])])).sort().reverse().slice(0,30);
+  const days = Array.from(new Set([...byDay.keys(), ...foSessLive().map(s=>dateKey(new Date(s.start))), ...(liveS()?[today]:[])])).sort().reverse().slice(0,30);
   if(!days.length) h += `<div class="lb-day"><div class="lb-dayh">Noch keine Einträge</div><div class="lb-note">Sobald du etwas abhakst, erscheint es hier.</div></div>`;
   days.forEach(k=>{
     const list = (byDay.get(k)||[]).slice(), ss = sessDay(k), tms = ss.reduce((a,s)=>a+s.ms,0);
@@ -14380,6 +14430,9 @@ document.addEventListener("change", e=>{ const sel = e.target && e.target.closes
   main.addEventListener("click", e=>{
     const b = e.target.closest && e.target.closest("[data-fo],[data-lb]"); if(!b) return;
     if(b.dataset.lb==="reload"){ lbAt = 0; logbookLoad(); return; }
+    if(b.dataset.lb==="sess"){ foSessEditor(); return; }
+    if(b.dataset.lb==="tstop"){ foFinish(false); render(); return; }
+    if(b.dataset.lb==="tdrop"){ if(!confirm("Die Messung verwerfen? Die gemessene Zeit geht verloren.")) return; foTimer = null; foTimerSave(); try{ foTick(); }catch(e){ logErr("stumm", e); } render(); return; }
     const a = b.dataset.fo;
     if(a==="nexttoggle"){ foSetNext(b.dataset.k); }
     else if(a==="nextclear"){ foNx = null; foNextSeen = false; foNextSave(); render(); }

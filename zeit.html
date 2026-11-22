@@ -66,15 +66,16 @@ const COLS=['--c0','--c1','--c2','--c3','--c4','--c5','--c6','--c7'];
 const MN=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
 const CATS=['Unterricht','Vorbereitung','Korrektur','Konferenz und Gremien','Inklusion, NTA, AO-SF','Beratung und Elterngespräche','Aufsicht und Vertretung','Organisation','Fortbildung','Sonstiges'];
-function defaultsAbr(name){return{id:uid(),name:name||'Abrechnung',mode:'monat',startMonth:1,entries:[],free:[],days:{},dayS:{},settled:{},set:{wd:[5,5,5,5,5],unit:45,cats:[...CATS],schools:['EvT','Herder']}}}
+function defaultsAbr(name){return{id:uid(),name:name||'Abrechnung',mode:'monat',startMonth:1,entries:[],free:[],days:{},dayS:{},settled:{},set:{wd:[5,5,5,5,5],wh:[8,8,8,8,8],unit:45,cats:[...CATS],schools:['EvT','Herder']}}}
 function normAbr(j){const d=defaultsAbr(j.name);const r={...d,...j,id:j.id||d.id,set:{...d.set,...(j.set||{})}};
  if(!Array.isArray(r.entries))r.entries=[];if(!Array.isArray(r.free))r.free=[];
  if(!r.days||typeof r.days!=='object')r.days={};if(!r.dayS||typeof r.dayS!=='object')r.dayS={};if(!r.settled||typeof r.settled!=='object')r.settled={};
  if(r.mode!=='jahr')r.mode='monat';r.startMonth=Math.min(12,Math.max(1,+r.startMonth||1));
  if(j.set&&j.set.soll!=null&&!j.set.wd)r.set.wd=Array(5).fill(j.set.soll/5);
- if(!Array.isArray(r.set.wd)||r.set.wd.length!==5)r.set.wd=[5,5,5,5,5];delete r.set.soll;return r}
-function normFokus(j){const f=(j&&Array.isArray(j.fokus)?j.fokus:[]).filter(x=>x&&x.id&&x.start&&x.end&&+x.ms>0).map(x=>({id:String(x.id),ref:String(x.ref||''),title:String(x.title||''),meta:String(x.meta||''),tags:Array.isArray(x.tags)?x.tags.map(String):String(x.tags||'').split(',').map(t=>t.trim()).filter(Boolean),next:!!x.next,start:String(x.start),end:String(x.end),ms:Math.round(+x.ms)}));
- const run=j&&j.fokusRun&&j.fokusRun.start&&!isNaN(Date.parse(j.fokusRun.start))?{title:String(j.fokusRun.title||''),start:String(j.fokusRun.start),tags:Array.isArray(j.fokusRun.tags)?j.fokusRun.tags.map(String):[]}:null;const used=(j&&Array.isArray(j.fokusUsed)?j.fokusUsed:[]).map(String).slice(-3000);return{fokus:f,fokusRun:run,fokusUsed:used}}
+ if(!Array.isArray(r.set.wd)||r.set.wd.length!==5)r.set.wd=[5,5,5,5,5];if(!Array.isArray(r.set.wh)||r.set.wh.length!==5)r.set.wh=[8,8,8,8,8];delete r.set.soll;return r}
+function foDedupe(list){const seen=new Set();return list.filter(x=>{const k=x.del?'del|'+x.id:x.start+'|'+x.ms;if(seen.has(k))return false;seen.add(k);return true})}
+function normFokus(j){const f=(j&&Array.isArray(j.fokus)?j.fokus:[]).filter(x=>x&&x.id&&x.start&&x.end&&(+x.ms>0||x.del)).map(x=>({id:String(x.id),ref:String(x.ref||''),title:String(x.title||''),meta:String(x.meta||''),tags:Array.isArray(x.tags)?x.tags.map(String):String(x.tags||'').split(',').map(t=>t.trim()).filter(Boolean),next:!!x.next,start:String(x.start),end:String(x.end),ms:x.del?0:Math.round(+x.ms),mod:String(x.mod||''),...(x.del||!(+x.ms>0)?{del:true}:{})}));
+ const run=j&&j.fokusRun&&j.fokusRun.start&&!isNaN(Date.parse(j.fokusRun.start))?{title:String(j.fokusRun.title||''),start:String(j.fokusRun.start),tags:Array.isArray(j.fokusRun.tags)?j.fokusRun.tags.map(String):[]}:null;const used=(j&&Array.isArray(j.fokusUsed)?j.fokusUsed:[]).map(String).slice(-3000);return{fokus:foDedupe(f),fokusRun:run,fokusUsed:used}}
 function normRoot(j){
  if(j&&Array.isArray(j.abr)&&j.abr.length){const abr=j.abr.map(normAbr);return{format:3,cur:abr.some(a=>a.id===j.cur)?j.cur:abr[0].id,abr,...normFokus(j)}}
  if(j&&Array.isArray(j.entries)){const a=normAbr({...j,name:j.name||'Abrechnung 1'});return{format:3,cur:a.id,abr:[a],...normFokus(j)}}
@@ -105,6 +106,11 @@ function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function mondayOf(iso){const d=dOf(iso);const w=(d.getDay()+6)%7;d.setDate(d.getDate()-w);return isoOf(d)}
 function kw(iso){const d=dOf(iso);d.setDate(d.getDate()+3-((d.getDay()+6)%7));const w1=new Date(d.getFullYear(),0,4);return 1+Math.round(((d-w1)/864e5-3+((w1.getDay()+6)%7))/7)}
+/* Schulstunden und Minuten: Eingabe in Schulstunden, Ausgabe immer mit Minuten (4 Schulstunden (180 min)). Einträge aus dem Fokus tragen die echten Minuten (e.min). */
+function emin(e){return e.min!=null&&!isNaN(+e.min)?+e.min:e.u*S.set.unit}
+function schulTxt(u,min){return fu(u)+(u===1?' Schulstunde':' Schulstunden')+' ('+Math.round(min)+' min)'}
+function hm(min){const m=Math.round(min),a=Math.abs(m);return(m<0?'-':'')+Math.floor(a/60)+':'+pad(a%60)+' h'}
+function istMin(iso){return S.entries.reduce((a,e)=>e.date===iso?a+emin(e):a,0)}
 function zeitH(u){return fu(u*S.set.unit/60)}
 
 /* Soll und Ist, alles in Schulstunden */
@@ -132,14 +138,14 @@ function entriesOf(ym){return S.entries.filter(e=>e.date.startsWith(ym)).sort((a
 function byCat(list){const m={};list.forEach(e=>m[e.cat]=(m[e.cat]||0)+e.u);return Object.entries(m).sort((a,b)=>b[1]-a[1])}
 
 function $(s){return document.querySelector(s)}
-const TABS=[['erfassen','Erfassen'],['tage','Tage'],['liste','Liste'],['diagramme','Diagramme'],['bericht','Bericht'],['fokus','Fokus'],['daten','Einstellungen und Daten']];
+const TABS=[['erfassen','Erfassen'],['tage','Tage'],['liste','Liste'],['diagramme','Diagramme'],['bericht','Bericht'],['az','Arbeitszeit'],['fokus','Fokus'],['daten','Einstellungen und Daten']];
 function nav(){$('#nav').innerHTML=TABS.map(t=>`<button class="${ui.tab===t[0]?'on':''}" onclick="go('${t[0]}')">${t[1]}</button>`).join('')+(LX?`<button class="chip" id="chip" onclick="chipClick()">Drive: ...</button>`:'');chipShow()}
 function go(t){ui.tab=t;if(t==='fokus')foPull();render()}
 function abrBar(){$('#abrbar').innerHTML=R.abr.map(a=>`<button class="${a.id===S.id?'on':''}" onclick="switchAbr('${a.id}')" title="${a.mode==='jahr'?'Abrechnung für das ganze Jahr':'monatsweise Abrechnung'}">${esc(a.name)} <small>${a.mode==='jahr'?'Jahr':'Monat'}</small></button>`).join('')+'<button onclick="newAbrGo()">+ Neue Abrechnung</button><span class="mut" style="margin-left:14px;align-self:center">Diese Abrechnung:</span><button class="'+(S.mode==='monat'?'on':'')+'" onclick="setMode(\'monat\')" title="Überstunden je Monat abrechnen">monatlich</button><button class="'+(S.mode==='jahr'?'on':'')+'" onclick="setMode(\'jahr\')" title="Ein Saldo über das ganze Schuljahr (Beginn einstellbar, Vorgabe August)">schuljährlich</button>'}
 function setMode(m){if(S.mode===m)return;if(m==='jahr'&&(!S.startMonth||S.startMonth===1))S.startMonth=8;S.mode=m;istMap=null;ui.ay=ayOf(todayIso());ui.month=todayIso().slice(0,7);save();render()}
 function switchAbr(id){const a=R.abr.find(x=>x.id===id);if(!a)return;R.cur=id;S=a;istMap=null;ui.edit=null;ui.fc='';ui.month=todayIso().slice(0,7);ui.ay=ayOf(todayIso());save();render()}
 function newAbrGo(){ui.tab='daten';render();const e=$('#na_name');if(e){e.scrollIntoView({block:'center'});e.focus()}}
-function render(){nav();abrBar();({erfassen:vErfassen,tage:vTage,liste:vListe,diagramme:vDiagramme,bericht:vBericht,fokus:vFokus,daten:vDaten})[ui.tab]();}
+function render(){nav();abrBar();({erfassen:vErfassen,tage:vTage,liste:vListe,diagramme:vDiagramme,bericht:vBericht,az:vAz,fokus:vFokus,daten:vDaten})[ui.tab]();}
 
 /* Erfassen */
 function opts(list,sel){return list.map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('')}
@@ -147,7 +153,7 @@ function kpis(){
  const t=todayIso(),mo=mondayOf(t),so=addDays(mo,6),[ma,mb]=monthRange(t.slice(0,7));
  const wi=sumRange(mo,so,istDay),ws=sumRange(mo,so,sollDay),mi=sumRange(ma,mb,istDay),ms=sumRange(ma,mb,sollDay);
  return `<div class="grid">
- <div class="kpi"><b>${fu(istDay(t))}</b><span>heute (Soll ${fu(sollDay(t))})</span></div>
+ <div class="kpi"><b>${fu(istDay(t))}</b><span>heute (Soll ${fu(sollDay(t))}), ${Math.round(istMin(t))} min</span></div>
  <div class="kpi"><b>${fu(wi)}</b><span>diese Woche (Soll ${fu(ws)})</span></div>
  <div class="kpi"><b>${fu(mi)}</b><span>dieser Monat (Soll ${fu(ms)})</span></div>
  ${kpi4(t,ma)}</div>`}
@@ -172,11 +178,12 @@ function vErfassen(){
 }
 function recent(){const l=[...S.entries].reverse().sort((a,b)=>b.date<a.date?-1:b.date>a.date?1:0).slice(0,8);if(!l.length)return'';
  return`<div class="card"><h2>Zuletzt erfasst</h2><table>${l.map(rowHtml).join('')}</table></div>`}
-function rowHtml(e){return`<tr><td>${fmtDate(e.date)}</td><td>${esc(e.cat)}<div class="mut">${esc(e.school)}${e.note?', '+esc(e.note):''}</div></td><td class="n">${fu(e.u)} Std.</td><td class="n noprint"><button class="g s" onclick="editE('${e.id}')">Ändern</button> <button class="g s" onclick="delE('${e.id}')">Löschen</button></td></tr>`}
+function rowHtml(e){return`<tr><td>${fmtDate(e.date)}</td><td>${esc(e.cat)}<div class="mut">${esc(e.school)}${e.note?', '+esc(e.note):''}</div></td><td class="n">${schulTxt(e.u,emin(e))}</td><td class="n noprint"><button class="g s" onclick="editE('${e.id}')">Ändern</button> <button class="g s" onclick="delE('${e.id}')">Löschen</button></td></tr>`}
 function saveEntry(){
  const u=Number($('#fu').value),date=$('#fd').value;
  if(!date||!Number.isInteger(u)||u<1){alert('Bitte ein Datum und eine ganze Zahl an Schulstunden (mindestens 1) angeben.');return}
- const rec={id:ui.edit||uid(),date,u,cat:$('#fc').value,school:$('#fsch').value,note:$('#fn').value.trim()};
+ const old=ui.edit&&S.entries.find(x=>x.id===ui.edit),rec={id:ui.edit||uid(),date,u,cat:$('#fc').value,school:$('#fsch').value,note:$('#fn').value.trim()};
+ if(old&&old.min!=null&&old.u===u)rec.min=old.min;
  const sv=$('#fsoll').value;if(sv!==''&&Number(sv)>=0)setSoll(date,sv,true);
  const i=S.entries.findIndex(x=>x.id===rec.id);if(i>=0)S.entries[i]=rec;else S.entries.push(rec);
  ui.fdate=date;ui.edit=null;save();render();
@@ -206,7 +213,7 @@ function vTage(){
   rows+=`<tr ${we?'style="opacity:.6"':''}><td>${fmtDate(d)}${isFree(d)?' <span class="mut">frei</span>':''}</td>
   <td class="n"><input type="number" min="0" step="0.5" style="width:80px;text-align:right" value="${fu0(s)}" ${hasS?'disabled title="Summe der Schulen, links daneben änderbar"':`onchange="setSoll('${d}',this.value)" title="Standard: ${fu(sollDefault(d))}"`}></td>
   ${sch.map(k=>`<td class="n"><input type="number" min="0" step="0.5" style="width:64px;text-align:right" placeholder="–" value="${m[k]!=null?fu0(m[k]):''}" onchange="setSollS('${d}','${esc(k)}',this.value)" title="Soll ${esc(k)}"></td>`).join('')}
-  <td class="n">${fu(i)}${S.entries.filter(e=>e.date===d).map(e=>`<div class="mut" style="white-space:nowrap">${esc(e.school)}, ${esc(e.cat)}: ${fu(e.u)} <a href="#" onclick="editE('${e.id}');return false" title="Eintrag ändern">ändern</a> <a href="#" onclick="delE('${e.id}');return false" title="Eintrag löschen">löschen</a></div>`).join('')}</td><td class="n ${i-s>=-0.04?'pos':'neg'}">${i||s?sg(i-s):''}</td>
+  <td class="n">${fu(i)}${i?`<div class="mut">${Math.round(istMin(d))} min</div>`:''}${S.entries.filter(e=>e.date===d).map(e=>`<div class="mut" style="white-space:nowrap">${esc(e.school)}, ${esc(e.cat)}: ${fu(e.u)} (${Math.round(emin(e))} min) <a href="#" onclick="editE('${e.id}');return false" title="Eintrag ändern">ändern</a> <a href="#" onclick="delE('${e.id}');return false" title="Eintrag löschen">löschen</a></div>`).join('')}</td><td class="n ${i-s>=-0.04?'pos':'neg'}">${i||s?sg(i-s):''}</td>
   <td class="n" style="white-space:nowrap"><input id="qh${n}" type="number" min="1" step="1" placeholder="Std." style="width:56px" onkeydown="if(event.key==='Enter')quickAdd('${d}',${n})"> <select id="qs${n}">${opts(sch,qs)}</select> <select id="qc${n}">${opts(S.set.cats,qc)}</select> <button class="b s" onclick="quickAdd('${d}',${n})" title="Eintrag für diesen Tag anlegen">+</button></td>
   <td class="n">${ov?`<button class="g s" onclick="resetSoll('${d}')">Standard (${fu(sollDefault(d))})</button>`:''}</td></tr>`}
  $('#main').innerHTML=`<div class="card"><h2>Tage: Soll und Ist</h2>
@@ -222,7 +229,7 @@ function vListe(){
  const l=entriesOf(ui.month).filter(e=>!ui.fc||e.cat===ui.fc);
  const sum=l.reduce((a,e)=>a+e.u,0);
  $('#main').innerHTML=`<div class="card"><h2>Alle Einträge</h2>
- <div class="bar">${monthSel(ui.month,'setMonth')}<select id="fcsel" onchange="ui.fc=this.value;render()"><option value="">alle Tätigkeiten</option>${opts(S.set.cats,ui.fc)}</select><b>Summe: ${fu(sum)} Schulstunden</b></div>
+ <div class="bar">${monthSel(ui.month,'setMonth')}<select id="fcsel" onchange="ui.fc=this.value;render()"><option value="">alle Tätigkeiten</option>${opts(S.set.cats,ui.fc)}</select><b>Summe: ${schulTxt(sum,l.reduce((a,e)=>a+emin(e),0))}</b></div>
  ${l.length?`<table>${l.map(rowHtml).join('')}</table>`:'<p class="mut">Keine Einträge.</p>'}</div>`;
 }
 
@@ -275,7 +282,7 @@ function reportData(a,b){
  const days={};l.forEach(e=>days[e.date]=1);
  const wk={};for(let d=a;d<=b;d=addDays(d,1)){const m=mondayOf(d);wk[m]=wk[m]||{i:0,s:0};wk[m].i+=istDay(d);wk[m].s+=sollDay(d)}
  const sch={};l.forEach(e=>sch[e.school]=(sch[e.school]||0)+e.u);
- return{a,b,l,ist,soll,ndays:Object.keys(days).length,cats:byCat(l),wk,sch}}
+ const imin=l.reduce((x,e)=>x+emin(e),0);return{a,b,l,ist,imin,soll,ndays:Object.keys(days).length,cats:byCat(l),wk,sch}}
 function overviewRange(p){if(S.mode==='jahr')return[p.a,p.b];const y=ui.month.slice(0,4);return[y+'-01-01',y+'-12-31']}
 function setSettled(chk){const k=period().key;if(chk)S.settled[k]={date:todayIso(),note:''};else delete S.settled[k];save();render()}
 function setSettledF(f,v){const k=period().key;if(S.settled[k]){S.settled[k][f]=v;save()}}
@@ -289,7 +296,7 @@ function vBericht(){
  <button class="b" onclick="print()">Drucken oder als PDF speichern</button><button class="g" onclick="dl('tex')">Als LaTeX</button><button class="g" onclick="dl('csv')">Als CSV</button></div></div>
  <div class="card"><h2>${esc(S.name)}: Arbeitszeitbericht ${p.label}</h2>
  <p class="mut">Heiko Seiffert, Sonderpädagoge. Angaben in ganzen Schulstunden (eine Schulstunde = ${S.set.unit} Minuten). Zeitraum ${fmtDate(p.a)} bis ${fmtDate(p.b)}.</p>
- <div class="grid"><div class="kpi"><b>${fu(r.ist)}</b><span>Ist (entspricht ${zeitH(r.ist)} Zeitstunden)</span></div><div class="kpi"><b>${fu(r.soll)}</b><span>Soll</span></div>
+ <div class="grid"><div class="kpi"><b>${fu(r.ist)}</b><span>Schulstunden Ist (${Math.round(r.imin)} min = ${hm(r.imin)})</span></div><div class="kpi"><b>${fu(r.soll)}</b><span>Soll</span></div>
  <div class="kpi"><b class="${r.ist-r.soll>=-0.04?'pos':'neg'}">${sg(r.ist-r.soll)}</b><span>${S.mode==='jahr'?'Differenz (Ist minus Soll)':'Überstunden (Ist minus Soll)'}</span></div><div class="kpi"><b>${r.ndays}</b><span>Tage mit Einträgen</span></div></div>
  <h3>Abrechnung</h3>
  <div class="bar"><label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--tx)"><input type="checkbox" style="width:auto" ${st?'checked':''} onchange="setSettled(this.checked)"> abgerechnet</label>
@@ -352,6 +359,7 @@ function vDaten(){
  <div class="card"><h2>Einstellungen dieser Abrechnung</h2><div class="row">
  <div><label>Standard-Soll je Wochentag (Schulstunden), Woche: ${fu(sollWeek())}</label><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">${['Mo','Di','Mi','Do','Fr'].map((n,i)=>`<div><label>${n}</label><input type="number" step="0.5" min="0" id="wd${i}" value="${fu0(S.set.wd[i])}"></div>`).join('')}</div></div>
  <div><label>Länge einer Schulstunde (Minuten)</label><input type="number" min="1" id="su" value="${S.set.unit}"></div></div>
+ <div class="row"><div><label>Soll der Arbeitszeit je Wochentag (Stunden, echte Zeit), Woche: ${fu(S.set.wh.reduce((a,b)=>a+b,0))} h</label><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">${['Mo','Di','Mi','Do','Fr'].map((n,i)=>`<div><label>${n}</label><input type="number" step="0.25" min="0" id="wh${i}" value="${fu0(S.set.wh[i])}"></div>`).join('')}</div></div></div>
  <div class="row"><div><label>Tätigkeiten (eine pro Zeile)</label><textarea id="sc" rows="8">${esc(S.set.cats.join('\n'))}</textarea></div>
  <div><label>Schulen (eine pro Zeile)</label><textarea id="sh" rows="8">${esc(S.set.schools.join('\n'))}</textarea></div></div>
  <button class="b" onclick="saveSet()">Speichern</button></div>
@@ -385,7 +393,7 @@ function saveSet(){
  const L=id=>$(id).value.split('\n').map(s=>s.trim()).filter(Boolean);
  const c=L('#sc'),s=L('#sh');if(!c.length||!s.length){alert('Mindestens eine Tätigkeit und eine Schule nötig.');return}
  S.name=$('#an').value.trim()||S.name;S.mode=$('#am').value;S.startMonth=+$('#asmv').value||1;
- S.set={wd:[0,1,2,3,4].map(i=>Math.max(0,+$('#wd'+i).value||0)),unit:+$('#su').value||45,cats:c,schools:s};ui.ay=ayOf(todayIso());save();render()}
+ S.set={wd:[0,1,2,3,4].map(i=>Math.max(0,+$('#wd'+i).value||0)),wh:[0,1,2,3,4].map(i=>Math.max(0,+$('#wh'+i).value||0)),unit:+$('#su').value||45,cats:c,schools:s};ui.ay=ayOf(todayIso());save();render()}
 function addFree(){const f=$('#ff').value,t=$('#ft').value||f;if(!f||t<f){alert('Bitte gültige Daten angeben.');return}
  S.free.push({id:uid(),from:f,to:t,note:$('#fg').value.trim()});save();render()}
 function delFree(id){S.free=S.free.filter(f=>f.id!==id);save();render()}
@@ -396,6 +404,21 @@ function imp(file){if(!file)return;const r=new FileReader();r.onload=()=>{try{co
 function dl2(){const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
  down('\ufeffDatum;Schulstunden;Tätigkeit;Schule;Notiz\n'+[...S.entries].sort((a,b)=>a.date<b.date?-1:1).map(e=>[e.date,e.u,e.cat,e.school,e.note].map(q).join(';')).join('\n'),'zeit-'+fname(S.name)+'-alle-daten.csv','text/csv')}
 
+/* Arbeitszeit in Stunden (echte Zeit), getrennt von der Bilanz der Schulstunden: Soll je Wochentag in Stunden (Vorgabe 8 h, Woche 40 h), Ist = alle Einträge in Minuten */
+function sollAz(iso){const w=dOf(iso).getDay();if(w==0||w==6||isFree(iso))return 0;return(+S.set.wh[w-1]||0)*60}
+function vAz(){
+ const [a,b]=monthRange(ui.month),weeks={};let ti=0,ts=0,rows='';
+ for(let d=a;d<=b;d=addDays(d,1)){const i=istMin(d),s=sollAz(d),m=mondayOf(d),w=weeks[m]||(weeks[m]={m,i:0,s:0});w.i+=i;w.s+=s;ti+=i;ts+=s;
+  if(i||s)rows+=`<tr${dOf(d).getDay()%6==0?' style="opacity:.6"':''}><td>${fmtDate(d)}</td><td class="n">${hm(s)}</td><td class="n">${hm(i)}</td><td class="n ${i-s>=0?'pos':'neg'}">${i||s?(i-s>=0?'+':'')+hm(i-s):''}</td></tr>`}
+ let cum=0;const wr=Object.values(weeks).map(w=>{cum+=w.i-w.s;return`<tr><td>KW ${kw(w.m)} (ab ${fmtDate(w.m).slice(4)})</td><td class="n">${hm(w.s)}</td><td class="n">${hm(w.i)}</td><td class="n ${w.i-w.s>=0?'pos':'neg'}">${(w.i-w.s>=0?'+':'')+hm(w.i-w.s)}</td><td class="n">${(cum>=0?'+':'')+hm(cum)}</td></tr>`}).join('');
+ const wk=mondayOf(todayIso()),cw=weeks[wk]||{i:sumRange(wk,addDays(wk,6),istMin),s:sumRange(wk,addDays(wk,6),sollAz)};
+ $('#main').innerHTML=`<div class="card"><h2>Arbeitszeit in Stunden</h2>
+ <p class="mut">Hier zählt die echte Zeit: alle erfassten Einträge in Minuten (bei Einträgen aus dem Fokus die gemessene Zeit, sonst Schulstunden mal ${S.set.unit} Minuten). Das Soll je Wochentag steht unter Einstellungen (Vorgabe 8 Stunden, 40 pro Woche). Die Bilanz der Schulstunden bleibt davon getrennt unter Tage und Bericht.</p>
+ <div class="kpi"><b>${hm(cw.i)}</b><span>diese Woche von ${hm(cw.s)} (${cw.i-cw.s>=0?'+':''}${hm(cw.i-cw.s)})</span></div>
+ <div class="bar">${monthSel(ui.month,'setMonth')}<b>Monat: Ist ${hm(ti)}, Soll ${hm(ts)}, Differenz ${(ti-ts>=0?'+':'')+hm(ti-ts)}</b></div>
+ <h3>Wochen</h3><table><tr><th>Woche</th><th class="n">Soll</th><th class="n">Ist</th><th class="n">Differenz</th><th class="n">Saldo laufend</th></tr>${wr}</table>
+ <h3>Tage</h3><table><tr><th>Tag</th><th class="n">Soll</th><th class="n">Ist</th><th class="n">Differenz</th></tr>${rows||'<tr><td colspan="4" class="mut">Keine Einträge in diesem Monat.</td></tr>'}</table></div>`}
+
 /* Fokus: Zeitmessung mit Sitzungen im Format der ToDo-Tabelle (Blatt Fokus). Punkte berechnet das ToDo, hier nur Zeiten. */
 const fo={t:null};
 function foFmt(ms){const s=Math.floor(ms/1000);return pad(Math.floor(s/3600))+':'+pad(Math.floor(s/60)%60)+':'+pad(s%60)}
@@ -405,35 +428,45 @@ function foStop(){const r=R.fokusRun;if(!r)return;const end=new Date(),ms=end-ne
  if(ms>=1000){const title=(r.title||'Fokus').trim();R.fokus.push({id:'z|'+uid(),ref:'',title,meta:'',tags:r.tags||[],next:false,start:r.start,end:end.toISOString(),ms});}
  save();foPush();render()}
 function foDrop(){if(!R.fokusRun||!confirm('Laufende Messung verwerfen?'))return;R.fokusRun=null;save();render()}
-function foDel(id){if(!confirm('Diese Sitzung löschen?'))return;R.fokus=R.fokus.filter(x=>x.id!==id);save();render()}
+function fokusLive(){return R.fokus.filter(x=>!x.del)}
+/* Sitzung ändern oder löschen: gleiche Sitzungen mit anderer id (gleicher Start und gleiche Dauer) werden mitgenommen; Gelöschtes bleibt als Markierung, damit es auch im ToDo verschwindet */
+function foChange(id,ch){const x=R.fokus.find(y=>y.id===id);if(!x)return false;const now=new Date().toISOString();
+ R.fokus.forEach(y=>{if(y!==x&&!y.del&&y.start===x.start&&y.ms===x.ms){y.del=true;y.ms=0;y.mod=now}});
+ if(ch.del){x.del=true;x.ms=0}else{if(ch.ms>0){x.ms=Math.round(ch.ms);x.end=new Date(Date.parse(x.start)+x.ms).toISOString()}if(ch.title!==undefined)x.title=String(ch.title).trim();if(ch.tags)x.tags=ch.tags}
+ x.mod=now;save();foPush();return true}
+function foDel(id){if(!confirm('Diese Sitzung löschen?'))return;foChange(id,{del:true});render()}
+function foSave(id){const row=document.querySelector('[data-sid="'+id.replace(/"/g,'\\"')+'"]');if(!row)return;const q=f=>row.querySelector('[data-f="'+f+'"]'),m=parseFloat(q('min').value);if(!(m>0)){alert('Dauer in Minuten angeben');return}
+ foChange(id,{ms:m*60000,title:q('title').value,tags:q('tags').value.split(',').map(t=>t.trim().toLowerCase()).filter(Boolean)});ui.foMsg='Sitzung gespeichert.';render()}
 const FO_WORK={evt:'EvT',herder:'Herder',job:'Job'};
 function foCatOf(t){t=String(t).toLowerCase();const m=[[/korrektur|korrigier|klassenarbeit|klausur/,'Korrektur'],[/vorbereit|planung|material|arbeitsblatt/,'Vorbereitung'],[/konferenz|gremi|sitzung|dienstbesprechung/,'Konferenz und Gremien'],[/nta|ao-sf|aosf|inklusion|gutachten|förderplan|foerderplan/,'Inklusion, NTA, AO-SF'],[/eltern|beratung|gespräch|gespraech/,'Beratung und Elterngespräche'],[/aufsicht|vertretung/,'Aufsicht und Vertretung'],[/fortbildung|fobi/,'Fortbildung'],[/organis|verwaltung|e-?mail|mails/,'Organisation'],[/unterricht|stunde/,'Unterricht']];
  for(const [re,c] of m)if(re.test(t)&&S.set.cats.includes(c))return c;return S.set.cats.includes('Sonstiges')?'Sonstiges':S.set.cats[0]}
 function foProps(){const used=new Set(R.fokusUsed),g={};
- R.fokus.forEach(x=>{if(used.has(x.id))return;const k=(x.tags||[]).map(t=>String(t).toLowerCase()).find(t=>FO_WORK[t]);if(!k)return;const d=isoOf(new Date(x.start)),key=d+'|'+k;
+ fokusLive().forEach(x=>{if(used.has(x.id))return;const k=(x.tags||[]).map(t=>String(t).toLowerCase()).find(t=>FO_WORK[t]);if(!k)return;const d=isoOf(new Date(x.start)),key=d+'|'+k;
   const e=g[key]||(g[key]={key,date:d,tag:k,ms:0,ids:[],titles:[]});e.ms+=x.ms;e.ids.push(x.id);if(x.title&&!e.titles.includes(x.title))e.titles.push(x.title)});
  return Object.values(g).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0)}
 function foSchoolOf(tag){const n=FO_WORK[tag];if(tag==='job')return S.set.schools[0]||'';return S.set.schools.find(x=>x.toLowerCase()===n.toLowerCase())||n}
 function foAccept(i){const p=foProps()[i];if(!p)return;const u=Math.max(1,parseInt(($('#fp_u'+i)||{}).value)||1);
- S.entries.push({id:uid(),date:p.date,u,cat:($('#fp_c'+i)||{}).value||foCatOf(p.titles.join(' ')),school:($('#fp_s'+i)||{}).value||foSchoolOf(p.tag),note:('Fokus: '+p.titles.join(', ')).slice(0,200)});
+ const auto=Math.max(1,Math.round(p.ms/60000/S.set.unit));
+ S.entries.push({id:uid(),date:p.date,u,...(u===auto?{min:Math.round(p.ms/60000)}:{}),cat:($('#fp_c'+i)||{}).value||foCatOf(p.titles.join(' ')),school:($('#fp_s'+i)||{}).value||foSchoolOf(p.tag),note:('Fokus: '+p.titles.join(', ')).slice(0,200)});
  R.fokusUsed.push(...p.ids);save();render()}
 function foSkip(i){const p=foProps()[i];if(!p||!confirm('Diesen Vorschlag verwerfen? Es wird kein Eintrag angelegt.'))return;R.fokusUsed.push(...p.ids);save();render()}
 function foPull(){if(!LX)return;api('fokus/pull','POST').then(r=>{if(!r||!r.ok){if(r&&r.msg){ui.foMsg=r.msg;if(ui.tab==='fokus')render()}return}ui.foPulled=true;
- const have=new Set(R.fokus.map(x=>x.id));let n=0;normFokus({fokus:r.rows}).fokus.forEach(x=>{if(!have.has(x.id)){R.fokus.push(x);n++}});
- ui.foMsg=n?n+' neue Sitzungen aus der ToDo-Tabelle übernommen.':'ToDo-Tabelle gelesen, nichts Neues ('+r.rows.length+' Sitzungen dort).';if(n)save();if(ui.tab==='fokus')render()}).catch(()=>{})}
+ const keys=new Set(R.fokus.filter(x=>!x.del).map(x=>x.start+'|'+x.ms));let n=0,u=0;normFokus({fokus:r.rows}).fokus.forEach(x=>{const o=R.fokus.find(y=>y.id===x.id);if(o){if(String(x.mod||'')>String(o.mod||'')){Object.assign(o,x);if(!x.del)delete o.del;u++}}else if(x.del||!keys.has(x.start+'|'+x.ms)){R.fokus.push(x);if(!x.del)n++}});
+ ui.foMsg=(n||u)?(n?n+' neue Sitzungen übernommen':'')+(n&&u?', ':'')+(u?u+' geänderte Sitzungen aktualisiert':'')+' (aus der ToDo-Tabelle).':'ToDo-Tabelle gelesen, nichts Neues ('+r.rows.length+' Zeilen dort'+(r.skipped?', '+r.skipped+' unlesbar übersprungen':'')+(r.last?', neueste Sitzung '+r.last.slice(0,10):'')+').';if(n||u)save();if(ui.tab==='fokus')render()}).catch(()=>{})}
 function foPush(){if(LX)api('fokus/push','POST',{rows:R.fokus.slice(-900)}).then(r=>{ui.foMsg=r&&r.msg||'';if(ui.tab==='fokus')render()}).catch(()=>{})}
 function vFokus(){const run=R.fokusRun,today=todayIso();
- const day=R.fokus.filter(x=>isoOf(new Date(x.start))===today).sort((a,b)=>a.start<b.start?1:-1);
+ const day=fokusLive().filter(x=>isoOf(new Date(x.start))===today).sort((a,b)=>a.start<b.start?1:-1);
  const sum=day.reduce((a,x)=>a+x.ms,0);
- const days={};R.fokus.forEach(x=>{const d=isoOf(new Date(x.start));days[d]=(days[d]||0)+x.ms});
+ const days={};fokusLive().forEach(x=>{const d=isoOf(new Date(x.start));days[d]=(days[d]||0)+x.ms});
  const last=Object.keys(days).sort().reverse().slice(0,14);
  $('#main').innerHTML=`<div class="card"><h2>Fokus</h2>
  ${run?`<p style="font-size:34px;margin:6px 0" id="fo_clock">${foFmt(Date.now()-new Date(run.start))}</p><p>${esc(run.title||'ohne Titel')}</p>
  <button class="b" onclick="foStop()">Beenden und speichern</button> <button class="g" onclick="foDrop()">Verwerfen</button>`
  :`<div class="bar"><input id="fo_t" placeholder="Woran arbeite ich?" style="min-width:260px" onkeydown="if(event.key==='Enter')foStart()"><select id="fo_g" title="Zählt als Arbeitszeit, wenn EvT, Herder oder Job gewählt ist"><option value="">ohne Zuordnung</option><option value="evt">EvT</option><option value="herder">Herder</option><option value="job">Job</option></select><button class="b" onclick="foStart()">Start</button></div>`}
  <p class="mut">Die Sitzungen werden mit den Zeitdaten gesichert${LX?' und, wenn eingerichtet, in das Blatt Fokus der ToDo-Tabelle geschrieben':''}. Punkte und Auswertung zeigt das ToDo.${ui.foMsg?'<br>'+esc(ui.foMsg):''}</p></div>
- ${(()=>{const pr=foProps();return pr.length?`<div class="card"><h3>Vorschläge für die Arbeitszeit</h3><p class="mut">Sitzungen mit EvT, Herder oder Job. Ein Eintrag entsteht erst, wenn Sie bestätigen. Schulstunden sind auf ganze Stunden gerundet (eine Stunde = ${S.set.unit} Minuten).</p><table><tr><th>Datum</th><th>Zuordnung</th><th>Minuten</th><th>Stunden</th><th>Tätigkeit</th><th>Schule</th><th></th></tr>${pr.map((p,i)=>`<tr><td>${fmtDate(p.date)}</td><td>${esc(FO_WORK[p.tag])}</td><td>${foMin(p.ms)}</td><td><input id="fp_u${i}" type="number" min="1" step="1" style="width:60px" value="${Math.max(1,Math.round(p.ms/60000/S.set.unit))}"></td><td><select id="fp_c${i}">${S.set.cats.map(c=>`<option${c===foCatOf(p.titles.join(' '))?' selected':''}>${esc(c)}</option>`).join('')}</select></td><td><select id="fp_s${i}">${S.set.schools.map(c=>`<option${c===foSchoolOf(p.tag)?' selected':''}>${esc(c)}</option>`).join('')}</select></td><td><button class="b" onclick="foAccept(${i})">Eintragen</button> <button class="g" onclick="foSkip(${i})">Verwerfen</button></td></tr>`).join('')}</table></div>`:''})()}
+ ${(()=>{const pr=foProps();return pr.length?`<div class="card"><h3>Vorschläge für die Arbeitszeit</h3><p class="mut">Sitzungen mit EvT, Herder oder Job. Ein Eintrag entsteht erst, wenn Sie bestätigen. Schulstunden sind auf ganze Stunden gerundet (eine Stunde = ${S.set.unit} Minuten).</p><table><tr><th>Datum</th><th>Zuordnung</th><th>Minuten</th><th>Schulstunden</th><th>Tätigkeit</th><th>Schule</th><th></th></tr>${pr.map((p,i)=>`<tr><td>${fmtDate(p.date)}</td><td>${esc(FO_WORK[p.tag])}</td><td>${foMin(p.ms)}</td><td><input id="fp_u${i}" type="number" min="1" step="1" style="width:60px" value="${Math.max(1,Math.round(p.ms/60000/S.set.unit))}"></td><td><select id="fp_c${i}">${S.set.cats.map(c=>`<option${c===foCatOf(p.titles.join(' '))?' selected':''}>${esc(c)}</option>`).join('')}</select></td><td><select id="fp_s${i}">${S.set.schools.map(c=>`<option${c===foSchoolOf(p.tag)?' selected':''}>${esc(c)}</option>`).join('')}</select></td><td><button class="b" onclick="foAccept(${i})">Eintragen</button> <button class="g" onclick="foSkip(${i})">Verwerfen</button></td></tr>`).join('')}</table></div>`:''})()}
  <div class="card"><h3>Heute: ${foMin(sum)} Minuten</h3>${day.length?`<table><tr><th>Von</th><th>Bis</th><th>Minuten</th><th>Titel</th><th>Zuordnung</th><th></th></tr>${day.map(x=>`<tr><td>${new Date(x.start).toTimeString().slice(0,5)}</td><td>${new Date(x.end).toTimeString().slice(0,5)}</td><td>${foMin(x.ms)}</td><td>${esc(x.title)}</td><td>${esc((x.tags||[]).join(', '))}</td><td><button class="g" onclick="foDel('${esc(x.id)}')">Löschen</button></td></tr>`).join('')}</table>`:'<p class="mut">Noch keine Sitzung heute.</p>'}</div>
+ ${(()=>{const ds=Object.keys(days).sort().reverse().slice(0,14);if(!ds.length)return'';const inp='style="padding:3px 5px"';return`<div class="card"><h3>Sitzungen bearbeiten</h3><p class="mut">Dauer, Titel und Zuordnung (evt, herder, job …) nachträglich ändern. Bereits übernommene Arbeitszeit-Einträge ändern sich dadurch nicht.</p>${ds.map(d=>`<p style="margin:10px 0 2px"><b>${fmtDate(d)}</b> · ${foMin(days[d])} Minuten</p>`+fokusLive().filter(x=>isoOf(new Date(x.start))===d).sort((a,b)=>a.start<b.start?-1:1).map(x=>`<div data-sid="${esc(x.id)}" class="bar" style="margin:3px 0"><span style="width:44px">${new Date(x.start).toTimeString().slice(0,5)}</span><input data-f="min" type="number" min="1" value="${foMin(x.ms)}" style="width:70px" ${inp}> Min.<input data-f="title" value="${esc(x.title)}" placeholder="Titel" style="min-width:200px" ${inp}><input data-f="tags" value="${esc((x.tags||[]).join(', '))}" placeholder="Zuordnung" style="width:140px" ${inp}><button class="b" onclick="foSave(this.parentNode.dataset.sid)">Speichern</button><button class="g" onclick="foDel(this.parentNode.dataset.sid)">Löschen</button></div>`).join('')).join('')}</div>`})()}
  <div class="card"><h3>Letzte Tage</h3>${last.length?`<table>${last.map(d=>`<tr><td>${fmtDate(d)}</td><td>${foMin(days[d])} Minuten</td></tr>`).join('')}</table>`:'<p class="mut">Noch keine Sitzungen.</p>'}</div>`}
 setInterval(()=>{const c=$('#fo_clock');if(c&&R.fokusRun)c.textContent=foFmt(Date.now()-new Date(R.fokusRun.start))},500);
 

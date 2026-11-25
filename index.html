@@ -929,6 +929,7 @@
   <header>
     <img src="./seiffertsupdate-icon.png" alt="Logo" style="height:32px;width:32px;margin-right:8px">
     <h1 id="hTitle">ToDo</h1>
+    <span id="appVer" title="Programmstand" style="font-size:11px;opacity:.55;margin:0 6px 0 2px;white-space:nowrap"></span>
     <span class="lvpill" id="lvPill" title="Level"></span>
     <span class="dot" id="syncDot" title="Synchronisierung"></span>
     <button class="icon-btn" id="acctBtn">Anmelden</button>
@@ -2420,6 +2421,7 @@ async function loadAll(){
   await Promise.all([loadNotes(), loadLinks(), loadDistractions()]);
   await loadWorkspace();
   try{ await foSessSync(); }catch(e){ logErr("stumm", e); }
+  try{ await folSync(); }catch(e){ logErr("stumm", e); }
   try{ await viSync(); }catch(e){ logErr("stumm", e); }
 }
 async function loadCalendars(){
@@ -2473,6 +2475,7 @@ async function refreshFromServer(force){
     _lastRefresh = Date.now();
     recurringGoalsMaybe();
     try{ await foSessSync(); }catch(e){ logErr("stumm", e); }
+  try{ await folSync(); }catch(e){ logErr("stumm", e); }
     try{ await viSync(); }catch(e){ logErr("stumm", e); }
     if(changed){ try{ render(); }catch(e){ logErr("refresh/render", e); } toast("Von einem anderen Gerät aktualisiert"); }
   }catch(e){ logErr("refreshFromServer", e); }
@@ -3064,12 +3067,13 @@ function todayLessonsHtml(){
   if(!tp.data.lcFrom){ tp.data.lcFrom = todayKey(); tpDirty(); }
   const day = todayKey(), rows = [];
   tp.data.items.forEach(it=>tpSlots(it, day).forEach(({q,key})=>rows.push({it, q, key, o:it.occ[key]||{}})));
+  ((tp.data.jdays[day]||{}).blocks||[]).filter(tpIsZ).forEach(b=>rows.push({z:b, it:{id:"z",title:b.title,color:b.color}, q:{start:b.start, min:b.end-b.start}, key:b.id, o:{done:!!b.done, topic:b.note||""}}));   // Stunden aus Seifferts Zeit: nur Anzeige
   if(!rows.length) return "";
   rows.sort((a,b)=>a.q.start-b.q.start || String(a.it.title).localeCompare(String(b.it.title)));
   const open = rows.filter(r=>!r.o.done), done = rows.filter(r=>r.o.done);
   const card = r=>{ const end = Math.min(1440, r.q.start+r.q.min), on = !!r.o.done;
     return `<div class="card${on?' done':''}" style="border-left:4px solid ${esc(r.it.color||'#6b7280')}" data-lsrow="${esc(r.it.id)}|${esc(r.key)}">
-      <div class="check${on?' on':''}" data-lsck="${esc(r.it.id)}|${esc(r.key)}">${checkSvg()}</div>
+      <div class="check${on?' on':''}" ${r.z?'title="Wird in Seifferts Zeit geführt"':`data-lsck="${esc(r.it.id)}|${esc(r.key)}"`}>${checkSvg()}</div>
       <div class="body"><div class="title">${esc(r.it.title)}</div><div class="sub">${tpHM(r.q.start)}–${end>=1440?"24:00":tpHM(end)}${r.o.topic?" · "+esc(String(r.o.topic).split("\n")[0].slice(0,80)):""}</div></div>
     </div>`; };
   return `<div class="section-title">🏫 Stunden heute (${done.length} von ${rows.length})</div>`+open.map(card).join("")+done.map(card).join("");
@@ -4611,7 +4615,8 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v313";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v317";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+try{document.addEventListener("DOMContentLoaded",()=>{const v=document.getElementById("appVer");if(v)v.textContent=APP_VER});const v0=document.getElementById("appVer");if(v0)v0.textContent=APP_VER}catch(e){}
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
 const TP_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#64748b","#000000","#14b8a6","#ec4899","#f97316","#eab308","#92400e","#0ea5e9","#84cc16","#e11d48","#6366f1","#ffffff"];
@@ -4639,7 +4644,7 @@ function tpNorm(d){
     const bl = ((src[k]||{}).blocks||[]).map(b=>{
       const st = tpInt(b&&b.start,0,1439,-1), en = tpInt(b&&b.end,1,1440,-1);
       if(!b || st<0 || en<=st) return null;
-      return {id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:st, end:en, color:String(b.color||TP_COLORS[0]).slice(0,20), cs:tpHex(b.cs), ck:tpHex(b.ck), done:!!b.done, note:String(b.note||"").slice(0,500),
+      return {id:String(b.id||uid()), title:String(b.title||"").slice(0,200), start:st, end:en, color:String(b.color||TP_COLORS[0]).slice(0,20), cs:tpHex(b.cs), ck:tpHex(b.ck), school:String(b.school||"").slice(0,40), done:!!b.done, note:String(b.note||"").slice(0,500),
         src:(b.src && b.src.kind && b.src.ref) ? {kind:String(b.src.kind), ref:String(b.src.ref)} : null,
         sd:/^\d{4}-\d{2}-\d{2}$/.test(String(b.sd||"")) ? String(b.sd) : ""};
     }).filter(Boolean).filter((b,i,arr)=>arr.findIndex(x=>x.id===b.id)===i);      // gleiche Block-Nummer am selben Tag nur einmal (Doppelte aus einem früheren Fehler beim Speichern)
@@ -4657,7 +4662,7 @@ function tpNorm(d){
   const dk = v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||"")) ? String(v) : "";
   o.items = (Array.isArray(d.items)?d.items:[]).map(x=>{
     if(!x || !x.title) return null;
-    const it = {id:String(x.id||uid()), title:String(x.title).slice(0,120), min:tpInt(x.min,5,720,30), color:String(x.color||TP_COLORS[0]).slice(0,20), cs:tpHex(x.cs), ck:tpHex(x.ck), rep:null, occ:{}};
+    const it = {id:String(x.id||uid()), title:String(x.title).slice(0,120), min:tpInt(x.min,5,720,30), color:String(x.color||TP_COLORS[0]).slice(0,20), cs:tpHex(x.cs), ck:tpHex(x.ck), school:String(x.school||"").slice(0,40), rep:null, occ:{}};
     const r = x.rep;
     if(r && typeof r==="object"){
       let slots = [];
@@ -4717,7 +4722,7 @@ function tpRepBlocks(day, force){
   tp.data.items.forEach(it=>{
     tpSlots(it, day).forEach(({q,key})=>{
       const o = it.occ[key] || {};
-      out.push({id:"rep:"+it.id+":"+key, title:it.title, start:q.start, end:Math.min(1440, q.start+q.min), color:it.color, cs:it.cs, ck:it.ck, done:!!o.done, note:o.topic||"", src:null, rep:{item:it.id, day:key}});
+      out.push({id:"rep:"+it.id+":"+key, title:it.title, start:q.start, end:Math.min(1440, q.start+q.min), color:it.color, cs:it.cs, ck:it.ck, school:it.school||"", done:!!o.done, note:o.topic||"", src:null, rep:{item:it.id, day:key}});
     });
   });
   return out;
@@ -4848,7 +4853,20 @@ function tpDirty(){
   _lsRev++; tp.pending = true; clearTimeout(tp.saveT);
   tp.saveT = setTimeout(tpSave, 1200);
 }
+const tpIsZ = b=>!!(b && b.src && b.src.kind==="zeit");
 function tpMerge(remote){
+  // Unterrichtsstunden aus Seifferts Zeit (src.kind "zeit") gehören Zeit: der Stand aus Drive ersetzt hier immer die lokale Kopie, auch Löschungen
+  let zch = false;
+  ["days","jdays"].forEach(key=>{
+    const L = tp.data[key], R = remote[key]||{};
+    new Set([...Object.keys(L), ...Object.keys(R)]).forEach(day=>{
+      const lb = L[day] ? L[day].blocks : [], rz = ((R[day]||{}).blocks||[]).filter(tpIsZ);
+      const lz = lb.filter(tpIsZ);
+      if(JSON.stringify(lz)===JSON.stringify(rz)) return;
+      zch = true; L[day] = {blocks: lb.filter(b=>!tpIsZ(b)).concat(rz)};
+    });
+  });
+  tp.zchanged = zch;
   // Fremde Änderungen (anderes Gerät) übernehmen: unbekannte Blöcke bleiben erhalten, lokale Stände und lokal gelöschte Blöcke gewinnen
   [["days"],["jdays"]].forEach(([key])=>{
     const L = tp.data[key], R = remote[key]||{}, here = new Set();      // Blöcke, die lokal an irgendeinem Tag stehen (verschobene nicht am alten Tag zurückholen)
@@ -4885,7 +4903,7 @@ async function tpSave(){
       let remote = null; try{ remote = tpNorm(JSON.parse(await blob.text())); }catch(e){ throw new Error("Datei in Drive nicht lesbar, Speichern abgebrochen"); }
       const nb = tp.data.breaks.length + tp.data.items.length;
       tpMerge(remote);
-      if(tp.data.breaks.length + tp.data.items.length !== nb && view==="plan" && !tp.drag) render();
+      if((tp.data.breaks.length + tp.data.items.length !== nb || tp.zchanged) && !tp.drag) render();
     }
     ["days","jdays"].forEach(key=>Object.keys(tp.data[key]).forEach(k=>{ if(!tp.data[key][k].blocks.length) delete tp.data[key][k]; }));
     const json = JSON.stringify(tp.data);
@@ -5167,13 +5185,13 @@ function tpJobPlace(item, start){
       if(!free.length){ toast("Alle Stundenplan-Termine dieses Tages sind schon gesetzt"); return; }
       const q = free[0], en = Math.min(1440, q.start+q.min);
       const br = tpBreakFor(tp.day, q); if(br){ toast("Entfällt: "+br.label); return; }
-      tpAdd({id:uid(), title:item.title, start:q.start, end:en, color:item.color, cs:item.cs, ck:item.ck, done:false, note:"", src:null});
+      tpAdd({id:uid(), title:item.title, start:q.start, end:en, color:item.color, cs:item.cs, ck:item.ck, school:item.school||"", done:false, note:"", src:null});
       render(); toast("Auf "+tpHM(q.start)+" Uhr gesetzt (Stundenplan)"); return;
     }
     toast("Kein Stundenplan-Termin an diesem Wochentag, deshalb frei gesetzt");
   }
   const dur = item.min, st = start==null ? tpFree(tp.day, dur) : tpCl(start, 0, 1440-dur);
-  tpAdd({id:uid(), title:item.title, start:st, end:st+dur, color:item.color, cs:item.cs, ck:item.ck, done:false, note:"", src:null});
+  tpAdd({id:uid(), title:item.title, start:st, end:st+dur, color:item.color, cs:item.cs, ck:item.ck, school:item.school||"", done:false, note:"", src:null});
   render();
 }
 const TP_WD = [[1,"Mo"],[2,"Di"],[3,"Mi"],[4,"Do"],[5,"Fr"],[6,"Sa"],[0,"So"]];
@@ -5198,13 +5216,14 @@ function tpRepText(it){ const r = it.rep; if(!r) return ""; return (r.auto!==fal
 function tpItemEdit(id){
   if(document.getElementById("modalBg")) return;
   const AB = !!tpSettings().ab.on;
-  const isNew = !id, b = isNew ? {id:uid(), title:"", min:30, color:TP_COLORS[0], cs:"", ck:"", rep:null, occ:{}} : tp.data.items.find(x=>x.id===id);
+  const isNew = !id, b = isNew ? {id:uid(), title:"", min:30, color:TP_COLORS[0], cs:"", ck:"", school:"", rep:null, occ:{}} : tp.data.items.find(x=>x.id===id);
   if(!b) return;
   const inp = "width:100%;background:#101216;border:1px solid #30343b;color:var(--text);border-radius:8px;padding:10px;font-size:16px;margin-bottom:8px";
   const R = b.rep ? {slots:b.rep.slots.map(q=>({wd:q.wd,start:q.start,min:q.min,n:q.n,w:q.w||"",custom:q.min!==b.min})), from:b.rep.from, to:b.rep.to, skip:b.rep.skip.map(x=>({from:x.from,to:x.to,label:x.label||""}))} : {slots:[], from:"", to:"", skip:[]};
   let repOn = b.rep ? b.rep.auto!==false : isNew;
   document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal" style="max-height:90vh;overflow:auto"><h2>${isNew?"Neuer Baustein":"Baustein bearbeiten"}</h2>
     <label>Titel</label><input type="text" id="tpi_t" maxlength="120" value="${esc(b.title)}" style="${inp}">
+    <label>Schule (Einsatzort, für Seifferts Zeit)</label><input type="text" id="tpi_sch" list="tpi_schl" maxlength="40" placeholder="zum Beispiel EvT oder Herder" value="${esc(b.school||"")}" style="${inp}"><datalist id="tpi_schl">${[...new Set(["EvT","Herder",...tp.data.items.map(x=>x.school).filter(Boolean)])].map(x=>`<option value="${esc(x)}">`).join("")}</datalist>
     <label>Standarddauer in Minuten</label><input type="number" id="tpi_m" min="5" max="720" step="5" value="${b.min}" style="${inp}">
     <label>Farbe Fach (Hauptfarbe)</label><div class="tp-col" id="tpi_c">${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.color?"on":""}"></button>`).join("")}</div>
     <label>Farbe Schule (Streifen links, zum Beispiel EvT oder Herder)</label><div class="tp-col" id="tpi_cs"><button type="button" data-c="" class="tp-none${b.cs?"":" on"}">–</button>${TP_COLORS.map(c=>`<button type="button" data-c="${c}" style="background:${c}" class="${c===b.cs?"on":""}"></button>`).join("")}</div>
@@ -5294,7 +5313,7 @@ function tpItemEdit(id){
       tpSettings().grid = gridList();
     }else if(repOn && false){ }
     if(rp){ const u = {}; rp.slots.forEach(q=>{ if(q.n>=0){ (u[q.wd]=u[q.wd]||new Set()).add(q.n); } }); rp.slots.forEach(q=>{ if(q.n<0){ const st = (u[q.wd]=u[q.wd]||new Set()); let n=0; while(st.has(n)) n++; st.add(n); q.n=n; } }); }
-    b.title = t.slice(0,120); b.min = tpInt($("tpi_m").value,5,720,30); b.color = color; b.cs = cs; b.ck = ck; b.rep = rp;
+    b.title = t.slice(0,120); b.min = tpInt($("tpi_m").value,5,720,30); b.color = color; b.cs = cs; b.ck = ck; b.school = $("tpi_sch").value.trim().slice(0,40); b.rep = rp;
     if(isNew) tp.data.items.push(b);
     tpDirty(); $("modalBg").remove();
     if(tpAuto(b) && tp.mode==="job"){ const n = tpGoFirst(b); render(); toast(n?"Alle Termine eingetragen, erste Stunde: "+wsShortDate(n):"Gespeichert, aber keine Stunde im eingestellten Zeitraum"); }
@@ -5888,7 +5907,7 @@ function tpClick(e){
     }
     const jbk = e.target.closest && e.target.closest('.tp-b[data-id^="jb:"]');
     if(jbk && jbk.closest("#tp_track")){
-      if(e.target.closest("[data-ck]")){ const o = (tp.data.jdays[tp.day]||{blocks:[]}).blocks.find(x=>"jb:"+x.id===jbk.dataset.id); if(o){ o.done = !o.done; tpDirty(); render(); } return; }
+      if(e.target.closest("[data-ck]")){ const o = (tp.data.jdays[tp.day]||{blocks:[]}).blocks.find(x=>"jb:"+x.id===jbk.dataset.id); if(o && tpIsZ(o)){ toast("Diese Stunde wird in Seifferts Zeit geführt"); return; } if(o){ o.done = !o.done; tpDirty(); render(); } return; }
       toast("Dieser Block gehört zur Job-Struktur und wird dort geändert"); return;
     }
   }
@@ -14148,6 +14167,7 @@ function foItems(){
   gtasks.filter(t=>!isGoalTask(t) && !isMetaTask(t)).sort((a,b)=>(a.due||"").localeCompare(b.due||"")).forEach(t=>add({ref:"gtask:"+t.id, group:"gtask", title:t.title||"(ohne Titel)", done:false, tags:foGTagsGet(t.id), taggable:true, card:gTaskCardHtml(t,key,"#d4f1c5")}));
   sorted.filter(t=>t.type!=="todo").forEach(t=>add({ref:"task:"+t.id, group:"hab", title:t.title||"(ohne Titel)", done:isDone(t.id,key), tags:foTaskTags(t), taggable:true, card:taskCard(t,{key,oneTime:false})}));
   try{ foMetaLinkItems(out); }catch(e){ logErr("stumm", e); }
+  try{ foApplyLinks(out); }catch(e){ logErr("stumm", e); }
   const byRef = new Map(out.map(x=>[x.ref,x]));
   out.forEach(x=>{ x.isNext = !!foNx && x.ref===foNx.ref; x.next = false; let p = x, g = 0; while(p && g++<6){ if(foNx && p.ref===foNx.ref){ x.next = true; break; } p = p.parentRef ? byRef.get(p.parentRef) : null; } });
   if(foFront){
@@ -14295,12 +14315,12 @@ function focusHtml(){
     const found = items.filter(hit);
     results = `<div class="fo-results">${found.length?found.slice(0,15).map(x=>`<div class="fo-row${x.done?" done":""}${x.sub?" sub":""}" data-fo="pick" data-k="${esc(x.ref)}"><span class="fo-dot">${x.done?"✓":"○"}</span><span class="fo-rt">${x.sub?"↳ ":""}${esc(x.title)}${x.parentTitle?` <span class="muted">· ${esc(x.parentTitle)}</span>`:""}</span></div>`).join("")+(found.length>15?`<div class="muted" style="padding:4px 8px">… und ${found.length-15} weitere</div>`:""):`<div class="muted" style="padding:8px">Nichts gefunden.</div>`}</div>`;
   }
-  let main_ = `${nextBox}${searchBox}${results}<div class="fo-head"><div class="fo-lab">${cur?"Jetzt dran":""}</div>${frontSel}<button class="fo-btn${foSide?" pri":""}" data-fo="side" title="Liste aller Einträge aus Heute ein- oder ausklappen">☰ Heute-Liste${open.length?" ("+open.length+")":""}</button></div>`;
+  let main_ = `${nextBox}${foDayHtml(items)}${searchBox}${results}<div class="fo-head"><div class="fo-lab">${cur?"Jetzt dran":""}</div>${frontSel}<button class="fo-btn${foSide?" pri":""}" data-fo="side" title="Liste aller Einträge aus Heute ein- oder ausklappen">☰ Heute-Liste${open.length?" ("+open.length+")":""}</button></div>`;
   if(cur){
     const kids = cur.group==="meta" ? [] : items.filter(x=>x.sub && x.parentRef===cur.ref);
     const mh = foMetaHOf(cur), kindOf = cur.group==="goal" ? "goal" : (cur.group==="todo" ? "todo" : "");
     const subHtml = (mh ? foKidsHtml(mh, cur, items) : "") + (kids.length ? `<div class="fo-subs"><div class="fo-subh">Unterprojekte (${kids.filter(x=>!x.done).length} offen)</div>${kids.map(x=>`<div class="fo-subrow${x.done?" done":""}"><span class="fo-subck" data-fo="subdone" data-doc="${esc(x.docId)}" data-nid="${esc(x.ref.slice(4))}" title="Abhaken">${x.done?"✓":"○"}</span><span class="fo-subt" data-fo="pick" data-k="${esc(x.ref)}" title="In den Fokus nehmen">${esc(x.title)}</span></div>`).join("")}</div>` : "");
-    main_ += `<div class="fo-big">${cur.card}</div>${subHtml}${foTagRowHtml(cur)}<div class="fo-btns">${open.length>1&&!lock?`<button class="fo-btn" data-fo="skip">⏭ Später, nächste Aufgabe</button>`:""}${kindOf?`<button class="fo-btn${cur.metaId?" pri":""}" data-fo="metapick" data-kind="${kindOf}" data-ref="${esc(cur.ref.split(":")[1])}" title="Einem Metaprojekt zuordnen">${META_ICON} ${cur.metaId?"Meta: "+esc((cur.metaTitle||"").slice(0,24))+" (ändern)":"Metaprojekt zuordnen"}</button>`:""}<button class="fo-btn${cur.isNext?" pri":""}" data-fo="nexttoggle" data-k="${esc(cur.ref)}" title="Der eine nächste Fokus: bleibt hier immer vorn, bis er erledigt ist">👁 ${cur.isNext?"Next Focus aufheben":"Als Next Focus festlegen"}</button></div>`;
+    main_ += `<div class="fo-big">${cur.card}</div>${subHtml}${foStatusHtml(cur, items)}${foTagRowHtml(cur)}<div class="fo-btns">${open.length>1&&!lock?`<button class="fo-btn" data-fo="skip">⏭ Später, nächste Aufgabe</button>`:""}${kindOf?`<button class="fo-btn${cur.metaId?" pri":""}" data-fo="metapick" data-kind="${kindOf}" data-ref="${esc(cur.ref.split(":")[1])}" title="Einem Metaprojekt zuordnen">${META_ICON} ${cur.metaId?"Meta: "+esc((cur.metaTitle||"").slice(0,24))+" (ändern)":"Metaprojekt zuordnen"}</button>`:""}<button class="fo-btn${cur.isNext?" pri":""}" data-fo="nexttoggle" data-k="${esc(cur.ref)}" title="Der eine nächste Fokus: bleibt hier immer vorn, bis er erledigt ist">👁 ${cur.isNext?"Next Focus aufheben":"Als Next Focus festlegen"}</button></div>`;
   }else{
     main_ += `<div class="fo-big fo-empty">${items.length?"Alles erledigt für heute. 🎉":"Für heute ist nichts fällig. 🎉"}</div>`;
   }
@@ -14311,10 +14331,217 @@ function focusHtml(){
     const sitems = items.filter(hit);
     const frontList = foFront ? sitems.filter(x=>x.front) : [];
     const groups = (frontList.length ? [{g:"front", list:frontList}] : []).concat(Object.keys(FO_GROUPS).map(g=>({g, list:sitems.filter(x=>x.group===g && !(foFront && x.front))})).filter(x=>x.list.length));
-    side = `<aside class="fo-side"><div class="fo-sidehead">Heute</div>${groups.length?groups.map(({g,list})=>`<div class="fo-grp">${g==="front" ? "⬆ "+esc(foTagName(foFront))+" (nach vorne gezogen)" : FO_GROUPS[g]}</div>`+list.map(x=>`<div class="fo-row${cur&&x.ref===cur.ref?" cur":""}${x.done?" done":""}${x.sub?" sub":""}${lock&&!x.next&&!x.done?" locked":""}" ${x.sub?`style="padding-left:${8+14*(x.depth||1)}px" `:""}data-fo="pick" data-k="${esc(x.ref)}" title="Als nächste Aufgabe in den Fokus nehmen"><span class="fo-dot">${x.done?"✓":cur&&x.ref===cur.ref?"◎":"○"}</span><span class="fo-rt">${x.sub?"↳ ":""}${esc(x.title)}</span>${x.done?"":eye(x)}${x.taggable?(x.tags.length?`<span class="fo-tg">${esc(x.tags.map(foTagName).join(", "))}</span>`:`<span class="fo-tg none" title="Noch ohne Tag">🏷?</span>`):""}</div>`).join("")).join(""):`<div class="muted" style="padding:8px">Nichts fällig.</div>`}</aside>`;
+    side = `<aside class="fo-side"><div class="fo-sidehead">Heute</div>${groups.length?groups.map(({g,list})=>`<div class="fo-grp">${g==="front" ? "⬆ "+esc(foTagName(foFront))+" (nach vorne gezogen)" : FO_GROUPS[g]}</div>`+list.map(x=>`<div class="fo-row${cur&&x.ref===cur.ref?" cur":""}${x.done?" done":""}${x.sub?" sub":""}${lock&&!x.next&&!x.done?" locked":""}" ${x.sub||x.fpar?`style="padding-left:${8+14*(x.depth||1)}px" `:""}data-fo="pick" data-k="${esc(x.ref)}" title="Als nächste Aufgabe in den Fokus nehmen"><span class="fo-dot">${x.done?"✓":cur&&x.ref===cur.ref?"◎":"○"}</span><span class="fo-rt">${x.sub||x.fpar?"↳ ":""}${esc(x.title)}${foStBadge(x)}</span>${x.done?"":eye(x)}${x.taggable?(x.tags.length?`<span class="fo-tg">${esc(x.tags.map(foTagName).join(", "))}</span>`:`<span class="fo-tg none" title="Noch ohne Tag">🏷?</span>`):""}</div>`).join("")).join(""):`<div class="muted" style="padding:8px">Nichts fällig.</div>`}</aside>`;
   }
   return `<div class="fo-wrap"><div class="fo-main">${main_}</div>${side}</div>`;
 }
+/* ============ STATUS, UNTERPUNKTE und TAGESBALKEN im Fokus (v317) ============
+   Status je Eintrag (Todos, Tagesziele, Google-Aufgaben): Eingang, Geplant, In Arbeit, Wartet, Ruht, Erledigt.
+   In Arbeit ergibt sich von selbst aus Fokus-Sitzungen (zusammen mindestens 5 Minuten in den letzten 7 Tagen); Wartet und die Eltern-Kind-Zuordnung setzt man von Hand.
+   Alles liegt auf diesem Gerät (foLinks, foHist) und wird über das Tabellenblatt "FokusStatus" synchronisiert, Zusammenführen über den neueren Zeitstempel. */
+const FOL_MAX = 700, FOL_MIN_MS = 5*60000, FOL_DAYS = 7;
+let foLinks = (()=>{ const v = foLoad("foLinks", {}); return v && typeof v==="object" && !Array.isArray(v) ? v : {}; })();   // ref -> {st:"wait"|"", why, until, par, mod}
+let foHist = (()=>{ const v = foLoad("foHist", {}); return v && typeof v==="object" && !Array.isArray(v) ? v : {}; })();      // Tag -> {d, t, m, p:[[Titel, erledigt, gesamt, Minuten]], mod}
+let _folBusy = false, _folTimer = 0;
+const FOL_ST = {inbox:["⚡","Eingang","#64748b"], plan:["📅","Geplant","#3b82f6"], prog:["🔧","In Arbeit","#16a34a"], wait:["⏳","Wartet","#d97706"], due:["⏰","Wiedervorlage fällig","#dc2626"], idle:["💤","Ruht","#94a3b8"], done:["✓","Erledigt","#16a34a"]};
+function folSave(){ foStore("foLinks", foLinks); foStore("foHist", foHist); folKick(); }
+function folKick(){ clearTimeout(_folTimer); _folTimer = setTimeout(()=>{ folSync().catch(e=>logErr("stumm", e)); }, 4000); }
+function folSet(ref, ch){ const o = foLinks[ref] || {st:"", why:"", until:"", par:""}; foLinks[ref] = Object.assign(o, ch, {mod:new Date().toISOString()}); folSave(); }
+function folKidsOf(ref){ return Object.keys(foLinks).filter(k=>foLinks[k] && foLinks[k].par===ref); }
+function folSess(ref){
+  const from = Date.now()-FOL_DAYS*86400000; let all = 0, rec = 0, last = 0;
+  foSessLive().forEach(s=>{ if(s.ref!==ref) return; const ms = +s.ms||0, t = Date.parse(s.start)||0; all += ms; if(t>=from) rec += ms; if(t>last) last = t; });
+  return {all, rec, last};
+}
+function folEligible(x){ return !!x && !x.sub && (x.group==="todo" || x.group==="goal" || x.group==="gtask"); }
+/* Status eines Eintrags (aus der Liste foItems) */
+function foStOf(x, kidsProg){
+  if(!x || x.group==="hab" || x.group==="meta" || x.sub) return null;
+  if(x.done) return {k:"done"};
+  const L = foLinks[x.ref], today = todayKey();
+  if(L && L.st==="wait") return (L.until && L.until<=today) ? {k:"due", why:L.why, until:L.until} : {k:"wait", why:L.why, until:L.until};
+  const s = folSess(x.ref);
+  if(s.rec>=FOL_MIN_MS || kidsProg) return {k:"prog", min:Math.round(s.rec/60000), auto:true};
+  if(s.all>=FOL_MIN_MS) return {k:"idle", days:Math.max(1, Math.round((Date.now()-s.last)/86400000))};
+  if(x.ref.startsWith("task:")){ const t = tasks.find(q=>q.id===x.ref.slice(5)); if(t && isInboxTask(t)) return {k:"inbox"}; }
+  return {k:"plan"};
+}
+function foStBadge(x){
+  const s = foStOf(x, x.fkidsProg); if(!s || s.k==="plan" || s.k==="done") return "";
+  const d = FOL_ST[s.k]; return ` <span class="fo-stb" style="background:${d[2]}" title="${esc(d[1]+(s.why?": "+s.why:""))}">${d[0]}</span>`;
+}
+/* Unterpunkte aus foLinks in die Fokus-Liste einhängen: nur zwei Ebenen, ein Eintrag hat höchstens einen Elternteil */
+function foApplyLinks(out){
+  const by = new Map(out.map(x=>[x.ref,x])), parents = new Set();
+  Object.keys(foLinks).forEach(r=>{ const L = foLinks[r]; if(L && L.par) parents.add(L.par); });
+  Object.keys(foLinks).forEach(r=>{
+    const L = foLinks[r]; if(!L || !L.par) return;
+    const c = by.get(r), p = by.get(L.par);
+    if(!folEligible(c) || !folEligible(p) || c.metaId || p.metaId || p.parentRef || parents.has(r) || (foLinks[L.par] && foLinks[L.par].par)) return;
+    c.parentRef = p.ref; c.parentTitle = p.title; c.depth = 1; c.fpar = true;
+  });
+  out.forEach(x=>{ if(x.fpar){ const s = folSess(x.ref); if(!x.done && s.rec>=FOL_MIN_MS){ const p = by.get(x.parentRef); if(p) p.fkidsProg = true; } } });
+}
+function folDoneRef(ref, items){
+  const it = items.find(x=>x.ref===ref); if(it) return !!it.done;
+  const kind = ref.split(":")[0], id = ref.slice(kind.length+1);
+  if(kind==="task") return isEverDone(id);
+  if(kind==="goal") return goalTasks.some(g=>g.id===id && g.completed);
+  return true;
+}
+function folSetPar(child, parent){
+  const items = foItems(), c = items.find(x=>x.ref===child), p = items.find(x=>x.ref===parent);
+  if(!folEligible(c) || !folEligible(p) || child===parent){ toast("Das geht nur zwischen ToDos, Tageszielen und Google-Aufgaben"); return false; }
+  if(c.metaId || c.sub){ toast("Dieser Eintrag liegt schon unter einem Metaprojekt"); return false; }
+  if(p.metaId || p.parentRef){ toast("Unter einem Unterpunkt kann kein weiterer Unterpunkt liegen (höchstens zwei Ebenen)"); return false; }
+  if(folKidsOf(child).length){ toast("Dieser Eintrag hat selbst Unterpunkte und kann deshalb nicht Unterpunkt werden"); return false; }
+  folSet(child, {par:parent}); return true;
+}
+function folClose(){ const m = document.getElementById("modalBg"); if(m) m.remove(); }
+function folParentOpen(ref){
+  if(document.getElementById("modalBg")) return;
+  const items = foItems(), c = items.find(x=>x.ref===ref); if(!folEligible(c)) return;
+  const cur = foLinks[ref] && foLinks[ref].par;
+  const cands = items.filter(x=>folEligible(x) && x.ref!==ref && !x.done && !x.metaId && !x.parentRef && !(foLinks[x.ref] && foLinks[x.ref].par));
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>↳ Unterpunkt von …</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:8px">„${esc((c.title||"").slice(0,70))}“ unter einen anderen Eintrag legen. Zwei Ebenen, ein Eintrag hat einen Elternteil.</p>
+    <div style="max-height:50vh;overflow:auto">${cands.length ? cands.map(x=>`<button class="fo-btn" style="display:block;width:100%;text-align:left;margin:3px 0" data-folp="${esc(x.ref)}">${x.group==="goal"?"🎯 ":x.group==="gtask"?"⭐ ":"📝 "}${esc(x.title)}</button>`).join("") : `<div class="muted">Keine passenden Einträge.</div>`}</div>
+    <div class="modal-actions">${cur?`<button class="fo-btn" id="folp_un">✕ Aus dem Unterpunkt lösen</button>`:""}<button class="btn-primary" id="folp_x">Abbrechen</button></div></div></div>`);
+  document.getElementById("folp_x").onclick = folClose;
+  document.getElementById("modalBg").onclick = e=>{ if(e.target.id==="modalBg") folClose(); const b = e.target.closest && e.target.closest("[data-folp]"); if(b && folSetPar(ref, b.dataset.folp)){ folClose(); toast("Unterpunkt festgelegt"); render(); } };
+  const un = document.getElementById("folp_un"); if(un) un.onclick = ()=>{ folSet(ref, {par:""}); folClose(); toast("Aus dem Unterpunkt gelöst"); render(); };
+}
+function folWaitOpen(ref){
+  if(document.getElementById("modalBg")) return;
+  const c = foItems().find(x=>x.ref===ref); if(!folEligible(c)) return;
+  const L = foLinks[ref] || {};
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>⏳ Wartet</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:8px">„${esc((c.title||"").slice(0,70))}“ wartet auf etwas. Bis zur Wiedervorlage bleibt der Status, auch wenn du im Fokus daran arbeitest.</p>
+    <label style="display:block;margin:6px 0">Worauf wartest du?<input id="folw_why" type="text" style="width:100%" value="${esc(L.why||"")}" placeholder="zum Beispiel Antwort der Schulleitung"></label>
+    <label style="display:block;margin:6px 0">Wiedervorlage am (leer = ohne Datum)<input id="folw_d" type="date" value="${esc(L.until||"")}"></label>
+    <div class="modal-actions"><button class="btn-primary" id="folw_ok">Speichern</button><button class="fo-btn" id="folw_x">Abbrechen</button></div></div></div>`);
+  document.getElementById("folw_x").onclick = folClose;
+  document.getElementById("modalBg").onclick = e=>{ if(e.target.id==="modalBg") folClose(); };
+  document.getElementById("folw_ok").onclick = ()=>{
+    const why = document.getElementById("folw_why").value.trim(), until = document.getElementById("folw_d").value;
+    if(!why && !until){ toast("Bitte einen Grund oder ein Datum angeben"); return; }
+    folSet(ref, {st:"wait", why, until}); folClose(); toast("Auf Wartet gesetzt"); render();
+  };
+}
+/* Anzeige für den aktuellen Eintrag: Status, Knöpfe, Unterpunkte mit Fortschritt */
+function folKidStats(parentRef, items){
+  const refs = items.filter(x=>x.fpar && x.parentRef===parentRef).map(x=>x.ref);
+  folKidsOf(parentRef).forEach(r=>{ if(!refs.includes(r) && (foLinks[r].par===parentRef)) refs.push(r); });
+  const done = refs.filter(r=>folDoneRef(r, items)).length;
+  const t0 = new Date(); t0.setHours(0,0,0,0);
+  let ms = 0; const fam = new Set(refs.concat([parentRef]));
+  foSessLive().forEach(s=>{ if(fam.has(s.ref) && Date.parse(s.start)>=t0.getTime()) ms += (+s.ms||0); });
+  return {refs, total:refs.length, done, ms};
+}
+function foStatusHtml(cur, items){
+  if(!folEligible(cur)) return "";
+  const s = foStOf(cur, cur.fkidsProg), d = FOL_ST[s.k];
+  const ks = folKidStats(cur.ref, items), L = foLinks[cur.ref] || {};
+  let h = `<div class="fo-subs fo-stbox"><div class="fo-subh">Status: <span class="fo-stb" style="background:${d[2]}">${d[0]} ${d[1]}</span>`;
+  if(s.k==="prog") h += ` <span class="muted">${s.auto && s.min ? "automatisch, "+s.min+" Min. Fokus in den letzten "+FOL_DAYS+" Tagen" : "ein Unterpunkt ist in Arbeit"}</span>`;
+  if(s.k==="wait" || s.k==="due") h += ` <span class="muted">${esc(s.why||"")}${s.until?" · Wiedervorlage "+esc(wsShortDate(s.until)):""}</span>`;
+  if(s.k==="idle") h += ` <span class="muted">zuletzt vor ${s.days} Tag${s.days===1?"":"en"} bearbeitet</span>`;
+  h += `</div><div class="fo-btns">`;
+  h += (L.st==="wait") ? `<button class="fo-btn pri" data-fo="stresume">▶ Wieder aufnehmen</button><button class="fo-btn" data-fo="stwait" data-k="${esc(cur.ref)}">⏳ Grund oder Datum ändern</button>` : `<button class="fo-btn" data-fo="stwait" data-k="${esc(cur.ref)}">⏳ Wartet …</button>`;
+  if(!cur.metaId && !(cur.parentRef && !cur.fpar) && !ks.total){
+    h += cur.fpar ? `<button class="fo-btn" data-fo="stparent" data-k="${esc(cur.ref)}">↳ Unterpunkt von „${esc((cur.parentTitle||"").slice(0,24))}“ (ändern)</button>` : `<button class="fo-btn" data-fo="stparent" data-k="${esc(cur.ref)}">↳ Als Unterpunkt von …</button>`;
+  }
+  h += `</div>`;
+  if(ks.total){
+    const pct = Math.round(100*ks.done/ks.total);
+    h += `<div class="fo-subh" style="margin-top:8px">Unterpunkte: ${ks.done} von ${ks.total} erledigt · heute ${Math.round(ks.ms/60000)} Min. Fokus</div><div class="fo-barbox"><div class="fo-bar" style="width:${pct}%"></div></div>`;
+    h += ks.refs.map(r=>{ const x = items.find(y=>y.ref===r), dn = folDoneRef(r, items); return `<div class="fo-subrow${dn?" done":""}"><span class="fo-subck">${dn?"✓":"○"}</span><span class="fo-subt" ${x?`data-fo="pick" data-k="${esc(r)}" title="In den Fokus nehmen"`:""}>${esc(x?x.title:"(heute nicht in der Liste)")}${x?foStBadge(x):""}</span></div>`; }).join("");
+    if(ks.done===ks.total && !cur.done) h += `<div class="muted" style="font-size:13px;margin-top:4px">Alle Unterpunkte sind erledigt. Du kannst diesen Eintrag abhaken.</div>`;
+  }
+  return h+`</div>`;
+}
+/* Tagesbalken: erledigt, Fokus-Zeit, Unterpunkt-Gruppen, letzte Tage */
+function foDayStats(items){
+  const today = todayKey(), done = new Set(logs.filter(l=>l.date===today).map(l=>l.itemId));
+  const open = items.filter(x=>!x.done && !x.sub && x.group!=="meta" && x.group!=="hab").length + items.filter(x=>!x.done && x.group==="hab").length;
+  const t0 = new Date(); t0.setHours(0,0,0,0); let ms = 0;
+  foSessLive().forEach(s=>{ if(Date.parse(s.start)>=t0.getTime()) ms += (+s.ms||0); });
+  const par = []; const seen = new Set();
+  items.forEach(x=>{ if(!x.fpar || seen.has(x.parentRef)) return; seen.add(x.parentRef); const p = items.find(y=>y.ref===x.parentRef); if(!p) return; const k = folKidStats(p.ref, items); par.push([p.title, k.done, k.total, Math.round(k.ms/60000)]); });
+  return {d:done.size, t:done.size+open, m:Math.round(ms/60000), p:par};
+}
+function foHistTouch(st){
+  const today = todayKey(), o = foHist[today], n = {d:st.d, t:st.t, m:st.m, p:st.p.slice(0,12)};
+  if(o && o.d===n.d && o.t===n.t && o.m===n.m && JSON.stringify(o.p)===JSON.stringify(n.p)) return;
+  if(n.d===0 && n.m===0 && !o) return;
+  n.mod = new Date().toISOString(); foHist[today] = n; folSave();
+}
+function foDayGoal(){ const v = parseInt(foLoad("foDayMin", 120)); return Number.isFinite(v) && v>0 ? Math.min(960, v) : 120; }
+function foDayHtml(items){
+  const st = foDayStats(items); try{ foHistTouch(st); }catch(e){ logErr("stumm", e); }
+  const g = foDayGoal(), p1 = st.t ? Math.round(100*st.d/st.t) : 0, p2 = Math.min(100, Math.round(100*st.m/g));
+  const prev = Object.keys(foHist).filter(k=>k<todayKey()).sort().slice(-5).reverse();
+  const wd = k=>new Date(k+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"numeric"});
+  let h = `<div class="fo-subs fo-day"><div class="fo-subh">Heute</div>`;
+  h += `<div class="fo-dayrow"><span>Erledigt: ${st.d} von ${st.t}</span><div class="fo-barbox"><div class="fo-bar" style="width:${p1}%"></div></div></div>`;
+  h += `<div class="fo-dayrow"><span data-fo="daygoal" style="cursor:pointer" title="Tippen, um das Tagesziel zu ändern">Fokus-Zeit: ${st.m} von ${g} Min. ✎</span><div class="fo-barbox"><div class="fo-bar" style="width:${p2}%;background:#16a34a"></div></div></div>`;
+  st.p.forEach(([t,d,n,m])=>{ h += `<div class="fo-dayrow"><span>↳ ${esc(String(t).slice(0,32))}: ${d}/${n}${m?" · "+m+" Min.":""}</span><div class="fo-barbox"><div class="fo-bar" style="width:${n?Math.round(100*d/n):0}%;background:#f59e0b"></div></div></div>`; });
+  if(prev.length) h += `<div class="muted" style="font-size:12px;margin-top:6px">Letzte Tage: ${prev.map(k=>{ const x = foHist[k]; return esc(wd(k))+" "+x.d+"/"+x.t+(x.m?" · "+x.m+" Min.":""); }).join(" &nbsp;|&nbsp; ")}</div>`;
+  return h+`</div>`;
+}
+/* Synchronisation: Tabellenblatt FokusStatus (ref, st, why, until, par, mod); Tagesverlauf als Zeilen "hist:Datum" mit JSON in why */
+function folPrune(){
+  const old = Date.now()-90*86400000, oldH = Date.now()-120*86400000;
+  Object.keys(foLinks).forEach(k=>{ const L = foLinks[k]; if(!L || (!L.st && !L.par && Date.parse(L.mod||0)<old-60*86400000) || Date.parse(L.mod||0)<old) delete foLinks[k]; });
+  Object.keys(foHist).forEach(k=>{ if(Date.parse(k+"T12:00:00")<oldH) delete foHist[k]; });
+}
+function folRows(){
+  const rows = [];
+  Object.keys(foLinks).forEach(k=>{ const L = foLinks[k]; rows.push([k, L.st||"", L.why||"", L.until||"", L.par||"", L.mod||""]); });
+  Object.keys(foHist).forEach(k=>{ const x = foHist[k], m = x.mod; rows.push(["hist:"+k, "", JSON.stringify({d:x.d,t:x.t,m:x.m,p:x.p}), "", "", m||""]); });
+  return rows.slice(-FOL_MAX);
+}
+async function folSync(){
+  if(_folBusy || !accessToken || !spreadsheetId) return false;
+  _folBusy = true; let changed = false;
+  try{
+    let srv = [], missing = false;
+    try{ const r = await api(`${SHEETS}/${spreadsheetId}/values/FokusStatus!A2:F${FOL_MAX+200}`); srv = (r.values||[]).filter(r=>r && r[0]); }
+    catch(e){ if(String((e && e.message)||e).includes("Unable to parse range")) missing = true; else throw e; }
+    const srvMod = new Map(srv.map(r=>[r[0], r[5]||""]));
+    srv.forEach(r=>{
+      const k = String(r[0]), mod = r[5]||"";
+      if(k.startsWith("hist:")){
+        const day = k.slice(5), o = foHist[day];
+        if(!o || String(o.mod||"")<String(mod)){ try{ const j = JSON.parse(r[2]||"{}"); foHist[day] = {d:+j.d||0, t:+j.t||0, m:+j.m||0, p:Array.isArray(j.p)?j.p:[], mod}; changed = true; }catch(e){ logErr("stumm", e); } }
+      }else{
+        const o = foLinks[k];
+        if(!o || String(o.mod||"")<String(mod)){ foLinks[k] = {st:r[1]||"", why:r[2]||"", until:r[3]||"", par:r[4]||"", mod}; changed = true; }
+      }
+    });
+    folPrune();
+    if(changed){ foStore("foLinks", foLinks); foStore("foHist", foHist); }
+    const rows = folRows();
+    const needPush = !viHidden("focus") && (missing || rows.some(r=>srvMod.get(r[0])!==r[5]) || srv.length>rows.length);
+    if(needPush){
+      if(missing){
+        try{ await api(`${SHEETS}/${spreadsheetId}:batchUpdate`, {method:"POST", body:JSON.stringify({requests:[{addSheet:{properties:{title:"FokusStatus"}}}]})}); }catch(e){ logErr("stumm", e); }
+        await new Promise(r=>setTimeout(r, 800));
+      }
+      await api(`${SHEETS}/${spreadsheetId}/values/FokusStatus!A1?valueInputOption=RAW`, {method:"PUT", body:JSON.stringify({values:[["ref","st","why","until","par","mod"]].concat(rows)})});
+      try{ await api(`${SHEETS}/${spreadsheetId}/values/FokusStatus!A${rows.length+2}:F${FOL_MAX+200}:clear`, {method:"POST", body:"{}"}); }catch(e){ logErr("stumm", e); }
+    }
+    if(changed){ try{ render(); }catch(e){ logErr("stumm", e); } }
+  }catch(e){ logErr("folSync", e); }
+  finally{ _folBusy = false; }
+  return changed;
+}
+(function(){
+  const css = `.fo-stb{display:inline-block;color:#fff;border-radius:10px;padding:1px 8px;font-size:12px;font-weight:600;vertical-align:middle}
+  .fo-day .fo-dayrow{display:flex;align-items:center;gap:10px;margin:4px 0;font-size:13px}.fo-day .fo-dayrow>span{flex:0 0 52%;min-width:0}.fo-day .fo-barbox{flex:1;margin:0}
+  .fo-stbox .fo-barbox{margin:6px 0}`;
+  document.head.insertAdjacentHTML("beforeend", "<style>"+css+"</style>");
+})();
 /* Logbuch */
 async function logbookLoad(){
   if(lbBusy) return; lbBusy = true; lbAt = Date.now();
@@ -14446,6 +14673,10 @@ document.addEventListener("change", e=>{ const sel = e.target && e.target.closes
     else if(a==="tstop"){ foFinish(false); render(); }
     else if(a==="tag"){ const cur = foCurrent(); if(cur && /^(task|goal|gtask):/.test(cur.ref)) foToggleTag(cur.ref, b.dataset.v); }
     else if(a==="tagnew"){ const cur = foCurrent(); if(cur && /^(task|goal|gtask):/.test(cur.ref)) foTagNewOpen(cur.ref); }
+    else if(a==="stwait") folWaitOpen(b.dataset.k);
+    else if(a==="stresume"){ const c = foCurrent(); if(c){ folSet(c.ref, {st:"", why:"", until:""}); toast("Wieder aufgenommen"); render(); } }
+    else if(a==="stparent") folParentOpen(b.dataset.k);
+    else if(a==="daygoal"){ const v = prompt("Tagesziel für die Fokus-Zeit in Minuten:", String(foDayGoal())); if(v!==null){ const n = parseInt(v); if(n>0 && n<=960){ foStore("foDayMin", n); render(); } else toast("Bitte eine Zahl zwischen 1 und 960 eingeben"); } }
     else if(a==="metapick") foMetaPickOpen(b.dataset.kind, b.dataset.ref);
     else if(a==="metaadd") foMetaAddOpen(b.dataset.mid);
     else if(a==="metaopen"){ foMetaOpen = !foMetaOpen; foStore("foMetaOpen", foMetaOpen); render(); }

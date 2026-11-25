@@ -1494,6 +1494,7 @@ function showPop(el){
   const d=plain(e.desc);if(d)h+='<div class="row"><span class="k">Info</span><div class="desc">'+esc(d)+'</div></div>';
   h+='<div class="calname"><i></i>'+esc(e.calName)+'</div>';
   if(e.link&&e.link!=='#')h+='<div class="row" style="margin-top:10px"><a href="'+esc(e.link)+'" target="_blank" rel="noopener">In Google Kalender öffnen</a></div>';
+  h+='<div class="row" style="margin-top:10px"><button type="button" onclick="window.kalToTodo(this.getAttribute(\'data-k\'))" data-k="'+esc(el.dataset.k)+'" style="padding:6px 10px;border-radius:6px;border:1px solid #888;background:#fff;color:#1b1f24;cursor:pointer">→ Als ToDo übernehmen</button></div>';
   p.innerHTML=h;p.classList.add('on');
   const r=el.getBoundingClientRect(),pw=p.offsetWidth,ph=p.offsetHeight;
   let x=r.right+8;if(x+pw>innerWidth-10)x=r.left-pw-8;if(x<10)x=Math.max(10,Math.min(r.left,innerWidth-pw-10));
@@ -1501,6 +1502,7 @@ function showPop(el){
   p.style.left=x+'px';p.style.top=y+'px';
 }
 function closePop(){$('#pop').classList.remove('on')}
+window.kalToTodo=function(k){ const e=store.get(k); if(!e){ return; } closePop(); const d=e.allDay?dateKey(e.start):dateKey(e.start); ce2tOpen({id:e.id, calId:e.calId, title:e.title, date:d, time:e.allDay?'':(pad(e.start.getHours())+':'+pad(e.start.getMinutes())), calName:e.calName||'', src:'kal'}); };
 
 /* Start */
 function fit(){
@@ -1829,7 +1831,8 @@ async function loadTodayCalendarEvents(){
               start: new Date(e.start.dateTime || e.start.date),
               end: new Date(e.end.dateTime || e.end.date),
               allDay: !e.start.dateTime,
-              calendarName: cal.summary
+              calendarName: cal.summary,
+              calId: cal.id
             });
           });
         }
@@ -3688,6 +3691,7 @@ function render(){
               <div class="title" style="color:#000">${title}</div>
               <div class="sub" style="color:#38bdf8">${timeStr}</div>
             </div>
+            <div style="display:flex;align-items:center">${ce2tBtn("today", {id:e.id, calId:e.calId||"", date:todayKey()})}</div>
           </div>`;
         });
       }
@@ -4615,7 +4619,7 @@ function openMdImport(){
 /* ============ TAGESSTRUKTUR (eigener Reiter, eigene Datei in Google Drive) ============ */
 /* Alles, was hier geplant wird, liegt ausschließlich in der Drive-Datei "Tagesstruktur.json".
    ToDos und Ziele werden nur GELESEN und als Kopie auf die Zeitleiste gelegt; es gibt keine Schreibzugriffe auf Aufgaben, Ziele, Logs oder Kalender. */
-const APP_VER = "v317";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
+const APP_VER = "v318";   // gleich dem Cache-Namen in sw.js, zur Kontrolle der laufenden Version
 try{document.addEventListener("DOMContentLoaded",()=>{const v=document.getElementById("appVer");if(v)v.textContent=APP_VER});const v0=document.getElementById("appVer");if(v0)v0.textContent=APP_VER}catch(e){}
 const TP_FILE = "Tagesstruktur.json";
 const TP_FS = [0.85,1,1.15,1.3,1.5,1.75];
@@ -9949,7 +9953,7 @@ async function wsWkLoadEvents(force){
 function wsWkEvHue(id){ let h = 0; for(let i=0;i<id.length;i++) h = (h*31 + id.charCodeAt(i)) % 360; return h; }
 function wsWkEvHtml(e, wide){
   const t = e.allDay ? "ganztägig" : (e.st + (e.et && e.et!==e.st ? "–"+e.et : ""));
-  return `<div class="ws-wkev" style="border-left-color:hsl(${wsWkEvHue(e.calId)},60%,58%)" title="${esc(e.calendarName)}"><span class="ws-wkevt">${esc(t)}</span> ${esc(e.title)}${wide?` <span class="ws-agcal">${esc(e.calendarName)}</span>`:""}</div>`;
+  return `<div class="ws-wkev" style="border-left-color:hsl(${wsWkEvHue(e.calId)},60%,58%)" title="${esc(e.calendarName)}"><span class="ws-wkevt">${esc(t)}</span> ${esc(e.title)}${wide?` <span class="ws-agcal">${esc(e.calendarName)}</span>`:""} ${ce2tBtn("wk", {id:e.id, calId:e.calId||"", date:e.sd})}</div>`;
 }
 function wsWkCardHtml(it, em){
   const n = it.node, today = todayKey();
@@ -14542,6 +14546,77 @@ async function folSync(){
   .fo-stbox .fo-barbox{margin:6px 0}`;
   document.head.insertAdjacentHTML("beforeend", "<style>"+css+"</style>");
 })();
+/* ============ Kalendertermin als ToDo übernehmen (v318) ============
+   Aus jeder Stelle, an der Kalendertermine stehen (Heute, Kalender-Ansicht, Wochenansicht im Arbeitsbereich):
+   Termin -> ToDo (Kind-Eintrag) mit Zuordnung zu Projekt, Eltern-Eintrag oder Metaprojekt. Der Termin im Kalender bleibt unverändert.
+   Die Verknüpfung steht als Marke in den Notizen des ToDos (synchronisiert über die Tabelle Tasks), so wird ein Termin nie doppelt übernommen. */
+function ce2tMark(ev){ return "[aus Kalender: "+(ev.calId||"")+"|"+ev.id+"|"+ev.date+"]"; }
+function ce2tFind(ev){ const m = ce2tMark(ev); return tasks.find(t=>!t.archived && (t.notes||"").includes(m)) || null; }
+function ce2tBtn(src, ev){
+  const ex = ce2tFind(ev);
+  return `<button class="mini ce2t" data-ce2t="${src}" data-ceid="${esc(ev.id)}" data-cecal="${esc(ev.calId||"")}" data-ced="${esc(ev.date)}" title="${ex?"Schon als ToDo übernommen (antippen zum Ändern)":"Als ToDo übernehmen und einem Projekt zuordnen"}" style="${ex?"color:#16a34a;font-weight:700":""}">${ex?"✓ ToDo":"→ ToDo"}</button>`;
+}
+function ce2tLookup(src, id, calId, date){
+  if(src==="today"){
+    const e = (todayCalendarEvents||[]).find(x=>x.id===id); if(!e) return null;
+    return {id:e.id, calId:e.calId||calId||"", title:e.title, date:todayKey(), time:e.allDay?"":e.start.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"}), calName:e.calendarName||"", src};
+  }
+  if(src==="wk"){
+    const e = ((wsWkEv && wsWkEv.list)||[]).find(x=>x.id===id && (x.calId||"")===calId && x.sd===date); if(!e) return null;
+    return {id:e.id, calId:e.calId, title:e.title, date:e.sd, time:e.allDay?"":(e.st||""), calName:e.calendarName||"", src};
+  }
+  return null;
+}
+function ce2tOpen(ev){
+  if(!ev){ toast("Termin nicht gefunden"); return; }
+  if(document.getElementById("modalBg")) return;
+  const ex = ce2tFind(ev), cur = ex || {title:ev.title, startDate:ev.date, startTime:ev.time||"", projectId:""};
+  const projs = (projects||[]).filter(p=>!p.archived).sort((a,b)=>String(a.name).localeCompare(String(b.name),"de"));
+  const L = ex ? (foLinks["task:"+ex.id]||{}) : {};
+  const parents = tasks.filter(t=>!t.archived && t.type==="todo" && !isEverDone(t.id) && (!ex || t.id!==ex.id) && !(foLinks["task:"+t.id] && foLinks["task:"+t.id].par)).sort((a,b)=>String(a.title).localeCompare(String(b.title),"de")).slice(0,200);
+  const canMeta = typeof wsLoaded!=="undefined" && wsLoaded;
+  document.body.insertAdjacentHTML("beforeend", `<div class="modal-bg" id="modalBg"><div class="modal"><h2>📅 Termin als ToDo</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:8px">${ex?"Schon als ToDo übernommen. Hier kannst du Titel, Projekt und Zuordnung ändern.":"Aus dem Kalendertermin wird ein ToDo, das du zuordnen, abhaken und im Fokus bearbeiten kannst. Der Termin im Kalender bleibt unverändert."}${ev.calName?" Kalender: "+esc(ev.calName)+".":""}</p>
+    <label style="display:block;margin:6px 0">Titel<input id="ce2t_t" type="text" style="width:100%" value="${esc(cur.title||"")}"></label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><label style="margin:6px 0">Datum<input id="ce2t_d" type="date" value="${esc(cur.startDate||"")}"></label><label style="margin:6px 0">Uhrzeit<input id="ce2t_h" type="time" value="${esc(cur.startTime||"")}"></label></div>
+    <label style="display:block;margin:6px 0">Projekt<select id="ce2t_p" style="width:100%"><option value="">— kein Projekt —</option>${projs.map(p=>`<option value="${esc(p.id)}"${p.id===cur.projectId?" selected":""}>${esc(p.name)}</option>`).join("")}</select></label>
+    <label style="display:block;margin:6px 0">Unterpunkt von (ToDo)<select id="ce2t_e" style="width:100%"><option value="">— keiner —</option>${parents.map(t=>`<option value="task:${esc(t.id)}"${L.par==="task:"+t.id?" selected":""}>${esc(String(t.title||"(ohne Titel)").slice(0,70))}</option>`).join("")}</select></label>
+    ${canMeta?`<label style="display:block;margin:6px 0"><input type="checkbox" id="ce2t_m"> Danach einem Metaprojekt zuordnen</label>`:""}
+    ${ev.src==="today" && !ex?`<label style="display:block;margin:6px 0"><input type="checkbox" id="ce2t_h2" checked> In der Heute-Liste als erledigt ausblenden (der ToDo übernimmt)</label>`:""}
+    <div class="modal-actions"><button class="btn-primary" id="ce2t_ok">${ex?"Speichern":"Übernehmen"}</button><button class="fo-btn" id="ce2t_x">Abbrechen</button></div></div></div>`);
+  const close = ()=>{ const m = document.getElementById("modalBg"); if(m) m.remove(); };
+  document.getElementById("ce2t_x").onclick = close;
+  document.getElementById("modalBg").onclick = e=>{ if(e.target.id==="modalBg") close(); };
+  document.getElementById("ce2t_ok").onclick = async ()=>{
+    const v = id=>{ const e = document.getElementById(id); return e ? e.value : ""; };
+    const title = v("ce2t_t").trim(); if(!title){ toast("Bitte einen Titel angeben"); return; }
+    const date = v("ce2t_d"), wd = date ? parseDate(date) : null, par = v("ce2t_e");
+    const data = {title, startDate:date, weekday:wd?String(wd.getDay()):"", startTime:v("ce2t_h"), projectId:v("ce2t_p")};
+    const meta = document.getElementById("ce2t_m") && document.getElementById("ce2t_m").checked, hide = document.getElementById("ce2t_h2") && document.getElementById("ce2t_h2").checked;
+    close();
+    let t = ex;
+    try{
+      if(ex) await updateTask(ex.id, data);
+      else t = await addTask(Object.assign({type:"todo", scheduleType:"once", syncCalendar:false, calendarId:"", tag:"", notes:ce2tMark(ev)}, data));
+    }catch(e){ logErr("ce2t", e); toast("Übernehmen fehlgeschlagen"); return; }
+    if(!t) return;
+    const ref = "task:"+t.id, oldPar = (foLinks[ref]||{}).par||"";
+    if(par!==oldPar){
+      if(par && folKidsOf(ref).length) toast("Dieser ToDo hat selbst Unterpunkte und kann nicht Unterpunkt werden");
+      else if(par && (foLinks[par] && foLinks[par].par)) toast("Dieser Eintrag ist selbst ein Unterpunkt (höchstens zwei Ebenen)");
+      else folSet(ref, {par});
+    }
+    if(hide && ev.src==="today"){ try{ completeCalEvent(ev.id); }catch(e){ logErr("stumm", e); } }
+    toast(ex ? "Gespeichert" : "Als ToDo übernommen");
+    render();
+    if(meta) setTimeout(()=>foMetaPickOpen("todo", t.id), 250);
+  };
+}
+document.addEventListener("click", e=>{
+  const b = e.target && e.target.closest && e.target.closest("[data-ce2t]"); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  ce2tOpen(ce2tLookup(b.dataset.ce2t, b.dataset.ceid, b.dataset.cecal||"", b.dataset.ced||""));
+}, true);
 /* Logbuch */
 async function logbookLoad(){
   if(lbBusy) return; lbBusy = true; lbAt = Date.now();

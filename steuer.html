@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seifferts Steuer</title>
+<!--SZ-LINUX-->
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1f2328;--mut:#6b7280;--line:#d9d6cc;--acc:#2f6f9f;--acc-ink:#fff;--ok:#2e7d4f;--bad:#b3402f;--soll:#c0392b}
+@media(prefers-color-scheme:dark){:root{--bg:#1b1d20;--card:#25282c;--tx:#e6e6e6;--mut:#9aa1a9;--line:#3a3f45;--acc:#5aa3d6;--acc-ink:#101214;--ok:#5fc283;--bad:#ef7a68;--soll:#ef7a68}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0 8px 0 0}
+nav{display:flex;flex-wrap:wrap;gap:4px}
+nav button{border:1px solid transparent;background:none;color:var(--tx);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{background:var(--acc);color:var(--acc-ink)}
+main{max-width:1000px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card h2{font-size:16px;margin:0 0 10px}
+.card h3{font-size:14px;margin:14px 0 6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.kpi{background:var(--bg);border-radius:8px;padding:10px 12px}
+.kpi b{display:block;font-size:22px}
+.kpi span{color:var(--mut);font-size:13px}
+label{display:block;font-size:13px;color:var(--mut);margin-bottom:2px}
+input,select,textarea{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--tx)}
+input[type=checkbox],input[type=radio]{width:auto}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:10px}
+button.b{background:var(--acc);color:var(--acc-ink);border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font:inherit}
+button.g{background:none;border:1px solid var(--line);color:var(--tx);border-radius:6px;padding:7px 12px;cursor:pointer;font:inherit}
+button.s{padding:2px 8px;font-size:13px;border:1px solid var(--line);background:none;color:var(--tx);border-radius:6px;cursor:pointer;font-family:inherit}
+button.s.on.fehlt{background:var(--bad);color:#fff;border-color:var(--bad)}
+button.s.on.liegt{background:var(--ok);color:#fff;border-color:var(--ok)}
+button.s.on.nein{background:var(--mut);color:#fff;border-color:var(--mut)}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--mut);font-weight:600}
+td.n,th.n{text-align:right;white-space:nowrap}
+td input.bt{width:100px;text-align:right}
+.mut{color:var(--mut);font-size:13px}
+.bad{color:var(--bad)}.ok{color:var(--ok)}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.bar select,.bar input{width:auto}
+.yearbar{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+.yearbar button{border:1px solid var(--line);background:var(--card);color:var(--tx);padding:5px 12px;border-radius:16px;cursor:pointer;font:inherit}
+.yearbar button.on{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+a{color:var(--acc);cursor:pointer}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:14px;text-align:center;color:var(--mut)}
+.drop.over{border-color:var(--acc);background:var(--bg)}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:12px;padding:1px 8px;margin:1px 4px 1px 0;font-size:13px}
+img.th{max-height:44px;max-width:70px;border-radius:4px;display:block}
+.only-print{display:none}
+@media print{header,.yearbar,.noprint{display:none!important}.only-print{display:block}body{background:#fff;color:#000}.card{border:0;padding:0}main{max-width:none}}
+</style>
+</head>
+<body>
+<header>
+<h1>Seifferts Steuer <span style="font-size:12px;font-weight:400;opacity:.6">Version 1.1</span></h1>
+<nav id="nav"></nav>
+</header>
+<div class="yearbar" id="yearbar"></div>
+<main id="main"></main>
+<script>
+"use strict";
+const KEY='seifferts_steuer_v1',LX=window.SZ_LINUX||null,$=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let _u=0;const uid=()=>Date.now().toString(36)+(_u++).toString(36)+Math.random().toString(36).slice(2,5);
+const ST={fehlt:'Fehlt noch',liegt:'Liegt vor',nein:'Gibt es dieses Jahr nicht'},STK={fehlt:'Fehlt',liegt:'Liegt vor',nein:'Entfällt'};
+const BEREICHE=['Einnahmen','Werbungskosten','Versicherungen und Vorsorge','Spenden und Beiträge','Außergewöhnliche Belastungen','Kinder','Haushalt und Handwerker','Sonstiges'];
+/* Startvorlage: nur ein Vorschlag, alles ist frei änderbar */
+const START=[
+['Einnahmen','Lohnsteuerbescheinigung oder Besoldungsmitteilung','Von der Dienststelle oder dem Arbeitgeber'],
+['Einnahmen','Weitere Einnahmen (Nebentätigkeit, Honorare, Kapitalerträge)','Mit Bescheinigung oder Abrechnung'],
+['Werbungskosten','Fahrten zur Arbeit (Aufstellung)','Tage und Entfernungen, ggf. mehrere Dienstorte'],
+['Werbungskosten','Arbeitsmittel (Geräte, Material)','Rechnungen'],
+['Werbungskosten','Fachliteratur und Software','Rechnungen'],
+['Werbungskosten','Fortbildungen und Reisekosten','Teilnahmebescheinigung, Rechnung, Fahrtkosten'],
+['Werbungskosten','Arbeitszimmer oder Homeoffice','Raumangaben, Nachweise'],
+['Werbungskosten','Beiträge zu Berufsverbänden und Gewerkschaften','Jahresbescheinigung'],
+['Versicherungen und Vorsorge','Kranken- und Pflegeversicherung','Jahresbescheinigung des Versicherers'],
+['Versicherungen und Vorsorge','Altersvorsorge (Riester, Rürup, Betriebsrente)','Bescheinigung'],
+['Versicherungen und Vorsorge','Weitere Versicherungen (Haftpflicht, Unfall, Berufsunfähigkeit)','Beitragsrechnung'],
+['Spenden und Beiträge','Spendenbescheinigungen','Zuwendungsbestätigung'],
+['Spenden und Beiträge','Kirchensteuer und Mitgliedsbeiträge','Nachweis'],
+['Außergewöhnliche Belastungen','Krankheits- und Pflegekosten','Rechnungen, Rezepte, Erstattungen abziehen'],
+['Kinder','Kinderbetreuung und Schulgeld','Rechnung und Zahlungsnachweis'],
+['Kinder','Ausbildungsnachweise der Kinder','Schul- oder Studienbescheinigung'],
+['Haushalt und Handwerker','Handwerkerleistungen','Rechnung und Überweisungsbeleg'],
+['Haushalt und Handwerker','Haushaltsnahe Dienstleistungen','Rechnung und Überweisungsbeleg'],
+['Sonstiges','Steuerbescheid des Vorjahres','Für Rückfragen und Vergleich'],
+['Sonstiges','Änderungen im Lebensumstand (Umzug, Heirat, Geburt, Kontoänderung)','Neue Daten für den Berater']];
+function parseNum(v){v=String(v==null?'':v).replace(/[\s€]/g,'');if(v==='')return null;v=v.includes(',')?v.replace(/\./g,'').replace(',','.'):v;const n=+v;return isFinite(n)&&n>=0?Math.round(n*100)/100:null}
+const eur=x=>x.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+function normPosten(p){const n=x=>(Array.isArray(x)?x:[]);
+ return{id:String(p.id||uid()),name:String(p.name||'').slice(0,200),bereich:String(p.bereich||''),notiz:String(p.notiz||'').slice(0,1000),wied:!!p.wied,
+ status:ST[p.status]?p.status:'fehlt',betrag:(typeof p.betrag==='number'&&isFinite(p.betrag)&&p.betrag>=0)?p.betrag:null,
+ papier:n(p.papier).filter(x=>x&&typeof x==='object').map(x=>({id:String(x.id||uid()),ort:String(x.ort||'').slice(0,200),text:String(x.text||'').slice(0,300)})),
+ dateien:n(p.dateien).map(x=>typeof x==='string'?{file:x}:x).filter(x=>x&&x.file).map(x=>({id:String(x.id||uid()),file:String(x.file)}))}}
+const fromStart=()=>START.map(([b,n,no])=>normPosten({id:uid(),name:n,bereich:b,notiz:no,wied:true}));
+function normRoot(j){j=j&&typeof j==='object'?j:{};
+ let ber=(Array.isArray(j.bereiche)&&j.bereiche.length?j.bereiche:BEREICHE).map(String).filter((x,i,a)=>x&&a.indexOf(x)===i);
+ const jahre={};Object.keys(j.jahre||{}).filter(k=>/^\d{4}$/.test(k)).forEach(k=>{const jj=j.jahre[k]||{};jahre[k]={posten:(Array.isArray(jj.posten)?jj.posten:[]).filter(p=>p&&typeof p==='object').map(normPosten)}});
+ if(!Object.keys(jahre).length)jahre[String(new Date().getFullYear())]={posten:fromStart()};
+ Object.values(jahre).forEach(y=>y.posten.forEach(p=>{if(!p.bereich)p.bereich='Sonstiges';if(!ber.includes(p.bereich))ber.push(p.bereich)}));
+ const keys=Object.keys(jahre).sort();
+ return{app:'seifferts-steuer',format:1,cur:jahre[j.cur]?j.cur:keys[keys.length-1],berater:String(j.berater||'').slice(0,100),bereiche:ber,jahre}}
+function load(){try{if(LX)return normRoot(LX.init||{})}catch(e){}try{const j=JSON.parse(localStorage.getItem(KEY));if(j)return normRoot(j)}catch(e){}return normRoot({})}
+let R=load(),saveT=null;
+const ui={tab:'liste',edit:null,fBer:'',fSt:'',files:{},dg:[],msg:''};
+const P=()=>R.jahre[R.cur].posten,find=id=>P().find(p=>p.id===id);
+function save(){R=normRoot(R);
+ if(LX){clearTimeout(saveT);saveT=setTimeout(()=>{saveT=null;fetch(LX.base+'/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(R)}).catch(()=>{})},400);return}
+ try{localStorage.setItem(KEY,JSON.stringify(R))}catch(e){}}
+if(LX)addEventListener('pagehide',()=>{if(saveT){clearTimeout(saveT);saveT=null;fetch(LX.base+'/api/state',{method:'PUT',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(R)})}});
+function api(path,body){return fetch(LX.base+'/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(r=>r.json())}
+const furl=f=>LX.base+'/datei/'+R.cur+'/'+encodeURIComponent(f);
+const isImg=f=>/\.(png|jpe?g|gif|webp|bmp)$/i.test(f);
+function down(txt,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:type||'text/plain'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+/* ---------- Rahmen */
+const TABS=[['liste','Checkliste'],['papier','Papier'],['digital','Digital'],['uebergabe','Übergabeliste'],['einrichten','Einrichten'],['hilfe','Hilfe']];
+function go(t){ui.tab=t;if(t==='digital')dgRefresh();render()}
+function render(){
+ $('#nav').innerHTML=TABS.map(([k,n])=>`<button class="${ui.tab===k?'on':''}" onclick="go('${k}')">${n}</button>`).join('');
+ const ys=Object.keys(R.jahre).sort().reverse();
+ $('#yearbar').innerHTML='Steuerjahr '+ys.map(y=>`<button class="${y===R.cur?'on':''}" onclick="setYear('${y}')">${y}</button>`).join('')+'<button onclick="newYear()">+ Neues Jahr</button>';
+ ({liste:vListe,papier:vPapier,digital:vDigital,uebergabe:vUebergabe,einrichten:vEinrichten,hilfe:vHilfe})[ui.tab]()}
+function setYear(y){R.cur=y;ui.edit=null;save();if(ui.tab==='digital')dgRefresh();render()}
+function newYear(){const ks=Object.keys(R.jahre).sort(),sug=String(+ks[ks.length-1]+1);const y=(prompt('Neues Steuerjahr (vierstellig):',sug)||'').trim();
+ if(!y)return;if(!/^\d{4}$/.test(y)){alert('Bitte ein vierstelliges Jahr eingeben.');return}
+ if(R.jahre[y]){R.cur=y;save();render();return}
+ const prev=ks.filter(k=>k<y).pop()||ks[ks.length-1];
+ R.jahre[y]={posten:R.jahre[prev].posten.filter(p=>p.wied).map(p=>normPosten({id:uid(),name:p.name,bereich:p.bereich,notiz:p.notiz,wied:true}))};
+ R.cur=y;ui.edit=null;save();render()}
+/* ---------- Checkliste */
+function setSt(id,s){const p=find(id);if(p){p.status=s;save();render()}}
+function setBetrag(id,v){const p=find(id);if(p){p.betrag=parseNum(v);save();render()}}
+function ed(id){ui.edit=ui.edit===id?null:id;render();if(ui.edit)scrollTo(0,0)}
+function addPosten(bereich){const el=$('#np_name');const name=((el&&el.value)||'').trim();if(!name){el&&el.focus();return}
+ const b=bereich||($('#np_ber')&&$('#np_ber').value)||R.bereiche[0];
+ const p=normPosten({id:uid(),name,bereich:b,wied:$('#np_wied')?$('#np_wied').checked:true});P().push(p);save();ui.edit=null;render()}
+function stBtns(p){return['fehlt','liegt','nein'].map(s=>`<button class="s ${s}${p.status===s?' on':''}" title="${ST[s]}" onclick="setSt('${p.id}','${s}')">${STK[s]}</button>`).join(' ')}
+function vListe(){const ps=P(),cnt={fehlt:0,liegt:0,nein:0};ps.forEach(p=>cnt[p.status]++);
+ const sum=ps.filter(p=>p.status==='liegt'&&p.betrag!=null).reduce((a,p)=>a+p.betrag,0);
+ const vis=ps.filter(p=>(!ui.fBer||p.bereich===ui.fBer)&&(!ui.fSt||p.status===ui.fSt));
+ let h=ui.edit&&find(ui.edit)?editCard(find(ui.edit)):'';
+ h+=`<div class="card"><h2>Steuerjahr ${R.cur}</h2><div class="grid">
+ <div class="kpi"><b class="bad">${cnt.fehlt}</b><span>fehlt noch</span></div><div class="kpi"><b class="ok">${cnt.liegt}</b><span>liegt vor</span></div>
+ <div class="kpi"><b>${cnt.nein}</b><span>gibt es dieses Jahr nicht</span></div><div class="kpi"><b>${eur(sum)}</b><span>Summe der Beträge, die vorliegen</span></div></div>
+ <div class="bar" style="margin-top:12px"><select onchange="ui.fBer=this.value;render()"><option value="">Alle Bereiche</option>${R.bereiche.map(b=>`<option ${ui.fBer===b?'selected':''}>${esc(b)}</option>`).join('')}</select>
+ <select onchange="ui.fSt=this.value;render()"><option value="">Alle Stände</option>${Object.keys(ST).map(s=>`<option value="${s}" ${ui.fSt===s?'selected':''}>${ST[s]}</option>`).join('')}</select></div>
+ <div class="bar"><input id="np_name" type="text" placeholder="Neuer Posten, zum Beispiel Zahnarztrechnung" style="min-width:240px;flex:1" onkeydown="if(event.key==='Enter')addPosten()">
+ <select id="np_ber">${R.bereiche.map(b=>`<option ${ui.fBer===b?'selected':''}>${esc(b)}</option>`).join('')}</select>
+ <label style="display:flex;gap:4px;align-items:center;margin:0"><input id="np_wied" type="checkbox" checked> jedes Jahr</label><button class="b" onclick="addPosten()">Hinzufügen</button></div></div>`;
+ R.bereiche.forEach(b=>{const l=vis.filter(p=>p.bereich===b);if(!l.length)return;
+  h+=`<div class="card"><h2>${esc(b)}</h2><table><tr><th>Stand</th><th>Posten</th><th class="n">Betrag</th><th>Belege</th></tr>`+l.map(p=>
+   `<tr><td style="white-space:nowrap">${stBtns(p)}</td><td><a onclick="ed('${p.id}')">${esc(p.name)||'(ohne Namen)'}</a>${p.wied?' <span class="mut" title="legt sich im neuen Jahr wieder an">↻</span>':''}${p.notiz?`<div class="mut">${esc(p.notiz)}</div>`:''}</td>
+   <td class="n"><input class="bt" type="text" inputmode="decimal" value="${p.betrag==null?'':String(p.betrag).replace('.',',')}" placeholder="–" onchange="setBetrag('${p.id}',this.value)"></td>
+   <td class="mut">${p.papier.length?'Papier '+p.papier.length:''}${p.papier.length&&p.dateien.length?', ':''}${p.dateien.length?'digital '+p.dateien.length:''}${p.status==='liegt'&&!p.papier.length&&!p.dateien.length?'kein Beleg erfasst':''}</td></tr>`).join('')+'</table></div>'});
+ if(!vis.length)h+='<div class="card mut">Keine Posten für diesen Filter.</div>';
+ $('#main').innerHTML=h}
+function edSet(id,k,v){const p=find(id);if(!p)return;if(k==='betrag')p.betrag=parseNum(v);else if(k==='wied')p.wied=!!v;else p[k]=v;save();render()}
+function delPosten(id){const p=find(id);if(!p||!confirm('Posten „'+p.name+'“ löschen? Die Dateien im Ordner bleiben erhalten.'))return;R.jahre[R.cur].posten=P().filter(x=>x.id!==id);ui.edit=null;save();render()}
+function editCard(p){const free=(ui.files[R.cur]||[]).filter(f=>!P().some(x=>x.dateien.some(d=>d.file===f)));
+ return`<div class="card"><h2>Posten bearbeiten <button class="g s" style="float:right" onclick="ed('${p.id}')">Schließen</button></h2>
+ <div class="row"><div><label>Name</label><input type="text" value="${esc(p.name)}" onchange="edSet('${p.id}','name',this.value)"></div>
+ <div><label>Bereich</label><select onchange="edSet('${p.id}','bereich',this.value)">${R.bereiche.map(b=>`<option ${p.bereich===b?'selected':''}>${esc(b)}</option>`).join('')}</select></div>
+ <div><label>Stand</label><select onchange="edSet('${p.id}','status',this.value)">${Object.keys(ST).map(s=>`<option value="${s}" ${p.status===s?'selected':''}>${ST[s]}</option>`).join('')}</select></div>
+ <div><label>Betrag in Euro</label><input type="text" inputmode="decimal" value="${p.betrag==null?'':String(p.betrag).replace('.',',')}" onchange="edSet('${p.id}','betrag',this.value)"></div></div>
+ <label>Notiz, zum Beispiel was du nicht vergessen willst</label><textarea rows="2" onchange="edSet('${p.id}','notiz',this.value)">${esc(p.notiz)}</textarea>
+ <label style="display:flex;gap:6px;align-items:center;margin:8px 0"><input type="checkbox" ${p.wied?'checked':''} onchange="edSet('${p.id}','wied',this.checked)"> Legt sich im nächsten Steuerjahr automatisch neu an</label>
+ <h3>Auf Papier</h3>${p.papier.length?'<table>'+p.papier.map(x=>`<tr><td><input type="text" list="orte" value="${esc(x.ort)}" placeholder="Ablageort" onchange="ppSet('${p.id}','${x.id}','ort',this.value)"></td><td><input type="text" value="${esc(x.text)}" placeholder="Bezeichnung" onchange="ppSet('${p.id}','${x.id}','text',this.value)"></td><td style="width:1%"><button class="g s" onclick="ppDel('${p.id}','${x.id}')">Entfernen</button></td></tr>`).join('')+'</table>':'<p class="mut">Kein Papierbeleg erfasst.</p>'}
+ <button class="g" onclick="ppAdd('${p.id}')">+ Papierbeleg</button>${orteList()}
+ <h3>Digital</h3>${LX?(p.dateien.length?'<table>'+p.dateien.map(d=>fileRow(d.file,`<button class="g s" onclick="dgUnlink('${p.id}','${d.id}')">Zuordnung lösen</button>`)).join('')+'</table>':'<p class="mut">Keine Datei zugeordnet.</p>')
+ +`<div class="bar"><label class="g" style="cursor:pointer;margin:0;padding:7px 12px;border:1px solid var(--line);border-radius:6px;color:var(--tx)">+ Datei hinzufügen<input type="file" multiple style="display:none" onchange="upload(this.files,'${p.id}')"></label>`
+ +(free.length?`<select onchange="if(this.value)dgAdd('${p.id}',this.value)"><option value="">Vorhandene Datei zuordnen</option>${free.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join('')}</select>`:'')+'</div>':'<p class="mut">Dateien lassen sich nur in der Linux-App speichern.</p>'}
+ <p style="margin-top:14px"><button class="g" onclick="delPosten('${p.id}')">Posten löschen</button></p></div>`}
+function fileRow(f,extra){const ok=(ui.files[R.cur]||[]).includes(f);return`<tr><td style="width:76px">${ok&&isImg(f)?`<img class="th" src="${furl(f)}">`:''}</td><td>${esc(f)}${ok?'':' <span class="bad">fehlt im Ordner</span>'}</td><td class="n">${ok?`<button class="g s" onclick="fOpen('${encodeURIComponent(f)}')">Öffnen</button> <button class="g s" onclick="fRen('${encodeURIComponent(f)}')">Umbenennen</button> `:''}${extra||''}</td></tr>`}
+function orteList(){const o=[...new Set(P().flatMap(p=>p.papier.map(x=>x.ort)).filter(Boolean))];return`<datalist id="orte">${o.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>`}
+function ppAdd(id,ort,text){const p=find(id);if(!p)return;const o=ort!=null?ort:(ui.lastOrt||'');p.papier.push({id:uid(),ort:o,text:text||''});save();render()}
+function ppSet(id,pid,k,v){const p=find(id),x=p&&p.papier.find(y=>y.id===pid);if(!x)return;x[k]=v;if(k==='ort'&&v)ui.lastOrt=v;save();render()}
+function ppDel(id,pid){const p=find(id);if(!p)return;p.papier=p.papier.filter(x=>x.id!==pid);save();render()}
+/* ---------- Papier */
+function vPapier(){const rows=[];P().forEach(p=>p.papier.forEach(x=>rows.push({p,x})));rows.sort((a,b)=>(a.x.ort||'\uffff').localeCompare(b.x.ort||'\uffff','de')||a.p.name.localeCompare(b.p.name,'de'));
+ const q=(ui.pq||'').toLowerCase(),vis=rows.filter(r=>!q||(r.x.ort+' '+r.x.text+' '+r.p.name).toLowerCase().includes(q));
+ const liegtOhne=P().filter(p=>p.status==='liegt'&&!p.papier.length&&!p.dateien.length);
+ $('#main').innerHTML=`<div class="card"><h2>Als Papier vorhanden, Steuerjahr ${R.cur}</h2>
+ <p class="mut">Hier steht, was in deinen Ordnern liegt und wo. Die Belege sind den Posten der Checkliste zugeordnet.</p>
+ <div class="bar"><select id="pp_p">${P().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select><input id="pp_o" list="orte" type="text" placeholder="Ablageort, zum Beispiel Ordner Steuer, Register 3" value="${esc(ui.lastOrt||'')}" style="min-width:220px;flex:1"><input id="pp_t" type="text" placeholder="Bezeichnung (optional)" style="min-width:160px;flex:1">
+ <button class="b" onclick="ppNew()">Hinzufügen</button></div>${orteList()}
+ <div class="bar"><input type="text" placeholder="Suchen in Ort, Bezeichnung und Posten" value="${esc(ui.pq||'')}" oninput="ui.pq=this.value;clearTimeout(ui.pt);ui.pt=setTimeout(()=>{render();const e=$('#pq');e&&(e.focus(),e.setSelectionRange(1e4,1e4))},250)" id="pq" style="min-width:260px"></div>
+ ${vis.length?`<table><tr><th>Ablageort</th><th>Bezeichnung</th><th>Posten</th><th></th></tr>${vis.map(r=>`<tr><td><input type="text" list="orte" value="${esc(r.x.ort)}" onchange="ppSet('${r.p.id}','${r.x.id}','ort',this.value)"></td><td><input type="text" value="${esc(r.x.text)}" onchange="ppSet('${r.p.id}','${r.x.id}','text',this.value)"></td><td><a onclick="ui.tab='liste';ed('${r.p.id}')">${esc(r.p.name)}</a><div class="mut">${esc(r.p.bereich)}</div></td><td style="width:1%"><button class="g s" onclick="ppDel('${r.p.id}','${r.x.id}')">Entfernen</button></td></tr>`).join('')}</table>`:'<p class="mut">Noch keine Papierbelege erfasst.</p>'}
+ ${liegtOhne.length?`<h3>Liegt vor, aber kein Beleg erfasst</h3><p>${liegtOhne.map(p=>`<span class="tag">${esc(p.name)}</span>`).join('')}</p>`:''}</div>`}
+function ppNew(){const id=$('#pp_p').value,o=$('#pp_o').value.trim(),t=$('#pp_t').value.trim();if(!id)return;if(o)ui.lastOrt=o;const p=find(id);p.papier.push({id:uid(),ort:o,text:t});if(p.status==='fehlt')p.status='liegt';save();render()}
+/* ---------- Digital */
+function dgRefresh(){if(!LX)return;api('datei/list',{jahr:R.cur}).then(r=>{ui.files[R.cur]=r.files||[];if(ui.tab==='digital'||ui.edit)render()}).catch(()=>{})}
+function vDigital(){if(!LX){$('#main').innerHTML='<div class="card"><h2>Digital vorhanden</h2><p>Dateien lassen sich nur in der Linux-App speichern und bearbeiten. In dieser Seite im Browser bleibt die Checkliste mit den Papierbelegen nutzbar.</p></div>';return}
+ const files=ui.files[R.cur]||[],refd={};P().forEach(p=>p.dateien.forEach(d=>(refd[d.file]=refd[d.file]||[]).push(p)));
+ const names=[...new Set([...files,...Object.keys(refd)])].sort((a,b)=>a.localeCompare(b,'de'));ui.dg=names;
+ $('#main').innerHTML=`<div class="card"><h2>Digital vorhanden, Steuerjahr ${R.cur}</h2>
+ <p class="mut">Die Dateien liegen im Ordner Dokumente/Seifferts Steuer/Belege/${R.cur}. Zur Bearbeitung öffnest du sie mit dem Programm, das du für den Dateityp eingestellt hast, zum Beispiel Seifferts Zuschnitt für Bilder und PDF.</p>
+ ${ui.msg?`<p class="bad">${esc(ui.msg)}</p>`:''}
+ <div class="drop" id="drop">Dateien hierher ziehen oder <label style="display:inline;color:var(--acc);cursor:pointer;text-decoration:underline">auswählen<input type="file" multiple style="display:none" onchange="upload(this.files,($('#dg_p')||{}).value||'')"></label>
+ <div class="bar" style="justify-content:center;margin:8px 0 0"><span class="mut">zuordnen zu</span><select id="dg_p"><option value="">noch keinem Posten</option>${P().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div></div>
+ <p><button class="g" onclick="api('open_jahr',{jahr:R.cur})">Ordner öffnen</button> <button class="g" onclick="dgRefresh()">Ordner neu einlesen</button></p>
+ ${names.length?`<table><tr><th></th><th>Datei</th><th>Posten</th><th></th></tr>${names.map((f,i)=>{const ok=files.includes(f),ps=refd[f]||[];
+ return`<tr><td style="width:76px">${ok&&isImg(f)?`<img class="th" src="${furl(f)}">`:''}</td><td>${esc(f)}${ok?'':' <span class="bad">fehlt im Ordner</span>'}</td>
+ <td><select onchange="dgAssign(${i},this.value)"><option value="">nicht zugeordnet</option>${P().map(p=>`<option value="${p.id}" ${ps.some(x=>x.id===p.id)?'selected':''}>${esc(p.name)}</option>`).join('')}</select>${ps.length>1?'<div class="mut">auch bei weiteren Posten</div>':''}</td>
+ <td class="n">${ok?`<button class="g s" onclick="fOpen('${encodeURIComponent(f)}')">Öffnen</button> <button class="g s" onclick="fRen('${encodeURIComponent(f)}')">Umbenennen</button> <button class="g s" onclick="fDel('${encodeURIComponent(f)}')">Löschen</button>`:`<button class="g s" onclick="dgForget(${i})">Eintrag entfernen</button>`}</td></tr>`}).join('')}</table>`:'<p class="mut">Noch keine Dateien.</p>'}</div>`;
+ const d=$('#drop');if(d){['dragenter','dragover'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.add('over')}));['dragleave','drop'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.remove('over')}));d.addEventListener('drop',ev=>upload(ev.dataTransfer.files,($('#dg_p')||{}).value||''))}}
+async function upload(fl,pid){if(!LX){alert('Dateien lassen sich nur in der Linux-App speichern.');return}
+ ui.msg='';for(const f of Array.from(fl||[])){try{const r=await fetch(LX.base+'/api/datei/upload?jahr='+R.cur+'&name='+encodeURIComponent(f.name),{method:'POST',body:f}).then(x=>x.json());
+  if(!r.ok){ui.msg=r.msg||'Datei nicht gespeichert.';continue}
+  const p=pid&&find(pid);if(p){p.dateien.push({id:uid(),file:r.file});if(p.status==='fehlt')p.status='liegt'}}catch(e){ui.msg='Datei nicht gespeichert.'}}
+ save();dgRefresh();render()}
+const dec=decodeURIComponent;
+function fOpen(f){api('datei/open',{jahr:R.cur,file:dec(f)}).then(r=>{if(!r.ok){ui.msg=r.msg||'Nicht geöffnet.';render()}})}
+function renameRefs(a,b){P().forEach(p=>p.dateien.forEach(d=>{if(d.file===a)d.file=b}))}
+function fRen(f){const old=dec(f),n=prompt('Neuer Dateiname (mit Endung):',old);if(!n||n===old)return;
+ api('datei/rename',{jahr:R.cur,file:old,neu:n}).then(r=>{if(r.ok){renameRefs(old,r.file);save();dgRefresh();render()}else{ui.msg=r.msg;render()}})}
+function fDel(f){const old=dec(f);if(!confirm('Datei „'+old+'“ in den Ordner _Geloescht verschieben?'))return;
+ api('datei/trash',{jahr:R.cur,file:old}).then(r=>{if(r.ok){P().forEach(p=>p.dateien=p.dateien.filter(d=>d.file!==old));save();dgRefresh();render()}})}
+function dgAssign(i,pid){const f=ui.dg[i];P().forEach(p=>p.dateien=p.dateien.filter(d=>d.file!==f));const p=pid&&find(pid);if(p){p.dateien.push({id:uid(),file:f});if(p.status==='fehlt')p.status='liegt'}save();render()}
+function dgForget(i){const f=ui.dg[i];P().forEach(p=>p.dateien=p.dateien.filter(d=>d.file!==f));save();render()}
+function dgUnlink(id,did){const p=find(id);if(p){p.dateien=p.dateien.filter(d=>d.id!==did);save();render()}}
+function dgAdd(id,f){const p=find(id);if(p&&f){p.dateien.push({id:uid(),file:f});if(p.status==='fehlt')p.status='liegt';save();render()}}
+/* ---------- Übergabeliste */
+function uebData(){const g=b=>P().filter(p=>p.bereich===b);return R.bereiche.map(b=>({b,l:g(b)})).filter(x=>x.l.length)}
+function belegText(p){return[...p.papier.map(x=>(x.ort||'ohne Ort')+(x.text?': '+x.text:'')),...p.dateien.map(d=>d.file)]}
+function vUebergabe(){const D=uebData(),all=P(),offen=all.filter(p=>p.status==='fehlt'),liegt=all.filter(p=>p.status==='liegt'),nein=all.filter(p=>p.status==='nein');
+ const sum=liegt.reduce((a,p)=>a+(p.betrag||0),0),dt=new Date().toLocaleDateString('de-DE');
+ let h=`<div class="card"><div class="noprint bar"><button class="b" onclick="print()">Drucken oder PDF</button><button class="g" onclick="ueCsv()">CSV</button><button class="g" onclick="ueTex()">LaTeX</button></div>
+ <h2>Unterlagen für die Steuererklärung ${R.cur}</h2><p class="mut">${R.berater?'Für '+esc(R.berater)+'. ':''}Stand ${dt}. Was noch fehlt, steht oben.</p>`;
+ h+=`<h3>Noch offen (${offen.length})</h3>`+(offen.length?'<table><tr><th>Posten</th><th>Bereich</th><th>Notiz</th></tr>'+offen.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.bereich)}</td><td class="mut">${esc(p.notiz)}</td></tr>`).join('')+'</table>':'<p class="ok">Nichts offen.</p>');
+ h+=`<h3>Liegt vor (${liegt.length})</h3>`;
+ D.forEach(x=>{const l=x.l.filter(p=>p.status==='liegt');if(!l.length)return;const s=l.reduce((a,p)=>a+(p.betrag||0),0);
+  h+=`<table style="margin-bottom:10px"><tr><th colspan="3">${esc(x.b)}</th></tr>`+l.map(p=>`<tr><td>${esc(p.name)}</td><td class="n">${p.betrag!=null?eur(p.betrag):''}</td><td class="mut">${belegText(p).map(esc).join('<br>')}</td></tr>`).join('')+(s?`<tr><td><b>Summe</b></td><td class="n"><b>${eur(s)}</b></td><td></td></tr>`:'')+'</table>'});
+ if(!liegt.length)h+='<p class="mut">Noch nichts als vorhanden markiert.</p>';
+ h+=`<p><b>Gesamtsumme der angegebenen Beträge: ${eur(sum)}</b></p>`;
+ h+=`<h3>Gibt es dieses Jahr nicht (${nein.length})</h3><p>${nein.length?nein.map(p=>`<span class="tag">${esc(p.name)}</span>`).join(''):'<span class="mut">–</span>'}</p></div>`;
+ $('#main').innerHTML=h}
+function ueCsv(){const Q=x=>'"'+String(x==null?'':x).replace(/"/g,'""')+'"';
+ const rows=[['Jahr','Bereich','Posten','Stand','Betrag','Belege','Notiz']];
+ uebData().forEach(x=>x.l.slice().sort((a,b)=>(a.status==='fehlt'?0:1)-(b.status==='fehlt'?0:1)).forEach(p=>rows.push([R.cur,x.b,p.name,ST[p.status],p.betrag==null?'':String(p.betrag).replace('.',','),belegText(p).join(' | '),p.notiz])));
+ down('\ufeff'+rows.map(r=>r.map(Q).join(';')).join('\n'),'steuer-uebergabe-'+R.cur+'.csv','text/csv')}
+function ueTex(){const T=s=>String(s).replace(/\\/g,'\\textbackslash{}').replace(/([&%$#_{}])/g,'\\$1').replace(/~/g,'\\textasciitilde{}').replace(/\^/g,'\\textasciicircum{}');
+ const all=P(),offen=all.filter(p=>p.status==='fehlt'),liegt=all.filter(p=>p.status==='liegt'),nein=all.filter(p=>p.status==='nein'),e=x=>x.toFixed(2).replace('.',',');
+ let t=`\\documentclass[11pt,a4paper]{article}\n\\usepackage[utf8]{inputenc}\\usepackage[T1]{fontenc}\\usepackage{lmodern}\\usepackage{booktabs}\\usepackage{longtable}\\usepackage[a4paper,margin=2.2cm]{geometry}\n\\IfFileExists{ngerman.ldf}{\\usepackage[ngerman]{babel}}{}\n\\begin{document}\n\\section*{Unterlagen für die Steuererklärung ${R.cur}}\n${R.berater?'Für '+T(R.berater)+'. ':''}Stand ${new Date().toLocaleDateString('de-DE')}.\\par\\medskip\n\\subsection*{Noch offen (${offen.length})}\n`;
+ t+=offen.length?`\\begin{longtable}{p{.42\\textwidth}p{.25\\textwidth}p{.25\\textwidth}}\\toprule Posten & Bereich & Notiz\\\\\\midrule\\endhead\n${offen.map(p=>`${T(p.name)} & ${T(p.bereich)} & ${T(p.notiz)}\\\\`).join('\n')}\n\\bottomrule\\end{longtable}\n`:'Nichts offen.\\par\n';
+ t+=`\\subsection*{Liegt vor (${liegt.length})}\n`;
+ t+=liegt.length?`\\begin{longtable}{p{.34\\textwidth}rp{.45\\textwidth}}\\toprule Posten & Betrag (EUR) & Belege\\\\\\midrule\\endhead\n${liegt.map(p=>`${T(p.name)} & ${p.betrag!=null?e(p.betrag):''} & ${T(belegText(p).join('; '))}\\\\`).join('\n')}\n\\bottomrule\\end{longtable}\n\\noindent Summe der angegebenen Beträge: ${e(liegt.reduce((a,p)=>a+(p.betrag||0),0))} EUR\\par\n`:'Noch nichts als vorhanden markiert.\\par\n';
+ t+=`\\subsection*{Gibt es dieses Jahr nicht (${nein.length})}\n${nein.length?T(nein.map(p=>p.name).join('; ')):'--'}\\par\n\\end{document}\n`;
+ down(t,'steuer-uebergabe-'+R.cur+'.tex','text/plain')}
+/* ---------- Einrichten */
+function brAdd(){const e=$('#br_new'),n=(e.value||'').trim();if(!n||R.bereiche.includes(n))return;R.bereiche.push(n);save();render()}
+function brRen(i,v){v=v.trim();const o=R.bereiche[i];if(!v||v===o||R.bereiche.includes(v)){render();return}R.bereiche[i]=v;Object.values(R.jahre).forEach(y=>y.posten.forEach(p=>{if(p.bereich===o)p.bereich=v}));save();render()}
+function brMove(i,d){const j=i+d;if(j<0||j>=R.bereiche.length)return;[R.bereiche[i],R.bereiche[j]]=[R.bereiche[j],R.bereiche[i]];save();render()}
+function brDel(i){const b=R.bereiche[i],n=Object.values(R.jahre).reduce((a,y)=>a+y.posten.filter(p=>p.bereich===b).length,0);if(n){alert('Dieser Bereich enthält noch '+n+' Posten. Bitte erst die Posten verschieben oder löschen.');return}
+ if(R.bereiche.length<2){alert('Mindestens ein Bereich muss bleiben.');return}R.bereiche.splice(i,1);save();render()}
+function tplFill(){const have=new Set(P().map(p=>p.name));let n=0;fromStart().forEach(p=>{if(!have.has(p.name)){if(!R.bereiche.includes(p.bereich))R.bereiche.push(p.bereich);P().push(p);n++}});save();ui.msg=n+' Posten der Startvorlage ergänzt.';render()}
+function delYear(){const ks=Object.keys(R.jahre);if(ks.length<2){alert('Das letzte Steuerjahr lässt sich nicht löschen.');return}
+ if(!confirm('Steuerjahr '+R.cur+' mit allen Posten aus der Liste löschen? Dateien im Ordner bleiben erhalten.'))return;delete R.jahre[R.cur];R.cur=Object.keys(R.jahre).sort().pop();ui.edit=null;save();render()}
+function vEinrichten(){$('#main').innerHTML=`<div class="card"><h2>Bereiche</h2><p class="mut">Die Bereiche gliedern die Checkliste. Du kannst sie umbenennen, verschieben, ergänzen und leere Bereiche löschen.</p>
+ <table>${R.bereiche.map((b,i)=>`<tr><td><input type="text" value="${esc(b)}" onchange="brRen(${i},this.value)"></td><td style="width:1%;white-space:nowrap"><button class="g s" onclick="brMove(${i},-1)">▲</button> <button class="g s" onclick="brMove(${i},1)">▼</button> <button class="g s" onclick="brDel(${i})">Löschen</button></td></tr>`).join('')}</table>
+ <div class="bar" style="margin-top:8px"><input id="br_new" type="text" placeholder="Neuer Bereich" onkeydown="if(event.key==='Enter')brAdd()"><button class="g" onclick="brAdd()">Hinzufügen</button></div></div>
+ <div class="card"><h2>Übergabe</h2><label>Name oder Kanzlei des Steuerberaters (erscheint auf der Übergabeliste)</label><input type="text" value="${esc(R.berater)}" onchange="R.berater=this.value;save();render()"></div>
+ <div class="card"><h2>Steuerjahr ${R.cur}</h2>${ui.msg?`<p class="ok">${esc(ui.msg)}</p>`:''}<p><button class="g" onclick="tplFill()">Fehlende Posten der Startvorlage einfügen</button> <button class="g" onclick="delYear()">Dieses Steuerjahr löschen</button></p></div>
+ ${LX?`<div class="card"><h2>Sicherung</h2><p class="mut">Daten, Belege und Sicherungen liegen im Ordner Dokumente/Seifferts Steuer. Täglich entsteht eine Sicherung der Daten.</p><p><button class="g" onclick="api('backup').then(()=>alert('Sicherung angelegt.'))">Sicherung jetzt anlegen</button> <button class="g" onclick="api('open_data')">Datenordner öffnen</button></p></div>`:`<div class="card"><h2>Sicherung</h2><p class="mut">Im Browser liegen die Daten nur in diesem Browser. In der Linux-App werden sie als Datei gesichert.</p></div>`}`}
+function vHilfe(){$('#main').innerHTML=`<div class="card"><h2>So arbeitest du mit Seifferts Steuer</h2>
+ <p>In der Checkliste steht pro Steuerjahr, was dein Steuerberater braucht. Jeder Posten hat einen Stand: Fehlt noch, Liegt vor oder Entfällt, also gibt es dieses Jahr nicht. Alles ist frei änderbar: Posten, Bereiche, Notizen. Posten mit dem Zeichen ↻ legen sich im nächsten Steuerjahr automatisch neu an, damit du die Dinge, die du sonst vergisst, jedes Jahr wieder siehst.</p>
+ <p>Belege erfasst du in zwei Abteilungen. Unter Papier trägst du ein, wo ein Beleg abgeheftet ist. Unter Digital legst du Dateien ab, per Auswahl oder Ziehen, und ordnest sie einem Posten zu. Dateien öffnest du zur Bearbeitung mit dem Programm, das für den Dateityp eingestellt ist.</p>
+ <p>Die Übergabeliste zeigt zuerst, was noch fehlt, dann was vorliegt, mit Beträgen und Fundstellen. Du kannst sie drucken, als PDF speichern, als CSV oder LaTeX ausgeben.</p>
+ <p class="mut">Das Programm hilft beim Sammeln und ist keine Steuerberatung. Welche Posten abziehbar sind, klärst du mit deinem Steuerberater.</p></div>`}
+render();
+if(LX){window.print=()=>{api('pdf')};setInterval(async()=>{try{const st=await fetch(LX.base+'/api/status').then(r=>r.json());if(st.seq!==LX.seq)location.reload()}catch(e){}},3000)}
+</script>
+</body>
+</html>

@@ -3174,7 +3174,7 @@ var SOPdf = (function () {
     close();
     var copy = bytes.slice(0);
     var doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise;
-    S = { bytes: copy, name: name, handle: handle, doc: doc, edits: {}, lines: {}, sel: null, readonly: !!(opts && opts.readonly) };
+    S = { bytes: copy, name: name, handle: handle, doc: doc, edits: {}, lines: {}, sel: null, readonly: !!(opts && opts.readonly), undo: [], dirty: false };
     var host = SO.host; host.innerHTML = "";
     var wrap = document.createElement("div"); wrap.id = "pdfwrap"; host.appendChild(wrap);
     var dpr = Math.min(window.devicePixelRatio || 1, 2), nLines = 0;
@@ -3236,6 +3236,7 @@ var SOPdf = (function () {
     T.i.onclick = function () { setFmt({ i: !fmtOf(S.sel).i }); };
     T.color.onchange = function () { setFmt({ color: T.color.value }); };
     T.reset.onclick = function () { if (!S.sel) return; delete S.edits[S.sel.id]; repaint(S.sel); syncTools(); SO.markMod(); };
+    buildPageTools(T, mk);
     syncTools();
   }
   function syncTools() {
@@ -3296,12 +3297,7 @@ var SOPdf = (function () {
     inp.onblur = function () { commit(true); };
   }
 
-  async function save() {
-    if (!S) return;
-    var ids = Object.keys(S.edits);
-    if (!ids.length) { SO.status("Keine Änderungen zu speichern."); return; }
-    var out;
-    try {
+  async function buildText(ids) {
       var pdf = await PDFLib.PDFDocument.load(S.bytes, { ignoreEncryption: false });
       var SF = PDFLib.StandardFonts, fcache = {};
       var NAMES = {
@@ -3329,7 +3325,15 @@ var SOPdf = (function () {
         if (w > avail && w > 0) size = Math.max(size * avail / w, size * 0.35);
         if (txt) pg.drawText(txt, { x: ln.x, y: ln.y, size: size, font: font, color: hexRgb(fm.color) });
       }
-      out = await pdf.save();
+      return await pdf.save();
+  }
+  async function save() {
+    if (!S) return;
+    var ids = Object.keys(S.edits);
+    if (!ids.length && !S.dirty) { SO.status("Keine Änderungen zu speichern."); return; }
+    var out;
+    try {
+      out = ids.length ? await buildText(ids) : S.bytes;
     } catch (e) {
       if (e && e.reject) { SO.status("Nicht gespeichert: " + e.message, "err"); await SO.dialog("<b>Das lässt sich nicht speichern.</b><br><br>" + SO.escH(e.message) + "<br><br>Die Datei wurde nicht verändert.", [{ label: "OK", value: 1, prim: true }]); return; }
       console.error(e); SO.status("Fehler beim Speichern: " + (e.message || e), "err"); return;
@@ -3344,11 +3348,297 @@ var SOPdf = (function () {
     SO.status("Gespeichert (" + { overwritten: "Datei überschrieben", shared: "geteilt", download: "als " + nm + " geladen" }[how] + "). Die Anzeige zeigt jetzt die gespeicherte Fassung.", "ok");
   }
 
+
+  /* ================= Seiten: Zuschneiden mit Rahmen, Maße, leere Seite, Bild als Seite, Auszug (wie Seifferts Text 0.32) ================= */
+  var MM = 72 / 25.4, IMGDPI = 200;
+  function curPage() {
+    var pgs = Array.prototype.slice.call(document.querySelectorAll("#pdfwrap .pdfpage")), st = $("stage"), best = 0, bv = -1;
+    if (!pgs.length) return 0;
+    var sr = st.getBoundingClientRect();
+    pgs.forEach(function (p, i) {
+      var r = p.getBoundingClientRect(), v = Math.min(r.bottom, sr.bottom) - Math.max(r.top, sr.top);
+      if (v > bv) { bv = v; best = i; }
+    });
+    return best;
+  }
+  function parseRange(txt, n) {
+    txt = (txt || "").trim().toLowerCase();
+    if (!txt || txt === "alle") { var all = []; for (var i = 0; i < n; i++) all.push(i); return all; }
+    var set = {}, parts = txt.split(/[,;\s]+/).filter(Boolean);
+    for (var k = 0; k < parts.length; k++) {
+      var m = /^(\d+)(?:\s*[-–]\s*(\d+))?$/.exec(parts[k]);
+      if (!m) throw new Error("Die Seitenangabe „" + txt + "“ passt nicht. Beispiele: 3, 2-4, 1,3,5 oder alle.");
+      var a = parseInt(m[1], 10), b = m[2] ? parseInt(m[2], 10) : a;
+      if (a < 1 || b < a || b > n) throw new Error("Die Seitenangabe „" + txt + "“ passt nicht (die Datei hat " + n + " Seite" + (n === 1 ? "" : "n") + ").");
+      for (var q = a; q <= b; q++) set[q - 1] = 1;
+    }
+    return Object.keys(set).map(Number).sort(function (x, y) { return x - y; });
+  }
+  async function textBytesNow() {          // offene Zeilenänderungen zuerst in die Bytes schreiben
+    if (!Object.keys(S.edits).length) return S.bytes;
+    return await buildText(Object.keys(S.edits));
+  }
+  async function applyPages(fn, msg) {
+    if (!S || S.readonly) return false;
+    var keep = { name: S.name, handle: S.handle, undo: S.undo || [] }, st = $("stage"), top = st.scrollTop, hadEdits = Object.keys(S.edits).length > 0;
+    var cur = S.bytes;
+    try {
+      var base = await textBytesNow();
+      var pdf = await PDFLib.PDFDocument.load(base, { ignoreEncryption: false });
+      var res = await fn(pdf);
+      var out = await pdf.save();
+      keep.undo.push(cur); if (keep.undo.length > 10) keep.undo.shift();
+      await open(out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength), keep.name, keep.handle, {});
+      S.undo = keep.undo; S.dirty = true; SO.markMod(); st.scrollTop = top;
+      SO.status(msg(res) + (hadEdits ? " Offene Zeilenänderungen wurden dabei mit übernommen." : "") + " Rückgängig mit dem Knopf „Seiten zurück“. Zum Speichern oben auf Speichern tippen.", "ok");
+      return res;
+    } catch (e) {
+      if (e && e.reject) { SO.status("Nicht ausgeführt: " + e.message, "err"); return false; }
+      console.error(e); SO.status("Nicht ausgeführt: " + (e.message || e), "err"); return false;
+    }
+  }
+  function boxOf(pg) { var b = pg.getCropBox ? pg.getCropBox() : pg.getMediaBox(); return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height }; }
+  /* Ränder (Punkt, in Anzeigerichtung; positiv = weiße Fläche ergänzen, negativ = abschneiden) auf MediaBox und CropBox anwenden */
+  function resizePage(pg, t, b, l, r) {
+    var mb = pg.getMediaBox(), box = boxOf(pg), rot = ((pg.getRotation().angle % 360) + 360) % 360, n = { x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1 };
+    if (rot === 0) { n.x0 -= l; n.x1 += r; n.y1 += t; n.y0 -= b; }
+    else if (rot === 90) { n.x0 -= t; n.y1 += r; n.x1 += b; n.y0 -= l; }
+    else if (rot === 180) { n.y0 -= t; n.y1 += b; n.x1 += l; n.x0 -= r; }
+    else { n.x1 += t; n.y0 -= r; n.x0 -= b; n.y1 += l; }
+    if (n.x1 - n.x0 < 30 || n.y1 - n.y0 < 30) throw { reject: true, message: "Die Seite würde kleiner als 30 Punkt (etwa 10 mm). Bitte weniger abschneiden." };
+    var m = { x0: Math.min(mb.x, n.x0), y0: Math.min(mb.y, n.y0), x1: Math.max(mb.x + mb.width, n.x1), y1: Math.max(mb.y + mb.height, n.y1) };
+    pg.setMediaBox(m.x0, m.y0, m.x1 - m.x0, m.y1 - m.y0);
+    pg.setCropBox(n.x0, n.y0, n.x1 - n.x0, n.y1 - n.y0);
+  }
+  function cropPages(idx, t, b, l, r) {
+    return applyPages(function (pdf) { var pgs = pdf.getPages(); idx.forEach(function (i) { resizePage(pgs[i], t, b, l, r); }); return idx.length; },
+      function (n) { return "Zugeschnitten oder erweitert: " + n + " Seite" + (n === 1 ? "" : "n") + "."; });
+  }
+  function dispSize(pg) {
+    var b = boxOf(pg), rot = ((pg.getRotation().angle % 360) + 360) % 360, w = b.x1 - b.x0, h = b.y1 - b.y0;
+    return (rot === 90 || rot === 270) ? [h, w] : [w, h];
+  }
+  function bmpToPng(blob) {
+    return createImageBitmap(blob).then(function (bm) {
+      var c = document.createElement("canvas"); c.width = bm.width; c.height = bm.height; c.getContext("2d").drawImage(bm, 0, 0);
+      return new Promise(function (res) { c.toBlob(res, "image/png"); });
+    });
+  }
+  async function insertImagePage(after, blob) {
+    var png = blob.type === "image/png" ? blob : await bmpToPng(blob), bytes = new Uint8Array(await png.arrayBuffer());
+    return applyPages(async function (pdf) {
+      var img = await pdf.embedPng(bytes), w = img.width * 72 / IMGDPI, h = img.height * 72 / IMGDPI, f = Math.min(1, 1200 / Math.max(w, h));
+      w *= f; h *= f;
+      var pg = pdf.insertPage(after + 1, [w, h]); pg.drawImage(img, { x: 0, y: 0, width: w, height: h });
+      return after + 1;
+    }, function () { return "Bild als neue Seite hinter Seite " + (after + 1) + " eingefügt."; });
+  }
+  async function pasteImage() {
+    if (!S || S.readonly) return;
+    var blob = null;
+    try {
+      var items = await navigator.clipboard.read();
+      for (var i = 0; i < items.length && !blob; i++) {
+        var ty = items[i].types.filter(function (t) { return /^image\//.test(t); })[0];
+        if (ty) blob = await items[i].getType(ty);
+      }
+    } catch (e) { }
+    if (!blob) {
+      var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.style.display = "none"; document.body.appendChild(inp);
+      blob = await new Promise(function (res) { inp.onchange = function () { res(inp.files && inp.files[0] || null); }; inp.oncancel = function () { res(null); }; inp.click(); });
+      inp.remove();
+      if (!blob) { SO.status("In der Zwischenablage liegt kein Bild (oder der Browser erlaubt den Zugriff nicht). Bild über die Dateiauswahl wählen oder mit Strg+V einfügen."); return; }
+    }
+    return insertImagePage(curPage(), blob);
+  }
+  async function blankDialog() {
+    if (!S) return; var n = S.doc.numPages, cp = curPage();
+    var r = await SO.dialog("<b>Leere Seite einfügen</b><br><br>Wie viele leere Seiten hinter Seite " + (cp + 1) + "?<br><input id=\"pgN\" type=\"number\" min=\"1\" max=\"200\" value=\"1\" style=\"width:80px;font-size:16px;padding:6px\">",
+      [{ label: "Abbrechen", value: null }, { label: "Einfügen", value: "ok", prim: true }]);
+    if (r !== "ok") return;
+    var k = Math.max(1, Math.min(200, parseInt($("pgN").value, 10) || 1));
+    return applyPages(function (pdf) {
+      var pgs = pdf.getPages(), sz = dispSize(pgs[cp]);
+      for (var i = 0; i < k; i++) pdf.insertPage(cp + 1 + i, [sz[0], sz[1]]);
+      return k;
+    }, function (c) { return c + " leere Seite" + (c === 1 ? "" : "n") + " hinter Seite " + (cp + 1) + " eingefügt."; });
+  }
+  async function extractDialog() {
+    if (!S) return; var n = S.doc.numPages;
+    var r = await SO.dialog("<b>Seiten als eigene PDF speichern</b><br><br>Welche Seiten (zum Beispiel 2-4, 7 oder alle)?<br><input id=\"pgR\" type=\"text\" value=\"" + (curPage() + 1) + "\" style=\"width:180px;font-size:16px;padding:6px\">",
+      [{ label: "Abbrechen", value: null }, { label: "Speichern", value: "ok", prim: true }]);
+    if (r !== "ok") return;
+    var idx; try { idx = parseRange($("pgR").value, n); } catch (e) { SO.status(e.message, "err"); return; }
+    try {
+      var base = await textBytesNow(), src = await PDFLib.PDFDocument.load(base), dst = await PDFLib.PDFDocument.create();
+      var cp = await dst.copyPages(src, idx); cp.forEach(function (p) { dst.addPage(p); });
+      var out = await dst.save(), nm = S.name.replace(/\.pdf$/i, "") + "-auszug.pdf";
+      var how = await SO.deliver(new Blob([out], { type: "application/pdf" }), nm, null, "application/pdf");
+      SO.status(how === "cancel" ? "Auszug abgebrochen." : "Auszug mit " + idx.length + " Seite" + (idx.length === 1 ? "" : "n") + " gespeichert (" + { shared: "geteilt", download: "als " + nm + " geladen" }[how] + "). Die geöffnete Datei bleibt unverändert.", how === "cancel" ? "" : "ok");
+    } catch (e) { console.error(e); SO.status("Auszug nicht möglich: " + (e.message || e), "err"); }
+  }
+  async function cropDialog(preset) {
+    if (!S) return; var n = S.doc.numPages, cp = preset && preset._pn != null ? preset._pn : curPage(), v = preset || { top: 0, bottom: 0, left: 0, right: 0 };
+    var row = function (id, lab) { return "<label style=\"display:flex;justify-content:space-between;gap:10px;margin:4px 0\">" + lab + "<span><input id=\"" + id + "\" type=\"number\" step=\"0.5\" value=\"" + (Math.round(v[id.slice(2).toLowerCase()] * 10) / 10) + "\" style=\"width:90px;font-size:16px;padding:5px\"> mm</span></label>"; };
+    var r = await SO.dialog("<b>Seiten zuschneiden oder erweitern</b><br><span style=\"font-size:13px;opacity:.85\">Wert je Rand in Millimeter: positiv ergänzt weiße Fläche, negativ schneidet ab.<br>Beispiel: oben -15 schneidet 15 mm ab, unten 30 fügt 30 mm Platz an.</span><br><br>" +
+      row("cmTop", "Oben") + row("cmBottom", "Unten") + row("cmLeft", "Links") + row("cmRight", "Rechts") +
+      "<label style=\"display:block;margin-top:8px\">Seiten (zum Beispiel 2-4, 7 oder alle)<br><input id=\"cmPg\" type=\"text\" value=\"" + (cp + 1) + "\" style=\"width:180px;font-size:16px;padding:6px\"></label>",
+      [{ label: "Abbrechen", value: null }, { label: "Anwenden", value: "ok", prim: true }]);
+    if (r !== "ok") return;
+    var g = function (id) { return (parseFloat($(id).value) || 0) * MM; }, idx;
+    try { idx = parseRange($("cmPg").value, n); } catch (e) { SO.status(e.message, "err"); return; }
+    return cropPages(idx, g("cmTop"), g("cmBottom"), g("cmLeft"), g("cmRight"));
+  }
+  async function undoPages() {
+    if (!S || !S.undo || !S.undo.length) { SO.status("Es gibt keine Seitenänderung zum Zurücknehmen."); return; }
+    var prev = S.undo.pop(), keep = { name: S.name, handle: S.handle, undo: S.undo }, top = $("stage").scrollTop;
+    await open(prev, keep.name, keep.handle, {});
+    S.undo = keep.undo; S.dirty = true; SO.markMod(); $("stage").scrollTop = top;
+    SO.status("Letzte Seitenänderung zurückgenommen (noch " + S.undo.length + " zurücknehmbar).", "ok");
+  }
+
+  /* ---- Rahmen */
+  var CF = null;   // { pd, pn, x0, y0, x1, y1, ov, fr, bar }
+  function frameStop() {
+    if (!CF) return;
+    if (CF.pd) CF.pd.style.overflow = "";
+    if (CF.ov && CF.ov.parentNode) CF.ov.remove();
+    document.removeEventListener("keydown", frameKey, true);
+    CF = null;
+  }
+  function frameKey(e) {
+    if (!CF) return;
+    if (e.key === "Escape") { e.preventDefault(); frameStop(); SO.status("Rahmen verworfen."); }
+    else if (e.key === "Enter" && CF.has && !/INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || "")) { e.preventDefault(); frameCommit("this"); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C") && CF.has && !String(getSelection()).length) { e.preventDefault(); frameCopy(); }
+  }
+  function frameStart() {
+    if (!S || S.readonly) return;
+    frameStop();
+    var pn = curPage(), pd = document.querySelectorAll("#pdfwrap .pdfpage")[pn]; if (!pd) return;
+    var ov = document.createElement("div"); ov.className = "cropov";
+    ov.style.cssText = "position:absolute;left:0;top:0;right:0;bottom:0;z-index:4;cursor:crosshair;touch-action:none";
+    var fr = document.createElement("div"); fr.className = "cropfr";
+    fr.style.cssText = "position:absolute;border:2px dashed #dc1e1e;box-shadow:0 0 0 9999px rgba(0,0,0,.38);display:none;cursor:move;box-sizing:border-box";
+    ["tl", "t", "tr", "r", "br", "b", "bl", "l"].forEach(function (h) {
+      var d = document.createElement("div"); d.setAttribute("data-h", h);
+      var s = "position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;background:#fff;border:2px solid #dc1e1e;border-radius:4px;box-sizing:border-box;touch-action:none;";
+      var cu = { tl: "nwse", br: "nwse", tr: "nesw", bl: "nesw", t: "ns", b: "ns", l: "ew", r: "ew" }[h] + "-resize";
+      var pos = { tl: "left:0;top:0", t: "left:50%;top:0", tr: "left:100%;top:0", r: "left:100%;top:50%", br: "left:100%;top:100%", b: "left:50%;top:100%", bl: "left:0;top:100%", l: "left:0;top:50%" }[h];
+      d.style.cssText = s + pos + ";cursor:" + cu; fr.appendChild(d);
+    });
+    var bar = document.createElement("div"); bar.className = "cropbar";
+    bar.style.cssText = "position:absolute;z-index:6;display:none;gap:4px;flex-wrap:wrap;background:#fffbe6;border:1px solid #c33;border-radius:6px;padding:4px;max-width:96%;font-size:14px;touch-action:manipulation";
+    [["this", "Zuschneiden", "Diese Seite auf den Rahmen zuschneiden (Eingabetaste)"], ["all", "Alle Seiten", "Alle Seiten mit denselben Rändern zuschneiden"],
+     ["copy", "Kopieren", "Ausschnitt als Bild in die Zwischenablage (Strg+C)"], ["png", "Als Bild speichern", "Ausschnitt als PNG-Datei"],
+     ["dlg", "Maße …", "Ränder in Millimeter einstellen und Seiten wählen"], ["no", "Abbrechen", "Rahmen verwerfen (Esc)"]].forEach(function (b) {
+      var bt = document.createElement("button"); bt.textContent = b[1]; bt.title = b[2]; bt.setAttribute("data-a", b[0]);
+      bt.style.cssText = "padding:6px 10px;font-size:14px;border-radius:6px;border:1px solid #888;background:#fff;color:#1b1f24;cursor:pointer";
+      bt.onclick = function (e) { e.stopPropagation(); frameAct(b[0]); };
+      bt.onpointerdown = function (e) { e.stopPropagation(); };
+      bar.appendChild(bt);
+    });
+    ov.appendChild(fr); ov.appendChild(bar); pd.style.overflow = "hidden"; pd.appendChild(ov);
+    CF = { pd: pd, pn: pn, ov: ov, fr: fr, bar: bar, x0: 0, y0: 0, x1: 0, y1: 0, has: false, mode: null };
+    var W = function () { return pd.offsetWidth; }, H = function () { return pd.offsetHeight; };
+    function pt(e) { var r = pd.getBoundingClientRect(), k = r.width / pd.offsetWidth || 1; return [(e.clientX - r.left) / k, (e.clientY - r.top) / k]; }
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+    ov.onpointerdown = function (e) {
+      if (e.button != null && e.button > 0) return;
+      var p = pt(e), h = e.target.getAttribute && e.target.getAttribute("data-h");
+      try { ov.setPointerCapture(e.pointerId); } catch (x) { }
+      if (h) CF.mode = { k: "h", h: h };
+      else if (CF.has && e.target === fr) CF.mode = { k: "move", dx: p[0] - CF.x0, dy: p[1] - CF.y0 };
+      else { CF.mode = { k: "new", sx: clamp(p[0], 0, W()), sy: clamp(p[1], 0, H()) }; CF.x0 = CF.x1 = CF.mode.sx; CF.y0 = CF.y1 = CF.mode.sy; CF.has = false; }
+      bar.style.display = "none"; e.preventDefault();
+    };
+    ov.onpointermove = function (e) {
+      var m = CF && CF.mode; if (!m) return;
+      var p = pt(e), x = clamp(p[0], 0, W()), y = clamp(p[1], 0, H());
+      if (m.k === "new") { CF.x0 = Math.min(m.sx, x); CF.x1 = Math.max(m.sx, x); CF.y0 = Math.min(m.sy, y); CF.y1 = Math.max(m.sy, y); }
+      else if (m.k === "move") { var w = CF.x1 - CF.x0, h = CF.y1 - CF.y0; CF.x0 = clamp(p[0] - m.dx, 0, W() - w); CF.y0 = clamp(p[1] - m.dy, 0, H() - h); CF.x1 = CF.x0 + w; CF.y1 = CF.y0 + h; }
+      else { var hh = m.h; if (hh.indexOf("l") >= 0) CF.x0 = Math.min(x, CF.x1 - 12); if (hh.indexOf("r") >= 0) CF.x1 = Math.max(x, CF.x0 + 12); if (hh.indexOf("t") >= 0) CF.y0 = Math.min(y, CF.y1 - 12); if (hh.indexOf("b") >= 0) CF.y1 = Math.max(y, CF.y0 + 12); }
+      frameDraw();
+    };
+    var up = function () {
+      if (!CF || !CF.mode) return; CF.mode = null;
+      if (CF.x1 - CF.x0 < 12 || CF.y1 - CF.y0 < 12) { CF.has = false; fr.style.display = "none"; bar.style.display = "none"; return; }
+      CF.has = true; frameDraw(true);
+    };
+    ov.onpointerup = up; ov.onpointercancel = up;
+    document.addEventListener("keydown", frameKey, true);
+    SO.status("Rahmen auf Seite " + (pn + 1) + " aufziehen (mit Maus oder Finger), an den Griffen ändern, verschieben. Dann Zuschneiden, Kopieren oder Als Bild speichern. Esc bricht ab.");
+  }
+  function frameDraw(showBar) {
+    var f = CF.fr; f.style.display = "block";
+    f.style.left = CF.x0 + "px"; f.style.top = CF.y0 + "px"; f.style.width = (CF.x1 - CF.x0) + "px"; f.style.height = (CF.y1 - CF.y0) + "px";
+    if (!showBar) return;
+    var b = CF.bar; b.style.display = "flex"; var bh = b.offsetHeight, bw = b.offsetWidth, H = CF.pd.offsetHeight, W = CF.pd.offsetWidth;
+    var y = CF.y1 + 8 + bh <= H ? CF.y1 + 8 : (CF.y0 - bh - 8 >= 0 ? CF.y0 - bh - 8 : Math.max(0, CF.y1 - bh - 8));
+    b.style.left = Math.max(0, Math.min(W - bw, CF.x1 - bw)) + "px"; b.style.top = y + "px";
+  }
+  function frameMargins() {
+    var W = CF.pd.offsetWidth, H = CF.pd.offsetHeight;
+    return { top: CF.y0 / SC, bottom: (H - CF.y1) / SC, left: CF.x0 / SC, right: (W - CF.x1) / SC };
+  }
+  async function frameBlob() {
+    var page = await S.doc.getPage(CF.pn + 1), k = IMGDPI / 72, vp = page.getViewport({ scale: k });
+    var full = document.createElement("canvas"); full.width = Math.ceil(vp.width); full.height = Math.ceil(vp.height);
+    await page.render({ canvasContext: full.getContext("2d"), viewport: vp }).promise;
+    var f = k / SC, sx = Math.round(CF.x0 * f), sy = Math.round(CF.y0 * f), sw = Math.max(1, Math.round((CF.x1 - CF.x0) * f)), sh = Math.max(1, Math.round((CF.y1 - CF.y0) * f));
+    var c = document.createElement("canvas"); c.width = sw; c.height = sh; c.getContext("2d").drawImage(full, sx, sy, sw, sh, 0, 0, sw, sh);
+    return new Promise(function (res) { c.toBlob(res, "image/png"); });
+  }
+  async function frameCopy() {
+    if (!CF || !CF.has) return;
+    var blob = await frameBlob(), ok = false;
+    try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); ok = true; } catch (e) { console.warn(e); }
+    if (ok) SO.status("Ausschnitt kopiert. Einfügen mit Strg+V in Text oder anderen Programmen; in dieser PDF mit dem Knopf „Bild als Seite“.", "ok");
+    else { SO.status("Der Browser erlaubt das Kopieren in die Zwischenablage hier nicht. Der Ausschnitt wird stattdessen als Bild geladen.", "err"); await frameSavePng(blob); }
+    return ok;
+  }
+  async function frameSavePng(blob) {
+    blob = blob || await frameBlob();
+    var nm = S.name.replace(/\.pdf$/i, "") + "-seite" + (CF ? CF.pn + 1 : 1) + ".png", how = await SO.deliver(blob, nm, null, "image/png");
+    if (how !== "cancel") SO.status("Ausschnitt gespeichert (" + { shared: "geteilt", download: "als " + nm + " geladen" }[how] + ").", "ok");
+  }
+  async function frameCommit(which) {
+    if (!CF || !CF.has) return;
+    var m = frameMargins(), pn = CF.pn, idx = [pn]; if (which === "all") { idx = []; for (var i = 0; i < S.doc.numPages; i++) idx.push(i); }
+    frameStop();
+    return cropPages(idx, -m.top, -m.bottom, -m.left, -m.right);
+  }
+  async function frameAct(a) {
+    if (!CF) return;
+    if (a === "this" || a === "all") return frameCommit(a);
+    if (a === "copy") return frameCopy();
+    if (a === "png") return frameSavePng();
+    if (a === "no") { frameStop(); SO.status("Rahmen verworfen."); return; }
+    if (a === "dlg") { var m = frameMargins(), pn = CF.pn; frameStop(); return cropDialog({ top: -m.top / MM, bottom: -m.bottom / MM, left: -m.left / MM, right: -m.right / MM, _pn: pn }); }
+  }
+  function buildPageTools(T, mk) {
+    var sep = mk("span", "", "|"); sep.style.cssText = "opacity:.5;margin:0 4px";
+    var lab = mk("span", "", "Seiten:"); lab.style.cssText = "font-size:13px;opacity:.85;margin-right:4px";
+    [["Rahmen", "Rahmen auf der Seite aufziehen und zuschneiden oder kopieren", frameStart],
+     ["Zuschneiden …", "Ränder in Millimeter abschneiden oder weiße Fläche ergänzen", function () { cropDialog(); }],
+     ["Leere Seite", "Leere Seite hinter der aktuellen einfügen", blankDialog],
+     ["Bild als Seite", "Bild aus der Zwischenablage (oder Datei) als neue Seite einfügen (auch Strg+V)", pasteImage],
+     ["Auszug", "Seiten als eigene PDF speichern", extractDialog],
+     ["Seiten zurück", "Letzte Seitenänderung zurücknehmen", undoPages]].forEach(function (b) {
+      var e = mk("button", "fbtn", b[0], b[1]); e.onclick = b[2];
+    });
+  }
+  document.addEventListener("paste", function (e) {
+    if (!S || S.readonly || /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || "")) return;
+    var its = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < its.length; i++) if (/^image\//.test(its[i].type)) { var f = its[i].getAsFile(); if (f) { e.preventDefault(); insertImagePage(curPage(), f); return; } }
+  });
+
   function close() {
     if (S && S.doc) { try { S.doc.destroy(); } catch (e) { } }
     S = null;
   }
-  return { open: open, save: save, close: close, _state: function () { return S; } };
+  return { open: open, save: save, close: close, _state: function () { return S; }, _t: { parseRange: parseRange, cropPages: cropPages, curPage: curPage, frameStart: frameStart, frameAct: frameAct, frameMargins: function () { return frameMargins(); }, cf: function () { return CF; }, insertImagePage: insertImagePage, blank: blankDialog, extract: extractDialog, cropDialog: cropDialog, undo: undoPages } };
 })();
 </script>
 <script>/* Seifferts Office: Oberfläche für docx und ODT */

@@ -797,7 +797,7 @@
       <button class="icon-btn" id="sideToggle" aria-label="Themenleiste ein- oder ausklappen" aria-expanded="true" aria-controls="side" title="Themenleiste ein- oder ausklappen"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <div class="tb-title">
         <h1 id="pageTitle"></h1>
-        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 25.11.2026 · Nr. 26</span>
+        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 25.11.2026 · Nr. 27</span>
       </div>
       <div class="tb-speak">
         <button class="icon-btn" id="speakBtn" aria-label="Vorlesen" title="Vorlesen"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4 4 0 010 6M19 6.5a8 8 0 010 11"/></svg></button>
@@ -12249,320 +12249,224 @@ renderStell();
   window.__tv.state = () => ({ C: C, idx: idx, fails: fails });
 })();
 
-/* ===== Darstellungsformen: Urliste, Strichliste, Säulendiagramm, Balkendiagramm, Kreisdiagramm ===== */
+/* ===== Darstellungsformen (Klasse 5, einfach): Urliste, Strichliste, Säulendiagramm, Balkendiagramm, Kreisdiagramm ===== */
 (function () {
   const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
   const pick = a => a[ri(0, a.length - 1)];
   const shuf = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i), t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
   const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const sum = a => a.reduce((s, v) => s + v, 0);
 
   const THEMES = [
     { t: "Haustiere", q: "Welches Haustier hast du?", c: ["Hund", "Katze", "Hase", "Fisch", "Vogel", "Maus"] },
     { t: "Obst", q: "Welches Obst magst du am liebsten?", c: ["Apfel", "Banane", "Birne", "Erdbeere", "Orange", "Traube"] },
-    { t: "Schulweg", q: "Wie kommst du zur Schule?", c: ["zu Fuß", "Fahrrad", "Bus", "Auto", "Roller", "Bahn"] },
-    { t: "Lieblingsfach", q: "Was ist dein Lieblingsfach?", c: ["Sport", "Kunst", "Mathe", "Deutsch", "Musik", "Englisch"] },
-    { t: "Pausenspiel", q: "Was spielst du in der Pause?", c: ["Fußball", "Fangen", "Karten", "Gummitwist", "Verstecken", "Basketball"] },
-    { t: "Eissorte", q: "Welche Eissorte magst du?", c: ["Vanille", "Schokolade", "Erdbeere", "Zitrone", "Nuss", "Himbeere"] }
+    { t: "Schulweg", q: "Wie kommst du zur Schule?", c: ["zu Fuß", "Fahrrad", "Bus", "Auto", "Roller"] },
+    { t: "Pausenspiel", q: "Was spielst du in der Pause?", c: ["Fußball", "Fangen", "Karten", "Basketball", "Verstecken"] }
   ];
-  /* Gesamtzahlen: bei Kreisdiagrammen muss 360 durch N teilbar sein */
-  const NS = { 1: [10, 12], 2: [18, 20, 24, 30], 3: [24, 30, 36, 40] };
-  const NU = { 1: [10, 12], 2: [18, 20, 22], 3: [24, 25, 28] };
+  const EMO = { Hund: "🐶", Katze: "🐱", Hase: "🐰", Fisch: "🐟", Vogel: "🐦", Maus: "🐭", Apfel: "🍎", Banane: "🍌", Birne: "🍐", Erdbeere: "🍓", Orange: "🍊", Traube: "🍇", "zu Fuß": "🚶", Fahrrad: "🚲", Bus: "🚌", Auto: "🚗", Roller: "🛴", "Fußball": "⚽", Fangen: "🏃", Karten: "🃏", Basketball: "🏀", Verstecken: "🙈" };
+  const lab = n => (EMO[n] ? EMO[n] + " " : "") + n;
   const PAL = ["#ff9a2e", "#6cc0f5", "#5fd06f", "#ff7ab0", "#c4a1ff", "#7ee0d2"];
 
   function parts(N, k) {
     for (let t = 0; t < 2000; t++) {
       const c = []; let rest = N, ok = true;
-      for (let i = 0; i < k - 1; i++) {
-        const lo = 2, hi = rest - 2 * (k - 1 - i), mx = Math.min(hi, Math.ceil(N * 0.5));
-        if (mx < lo) { ok = false; break; }
-        const v = ri(lo, mx); c.push(v); rest -= v;
-      }
+      for (let i = 0; i < k - 1; i++) { const hi = Math.min(rest - 2 * (k - 1 - i), Math.ceil(N * 0.5)); if (hi < 2) { ok = false; break; } const v = ri(2, hi); c.push(v); rest -= v; }
       if (!ok || rest < 2) continue; c.push(rest);
       const mx = Math.max.apply(null, c), mn = Math.min.apply(null, c);
       if (c.filter(v => v === mx).length === 1 && c.filter(v => v === mn).length === 1 && mx <= Math.ceil(N * 0.5) && mx - mn >= 2) return c;
     }
-    throw new Error("keine Aufteilung " + N + "/" + k);
+    throw new Error("keine Aufteilung");
   }
-  function gen(lv, forU) {
-    const k = lv + 2, N = pick((forU ? NU : NS)[lv]), th = pick(THEMES), nm = shuf(th.c).slice(0, k), c = parts(N, k);
+  function gen() {
+    const k = 3, N = pick([10, 12]), th = pick(THEMES), nm = shuf(th.c).slice(0, k), c = parts(N, k);
     const D = { th: th, N: N, k: k, cats: nm.map((n, i) => ({ n: n, c: c[i] })) };
     D.max = D.cats.reduce((a, b) => b.c > a.c ? b : a); D.min = D.cats.reduce((a, b) => b.c < a.c ? b : a);
-    D.w = 360 / N;
     const l = []; D.cats.forEach(ct => { for (let i = 0; i < ct.c; i++) l.push(ct.n); }); D.list = shuf(l);
     return D;
   }
-  const intro = D => "Umfrage „" + D.th.t + "“: " + D.th.q + " " + D.N + " Kinder haben geantwortet.";
-
-  /* ----- Strichliste als Text: Fünferbündel mit Querstrich ----- */
-  const tl = n => { let s = ""; for (let i = 0; i < Math.floor(n / 5); i++) s += '<span class="tg">||||</span> '; if (n % 5) s += "|".repeat(n % 5); return s || "–"; };
-  const strichHtml = (D, withNum) => D.cats.map(ct => '<div class="zeq">' + esc(ct.n) + ": " + tl(ct.c) + (withNum ? " = " + ct.c : "") + "</div>").join("");
+  const intro = D => D.N + " Kinder antworten: " + D.th.q;
   const countTxt = D => D.cats.map(ct => ct.n + " " + ct.c).join(", ");
 
-  /* ----- Bilder ----- */
-  const axStep = m => m <= 8 ? 1 : m <= 16 ? 2 : 5;
-  const scaleOf = D => { const m = D.max.c, s = axStep(m); return { m: m, s: s, top: Math.ceil((m + 1) / s) * s }; };
-  const svgOpen = (W, H, lab) => '<svg viewBox="0 0 ' + W + " " + H + '" style="width:100%;max-width:' + W + 'px;display:block;margin:4px 0" role="img" aria-label="' + esc(lab) + '">';
-  function saeulen(D, vals) {
-    const W = 340, H = 214, L = 30, R = 8, T = 16, B = 44, pw = W - L - R, ph = H - T - B, sc = scaleOf(D), k = D.k, cw = pw / k;
-    const ml = Math.max.apply(null, D.cats.map(c => c.n.length)), fs = Math.max(8, Math.min(12, Math.floor(cw / (0.6 * ml))));
+  /* ----- Urliste und Strichliste ----- */
+  const urHtml = D => '<div class="zeq">' + D.list.map(n => '<span style="display:inline-block;margin:3px;padding:2px 9px;border-radius:12px;border:2px solid ' + PAL[D.cats.findIndex(c => c.n === n) % 6] + '">' + esc(lab(n)) + "</span>").join("") + "</div>";
+  const tl = n => { let s = ""; for (let i = 0; i < Math.floor(n / 5); i++) s += '<span class="tg">||||</span> '; if (n % 5) s += "|".repeat(n % 5); return s || "–"; };
+  const strichHtml = (D, withNum) => D.cats.map(ct => '<div class="zeq" style="font-size:1.15em">' + esc(lab(ct.n)) + ": " + tl(ct.c) + (withNum ? " = " + ct.c : "") + "</div>").join("");
+
+  /* ----- Bilder: ein Kästchen oder ein Stück ist ein Kind ----- */
+  const svgOpen = (W, H, l) => '<svg viewBox="0 0 ' + W + " " + H + '" style="width:100%;max-width:' + W + 'px;display:block;margin:6px 0" role="img" aria-label="' + esc(l) + '">';
+  function saeulen(D, vals, upto) {
+    if (upto === undefined) upto = D.k;
+    const W = 340, L = 24, R = 6, T = 18, u = 22, top = D.max.c + 1, ph = top * u, B = 50, H = T + ph + B, cw = (W - L - R) / D.k, bw = 56;
     let o = svgOpen(W, H, "Säulendiagramm: " + countTxt(D));
-    for (let v = 0; v <= sc.top; v += sc.s) { const y = T + ph - v / sc.top * ph; o += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="' + (v ? "#2a3550" : "#9aa3b2") + '" stroke-width="1"/><text x="' + (L - 4) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#9aa3b2">' + v + "</text>"; }
-    o += '<text x="2" y="10" font-size="10" fill="#9aa3b2">Anzahl</text>';
+    for (let v = 0; v <= top; v++) { const y = T + ph - v * u; o += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="' + (v ? "#2a3550" : "#9aa3b2") + '"/><text x="' + (L - 5) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#9aa3b2">' + v + "</text>"; }
     D.cats.forEach((ct, i) => {
-      const bw = cw * 0.62, x = L + i * cw + (cw - bw) / 2, h = ct.c / sc.top * ph, y = T + ph - h;
-      o += '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + h + '" fill="' + PAL[i % 6] + '" stroke="#0d1016" stroke-width="1.5"/>';
-      if (vals) o += '<text x="' + (x + bw / 2) + '" y="' + (y - 3) + '" text-anchor="middle" font-size="12" font-weight="700" fill="#e6e8eb">' + ct.c + "</text>";
-      o += '<text x="' + (L + i * cw + cw / 2) + '" y="' + (T + ph + 15) + '" text-anchor="middle" font-size="' + fs + '" fill="#e6e8eb">' + esc(ct.n) + "</text>";
+      const x = L + i * cw + (cw - bw) / 2, cx = L + i * cw + cw / 2;
+      if (i < upto) {
+        for (let j = 0; j < ct.c; j++) o += '<rect x="' + x + '" y="' + (T + ph - (j + 1) * u) + '" width="' + bw + '" height="' + u + '" fill="' + PAL[i % 6] + '" stroke="#0d1016" stroke-width="2"/>';
+        if (vals) o += '<text x="' + cx + '" y="' + (T + ph - ct.c * u - 4) + '" text-anchor="middle" font-size="14" font-weight="700" fill="#e6e8eb">' + ct.c + "</text>";
+      } else o += '<text x="' + cx + '" y="' + (T + ph - 8) + '" text-anchor="middle" font-size="22" font-weight="700" fill="#ffb347">?</text>';
+      o += '<text x="' + cx + '" y="' + (T + ph + 24) + '" text-anchor="middle" font-size="20">' + (EMO[ct.n] || "") + '</text><text x="' + cx + '" y="' + (T + ph + 42) + '" text-anchor="middle" font-size="12" fill="#e6e8eb">' + esc(ct.n) + "</text>";
     });
     return o + "</svg>";
   }
-  function balken(D, vals) {
-    const W = 340, L = 86, R = 14, T = 8, rh = 34, B = 30, k = D.k, H = T + k * rh + B, pw = W - L - R, sc = scaleOf(D);
+  function balken(D, vals, upto) {
+    if (upto === undefined) upto = D.k;
+    const W = 340, L = 108, R = 22, T = 6, rh = 42, top = D.max.c + 1, u = Math.floor((W - L - R) / top), H = T + D.k * rh + 22;
     let o = svgOpen(W, H, "Balkendiagramm: " + countTxt(D));
-    for (let v = 0; v <= sc.top; v += sc.s) { const x = L + v / sc.top * pw; o += '<line x1="' + x + '" x2="' + x + '" y1="' + T + '" y2="' + (T + k * rh) + '" stroke="' + (v ? "#2a3550" : "#9aa3b2") + '" stroke-width="1"/><text x="' + x + '" y="' + (T + k * rh + 14) + '" text-anchor="middle" font-size="11" fill="#9aa3b2">' + v + "</text>"; }
-    o += '<text x="' + (W - R) + '" y="' + (T + k * rh + 27) + '" text-anchor="end" font-size="10" fill="#9aa3b2">Anzahl</text>';
+    for (let v = 0; v <= top; v++) { const x = L + v * u; o += '<line x1="' + x + '" x2="' + x + '" y1="' + T + '" y2="' + (T + D.k * rh) + '" stroke="' + (v ? "#2a3550" : "#9aa3b2") + '"/><text x="' + x + '" y="' + (T + D.k * rh + 15) + '" text-anchor="middle" font-size="11" fill="#9aa3b2">' + v + "</text>"; }
     D.cats.forEach((ct, i) => {
-      const y = T + i * rh + 5, w = ct.c / sc.top * pw;
-      o += '<text x="' + (L - 6) + '" y="' + (y + 16) + '" text-anchor="end" font-size="12" fill="#e6e8eb">' + esc(ct.n) + '</text><rect x="' + L + '" y="' + y + '" width="' + w + '" height="24" fill="' + PAL[i % 6] + '" stroke="#0d1016" stroke-width="1.5"/>';
-      if (vals) o += '<text x="' + (L + w + 4) + '" y="' + (y + 17) + '" font-size="12" font-weight="700" fill="#e6e8eb">' + ct.c + "</text>";
+      const y = T + i * rh + 7;
+      o += '<text x="4" y="' + (y + 21) + '" font-size="19">' + (EMO[ct.n] || "") + '</text><text x="30" y="' + (y + 19) + '" font-size="12" fill="#e6e8eb">' + esc(ct.n) + "</text>";
+      if (i < upto) {
+        for (let j = 0; j < ct.c; j++) o += '<rect x="' + (L + j * u) + '" y="' + y + '" width="' + u + '" height="28" fill="' + PAL[i % 6] + '" stroke="#0d1016" stroke-width="2"/>';
+        if (vals) o += '<text x="' + (L + ct.c * u + 5) + '" y="' + (y + 20) + '" font-size="14" font-weight="700" fill="#e6e8eb">' + ct.c + "</text>";
+      } else o += '<text x="' + (L + 8) + '" y="' + (y + 21) + '" font-size="22" font-weight="700" fill="#ffb347">?</text>';
     });
     return o + "</svg>";
   }
-  function kreis(D, angles, wedges) {
-    const W = 340, cx = 90, cy = 96, r = 82, H = Math.max(192, 40 + D.k * 24);
-    let o = svgOpen(W, H, "Kreisdiagramm: " + D.cats.map(c => c.n + " " + c.c * D.w + " Grad").join(", ")), a0 = -Math.PI / 2;
+  function kreis(D, vals, upto) {
+    if (upto === undefined) upto = D.k;
+    const W = 340, cx = 92, cy = 92, r = 84, H = 186;
+    let o = svgOpen(W, H, "Kreisdiagramm: " + countTxt(D)), a0 = -Math.PI / 2;
     D.cats.forEach((ct, i) => {
-      const a1 = a0 + ct.c / D.N * 2 * Math.PI, x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0), x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
-      o += '<path d="M' + cx + " " + cy + " L" + x0.toFixed(2) + " " + y0.toFixed(2) + " A" + r + " " + r + " 0 " + (a1 - a0 > Math.PI ? 1 : 0) + " 1 " + x1.toFixed(2) + " " + y1.toFixed(2) + ' Z" fill="' + PAL[i % 6] + '" stroke="#0d1016" stroke-width="2"/>';
-      const ly = 26 + i * 24;
-      o += '<rect x="190" y="' + (ly - 11) + '" width="14" height="14" rx="3" fill="' + PAL[i % 6] + '" stroke="#0d1016"/><text x="210" y="' + ly + '" font-size="13" fill="#e6e8eb">' + esc(ct.n) + (angles ? ": " + ct.c * D.w + "°" : "") + "</text>";
+      const a1 = a0 + ct.c / D.N * 2 * Math.PI, p = a => (cx + r * Math.cos(a)).toFixed(2) + " " + (cy + r * Math.sin(a)).toFixed(2);
+      o += '<path d="M' + cx + " " + cy + " L" + p(a0) + " A" + r + " " + r + " 0 " + (a1 - a0 > Math.PI ? 1 : 0) + " 1 " + p(a1) + ' Z" fill="' + (i < upto ? PAL[i % 6] : "#2a3550") + '" stroke="#0d1016" stroke-width="2"/>';
+      const ly = 46 + i * 40;
+      o += '<rect x="196" y="' + (ly - 14) + '" width="16" height="16" rx="3" fill="' + (i < upto ? PAL[i % 6] : "#2a3550") + '" stroke="#0d1016"/><text x="218" y="' + ly + '" font-size="18">' + (EMO[ct.n] || "") + '</text><text x="244" y="' + (ly - 1) + '" font-size="13" fill="#e6e8eb">' + esc(ct.n) + (vals ? ": " + ct.c : i < upto ? "" : " ?") + "</text>";
       a0 = a1;
     });
-    if (wedges) for (let i = 0; i < D.N; i++) { const a = -Math.PI / 2 + i / D.N * 2 * Math.PI; o += '<line x1="' + cx + '" y1="' + cy + '" x2="' + (cx + r * Math.cos(a)).toFixed(2) + '" y2="' + (cy + r * Math.sin(a)).toFixed(2) + '" stroke="#0d1016" stroke-width="1.5"/>'; }
+    for (let i = 0; i < D.N; i++) { const a = -Math.PI / 2 + i / D.N * 2 * Math.PI; o += '<line x1="' + cx + '" y1="' + cy + '" x2="' + (cx + r * Math.cos(a)).toFixed(2) + '" y2="' + (cy + r * Math.sin(a)).toFixed(2) + '" stroke="#0d1016" stroke-width="1.5"/>'; }
     return o + "</svg>";
   }
+  const PIC = { S: saeulen, B: balken, K: kreis };
+  const TN = { S: "Säulendiagramm", B: "Balkendiagramm", K: "Kreisdiagramm" };
+  const K0 = { S: "Säulen stehen.", B: "Balken liegen.", K: "Der Kreis ist ein Kuchen." };
 
-  /* ----- Möglichkeit bauen: richtige Zeile und zwei falsche [Text, Begründung, HTML] ----- */
-  function mk(t, h, r, cands, hh, ask) {
+  /* ----- Möglichkeit: richtige Antwort und zwei falsche [Text, Grund, HTML] ----- */
+  function mk(t, h, r, cands, hh) {
     const seen = {}; seen[h] = 1; const w = [];
     shuf(cands).forEach(c => { if (c && c[0] && !seen[c[0]]) { seen[c[0]] = 1; w.push(c); } });
     if (w.length < 2) throw new Error("zu wenige falsche Möglichkeiten: " + t);
-    return { t: t, h: h, hh: hh || null, r: r, w: w.slice(0, 2), ask: ask || "Welche Antwort stimmt?" };
+    return { t: t, h: h, hh: hh || null, r: r, w: w.slice(0, 2), ask: "Welche Antwort stimmt?" };
   }
-  const numC = (n, f, hi, lo) => [n + 1, n - 1, n + 2, n - 2].filter(v => v > 0 && v !== n).map(v => { const g = f(v); return [g[0], v > n ? hi : lo, g[1]]; });
-  const stk = v => v + (v === 1 ? " Strich" : " Striche");
-
-  function chkStep(D, what) {
-    const s = D.cats.map(c => c.c).join(" + "), N = D.N;
-    const h = "Alle " + what + " zusammen: " + s + " = " + N + ". Die Umfrage hatte " + N + " Antworten. Das passt.";
-    return mk("Prüfen: Stimmt die Summe?", h, "Jede Antwort kommt genau einmal vor. Darum ist die Summe so groß wie die Zahl aller Antworten.", [
-      ["Alle " + what + " zusammen: " + s + " = " + (N - 1) + ". Die Umfrage hatte " + N + " Antworten. Es fehlt eine.", "Rechne noch einmal: " + s + " = " + N + ". Das passt genau zur Umfrage."],
-      ["Alle " + what + " zusammen: " + s + " = " + (N + 1) + ". Die Umfrage hatte " + N + " Antworten. Es ist eine zu viel.", "Rechne noch einmal: " + s + " = " + N + ". Das passt genau zur Umfrage."],
-      ["Die Summe muss nicht zur Zahl der Antworten passen.", "Doch: Jede Antwort kommt genau einmal vor. Darum ist die Summe so groß wie die Zahl aller Antworten."]
-    ]);
+  const numC = (n, f, why) => [n + 1, n - 1, n + 2, n - 2].filter(v => v > 0 && v !== n).map(v => { const g = f(v); return [g[0], why, g[1]]; });
+  const step = (st, teach, pic) => { st.teach = teach || ""; st.pic = pic || ""; return st; };
+  function chkStep(D, pic) {
+    const s = D.cats.map(c => c.c).join(" + "), N = D.N, z = "Rechne noch einmal: " + s + " = " + N + ".";
+    return step(mk("Sind es alle Kinder?", s + " = " + N + " Kinder", "Alle zusammen sind " + N + " Kinder.", [[s + " = " + (N - 1) + " Kinder", z], [s + " = " + (N + 1) + " Kinder", z], [s + " = " + (N + 2) + " Kinder", z]]), "Prüfe: Zähle alle zusammen.", pic);
   }
+  const C0 = (D, kind, from, to, steps, extra) => Object.assign({ kind: kind, lv: 1, D: D, from: from, to: to, intro: intro(D), start: "", startHtml: "", steps: steps, goal: "", goalHtml: "", pic: "", picEnd: "" }, extra || {});
 
-  /* ----- 0 Kennenlernen: dieselben Zahlen in fünf Darstellungen ----- */
-  const urHtml = D => '<div class="zeq">' + D.list.map(n => '<span style="display:inline-block;margin:2px 3px;padding:1px 8px;border-radius:12px;border:2px solid ' + PAL[D.cats.findIndex(c => c.n === n) % 6] + '">' + esc(n) + "</span>").join("") + "</div>";
-  const kd = v => v + (v === 1 ? " Kind" : " Kinder");
+  /* ----- 0 Kennenlernen ----- */
   function cE() {
-    const D = gen(1, false), X = pick(D.cats), Y = pick(D.cats), steps = [], ask = "Welche Antwort stimmt?";
-    const add = (st, teach, pic) => { st.teach = teach; st.pic = pic; st.ask = ask; steps.push(st); };
-    const f1 = v => [X.n + " kommt " + v + "-mal vor"], z1 = "Zähle noch einmal. Streiche jedes gezählte Wort durch.";
-    add(mk("Die Urliste", f1(X.c)[0], "Ich zähle, wie oft das Wort vorkommt.", numC(X.c, f1, z1, z1)), "Eine Umfrage: Jedes Kind nennt seine Antwort. Die Urliste schreibt alle Antworten auf, so wie sie kommen.", urHtml(D));
-    const f2 = v => [Y.n + ": " + kd(v)], z2 = "Zähle die Striche noch einmal. Fünf Striche sind ein Bündel.";
-    add(mk("Die Strichliste", f2(Y.c)[0], "Ich zähle die Striche. Ein Bündel ist 5.", numC(Y.c, f2, z2, z2)), "Die Strichliste zählt: ein Strich für jedes Kind. Fünf Striche werden zu einem Bündel.", strichHtml(D, false));
-    const oth = (ct0, txt, why) => D.cats.filter(c => c !== ct0).map(ct => [txt + ct.n, why(ct)]);
-    add(mk("Das Säulendiagramm", "Die höchste Säule: " + D.max.n, "Je höher die Säule, desto mehr Kinder.", oth(D.max, "Die höchste Säule: ", ct => "Die Säule von " + ct.n + " ist niedriger.")), "Das Säulendiagramm zeigt die Zahlen als Säulen. Je höher die Säule, desto mehr Kinder.", saeulen(D, true));
-    add(mk("Das Balkendiagramm", "Der kürzeste Balken: " + D.min.n, "Je kürzer der Balken, desto weniger Kinder.", oth(D.min, "Der kürzeste Balken: ", ct => "Der Balken von " + ct.n + " ist länger.")), "Das Balkendiagramm ist wie das Säulendiagramm, nur liegend. Je länger der Balken, desto mehr Kinder.", balken(D, true));
-    add(mk("Das Kreisdiagramm", "Das größte Stück: " + D.max.n, "Je mehr Kinder, desto größer das Stück.", oth(D.max, "Das größte Stück: ", ct => "Das Stück von " + ct.n + " ist kleiner.")), "Das Kreisdiagramm ist wie ein Kuchen. Jedes Kind ist ein Stück. Viele Kinder: ein großes Stück.", kreis(D, false, true));
-    const type = pick(["S", "B", "K"]), K0 = { S: "Säulen stehen.", B: "Balken liegen.", K: "Der Kreis ist ein Kuchen." };
-    add(mk("Wie heißt das Bild?", TN[type], K0[type], ["S", "B", "K"].filter(t => t !== type).map(t => ["Ein " + TN[t], "Beim " + TN[t] + " gilt: " + K0[t] + " Hier gilt: " + K0[type]])), "Zum Schluss: Wie heißt dieses Bild?", type === "S" ? saeulen(D, false) : type === "B" ? balken(D, false) : kreis(D, false, true));
-    return { kind: "E", lv: 1, D: D, from: "Umfrage", to: "fünf Darstellungen", intro: intro(D), start: D.th.q, startHtml: esc(D.th.q), steps: steps, goal: "Geschafft: Du kennst Urliste, Strichliste, Säulendiagramm, Balkendiagramm und Kreisdiagramm.", goalHtml: "", pic: "", picEnd: "" };
+    const D = gen(), X = pick(D.cats), Y = pick(D.cats), st = [], z = "Zähle noch einmal.";
+    const f1 = v => [X.n + ": " + v + "-mal", lab(X.n) + ": " + v + "-mal"];
+    st.push(step(mk("Wie oft steht " + lab(X.n) + " in der Liste?", f1(X.c)[0], "Zählen.", numC(X.c, f1, z), f1(X.c)[1]), "Die Urliste: alle Antworten der Reihe nach.", urHtml(D)));
+    const f2 = v => [Y.n + ": " + v + " Kinder", lab(Y.n) + ": " + v + " Kinder"];
+    st.push(step(mk("Wie viele Kinder sagen " + lab(Y.n) + "?", f2(Y.c)[0], "Striche zählen.", numC(Y.c, f2, "Zähle die Striche noch einmal. Ein Bündel sind 5."), f2(Y.c)[1]), "Die Strichliste: ein Strich für jedes Kind. 5 Striche sind ein Bündel.", strichHtml(D, false)));
+    const oth = (c0, pre, why) => D.cats.filter(c => c !== c0).map(c => [pre + c.n, why(c), esc(pre + lab(c.n))]);
+    st.push(step(mk("Welche Säule ist am höchsten?", "Am höchsten: " + D.max.n, "Die höchste Säule hat die meisten Kinder.", oth(D.max, "Am höchsten: ", c => "Die Säule von " + c.n + " ist niedriger."), esc("Am höchsten: " + lab(D.max.n))), "Das Säulendiagramm: Ein Kästchen ist ein Kind.", saeulen(D, true)));
+    st.push(step(mk("Welcher Balken ist am kürzesten?", "Am kürzesten: " + D.min.n, "Der kürzeste Balken hat die wenigsten Kinder.", oth(D.min, "Am kürzesten: ", c => "Der Balken von " + c.n + " ist länger."), esc("Am kürzesten: " + lab(D.min.n))), "Das Balkendiagramm: wie Säulen, nur liegend.", balken(D, true)));
+    st.push(step(mk("Welches Stück ist am größten?", "Am größten: " + D.max.n, "Das größte Stück hat die meisten Kinder.", oth(D.max, "Am größten: ", c => "Das Stück von " + c.n + " ist kleiner."), esc("Am größten: " + lab(D.max.n))), "Das Kreisdiagramm: Ein Stück vom Kuchen ist ein Kind.", kreis(D, true)));
+    const ty = pick(["S", "B", "K"]);
+    st.push(step(mk("Wie heißt das Bild?", TN[ty], K0[ty], ["S", "B", "K"].filter(t => t !== ty).map(t => [TN[t], K0[t] + " Hier: " + K0[ty]])), "", PIC[ty](D, false)));
+    return C0(D, "E", "Umfrage", "Bilder", st, { goal: "Du kennst jetzt alle fünf: Urliste, Strichliste, Säulen, Balken, Kreis." });
   }
-
   /* ----- 1 Urliste -> Strichliste ----- */
-  function cU(lv) {
-    const D = gen(lv, true), steps = [];
-    D.cats.forEach(ct => {
-      const n = ct.c, f = v => [ct.n + ": " + stk(v), ct.n + ": " + tl(v) + " = " + v];
-      const c = numC(n, f, "Das sind zu viele Striche. Streiche beim Zählen jede Antwort in der Urliste durch, dann zählst du keine doppelt.", "Dir fehlen Striche. Streiche beim Zählen jede Antwort in der Urliste durch, dann übersiehst du keine.");
-      const g = f(n);
-      steps.push(mk("Zählen: " + ct.n, g[0], "Ich suche " + ct.n + " in der Urliste, streiche jede Antwort durch und mache für jede einen Strich. Jeder fünfte Strich bündelt vier Striche.", c, g[1]));
+  function cU() {
+    const D = gen(), st = D.cats.map((X, i) => { const f = v => [X.n + ": " + v, lab(X.n) + ": " + tl(v) + " = " + v]; return step(mk("Wie viele Striche bekommt " + lab(X.n) + "?", f(X.c)[0], "Ein Strich für jedes " + X.n + ".", numC(X.c, f, "Zähle noch einmal. Streiche jedes gezählte Wort durch."), f(X.c)[1]), i ? "" : "Ein Strich für jedes Kind. 5 Striche sind ein Bündel."); });
+    st.push(chkStep(D, strichHtml(D, true)));
+    return C0(D, "U", "Urliste", "Strichliste", st, { startHtml: urHtml(D), goal: "Fertig: die Strichliste.", goalHtml: strichHtml(D, true) });
+  }
+  /* ----- 2, 3, 4 Strichliste -> Säulen, Balken, Kreis ----- */
+  function cD(ty) {
+    const D = gen(), P = PIC[ty], unit = ty === "K" ? "Stücke" : "Kästchen";
+    const q = X => ty === "S" ? "Wie hoch wird die Säule für " + lab(X.n) + "?" : ty === "B" ? "Wie lang wird der Balken für " + lab(X.n) + "?" : "Wie viele Stücke bekommt " + lab(X.n) + "?";
+    const st = D.cats.map((X, i) => {
+      const f = v => [X.n + ": " + v + " " + unit, lab(X.n) + ": " + v + " " + unit], c = numC(X.c, f, "Zähle die Striche noch einmal.");
+      if (X.c >= 5) { const g = f(X.c - 1); c.push([g[0], "Ein Bündel sind 5 Striche, nicht 4.", g[1]]); }
+      return step(mk(q(X), f(X.c)[0], "So viele Striche, so viele " + unit + ".", c, f(X.c)[1]), i ? "" : (ty === "K" ? "Ein Stück vom Kuchen ist ein Kind." : "Ein Kästchen ist ein Kind."), P(D, false, i));
     });
-    steps.push(chkStep(D, "Striche"));
-    return { kind: "U", lv: lv, D: D, from: "Urliste", to: "Strichliste", intro: intro(D), start: "Urliste: " + D.list.join(", "), startHtml: "Urliste: " + esc(D.list.join(", ")), steps: steps, goal: "Strichliste: " + countTxt(D), goalHtml: strichHtml(D, true), pic: "", picEnd: "" };
+    st.push(chkStep(D, P(D, true)));
+    return C0(D, ty, "Strichliste", TN[ty], st, { startHtml: strichHtml(D, false), goal: "Fertig: das " + TN[ty] + ".", picEnd: P(D, true) });
   }
-
-  /* ----- 2 und 3 Strichliste -> Säulen- oder Balkendiagramm ----- */
-  function cSB(lv, horiz) {
-    const D = gen(lv, false), sc = scaleOf(D), s = sc.s, top = sc.top, m = sc.m, steps = [];
-    const el = horiz ? "Balken" : "Säule", elP = horiz ? "Balken" : "Säulen", ax = horiz ? "unten an der waagerechten Achse" : "links an der senkrechten Achse";
-    const fm = (t, st) => "Skala von 0 bis " + t + " in " + st + "er-Schritten";
-    const low = (Math.ceil(m / s) - 1) * s, cands = [];
-    cands.push([fm(low, s), "Der längste " + el + " hat " + m + ". Er würde über die Skala hinausragen."]);
-    cands.push([fm(top * 2, s), "Die Skala ist viel zu lang. Dann werden alle " + elP + " winzig."]);
-    if (s < 5) { const cs = s === 1 ? 5 : 10; cands.push([fm(Math.ceil(m / cs) * cs, cs), "Die Schritte sind zu groß. Dann kannst du Werte wie " + D.min.c + " nicht genau einzeichnen."]); }
-    else cands.push([fm(top, 1), "Mit 1er-Schritten stehen viel zu viele Striche auf der Achse. Das wird unübersichtlich."]);
-    if (lv >= 2) steps.push(mk("Skala festlegen", fm(top, s), "Die Skala beginnt bei 0 und geht " + ax + " bis über den größten Wert " + m + ". Die Schritte sind so, dass du alle Werte gut einzeichnen kannst.", cands));
-    (lv === 1 ? D.cats : [pick(D.cats)]).forEach(X => { const n = X.c, f = v => [el + " für " + X.n + ": " + (horiz ? "Länge " : "Höhe ") + v];
-    const c2 = numC(n, f, "Zähle die Striche in der Strichliste noch einmal. Es sind weniger.", "Zähle die Striche in der Strichliste noch einmal. Es sind mehr.");
-    if (n >= 5) { const g = Math.floor(n / 5); c2.push([f(n - g)[0], "Ein Fünferbündel (vier Striche mit Querstrich) steht für 5 Striche, nicht für 4."]); }
-    steps.push(mk(el + " zeichnen: " + X.n, f(n)[0], "Ich zähle die Striche. Ein Bündel ist 5.", c2)); });
-    steps.push(chkStep(D, horiz ? "Balkenlängen" : "Säulenhöhen"));
-    const nm = horiz ? "Balkendiagramm" : "Säulendiagramm";
-    return { kind: horiz ? "B" : "S", lv: lv, D: D, from: "Strichliste", to: nm, intro: intro(D), start: "Strichliste: " + countTxt(D), startHtml: strichHtml(D, false), steps: steps, goal: nm + ": " + countTxt(D) + ". Mit Überschrift, Namen und beschrifteter Skala.", goalHtml: "", pic: "", picEnd: horiz ? balken(D, true) : saeulen(D, true) };
-  }
-
-  /* ----- 4 Strichliste -> Kreisdiagramm ----- */
-  function cK(lv) {
-    const D = gen(lv, false), N = D.N, w = D.w, steps = [], X = pick(D.cats), n = X.c;
-    steps.push(mk("Alle Antworten zählen", "Alle zusammen: " + D.cats.map(c => c.c).join(" + ") + " = " + N, "Der ganze Kreis steht für alle Antworten. Darum zähle ich zuerst alle Striche zusammen.", [
-      ["Alle zusammen: " + D.cats.map(c => c.c).join(" + ") + " = " + (N - 1), "Rechne noch einmal: " + D.cats.map(c => c.c).join(" + ") + " = " + N + "."],
-      ["Alle zusammen: " + D.cats.map(c => c.c).join(" + ") + " = " + (N + 2), "Rechne noch einmal: " + D.cats.map(c => c.c).join(" + ") + " = " + N + "."],
-      ["Alle zusammen: " + D.cats.length + " Antworten", "Nicht die Zahl der Antwortmöglichkeiten, sondern alle Striche zusammen."]
-    ]));
-    if (lv === 1) {
-      D.cats.forEach(Z => { const g = v => [Z.n + ": " + v + " Stücke"], z = "Zähle die Striche von " + Z.n + " noch einmal."; steps.push(mk("Stücke für " + Z.n, g(Z.c)[0], "Jedes Kind ist ein Stück. So viele Striche, so viele Stücke.", numC(Z.c, g, z, z))); });
-      steps.push(chkStep(D, "Stücke"));
-      return { kind: "K", lv: 1, D: D, from: "Strichliste", to: "Kreisdiagramm", intro: intro(D), start: "Strichliste: " + countTxt(D), startHtml: strichHtml(D, false), steps: steps, goal: "Kreisdiagramm: " + countTxt(D) + " Stücke. Jedes Kind ist ein Stück.", goalHtml: "", pic: "", picEnd: kreis(D, false, true) };
-    }
-    steps.push(mk("Winkel für eine Antwort", "360° : " + N + " = " + w + "°", "Der ganze Kreis hat 360°. Ich verteile ihn gleichmäßig auf alle " + N + " Antworten, also teile ich.", [
-      ["360° · " + N + " = " + 360 * N + "°", "Der ganze Kreis hat nur 360°. Du verteilst ihn auf alle " + N + " Antworten, also teilst du."],
-      ["360° − " + N + " = " + (360 - N) + "°", "Verteilen heißt teilen: 360° : " + N + "."],
-      [N + " : 360° = ?", "Der Kreis wird verteilt, nicht die Antworten. Rechne 360° : " + N + "."]
-    ]));
-    const f = v => [v + " · " + w + "° = " + v * w + "°"];
-    const c3 = numC(n, f, "Zähle die Striche von " + X.n + " noch einmal. Es sind weniger.", "Zähle die Striche von " + X.n + " noch einmal. Es sind mehr.");
-    c3.push([n + " + " + w + "° = " + (n + w) + "°", "Jede der " + n + " Antworten bekommt " + w + "°. Das ist Malnehmen: " + n + " · " + w + "°."]);
-    steps.push(mk("Winkel für " + X.n, f(n)[0], "Jede Antwort bekommt " + w + "°. " + X.n + " hat " + n + " Antworten, also nehme ich mal.", c3));
-    const as = D.cats.map(c => c.c * w), sj = as.map(a => a + "°").join(" + ");
-    steps.push(mk("Prüfen: Stimmt der Kreis?", "Alle Winkel zusammen: " + sj + " = 360°. Das ist der ganze Kreis.", "Alle Stücke zusammen müssen den ganzen Kreis ergeben: 360°.", [
-      ["Alle Winkel zusammen: " + sj + " = 180°. Das ist ein halber Kreis.", "Rechne noch einmal: " + sj + " = 360°. Das ist der ganze Kreis."],
-      ["Alle Winkel zusammen müssen " + N + "° ergeben.", "Der ganze Kreis hat immer 360°, egal wie viele Antworten es gibt."],
-      ["Alle Winkel zusammen: " + sj + " = 380°. Das ist mehr als ein Kreis.", "Rechne noch einmal: " + sj + " = 360°. Das ist der ganze Kreis."]
-    ]));
-    return { kind: "K", lv: lv, D: D, from: "Strichliste", to: "Kreisdiagramm", intro: intro(D), start: "Strichliste: " + countTxt(D), startHtml: strichHtml(D, false), steps: steps, goal: "Kreisdiagramm: " + D.cats.map(c => c.n + " " + c.c * w + "°").join(", "), goalHtml: "", pic: "", picEnd: kreis(D, true) };
-  }
-
-  /* ----- 5 Diagramm lesen ----- */
-  const TN = { S: "Säulendiagramm", B: "Balkendiagramm", K: "Kreisdiagramm" };
-  const TD = { S: "senkrechte Säulen, die Höhe zeigt die Anzahl", B: "waagerechte Balken, die Länge zeigt die Anzahl", K: "einen Kreis mit Stücken, jedes Stück zeigt einen Anteil" };
-  function cL(lv) {
-    const D = gen(lv, false), type = pick(["S", "B", "K"]), steps = [], kr = type === "K", el = type === "S" ? "Säule" : "Balken";
-    const types = ["S", "B", "K"].filter(t => t !== type);
-    steps.push(mk("Darstellung erkennen", TN[type], "Ich schaue, woraus das Bild besteht: " + TD[type] + ".", types.map(t => ["Ein " + TN[t], "Ein " + TN[t] + " hat " + TD[t] + ". Hier siehst du " + TD[type] + "."]), null, "Welche Antwort stimmt?"));
-    const others = (ct) => D.cats.filter(c => c !== ct);
-    const bigger = (ct, big) => kr ? ct.n + " hat ein kleineres Stück als " + big.n + "." : ct.n + " hat nur " + ct.c + ". " + big.n + " hat " + big.c + ".";
-    if (!kr) {
-      const X = pick(D.cats), n = X.c, f = v => [X.n + ": " + v];
-      steps.push(mk("Ablesen: " + X.n, f(n)[0], "Ich gehe am Ende von " + (type === "S" ? "der Säule" : "dem Balken") + " zur Skala und lese die Zahl ab.", numC(n, f, "Lies genauer ab. Wo endet " + (type === "S" ? "die Säule" : "der Balken") + " an der Skala? Es ist weniger.", "Lies genauer ab. Wo endet " + (type === "S" ? "die Säule" : "der Balken") + " an der Skala? Es ist mehr."), null, "Welche Antwort stimmt?"));
-    }
-    steps.push(mk("Am häufigsten", "Am häufigsten: " + D.max.n, "Die " + (kr ? "größte Fläche" : type === "S" ? "höchste Säule" : "längster Balken") + " zeigt die häufigste Antwort.", others(D.max).map(ct => ["Am häufigsten: " + ct.n, bigger(ct, D.max)]), null, "Welche Antwort stimmt?"));
-    if (kr) {
-      steps.push(mk("Am seltensten", "Am seltensten: " + D.min.n, "Das kleinste Stück gehört zur seltensten Antwort.", others(D.min).map(ct => ["Am seltensten: " + ct.n, ct.n + " hat ein größeres Stück als " + D.min.n + "."]), null, "Welche Antwort stimmt?"));
-      if (lv >= 2) {
-        const a = D.max.c * D.w, w = D.w, f = v => [D.max.n + ": " + a + "° : " + w + "° = " + v];
-        const c = numC(D.max.c, f, "Rechne nach: Wie oft passt " + w + "° in " + a + "°?", "Rechne nach: Wie oft passt " + w + "° in " + a + "°?");
-        c.push([D.max.n + ": " + a + "° − " + w + "° = " + (a - w), "Wie oft passt " + w + "° in " + a + "°? Das ist Teilen, nicht Abziehen."]);
-        steps.push(mk("Anzahl aus dem Winkel", f(D.max.c)[0], "Eine Antwort entspricht " + w + "°. Ich teile den Winkel des Stücks durch " + w + "°.", c, null, "Welche Antwort stimmt?"));
-      }
-    } else if (lv === 1) {
-      /* Stufe 1 hört nach dem häufigsten auf */
+  /* ----- 5 Bilder lesen ----- */
+  function cL() {
+    const D = gen(), ty = pick(["S", "B", "K"]), st = [], oth = (c0, pre, why) => D.cats.filter(c => c !== c0).map(c => [pre + c.n, why(c), esc(pre + lab(c.n))]);
+    st.push(mk("Wie heißt das Bild?", TN[ty], K0[ty], ["S", "B", "K"].filter(t => t !== ty).map(t => [TN[t], K0[t] + " Hier: " + K0[ty]])));
+    if (ty === "K") {
+      st.push(mk("Welches Stück ist am größten?", "Am größten: " + D.max.n, "Das größte Stück hat die meisten Kinder.", oth(D.max, "Am größten: ", c => "Das Stück von " + c.n + " ist kleiner."), esc("Am größten: " + lab(D.max.n))));
+      st.push(mk("Welches Stück ist am kleinsten?", "Am kleinsten: " + D.min.n, "Das kleinste Stück hat die wenigsten Kinder.", oth(D.min, "Am kleinsten: ", c => "Das Stück von " + c.n + " ist größer."), esc("Am kleinsten: " + lab(D.min.n))));
     } else {
-      const d = D.max.c - D.min.c, f = v => [D.max.n + " hat " + v + " mehr als " + D.min.n + "."];
-      steps.push(mk("Unterschied", f(d)[0], "Ich lese beide Werte ab und rechne den größten minus den kleinsten: " + D.max.c + " − " + D.min.c + ".", numC(d, f, "Rechne größten Wert minus kleinsten Wert. Der Unterschied ist kleiner.", "Rechne größten Wert minus kleinsten Wert. Der Unterschied ist größer."), null, "Welche Antwort stimmt?"));
-      const s = D.cats.map(c => c.c).join(" + "), g = v => ["Zusammen: " + s + " = " + v + " Befragte"];
-      steps.push(mk("Alle zusammen", g(D.N)[0], "Ich lese alle Werte ab und zähle sie zusammen.", numC(D.N, g, "Lies alle Werte ab und rechne noch einmal: " + s + " = " + D.N + ".", "Lies alle Werte ab und rechne noch einmal: " + s + " = " + D.N + "."), null, "Welche Antwort stimmt?"));
+      const X = pick(D.cats), f = v => [X.n + ": " + v + " Kinder", lab(X.n) + ": " + v + " Kinder"];
+      st.push(mk("Wie viele Kinder sagen " + lab(X.n) + "?", f(X.c)[0], "Kästchen zählen.", numC(X.c, f, "Zähle die Kästchen noch einmal."), f(X.c)[1]));
+      st.push(mk("Was sagen die meisten Kinder?", "Am meisten: " + D.max.n, "Die " + (ty === "S" ? "höchste Säule" : "längste Balken") + " gewinnt.", oth(D.max, "Am meisten: ", c => c.n + " hat nur " + c.c + "."), esc("Am meisten: " + lab(D.max.n))));
     }
-    return { kind: "L", lv: lv, D: D, from: "Diagramm", to: "Aussagen", intro: intro(D) + (kr && lv >= 2 ? " Eine Antwort entspricht " + D.w + "° im Kreis." : ""), start: "Lies das Diagramm.", startHtml: "Lies das Diagramm.", steps: steps, goal: "Alles abgelesen: " + TN[type] + " zur Umfrage „" + D.th.t + "“.", goalHtml: "", pic: type === "S" ? saeulen(D, false) : type === "B" ? balken(D, false) : kreis(D, lv >= 2, lv === 1), picEnd: "", picAlways: true };
+    st.forEach(s => step(s, "", ""));
+    return C0(D, "L", "Bild", "Antworten", st, { pic: PIC[ty](D, false), picAlways: true, goal: "Fertig: Du kannst das " + TN[ty] + " lesen." });
+  }
+  /* ----- 6 Was passt? ----- */
+  const FORMS = { U: "die Urliste", S: "die Strichliste", A: "das Säulendiagramm", B: "das Balkendiagramm", K: "das Kreisdiagramm" };
+  const FW = { U: "Alle Antworten der Reihe nach.", S: "Ein Strich für jedes Kind.", A: "Säulen stehen.", B: "Balken liegen.", K: "Ein Kuchen mit Stücken." };
+  const SITS = [["Du schreibst jede Antwort auf, so wie sie kommt.", "U"], ["Du machst für jedes Kind einen Strich.", "S"], ["Du zeigst die Kinder als stehende Säulen.", "A"], ["Du zeigst die Kinder als liegende Balken.", "B"], ["Du zeigst alle Kinder als Kuchen.", "K"], ["Die Namen sind lang. Du schreibst sie links hin und zeichnest liegend.", "B"], ["Jedes Kind ist ein Stück vom Kreis.", "K"]];
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  function cW() {
+    const S = pick(SITS), f = S[1], ot = shuf(Object.keys(FORMS).filter(k => k !== f)).slice(0, 2);
+    const s = step(mk("Was passt?", cap(FORMS[f]), FW[f], ot.map(k => [cap(FORMS[k]), cap(FORMS[k]) + ": " + FW[k]])), "", "");
+    return { kind: "W", lv: 1, D: null, from: "Satz", to: "Bild", intro: "Welche Darstellung passt?", start: S[0], startHtml: esc(S[0]), steps: [s], goal: cap(FORMS[f]) + ". " + FW[f], goalHtml: "", pic: "", picEnd: "" };
   }
 
-  /* ----- 6 Darstellung wählen ----- */
-  const FORMS = {
-    U: { n: "Urliste", a: "die", A: "Die", P: "Sie", w: "{P} schreibt jede Antwort der Reihe nach auf, so wie sie kommt." },
-    S: { n: "Strichliste", a: "die", A: "Die", P: "Sie", w: "{P} zählt mit Strichen: Für jede Antwort kommt ein Strich, jeder fünfte Strich bündelt vier Striche." },
-    A: { n: "Säulendiagramm", a: "das", A: "Das", P: "Es", w: "{P} zeigt jede Anzahl als Höhe einer senkrechten Säule." },
-    B: { n: "Balkendiagramm", a: "das", A: "Das", P: "Es", w: "{P} zeigt jede Anzahl als Länge eines waagerechten Balkens. Lange Namen passen gut an die Seite." },
-    K: { n: "Kreisdiagramm", a: "das", A: "Das", P: "Es", w: "{P} zeigt den Anteil jeder Antwort als Stück vom ganzen Kreis." }
-  };
-  const SITS = [
-    ["Du fragst Kinder in der Pause und schreibst jede Antwort sofort der Reihe nach auf.", "U", 1],
-    ["Bei einer Befragung zählst du mit: Für jede Antwort machst du einen Strich, bei fünf machst du ein Bündel.", "S", 1],
-    ["Du willst zeigen, wie viele Kinder welches Haustier haben. Die Höhen der Säulen kann man leicht vergleichen.", "A", 1],
-    ["Die Namen sind lang. Du schreibst sie bequem an die Seite und zeichnest waagerechte Streifen.", "B", 1],
-    ["Du willst zeigen, welcher Teil vom Ganzen zu jeder Antwort gehört.", "K", 1],
-    ["Die Antworten stehen so da, wie sie gekommen sind: Hund, Katze, Hund, Fisch, Hund …", "U", 2],
-    ["Du willst schnell mitzählen und danach gleich sehen, wie oft jede Antwort vorkam.", "S", 2],
-    ["Du willst auf einen Blick vergleichen, welche Antwort am häufigsten vorkam, mit senkrechten Rechtecken.", "A", 2],
-    ["Du willst, dass man die Namen gut lesen kann, ohne den Kopf zu drehen. Die Längen zeigen die Anzahl.", "B", 2],
-    ["Du willst auf einen Blick sehen, ob eine Antwort mehr als die Hälfte der Befragten ausmacht.", "K", 2],
-    ["Du teilst einen Kreis in Stücke. Jede Antwort bekommt einen Winkel.", "K", 1],
-    ["Du hast noch nichts gezählt oder sortiert und willst erst einmal alle Antworten festhalten.", "U", 2]
-  ];
-  const fw = f => FORMS[f].w.replace("{P}", FORMS[f].P);
-  function cW(lv) {
-    const pool = SITS.filter(s => lv >= 3 || s[2] <= lv), S = pick(pool), f = S[1], ot = shuf(Object.keys(FORMS).filter(k => k !== f)).slice(0, 2), F = FORMS[f];
-    const s1 = mk("Passende Darstellung wählen", F.A + " " + F.n, "Ich überlege, was ich zeigen will, und wähle die Darstellung, die genau das gut zeigt.", ot.map(k => [FORMS[k].A + " " + FORMS[k].n, FORMS[k].A + " " + FORMS[k].n + ": " + fw(k) + " Das passt hier nicht."]), null, "Welche Antwort stimmt?");
-    const s2 = mk("Begründen: Warum passt " + F.a + " " + F.n + "?", fw(f), "Ich sage, was diese Darstellung besonders gut zeigt.", ot.map(k => [fw(k), "Das beschreibt " + FORMS[k].a + " " + FORMS[k].n + ", nicht " + F.a + " " + F.n + "."]), null, "Welche Antwort stimmt?");
-    return { kind: "W", lv: lv, D: null, from: "Situation", to: "Darstellung", intro: "Welche Darstellung passt zur Situation?", start: S[0], startHtml: esc(S[0]), steps: [s1, s2], goal: F.A + " " + F.n + ". " + fw(f), goalHtml: "", pic: "", picEnd: "" };
-  }
-
-  const MAKE = { E: () => cE(), U: cU, S: lv => cSB(lv, false), B: lv => cSB(lv, true), K: cK, L: cL, W: cW };
-  const chain = (kind, lv) => { for (let t = 0; t < 50; t++) { try { return MAKE[kind](1); } catch (e) { if (t === 49) throw e; } } };
+  const MAKE = { E: cE, U: cU, S: () => cD("S"), B: () => cD("B"), K: () => cD("K"), L: cL, W: cW };
+  const chain = kind => { for (let t = 0; t < 50; t++) { try { return MAKE[kind](); } catch (e) { if (t === 49) throw e; } } };
   window.__dd = { chain: chain, esc: esc, pick: pick, ri: ri, gen: gen, saeulen: saeulen, balken: balken, kreis: kreis, tl: tl };
 
   /* ---------- Werkzeug ---------- */
   const host = document.getElementById("panel-dst"); if (!host) return;
   const sty = document.createElement("style");
-  sty.textContent = ".tg{text-decoration:line-through;text-decoration-thickness:2px;letter-spacing:1px;margin-right:.1em}";
+  sty.textContent = ".tg{text-decoration:line-through;text-decoration-thickness:2px;letter-spacing:1px;margin-right:.1em}.ddteach{font-size:1.1rem;font-weight:700;color:#ffb347;margin:.1rem 0 .3rem}.ddq{font-size:1.2rem;font-weight:700;margin:.5rem 0 .1rem}";
   document.head.appendChild(sty);
-  const D0 = { th: THEMES[0], N: 10, k: 3, w: 36, cats: [{ n: "Hund", c: 5 }, { n: "Katze", c: 3 }, { n: "Fisch", c: 2 }] }; D0.max = D0.cats[0]; D0.min = D0.cats[2];
-  const KN = { E: "0 Kennenlernen", U: "1 Urliste → Strichliste", S: "2 Strichliste → Säulendiagramm", B: "3 Strichliste → Balkendiagramm", K: "4 Strichliste → Kreisdiagramm", L: "5 Diagramm lesen", W: "6 Darstellung wählen" };
-  const LN = { 1: "3 Antwortmöglichkeiten", 2: "4 Antwortmöglichkeiten", 3: "5 Antwortmöglichkeiten" };
+  const D0 = { th: THEMES[0], N: 10, k: 3, cats: [{ n: "Hund", c: 5 }, { n: "Katze", c: 3 }, { n: "Fisch", c: 2 }] }; D0.max = D0.cats[0]; D0.min = D0.cats[2];
+  D0.list = ["Hund", "Katze", "Hund", "Fisch", "Hund", "Katze", "Hund", "Fisch", "Katze", "Hund"];
+  const KN = { E: "0 Kennenlernen", U: "1 Strichliste", S: "2 Säulendiagramm", B: "3 Balkendiagramm", K: "4 Kreisdiagramm", L: "5 Bilder lesen", W: "6 Was passt?" };
   const MERK = {
-    E: ["Fünf Arten, dieselben Zahlen zu zeigen.", "Urliste, Strichliste, Säulendiagramm, Balkendiagramm, Kreisdiagramm: Es sind immer dieselben Antworten.", saeulen(D0, true), "Hund 5, Katze 3, Fisch 2"],
-    U: ["Eine Urliste schreibt jede Antwort der Reihe nach auf.", "Zum Zählen streichst du jede Antwort durch und machst einen Strich. Jeder fünfte Strich bündelt vier Striche.", strichHtml(D0, true), "Hund, Katze, Hund, Fisch, … → Hund: 5"],
-    S: ["Im Säulendiagramm zeigt die Höhe der Säule die Anzahl.", "Erst die Skala, dann jede Säule bis zur Anzahl, am Ende Überschrift, Namen und Achse beschriften.", saeulen(D0, true), "Hund 5, Katze 3, Fisch 2"],
-    B: ["Im Balkendiagramm zeigt die Länge des Balkens die Anzahl.", "Wie beim Säulendiagramm, nur liegt alles waagerecht. Die Namen stehen links.", balken(D0, true), "Hund 5, Katze 3, Fisch 2"],
-    K: ["Im Kreisdiagramm ist jedes Kind ein Stück.", "Der Kreis ist wie ein Kuchen. So viele Striche eine Antwort hat, so viele Stücke bekommt sie.", kreis(D0, false, true), "10 Kinder: 10 Stücke. Hund: 5 Stücke."],
-    L: ["Erst die Darstellung erkennen, dann genau ablesen.", "Säulen und Balken: An der Skala ablesen. Kreis: Das größte Stück ist die häufigste Antwort.", saeulen(D0, false), "Die höchste Säule gehört zur häufigsten Antwort."],
-    W: ["Jede Darstellung hat ihre Stärke.", "Urliste: alles der Reihe nach. Strichliste: schnell zählen. Säulen und Balken: Anzahlen vergleichen. Kreis: Anteile vom Ganzen.", "", "Lange Namen? Balken. Anteil vom Ganzen? Kreis."]
+    E: ["Dieselben Kinder, fünf Bilder.", urHtml(D0) + strichHtml(D0, true) + saeulen(D0, true) + balken(D0, true) + kreis(D0, true)],
+    U: ["Ein Strich für jedes Kind.", urHtml(D0) + strichHtml(D0, true)],
+    S: ["Ein Kästchen ist ein Kind.", saeulen(D0, true)],
+    B: ["Ein Kästchen ist ein Kind. Die Balken liegen.", balken(D0, true)],
+    K: ["Ein Stück vom Kuchen ist ein Kind.", kreis(D0, true)],
+    L: ["Zähle die Kästchen oder Stücke.", saeulen(D0, true)],
+    W: ["Fünf Bilder für dieselben Kinder.", strichHtml(D0, true) + saeulen(D0, true) + kreis(D0, true)]
   };
-  let menuOpen = false, kind = "E", lv = 1, C = null, idx = 0, fails = 0, done = [], tried = {}, msg = "", opts = null, main = null;
+  let menuOpen = false, kind = "E", C = null, idx = 0, fails = 0, done = [], tried = {}, msg = "", opts = null, main = null;
   const stars = f => f === 0 ? 3 : f <= 2 ? 2 : 1;
-  function newTask() { C = chain(kind, lv); idx = 0; fails = 0; done = []; tried = {}; msg = ""; opts = null; draw(); }
+  function newTask() { C = chain(kind); idx = 0; fails = 0; done = []; tried = {}; msg = ""; opts = null; draw(); }
   function draw() {
     const n = C.steps.length, fin = idx >= n;
-    let h = '<details class="card"' + (menuOpen ? " open" : "") + '><summary><b>Aufgabe wählen:</b> ' + "" + '</summary><div class="umrt">' + Object.keys(KN).map(k => '<button type="button" class="tab" data-k="' + k + '" aria-selected="' + (kind === k) + '">' + esc(KN[k]) + "</button>").join("") + '</div>' + "</details>";
-    const m0 = MERK[kind];
-    h += '<details class="card"><summary><b>So geht es:</b> ' + esc(m0[0]) + '</summary><div class="note">' + esc(m0[1]) + "</div>" + m0[2] + '<div class="umline v">' + esc(m0[3]) + "</div></details>";
-    h += '<div class="card"><div class="ktitle">Vorgabe: ' + esc(C.from) + " → " + esc(C.to) + '</div><div class="note">' + esc(C.intro) + '</div><div class="umline v">' + C.startHtml + "</div>" + (C.picAlways ? C.pic : "") +
-      '<div class="umplan" aria-label="Wegweiser">' + C.steps.map((s, i) => '<span class="' + (i < idx ? "dn" : i === idx ? "cur" : "") + '">' + (i < idx ? "✓ " : "") + (i + 1) + " " + esc(s.t.replace(/ \(.*\)$/, "")) + "</span>").join("") + "</div></div>";
+    let h = '<details class="card"' + (menuOpen ? " open" : "") + '><summary><b>Aufgabe:</b> ' + esc(KN[kind]) + '</summary><div class="umrt">' + Object.keys(KN).map(k => '<button type="button" class="tab" data-k="' + k + '" aria-selected="' + (kind === k) + '">' + esc(KN[k]) + "</button>").join("") + "</div></details>";
+    h += '<details class="card"><summary><b>So geht es:</b> ' + esc(MERK[kind][0]) + "</summary>" + MERK[kind][1] + "</details>";
+    h += '<div class="card"><div class="note">' + esc(C.intro) + "</div>" + (C.startHtml ? '<div class="umline v">' + C.startHtml + "</div>" : "") + (C.picAlways ? C.pic : "") +
+      '<div class="umplan" aria-label="Fortschritt">' + C.steps.map((s, i) => '<span class="' + (i < idx ? "dn" : i === idx ? "cur" : "") + '">' + (i < idx ? "✓" : i + 1) + "</span>").join("") + "</div></div>";
     if (!fin) {
       const s = C.steps[idx]; if (!opts) opts = shuf([[s.h, "", true, s.hh]].concat(s.w.map(w => [w[0], w[1], false, w[2]])));
-      h += '<div class="card"><div class="ktitle">Nächster Schritt: ' + (idx + 1) + " von " + n + "</div>" + (s.teach ? '<div class="note">' + esc(s.teach) + "</div>" : "") + (s.pic || "") + "<div><b>" + esc(s.t) + '</b></div><div class="note">' + esc(s.ask) + ' Tippe auf die richtige Möglichkeit.</div><div id="ddOpts" aria-live="polite">' +
+      h += '<div class="card">' + (s.teach ? '<div class="ddteach">' + esc(s.teach) + "</div>" : "") + (s.pic || "") + '<div class="ddq">' + esc(s.t) + '</div><div id="ddOpts" aria-live="polite">' +
         opts.map((o, i) => '<button type="button" class="umopt' + (tried[i] ? " bad" : "") + '" data-i="' + i + '"' + (tried[i] ? " disabled" : "") + '><span class="umn">' + (i + 1) + "</span><span>" + (o[3] || esc(o[0])) + "</span></button>").join("") + "</div>" + (msg ? '<div class="umwhy"><b>Noch nicht.</b> ' + esc(msg) + "</div>" : "") + "</div>";
     } else {
       const f = stars(fails);
-      h += '<div class="card"><div class="ktitle">Geschafft!</div><div class="umline new"><b>' + esc(C.goal) + "</b></div>" + (C.goalHtml || "") + C.picEnd +
-        '<div class="note">' + (fails === 0 ? "Ohne Fehler: " : "Fehlversuche: " + fails + ". ") + "★".repeat(f) + "☆".repeat(3 - f) + '</div><div class="controls"><button type="button" class="primary" id="ddGo">Neue Aufgabe</button></div></div>';
+      h += '<div class="card"><div class="ktitle">Geschafft! ' + "★".repeat(f) + "☆".repeat(3 - f) + '</div><div class="umline new"><b>' + esc(C.goal) + "</b></div>" + (C.goalHtml || "") + C.picEnd +
+        '<div class="controls"><button type="button" class="primary" id="ddGo">Neue Aufgabe</button></div></div>';
     }
-    if (done.length) h += '<div class="card"><div class="ktitle">Deine Schritte, der neueste oben</div>' + done.slice().reverse().map((l, i) => '<div class="umline' + (i === 0 ? " new" : "") + '">' + l.h + "<small>" + esc(l.t) + "</small></div>").join("") + "</div>";
+    if (done.length) h += '<div class="card"><div class="ktitle">Deine Antworten</div>' + done.slice().reverse().map((l, i) => '<div class="umline' + (i === 0 ? " new" : "") + '">' + l.h + "</div>").join("") + "</div>";
     main.innerHTML = h; wire();
   }
   function wire() {
-    main.querySelectorAll("[data-k]").forEach(b => b.addEventListener("click", () => { kind = b.dataset.k; menuOpen = true; newTask(); }));
-    main.querySelectorAll("[data-l]").forEach(b => b.addEventListener("click", () => { lv = Number(b.dataset.l); menuOpen = true; newTask(); }));
+    main.querySelectorAll("[data-k]").forEach(b => b.addEventListener("click", () => { kind = b.dataset.k; menuOpen = false; newTask(); }));
     const go = main.querySelector("#ddGo"); if (go) go.addEventListener("click", newTask);
     main.querySelectorAll(".umopt").forEach(b => b.addEventListener("click", () => {
-      const i = Number(b.dataset.i), o = opts[i], s = C.steps[idx]; menuOpen = false;
-      if (o[2]) { done.push({ h: o[3] || esc(o[0]), t: s.t + ": " + s.r }); idx++; opts = null; msg = ""; tried = {}; draw(); const nx = main.querySelector("#ddOpts, #ddGo"); if (nx) nx.scrollIntoView({ block: "nearest" }); }
+      const i = Number(b.dataset.i), o = opts[i];
+      if (o[2]) { done.push({ h: o[3] || esc(o[0]) }); idx++; opts = null; msg = ""; tried = {}; draw(); const nx = main.querySelector(".ddteach, .ddq, #ddGo"); if (nx) nx.scrollIntoView({ block: "nearest" }); }
       else { fails++; tried[i] = 1; msg = o[1]; draw(); }
     }));
   }
-  host.innerHTML = '<div id="ddMain"></div><div class="card"><div class="ktitle">Wortspeicher</div><div class="zeq"><span class="usmall">Wörter:</span>Umfrage, Urliste, Strichliste, Bündel, Säule, Balken, Kreisdiagramm, Stück</div><div class="zeq"><span class="usmall">Tätigkeiten:</span>zählen, durchstreichen, ablesen, vergleichen, einzeichnen, beschriften</div><div class="zeq"><span class="usmall">Satzanfänge:</span>Am häufigsten kam … vor. · Die Säule ist … hoch. · Das Stück ist groß, weil …</div></div>';
+  host.innerHTML = '<div id="ddMain"></div><div class="card"><div class="ktitle">Wortspeicher</div><div class="zeq"><span class="usmall">Wörter:</span>Umfrage, Urliste, Strichliste, Bündel, Säule, Balken, Kreis, Stück</div><div class="zeq"><span class="usmall">Satzanfänge:</span>Am meisten … · Die Säule ist … hoch. · Das Stück ist groß.</div></div>';
   main = host.querySelector("#ddMain"); newTask();
   window.__dd.state = () => ({ C: C, idx: idx, fails: fails, opts: opts });
 })();
@@ -14966,8 +14870,7 @@ document.querySelectorAll(".card").forEach(c => {
   /* Darstellungsformen: ein Schritt, drei Möglichkeiten */
   function gDd(C, top) {
     const U = window.__dd, i = U.ri(0, C.steps.length - 1), s = C.steps[i];
-    const lines = [C.startHtml].concat(C.steps.slice(0, i).map(x => x.hh || U.esc(x.h)));
-    const q = '<div class="note">' + U.esc(C.intro) + "</div>" + (s.pic || C.pic || "") + lines.map((l, j) => '<div class="zeq">' + (j === 0 && C.kind !== "L" && C.kind !== "W" && C.kind !== "E" ? "Vorgabe: " : "") + l + "</div>").join("") + "<p>Aufgabe: <b>" + U.esc(s.t) + "</b>. " + U.esc(s.ask) + "</p>";
+    const q = '<div class="note">' + U.esc(C.intro) + "</div>" + (C.startHtml ? '<div class="zeq">' + C.startHtml + "</div>" : "") + (s.teach ? "<p><b>" + U.esc(s.teach) + "</b></p>" : "") + (s.pic || C.pic || "") + "<p><b>" + U.esc(s.t) + "</b></p>";
     return { top: top, kind: "eqs", n: 3, q: q, corr: [O(s.hh || U.esc(s.h), s.h, s.r)], wrong: s.w.map(w => O(w[2] || U.esc(w[0]), w[0], w[1])), expl: () => s.t + ". " + s.r };
   }
   G.dd0 = () => gDd(window.__dd.chain("E", 1), "dd0");

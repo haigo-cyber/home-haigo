@@ -797,7 +797,7 @@
       <button class="icon-btn" id="sideToggle" aria-label="Themenleiste ein- oder ausklappen" aria-expanded="true" aria-controls="side" title="Themenleiste ein- oder ausklappen"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <div class="tb-title">
         <h1 id="pageTitle"></h1>
-        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 25.11.2026 · Nr. 24</span>
+        <p class="tb-sub" id="pageSub"></p><span id="mwVer" title="Versionsnummer dieser Datei" style="font-size:11px;opacity:.75">Version 25.11.2026 · Nr. 25</span>
       </div>
       <div class="tb-speak">
         <button class="icon-btn" id="speakBtn" aria-label="Vorlesen" title="Vorlesen"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4 4 0 010 6M19 6.5a8 8 0 010 11"/></svg></button>
@@ -1760,7 +1760,7 @@ const MWQuiz = (function () {
     ter: ["qz4", "ter"], aeq: ["qz4", "aeq"], lgs: ["qz4", "lgs"], bin: ["qz4", "bin"], pot: ["qz4", "pot"], wur: ["qz4", "wur"], ivs: ["qz4", "ivs"], qer: ["qz4", "qe"], qgl: ["qz4", "qgl"], qfu: ["qz4", "qfu"], qfo: ["qz4", "qfu"], qum: ["qz4", "um1"], tv: ["qz4", "tv1"],
     pdr: ["qz5", "proz"], exw: ["qz5", "exw"],
     fla: ["qz7", "fla"], pyt: ["qz7", "pyt"], tri: ["qz8", "tri"], tfu: ["qz8", "tfu"],
-    zl: ["qz9", "hk"], sr1: ["qz9", "hd"], sr2: ["qz9", "hz"], sr3: ["qz9", "hm"], dst: ["qz6", "dd1"], wgr: ["qz6", "wla"], wpf: ["qz6", "wpf"], vft: ["qz6", "wvf"], wbw: ["qz6", "wbd"], war: ["qz6", "war"]
+    zl: ["qz9", "hk"], sr1: ["qz9", "hd"], sr2: ["qz9", "hz"], sr3: ["qz9", "hm"], dst: ["qz6", "dd0"], wgr: ["qz6", "wla"], wpf: ["qz6", "wpf"], vft: ["qz6", "wvf"], wbw: ["qz6", "wbd"], war: ["qz6", "war"]
   };
   let from = null;
   const title = k => { const t = TOPICS.find(x => x.k === k); return t ? t.t : k; };
@@ -12263,8 +12263,8 @@ renderStell();
     { t: "Eissorte", q: "Welche Eissorte magst du?", c: ["Vanille", "Schokolade", "Erdbeere", "Zitrone", "Nuss", "Himbeere"] }
   ];
   /* Gesamtzahlen: bei Kreisdiagrammen muss 360 durch N teilbar sein */
-  const NS = { 1: [12, 15, 18, 20], 2: [18, 20, 24, 30], 3: [24, 30, 36, 40] };
-  const NU = { 1: [12, 15, 16], 2: [18, 20, 22], 3: [24, 25, 28] };
+  const NS = { 1: [10, 12], 2: [18, 20, 24, 30], 3: [24, 30, 36, 40] };
+  const NU = { 1: [10, 12], 2: [18, 20, 22], 3: [24, 25, 28] };
   const PAL = ["#ff9a2e", "#6cc0f5", "#5fd06f", "#ff7ab0", "#c4a1ff", "#7ee0d2"];
 
   function parts(N, k) {
@@ -12326,7 +12326,7 @@ renderStell();
     });
     return o + "</svg>";
   }
-  function kreis(D, angles) {
+  function kreis(D, angles, wedges) {
     const W = 340, cx = 90, cy = 96, r = 82, H = Math.max(192, 40 + D.k * 24);
     let o = svgOpen(W, H, "Kreisdiagramm: " + D.cats.map(c => c.n + " " + c.c * D.w + " Grad").join(", ")), a0 = -Math.PI / 2;
     D.cats.forEach((ct, i) => {
@@ -12336,6 +12336,7 @@ renderStell();
       o += '<rect x="190" y="' + (ly - 11) + '" width="14" height="14" rx="3" fill="' + PAL[i % 6] + '" stroke="#0d1016"/><text x="210" y="' + ly + '" font-size="13" fill="#e6e8eb">' + esc(ct.n) + (angles ? ": " + ct.c * D.w + "°" : "") + "</text>";
       a0 = a1;
     });
+    if (wedges) for (let i = 0; i < D.N; i++) { const a = -Math.PI / 2 + i / D.N * 2 * Math.PI; o += '<line x1="' + cx + '" y1="' + cy + '" x2="' + (cx + r * Math.cos(a)).toFixed(2) + '" y2="' + (cy + r * Math.sin(a)).toFixed(2) + '" stroke="#0d1016" stroke-width="1.5"/>'; }
     return o + "</svg>";
   }
 
@@ -12357,6 +12358,25 @@ renderStell();
       ["Alle " + what + " zusammen: " + s + " = " + (N + 1) + ". Die Umfrage hatte " + N + " Antworten. Es ist eine zu viel.", "Rechne noch einmal: " + s + " = " + N + ". Das passt genau zur Umfrage."],
       ["Die Summe muss nicht zur Zahl der Antworten passen.", "Doch: Jede Antwort kommt genau einmal vor. Darum ist die Summe so groß wie die Zahl aller Antworten."]
     ]);
+  }
+
+  /* ----- 0 Kennenlernen: dieselben Zahlen in fünf Darstellungen ----- */
+  const urHtml = D => '<div class="zeq">' + D.list.map(n => '<span style="display:inline-block;margin:2px 3px;padding:1px 8px;border-radius:12px;border:2px solid ' + PAL[D.cats.findIndex(c => c.n === n) % 6] + '">' + esc(n) + "</span>").join("") + "</div>";
+  const kd = v => v + (v === 1 ? " Kind" : " Kinder");
+  function cE() {
+    const D = gen(1, false), X = pick(D.cats), Y = pick(D.cats), steps = [], ask = "Welche Antwort stimmt?";
+    const add = (st, teach, pic) => { st.teach = teach; st.pic = pic; st.ask = ask; steps.push(st); };
+    const f1 = v => [X.n + " kommt " + v + "-mal vor"], z1 = "Zähle noch einmal. Streiche jedes gezählte Wort durch.";
+    add(mk("Die Urliste", f1(X.c)[0], "Ich zähle, wie oft das Wort vorkommt.", numC(X.c, f1, z1, z1)), "Eine Umfrage: Jedes Kind nennt seine Antwort. Die Urliste schreibt alle Antworten auf, so wie sie kommen.", urHtml(D));
+    const f2 = v => [Y.n + ": " + kd(v)], z2 = "Zähle die Striche noch einmal. Fünf Striche sind ein Bündel.";
+    add(mk("Die Strichliste", f2(Y.c)[0], "Ich zähle die Striche. Ein Bündel ist 5.", numC(Y.c, f2, z2, z2)), "Die Strichliste zählt: ein Strich für jedes Kind. Fünf Striche werden zu einem Bündel.", strichHtml(D, false));
+    const oth = (ct0, txt, why) => D.cats.filter(c => c !== ct0).map(ct => [txt + ct.n, why(ct)]);
+    add(mk("Das Säulendiagramm", "Die höchste Säule: " + D.max.n, "Je höher die Säule, desto mehr Kinder.", oth(D.max, "Die höchste Säule: ", ct => "Die Säule von " + ct.n + " ist niedriger.")), "Das Säulendiagramm zeigt die Zahlen als Säulen. Je höher die Säule, desto mehr Kinder.", saeulen(D, true));
+    add(mk("Das Balkendiagramm", "Der kürzeste Balken: " + D.min.n, "Je kürzer der Balken, desto weniger Kinder.", oth(D.min, "Der kürzeste Balken: ", ct => "Der Balken von " + ct.n + " ist länger.")), "Das Balkendiagramm ist wie das Säulendiagramm, nur liegend. Je länger der Balken, desto mehr Kinder.", balken(D, true));
+    add(mk("Das Kreisdiagramm", "Das größte Stück: " + D.max.n, "Je mehr Kinder, desto größer das Stück.", oth(D.max, "Das größte Stück: ", ct => "Das Stück von " + ct.n + " ist kleiner.")), "Das Kreisdiagramm ist wie ein Kuchen. Jedes Kind ist ein Stück. Viele Kinder: ein großes Stück.", kreis(D, false, true));
+    const type = pick(["S", "B", "K"]), K0 = { S: "Säulen stehen.", B: "Balken liegen.", K: "Der Kreis ist ein Kuchen." };
+    add(mk("Wie heißt das Bild?", TN[type], K0[type], ["S", "B", "K"].filter(t => t !== type).map(t => ["Ein " + TN[t], "Beim " + TN[t] + " gilt: " + K0[t] + " Hier gilt: " + K0[type]])), "Zum Schluss: Wie heißt dieses Bild?", type === "S" ? saeulen(D, false) : type === "B" ? balken(D, false) : kreis(D, false, true));
+    return { kind: "E", lv: 1, D: D, from: "Umfrage", to: "fünf Darstellungen", intro: intro(D), start: D.th.q, startHtml: esc(D.th.q), steps: steps, goal: "Geschafft: Du kennst Urliste, Strichliste, Säulendiagramm, Balkendiagramm und Kreisdiagramm.", goalHtml: "", pic: "", picEnd: "" };
   }
 
   /* ----- 1 Urliste -> Strichliste ----- */
@@ -12382,11 +12402,11 @@ renderStell();
     cands.push([fm(top * 2, s), "Die Skala ist viel zu lang. Dann werden alle " + elP + " winzig."]);
     if (s < 5) { const cs = s === 1 ? 5 : 10; cands.push([fm(Math.ceil(m / cs) * cs, cs), "Die Schritte sind zu groß. Dann kannst du Werte wie " + D.min.c + " nicht genau einzeichnen."]); }
     else cands.push([fm(top, 1), "Mit 1er-Schritten stehen viel zu viele Striche auf der Achse. Das wird unübersichtlich."]);
-    steps.push(mk("Skala festlegen", fm(top, s), "Die Skala beginnt bei 0 und geht " + ax + " bis über den größten Wert " + m + ". Die Schritte sind so, dass du alle Werte gut einzeichnen kannst.", cands));
-    const X = pick(D.cats), n = X.c, f = v => [el + " für " + X.n + ": " + (horiz ? "Länge " : "Höhe ") + v];
+    if (lv >= 2) steps.push(mk("Skala festlegen", fm(top, s), "Die Skala beginnt bei 0 und geht " + ax + " bis über den größten Wert " + m + ". Die Schritte sind so, dass du alle Werte gut einzeichnen kannst.", cands));
+    (lv === 1 ? D.cats : [pick(D.cats)]).forEach(X => { const n = X.c, f = v => [el + " für " + X.n + ": " + (horiz ? "Länge " : "Höhe ") + v];
     const c2 = numC(n, f, "Zähle die Striche in der Strichliste noch einmal. Es sind weniger.", "Zähle die Striche in der Strichliste noch einmal. Es sind mehr.");
     if (n >= 5) { const g = Math.floor(n / 5); c2.push([f(n - g)[0], "Ein Fünferbündel (vier Striche mit Querstrich) steht für 5 Striche, nicht für 4."]); }
-    steps.push(mk(el + " zeichnen: " + X.n, f(n)[0], "Ich zähle in der Strichliste: Ein Bündel ist 5, dazu die einzelnen Striche. So hoch " + (horiz ? "(lang) " : "") + "wird " + (horiz ? "der Balken" : "die Säule") + ".", c2));
+    steps.push(mk(el + " zeichnen: " + X.n, f(n)[0], "Ich zähle die Striche. Ein Bündel ist 5.", c2)); });
     steps.push(chkStep(D, horiz ? "Balkenlängen" : "Säulenhöhen"));
     const nm = horiz ? "Balkendiagramm" : "Säulendiagramm";
     return { kind: horiz ? "B" : "S", lv: lv, D: D, from: "Strichliste", to: nm, intro: intro(D), start: "Strichliste: " + countTxt(D), startHtml: strichHtml(D, false), steps: steps, goal: nm + ": " + countTxt(D) + ". Mit Überschrift, Namen und beschrifteter Skala.", goalHtml: "", pic: "", picEnd: horiz ? balken(D, true) : saeulen(D, true) };
@@ -12400,6 +12420,11 @@ renderStell();
       ["Alle zusammen: " + D.cats.map(c => c.c).join(" + ") + " = " + (N + 2), "Rechne noch einmal: " + D.cats.map(c => c.c).join(" + ") + " = " + N + "."],
       ["Alle zusammen: " + D.cats.length + " Antworten", "Nicht die Zahl der Antwortmöglichkeiten, sondern alle Striche zusammen."]
     ]));
+    if (lv === 1) {
+      D.cats.forEach(Z => { const g = v => [Z.n + ": " + v + " Stücke"], z = "Zähle die Striche von " + Z.n + " noch einmal."; steps.push(mk("Stücke für " + Z.n, g(Z.c)[0], "Jedes Kind ist ein Stück. So viele Striche, so viele Stücke.", numC(Z.c, g, z, z))); });
+      steps.push(chkStep(D, "Stücke"));
+      return { kind: "K", lv: 1, D: D, from: "Strichliste", to: "Kreisdiagramm", intro: intro(D), start: "Strichliste: " + countTxt(D), startHtml: strichHtml(D, false), steps: steps, goal: "Kreisdiagramm: " + countTxt(D) + " Stücke. Jedes Kind ist ein Stück.", goalHtml: "", pic: "", picEnd: kreis(D, false, true) };
+    }
     steps.push(mk("Winkel für eine Antwort", "360° : " + N + " = " + w + "°", "Der ganze Kreis hat 360°. Ich verteile ihn gleichmäßig auf alle " + N + " Antworten, also teile ich.", [
       ["360° · " + N + " = " + 360 * N + "°", "Der ganze Kreis hat nur 360°. Du verteilst ihn auf alle " + N + " Antworten, also teilst du."],
       ["360° − " + N + " = " + (360 - N) + "°", "Verteilen heißt teilen: 360° : " + N + "."],
@@ -12448,7 +12473,7 @@ renderStell();
       const s = D.cats.map(c => c.c).join(" + "), g = v => ["Zusammen: " + s + " = " + v + " Befragte"];
       steps.push(mk("Alle zusammen", g(D.N)[0], "Ich lese alle Werte ab und zähle sie zusammen.", numC(D.N, g, "Lies alle Werte ab und rechne noch einmal: " + s + " = " + D.N + ".", "Lies alle Werte ab und rechne noch einmal: " + s + " = " + D.N + "."), null, "Welche Antwort stimmt?"));
     }
-    return { kind: "L", lv: lv, D: D, from: "Diagramm", to: "Aussagen", intro: intro(D) + (kr && lv >= 2 ? " Eine Antwort entspricht " + D.w + "° im Kreis." : ""), start: "Lies das Diagramm.", startHtml: "Lies das Diagramm.", steps: steps, goal: "Alles abgelesen: " + TN[type] + " zur Umfrage „" + D.th.t + "“.", goalHtml: "", pic: type === "S" ? saeulen(D, false) : type === "B" ? balken(D, false) : kreis(D, true), picEnd: "", picAlways: true };
+    return { kind: "L", lv: lv, D: D, from: "Diagramm", to: "Aussagen", intro: intro(D) + (kr && lv >= 2 ? " Eine Antwort entspricht " + D.w + "° im Kreis." : ""), start: "Lies das Diagramm.", startHtml: "Lies das Diagramm.", steps: steps, goal: "Alles abgelesen: " + TN[type] + " zur Umfrage „" + D.th.t + "“.", goalHtml: "", pic: type === "S" ? saeulen(D, false) : type === "B" ? balken(D, false) : kreis(D, lv >= 2, lv === 1), picEnd: "", picAlways: true };
   }
 
   /* ----- 6 Darstellung wählen ----- */
@@ -12481,7 +12506,7 @@ renderStell();
     return { kind: "W", lv: lv, D: null, from: "Situation", to: "Darstellung", intro: "Welche Darstellung passt zur Situation?", start: S[0], startHtml: esc(S[0]), steps: [s1, s2], goal: F.A + " " + F.n + ". " + fw(f), goalHtml: "", pic: "", picEnd: "" };
   }
 
-  const MAKE = { U: cU, S: lv => cSB(lv, false), B: lv => cSB(lv, true), K: cK, L: cL, W: cW };
+  const MAKE = { E: () => cE(), U: cU, S: lv => cSB(lv, false), B: lv => cSB(lv, true), K: cK, L: cL, W: cW };
   const chain = (kind, lv) => { for (let t = 0; t < 50; t++) { try { return MAKE[kind](lv); } catch (e) { if (t === 49) throw e; } } };
   window.__dd = { chain: chain, esc: esc, pick: pick, ri: ri, gen: gen, saeulen: saeulen, balken: balken, kreis: kreis, tl: tl };
 
@@ -12491,9 +12516,10 @@ renderStell();
   sty.textContent = ".tg{text-decoration:line-through;text-decoration-thickness:2px;letter-spacing:1px;margin-right:.1em}";
   document.head.appendChild(sty);
   const D0 = { th: THEMES[0], N: 18, k: 3, w: 20, cats: [{ n: "Hund", c: 7 }, { n: "Katze", c: 5 }, { n: "Fisch", c: 6 }] }; D0.max = D0.cats[0]; D0.min = D0.cats[1];
-  const KN = { U: "1 Urliste → Strichliste", S: "2 Strichliste → Säulendiagramm", B: "3 Strichliste → Balkendiagramm", K: "4 Strichliste → Kreisdiagramm", L: "5 Diagramm lesen", W: "6 Darstellung wählen" };
+  const KN = { E: "0 Kennenlernen", U: "1 Urliste → Strichliste", S: "2 Strichliste → Säulendiagramm", B: "3 Strichliste → Balkendiagramm", K: "4 Strichliste → Kreisdiagramm", L: "5 Diagramm lesen", W: "6 Darstellung wählen" };
   const LN = { 1: "3 Antwortmöglichkeiten", 2: "4 Antwortmöglichkeiten", 3: "5 Antwortmöglichkeiten" };
   const MERK = {
+    E: ["Fünf Arten, dieselben Zahlen zu zeigen.", "Urliste, Strichliste, Säulendiagramm, Balkendiagramm, Kreisdiagramm: Es sind immer dieselben Antworten.", saeulen(D0, true), "Hund 7, Katze 5, Fisch 6"],
     U: ["Eine Urliste schreibt jede Antwort der Reihe nach auf.", "Zum Zählen streichst du jede Antwort durch und machst einen Strich. Jeder fünfte Strich bündelt vier Striche.", strichHtml(D0, true), "Hund, Katze, Hund, Fisch, … → Hund: 7"],
     S: ["Im Säulendiagramm zeigt die Höhe der Säule die Anzahl.", "Erst die Skala, dann jede Säule bis zur Anzahl, am Ende Überschrift, Namen und Achse beschriften.", saeulen(D0, true), "Hund 7, Katze 5, Fisch 6"],
     B: ["Im Balkendiagramm zeigt die Länge des Balkens die Anzahl.", "Wie beim Säulendiagramm, nur liegt alles waagerecht. Die Namen stehen links.", balken(D0, true), "Hund 7, Katze 5, Fisch 6"],
@@ -12501,19 +12527,19 @@ renderStell();
     L: ["Erst die Darstellung erkennen, dann genau ablesen.", "Säulen und Balken: An der Skala ablesen. Kreis: Das größte Stück ist die häufigste Antwort.", saeulen(D0, false), "Die höchste Säule gehört zur häufigsten Antwort."],
     W: ["Jede Darstellung hat ihre Stärke.", "Urliste: alles der Reihe nach. Strichliste: schnell zählen. Säulen und Balken: Anzahlen vergleichen. Kreis: Anteile vom Ganzen.", "", "Lange Namen? Balken. Anteil vom Ganzen? Kreis."]
   };
-  let menuOpen = false, kind = "U", lv = 1, C = null, idx = 0, fails = 0, done = [], tried = {}, msg = "", opts = null, main = null;
+  let menuOpen = false, kind = "E", lv = 1, C = null, idx = 0, fails = 0, done = [], tried = {}, msg = "", opts = null, main = null;
   const stars = f => f === 0 ? 3 : f <= 2 ? 2 : 1;
   function newTask() { C = chain(kind, lv); idx = 0; fails = 0; done = []; tried = {}; msg = ""; opts = null; draw(); }
   function draw() {
     const n = C.steps.length, fin = idx >= n;
-    let h = '<details class="card"' + (menuOpen ? " open" : "") + '><summary><b>Aufgabe wählen:</b> ' + esc(KN[kind]) + ", " + esc(LN[lv]) + '</summary><div class="umrt">' + Object.keys(KN).map(k => '<button type="button" class="tab" data-k="' + k + '" aria-selected="' + (kind === k) + '">' + esc(KN[k]) + "</button>").join("") + '</div><div class="umrt">' + [1, 2, 3].map(l => '<button type="button" class="tab" data-l="' + l + '" aria-selected="' + (lv === l) + '">' + esc(LN[l]) + "</button>").join("") + "</div></details>";
+    let h = '<details class="card"' + (menuOpen ? " open" : "") + '><summary><b>Aufgabe wählen:</b> ' + (kind === "E" ? "" : ", " + esc(LN[lv])) + '</summary><div class="umrt">' + Object.keys(KN).map(k => '<button type="button" class="tab" data-k="' + k + '" aria-selected="' + (kind === k) + '">' + esc(KN[k]) + "</button>").join("") + '</div>' + (kind === "E" ? "" : '<div class="umrt">' + [1, 2, 3].map(l => '<button type="button" class="tab" data-l="' + l + '" aria-selected="' + (lv === l) + '">' + esc(LN[l]) + "</button>").join("") + "</div>") + "</details>";
     const m0 = MERK[kind];
     h += '<details class="card"><summary><b>So geht es:</b> ' + esc(m0[0]) + '</summary><div class="note">' + esc(m0[1]) + "</div>" + m0[2] + '<div class="umline v">' + esc(m0[3]) + "</div></details>";
     h += '<div class="card"><div class="ktitle">Vorgabe: ' + esc(C.from) + " → " + esc(C.to) + '</div><div class="note">' + esc(C.intro) + '</div><div class="umline v">' + C.startHtml + "</div>" + (C.picAlways ? C.pic : "") +
       '<div class="umplan" aria-label="Wegweiser">' + C.steps.map((s, i) => '<span class="' + (i < idx ? "dn" : i === idx ? "cur" : "") + '">' + (i < idx ? "✓ " : "") + (i + 1) + " " + esc(s.t.replace(/ \(.*\)$/, "")) + "</span>").join("") + "</div></div>";
     if (!fin) {
       const s = C.steps[idx]; if (!opts) opts = shuf([[s.h, "", true, s.hh]].concat(s.w.map(w => [w[0], w[1], false, w[2]])));
-      h += '<div class="card"><div class="ktitle">Nächster Schritt: ' + (idx + 1) + " von " + n + "</div><div><b>" + esc(s.t) + '</b></div><div class="note">' + esc(s.ask) + ' Tippe auf die richtige Möglichkeit.</div><div id="ddOpts" aria-live="polite">' +
+      h += '<div class="card"><div class="ktitle">Nächster Schritt: ' + (idx + 1) + " von " + n + "</div>" + (s.teach ? '<div class="note">' + esc(s.teach) + "</div>" : "") + (s.pic || "") + "<div><b>" + esc(s.t) + '</b></div><div class="note">' + esc(s.ask) + ' Tippe auf die richtige Möglichkeit.</div><div id="ddOpts" aria-live="polite">' +
         opts.map((o, i) => '<button type="button" class="umopt' + (tried[i] ? " bad" : "") + '" data-i="' + i + '"' + (tried[i] ? " disabled" : "") + '><span class="umn">' + (i + 1) + "</span><span>" + (o[3] || esc(o[0])) + "</span></button>").join("") + "</div>" + (msg ? '<div class="umwhy"><b>Noch nicht.</b> ' + esc(msg) + "</div>" : "") + "</div>";
     } else {
       const f = stars(fails);
@@ -14938,9 +14964,10 @@ document.querySelectorAll(".card").forEach(c => {
   function gDd(C, top) {
     const U = window.__dd, i = U.ri(0, C.steps.length - 1), s = C.steps[i];
     const lines = [C.startHtml].concat(C.steps.slice(0, i).map(x => x.hh || U.esc(x.h)));
-    const q = '<div class="note">' + U.esc(C.intro) + "</div>" + (C.pic || "") + lines.map((l, j) => '<div class="zeq">' + (j === 0 && C.kind !== "L" && C.kind !== "W" ? "Vorgabe: " : "") + l + "</div>").join("") + "<p>Aufgabe: <b>" + U.esc(s.t) + "</b>. " + U.esc(s.ask) + "</p>";
+    const q = '<div class="note">' + U.esc(C.intro) + "</div>" + (s.pic || C.pic || "") + lines.map((l, j) => '<div class="zeq">' + (j === 0 && C.kind !== "L" && C.kind !== "W" && C.kind !== "E" ? "Vorgabe: " : "") + l + "</div>").join("") + "<p>Aufgabe: <b>" + U.esc(s.t) + "</b>. " + U.esc(s.ask) + "</p>";
     return { top: top, kind: "eqs", n: 3, q: q, corr: [O(s.hh || U.esc(s.h), s.h, s.r)], wrong: s.w.map(w => O(w[2] || U.esc(w[0]), w[0], w[1])), expl: () => s.t + ". " + s.r };
   }
+  G.dd0 = () => gDd(window.__dd.chain("E", 1), "dd0");
   G.dd1 = () => gDd(window.__dd.chain("U", pick([1, 1, 2, 3])), "dd1");
   G.dd2 = () => gDd(window.__dd.chain(pick(["S", "B"]), pick([1, 2, 2, 3])), "dd2");
   G.dd3 = () => gDd(window.__dd.chain("K", pick([1, 2, 2, 3])), "dd3");
@@ -15021,7 +15048,7 @@ document.querySelectorAll(".card").forEach(c => {
     qz2: { t: "Brüche", arena: "Bruch-Arena", col: "#c4a1ff", tops: [["anteil", "Anteile am Streifen"], ["gl", "Gleichwertige Brüche"], ["kue", "Brüche kürzen"], ["gem", "Unechte Brüche und gemischte Zahlen"], ["stufe", "Stufenzahlen"], ["addsub", "Addieren und Subtrahieren"], ["muldiv", "Multiplizieren und Dividieren"]] },
     qz3: { t: "Kommazahlen", arena: "Komma-Arena", col: "#7fdcae", tops: [["bd", "Brüche und Dezimalzahlen"], ["komma", "Kommaverschiebung"], ["dadd", "Addieren und Subtrahieren"], ["dmul", "Multiplizieren und Dividieren"], ["dper", "Abbrechend oder periodisch"], ["rund", "Runden am Zahlenstrahl"], ["gro", "Größen und Stellenwerte"], ["lae", "Rechnen mit Längen"], ["geld", "Rechnen mit Geld"], ["gew", "Rechnen mit Gewichten"], ["zeit", "Rechnen mit Zeit"]] },
     qz5: { t: "Funktionen und Prozente", arena: "Funktionen-Arena", col: "#ff8fb1", tops: [["lf", "Lineare Funktionen"], ["lfg", "Graph einer Geraden"], ["lp", "Gerade durch zwei Punkte"], ["prop", "Proportional oder antiproportional"], ["dreis", "Dreisatz"], ["proz", "Prozentrechnung"], ["zins", "Zinsen für ein Jahr"], ["zz", "Zinseszins"], ["exw", "Exponentielles Wachstum"]] },
-    qz6: { t: "Daten und Wahrscheinlichkeit", arena: "Zufalls-Arena", col: "#7ee0d2", tops: [["dd1", "Urliste und Strichliste"], ["dd2", "Säulen- und Balkendiagramm"], ["dd3", "Kreisdiagramm"], ["dd4", "Diagramme lesen und Darstellung wählen"], ["wla", "Laplace und Gegenereignis"], ["wmi", "Mindestens ein Treffer"], ["wpf", "Baumdiagramm und Pfadregeln"], ["wvf", "Vierfeldertafel"], ["wbd", "Bedingte Wahrscheinlichkeit"], ["wte", "Test und Krankheit"], ["war", "Argumentieren"]] },
+    qz6: { t: "Daten und Wahrscheinlichkeit", arena: "Zufalls-Arena", col: "#7ee0d2", tops: [["dd0", "Darstellungen kennenlernen"], ["dd1", "Urliste und Strichliste"], ["dd2", "Säulen- und Balkendiagramm"], ["dd3", "Kreisdiagramm"], ["dd4", "Diagramme lesen und Darstellung wählen"], ["wla", "Laplace und Gegenereignis"], ["wmi", "Mindestens ein Treffer"], ["wpf", "Baumdiagramm und Pfadregeln"], ["wvf", "Vierfeldertafel"], ["wbd", "Bedingte Wahrscheinlichkeit"], ["wte", "Test und Krankheit"], ["war", "Argumentieren"]] },
     qz4: { t: "Algebra", arena: "Algebra-Arena", col: "#ffb86b", tops: [["tv1", "Terme zusammenfassen"], ["tv2", "Klammern auflösen"], ["tv3", "Ausmultiplizieren und Ausklammern"], ["tv5", "Erste Zahl ausklammern"], ["tv4", "Gleichwertige Terme"], ["aeq", "Äquivalenzumformung"], ["lgs", "Lineare Gleichungssysteme"], ["qe", "Scheitelpunktform"], ["qgl", "Quadratische Gleichungen"], ["qfu", "Quadratische Funktionen"], ["um1", "Scheitelpunktform und allgemeine Form"], ["um2", "Linearfaktorform und allgemeine Form"], ["um3", "Scheitelpunktform und Linearfaktorform"], ["ter", "Terme aufstellen"], ["bin", "Ausmultiplizieren und binomische Formeln"], ["pot", "Potenzgesetze"], ["wur", "Wurzelgesetze"], ["ivs", "Intervallschachtelung"]] },
     qz7: { t: "Geometrie", arena: "Geometrie-Arena", col: "#ffd166", tops: [["fla", "Flächen und Umfang"], ["pyt", "Satz des Pythagoras"]] },
     qz8: { t: "Trigonometrie", arena: "Winkel-Arena", col: "#9bb7ff", tops: [["tri", "Trigonometrie im Dreieck"], ["tfu", "Trigonometrische Funktionen"]] },
